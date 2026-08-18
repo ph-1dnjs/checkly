@@ -1,0 +1,70 @@
+{
+  "name": "fsd-electron-qa",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Desktop browser QA application built with Electron, React, Playwright, and FSD.",
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev": "concurrently -k \"vite\" \"wait-on http://127.0.0.1:5173 && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5173 tsx src/app/main.ts\"",
+    "build": "vite build && tsc -p tsconfig.electron.json",
+    "start": "electron .",
+    "preview": "vite preview",
+    "test": "playwright test",
+    "test:ui": "playwright test --ui",
+    "package": "npm run build && dotenv -e .env -- electron-builder",
+    "package:dir": "npm run build && dotenv -e .env -- electron-builder --dir",
+    "postinstall": "playwright install chromium"
+  },
+  "build": {
+    "appId": "com.example.fsdqa",
+    "productName": "FSD QA",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**",
+      "dist-electron/**",
+      "package.json"
+    ],
+    "mac": {
+      "target": ["dmg", "zip"]
+    },
+    "win": {
+      "target": ["nsis"]
+    },
+    "linux": {
+      "target": ["AppImage"]
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "${env.GH_OWNER}",
+        "repo": "${env.GH_REPO}"
+      }
+    ]
+  },
+  "dependencies": {
+    "@electron-toolkit/preload": "^3.0.1",
+    "@electron-toolkit/utils": "^4.0.0",
+    "dotenv": "^16.6.1",
+    "electron-updater": "^6.6.2",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0",
+    "@types/node": "^24.3.0",
+    "@types/react": "^19.1.10",
+    "@types/react-dom": "^19.1.7",
+    "@vitejs/plugin-react": "^5.0.2",
+    "concurrently": "^9.2.1",
+    "cross-env": "^7.0.3",
+    "dotenv-cli": "^10.0.0",
+    "electron": "^37.2.6",
+    "electron-builder": "^26.0.12",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.3",
+    "wait-on": "^8.0.3"
+  }
+}
