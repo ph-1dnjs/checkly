@@ -18,7 +18,7 @@ export const App = (): JSX.Element => {
   return (
     <main>
       <p className="eyebrow">Electron · React · Playwright</p>
-      <h1>FSD QA</h1>
+      <h1>Checkly</h1>
       <p>브라우저 QA 데스크톱 앱의 기본 환경이 준비되었습니다.</p>
       <p className="version">v{version}</p>
     </main>

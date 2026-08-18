@@ -1,4 +1,4 @@
-# FSD QA
+# Checkly
 
 Electron 기반 브라우저 QA 데스크톱 애플리케이션의 초기 구성입니다.
 

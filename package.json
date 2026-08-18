@@ -1,8 +1,8 @@
 {
-  "name": "fsd-electron-qa",
+  "name": "checkly",
   "version": "0.1.0",
   "private": true,
-  "description": "Desktop browser QA application built with Electron, React, Playwright, and FSD.",
+  "description": "Checkly desktop browser QA application built with Electron, React, Playwright, and FSD.",
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "concurrently -k \"vite\" \"wait-on http://127.0.0.1:5173 && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5173 tsx src/app/main.ts\"",
@@ -16,8 +16,8 @@
     "postinstall": "playwright install chromium"
   },
   "build": {
-    "appId": "com.example.fsdqa",
-    "productName": "FSD QA",
+    "appId": "com.example.checkly",
+    "productName": "Checkly",
     "directories": {
       "output": "release"
     },
