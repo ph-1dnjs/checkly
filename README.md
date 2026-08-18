@@ -2,6 +2,8 @@
 
 Electron 기반 브라우저 QA 데스크톱 애플리케이션의 초기 구성입니다.
 
+UI 작업은 [DESIGN.md](DESIGN.md)의 디자인 기준을 따릅니다.
+
 ## 기술 구성
 
 - TypeScript + Electron
