@@ -1,0 +1,128 @@
+/* DESIGN.md: cream canvas, flat token colors, compact functional controls. */
+.workspace .content {
+  padding-bottom: 126px;
+}
+
+.workspace .bottom-navigation {
+  bottom: 24px;
+  gap: 6px;
+  width: max-content;
+  max-width: calc(100% - 32px);
+  height: 62px;
+  min-height: 62px;
+  padding: 8px;
+  border: 1px solid #ffffffb3;
+  border-radius: 28px;
+  background: rgb(255 255 255 / 42%);
+  background-clip: padding-box;
+  box-shadow:
+    0 14px 30px #4d4f4629,
+    inset 0 1px #ffffffd9;
+  backdrop-filter: blur(36px) saturate(1.2);
+  -webkit-backdrop-filter: blur(36px) saturate(1.2);
+}
+
+.workspace .bottom-nav-item {
+  display: flex;
+  flex: 0 0 46px;
+  gap: 0;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  height: 46px;
+  padding: 0;
+  border-radius: 16px;
+  outline: none;
+  color: #6c6e63;
+  transition:
+    flex-basis 0.22s ease,
+    background-color 0.22s ease,
+    color 0.22s ease,
+    box-shadow 0.22s ease;
+}
+.workspace .bottom-nav-item span {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  font-size: 18px;
+}
+.workspace .bottom-nav-item small {
+  width: 0;
+  overflow: hidden;
+  opacity: 0;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  transition:
+    width 0.22s ease,
+    opacity 0.16s ease;
+}
+.workspace .bottom-nav-item.active {
+  color: #23251d;
+}
+.workspace .bottom-nav-item.active {
+  flex-basis: 126px;
+  justify-content: flex-start;
+  gap: 7px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 24px;
+  background: rgb(231 216 238 / 62%);
+  box-shadow:
+    inset 0 1px #ffffff99,
+    0 5px 12px #4d4f4624;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+.workspace .bottom-nav-item.active span {
+  background: #5a4364;
+  color: #fff;
+  box-shadow: none;
+}
+.workspace .bottom-nav-item:focus-visible {
+  box-shadow: 0 0 0 2px #1078a3;
+}
+.workspace .bottom-nav-item.active:focus-visible {
+  box-shadow: inset 0 1px #ffffffb3, 0 0 0 2px #1078a3, 0 5px 12px #4d4f4624;
+}
+.workspace .bottom-nav-item.active small {
+  width: 68px;
+  opacity: 1;
+}
+
+@media (max-width: 850px) {
+  .workspace .content {
+    padding-bottom: 126px;
+  }
+}
+@media (max-width: 600px) {
+  .workspace .content {
+    padding-bottom: 112px;
+  }
+  .workspace .bottom-navigation {
+    bottom: 16px;
+    max-width: calc(100% - 28px);
+    height: 60px;
+    min-height: 60px;
+    padding: 8px;
+  }
+  .workspace .bottom-nav-item {
+    flex-basis: 42px;
+    height: 42px;
+  }
+  .workspace .bottom-nav-item span {
+    width: 28px;
+    height: 28px;
+    font-size: 17px;
+  }
+  .workspace .bottom-nav-item.active {
+    flex-basis: 118px;
+    padding: 0 10px;
+  }
+  .workspace .bottom-nav-item.active small {
+    width: 62px;
+    font-size: 11px;
+  }
+}

@@ -1,0 +1,4 @@
+.preview-empty { margin:16px; padding:18px; border:1px dashed #bfc1b7; border-radius:6px; color:#4d4f46; font-size:13px; line-height:1.6; }
+.preview-empty strong { color:#23251d; }
+.preview-empty p { margin:8px 0 0; }
+.preview-empty code { padding:2px 4px; border-radius:3px; background:#e5e7e0; font:11px ui-monospace,monospace; }
