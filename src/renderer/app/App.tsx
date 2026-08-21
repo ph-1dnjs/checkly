@@ -97,7 +97,7 @@ export const App = (): JSX.Element => {
   const [isAddingMarker, setIsAddingMarker] = useState(false)
   const [pendingMarker, setPendingMarker] = useState<Step | null>(null)
   const [stepPanelCollapsed, setStepPanelCollapsed] = useState(false)
-  const [stepPanelPosition, setStepPanelPosition] = useState({ top: 182, right: 32 })
+  const [stepPanelPosition, setStepPanelPosition] = useState({ top: 78, left: 24 })
   const [stepPanelDrag, setStepPanelDrag] = useState<{ x: number; y: number } | null>(null)
   const [stepPanelMoved, setStepPanelMoved] = useState(false)
   const [manual, setManual] = useState<Step | null>(null)
@@ -134,7 +134,7 @@ export const App = (): JSX.Element => {
     if (!stepPanelDrag) return
     const move = (event: PointerEvent) => {
       setStepPanelMoved(true)
-      setStepPanelPosition({ top: Math.max(16, event.clientY - stepPanelDrag.y), right: Math.max(16, window.innerWidth - event.clientX - stepPanelDrag.x) })
+      setStepPanelPosition({ top: Math.max(16, event.clientY - stepPanelDrag.y), left: Math.max(16, event.clientX - stepPanelDrag.x) })
     }
     const stop = () => setStepPanelDrag(null)
     window.addEventListener('pointermove', move)
