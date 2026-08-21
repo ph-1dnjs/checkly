@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 
 type Action = 'goto' | 'fill' | 'manualFill' | 'click' | 'select' | 'expectText'
-type Step = { id: string; action: Action; target: string; value?: string; required?: boolean; prompt?: string; connected?: boolean }
+type Step = { id: string; action: Action; target: string; value?: string; required?: boolean; prompt?: string; connected?: boolean; x?: number; y?: number; color?: string }
 type Scenario = { id: string; title: string; url: string; steps: Step[] }
 type RunRecord = { id: string; scenario: Scenario; status: 'passed' | 'failed'; ranAt: string }
 type RunSummary = { total: number; passed: number; failed: number }
@@ -83,6 +83,8 @@ const replaceScenarioBlock = (markdown: string, title: string, replacement: stri
 }
 const initialMarkdown = `${markdownFor(seed)}\n\n# 시나리오: 주문 조회\nurl: https://example.com/orders\n\nGiven /orders 페이지로 이동한다\nThen 주문 목록 텍스트가 보인다`
 const runHistoryKey = 'checkly-run-history'
+const defaultMarkerPosition = (index: number) => ({ x: [78, 50, 50, 85, 87][index] ?? 50, y: [20, 43, 58, 58, 84][index] ?? 50 })
+const markerColor = (index: number) => `hsl(${Math.round((index * 137.508 + 19) % 360)} 72% 48%)`
 
 export const App = (): JSX.Element => {
   const [scenario, setScenario] = useState<Scenario>(seed)
@@ -91,7 +93,9 @@ export const App = (): JSX.Element => {
   const [editorMode, setEditorMode] = useState<'text' | 'marker'>('text')
   const [webviewKey, setWebviewKey] = useState(0)
   const [selectedId, setSelectedId] = useState('3')
-  const [editing, setEditing] = useState<Step | null>(null)
+  const [editingMarker, setEditingMarker] = useState<Step | null>(null)
+  const [isAddingMarker, setIsAddingMarker] = useState(false)
+  const [pendingMarker, setPendingMarker] = useState<Step | null>(null)
   const [manual, setManual] = useState<Step | null>(null)
   const [manualValue, setManualValue] = useState('')
   const [running, setRunning] = useState(false)
@@ -167,14 +171,36 @@ export const App = (): JSX.Element => {
     updateSteps(scenario.steps.filter((step) => step.id !== id))
     setSelectedId(String(Math.max(1, Number(id) - 1)))
   }
-  const saveStep = () => {
-    if (!editing) return
-    updateSteps(scenario.steps.map((step) => step.id === editing.id ? editing : step))
-    setEditing(null)
+  const beginMarkerPlacement = () => {
+    setPendingMarker(null)
+    setIsAddingMarker(true)
+    setNotice('대상 화면에서 마커를 추가할 위치를 클릭해 주세요.')
   }
-  const addStep = () => {
-    const next: Step = { id: String(scenario.steps.length + 1), action: 'click', target: '새 요소', connected: true }
-    updateSteps([...scenario.steps, next]); setSelectedId(next.id); setEditing(next)
+  const placeMarker = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (!isAddingMarker) return
+    const bounds = event.currentTarget.getBoundingClientRect()
+    const nextIndex = scenario.steps.length
+    setPendingMarker({
+      id: String(nextIndex + 1), action: 'click', target: '', connected: true,
+      x: Math.round((event.clientX - bounds.left) / bounds.width * 1000) / 10,
+      y: Math.round((event.clientY - bounds.top) / bounds.height * 1000) / 10,
+      color: markerColor(nextIndex)
+    })
+    setIsAddingMarker(false)
+    setNotice('')
+  }
+  const markerDialog = pendingMarker ?? editingMarker
+  const updateMarkerDialog = (changes: Partial<Step>) => {
+    if (pendingMarker) setPendingMarker({ ...pendingMarker, ...changes })
+    if (editingMarker) setEditingMarker({ ...editingMarker, ...changes })
+  }
+  const closeMarkerDialog = () => { setPendingMarker(null); setEditingMarker(null) }
+  const completeMarkerDialog = () => {
+    if (!markerDialog || !markerDialog.target.trim()) return
+    if (pendingMarker) updateSteps([...scenario.steps, pendingMarker])
+    if (editingMarker) updateSteps(scenario.steps.map((step) => step.id === editingMarker.id ? editingMarker : step))
+    setSelectedId(markerDialog.id)
+    closeMarkerDialog()
   }
   const beginRun = async (scenarioToRun = scenario) => {
     setPage('run'); setRunning(true); setRunLog(['기본 URL 상태 점검 완료', '시나리오 실행을 시작했습니다.'])
@@ -218,7 +244,7 @@ export const App = (): JSX.Element => {
         {page === 'editor' && <>
           <div className="page-title editor-page-title"><div><p className="eyebrow">SCENARIO WORKSPACE</p><h1>시나리오 작성 / 편집</h1><p>{editorMode === 'text' ? '텍스트 기반 시나리오를 작성하고 실행 단계를 미리 확인하세요.' : '대상 화면에서 마커를 선택해 액션과 순서를 편집하세요.'}</p></div><div className="editor-mode-switch"><button className={editorMode === 'text' ? 'active' : ''} onClick={() => setEditorMode('text')}>텍스트 편집</button><button className={editorMode === 'marker' ? 'active' : ''} onClick={() => setEditorMode('marker')}>화면에서 추출</button></div></div>
           {notice && <div className="notice">✓ {notice}</div>}
-          {editorMode === 'text' ? <><div className="editor-actions"><button className="button button-secondary" onClick={loadMarkdown}>Markdown 적용</button><button className="button button-secondary" onClick={() => navigator.clipboard?.writeText(sourceMarkdown)}>복사</button><button className="button button-primary" onClick={loadMarkdown}>Markdown 저장</button></div><div className="scenario-writing-grid"><section className="writing-card"><div className="writing-card-header"><strong>시나리오 Markdown</strong><span>{markdownPreview?.title ?? '미리보기'}.md</span></div><textarea className="scenario-source" value={sourceMarkdown} onChange={(event) => setSourceMarkdown(event.target.value)} aria-label="시나리오 Markdown 원본" /></section><aside className="scenario-preview"><div className="writing-card-header"><strong>실행 미리보기</strong><span>{markdownPreview?.steps.length ?? 0}개 단계 인식</span></div>{markdownPreview ? <><div className="preview-before"><b>기본 URL</b><span>{markdownPreview.url}</span></div><article className="preview-scenario"><div><h2>{markdownPreview.title}</h2><span className="tag">자동 인식</span></div><ol>{markdownPreview.steps.map((step) => <li key={step.id}><b>{label[step.action]}</b><span>{actionText(step)}</span></li>)}</ol></article><p className="preview-note">Given / When / Then / And 문장을 자동으로 인식합니다. Markdown 적용 시 이 미리보기가 편집기에 반영됩니다.</p></> : <div className="preview-empty"><strong>시나리오 형식을 인식하지 못했습니다.</strong><p><code># 시나리오: 제목</code>과 <code>Given /login 페이지로 이동</code> 형식으로 작성해 주세요.</p></div>}</aside></div></> : <><div className="marker-toolbar"><strong>✣ 핀 수정 중</strong><button onClick={addStep}>현재 경로 추가</button><button onClick={() => updateSteps(scenario.steps.slice(0, -1))}>마지막 삭제</button><button onClick={() => { updateSteps([]); setSelectedId('') }}>전체 초기화</button><button className="button button-secondary" onClick={() => setEditorMode('text')}>×&nbsp; 편집기로 돌아가기</button></div><div className="marker-editor-layout"><section className="browser-canvas marker-canvas"><div className="browser-bar"><span className="browser-dots" aria-hidden="true">● ● ●</span><input value={scenario.url} onChange={(e) => setScenario({ ...scenario, url: e.target.value })} aria-label="대상 URL" /><button className="browser-refresh" onClick={() => setWebviewKey((key) => key + 1)}>↻&nbsp; 새로고침</button></div><div className="mock-page"><webview key={webviewKey} className="target-frame" src={scenario.url} aria-label="시나리오 대상 페이지" /><div className="page-fallback"><div className="mock-logo">Electron 대상 페이지</div><p>데스크톱 웹뷰에서 대상 URL을 열었습니다. 연결 상태는 Playwright로 확인합니다.</p></div>{scenario.steps.map((step) => step.connected && <button key={step.id} className={'marker marker-' + step.id + (selectedId === step.id ? ' selected' : '')} onClick={() => setSelectedId(step.id)} aria-label={`${step.id}번 ${step.target} 마커`}>{step.id}</button>)}</div></section><aside className="step-panel marker-steps"><div className="panel-heading"><h2>실행 단계</h2><span>{scenario.steps.length}개</span></div><ol className="step-list">{scenario.steps.map((step) => <li key={step.id} className={selectedId === step.id ? 'selected' : ''}><button onClick={() => setSelectedId(step.id)}><b>{step.id}</b><span><strong>{label[step.action]}</strong>{step.target}<small>{step.connected ? '연결됨' : '미연결 단계'}</small></span></button><button className="delete-button" onClick={() => deleteStep(step.id)} aria-label={`${step.id}번 단계 삭제`}>×</button></li>)}</ol><button className="add-step" onClick={addStep}>+ 새 마커 추가</button></aside></div>{selected && <section className="step-editor"><div><p className="eyebrow">SELECTED MARKER · {selected.id}</p><h2>{selected.target}</h2></div><div className="edit-controls"><label>액션<select value={editing?.action ?? selected.action} onChange={(e) => setEditing({ ...(editing ?? selected), action: e.target.value as Action })}>{Object.entries(label).map(([value, name]) => <option value={value} key={value}>{name}</option>)}</select></label><label>라벨<input value={editing?.target ?? selected.target} onChange={(e) => setEditing({ ...(editing ?? selected), target: e.target.value })} /></label>{['fill', 'select'].includes(editing?.action ?? selected.action) && <label>값<input value={editing?.value ?? selected.value ?? ''} onChange={(e) => setEditing({ ...(editing ?? selected), value: e.target.value })} /></label>}<label>연결 상태<select value={String(editing?.connected ?? selected.connected ?? false)} onChange={(e) => setEditing({ ...(editing ?? selected), connected: e.target.value === 'true' })}><option value="true">연결됨</option><option value="false">미연결 단계 유지</option></select></label><button className="button button-secondary" onClick={() => { updateSteps(scenario.steps.map((step) => step.id === selected.id ? { ...step, connected: true } : step)); setEditing(null) }}>현재 요소에 재연결</button><button className="button button-primary" onClick={() => { if (editing) saveStep(); else setEditing(selected) }}>{editing ? '수정 완료' : '수정'}</button></div></section>}</>}
+          {editorMode === 'text' ? <><div className="editor-actions"><button className="button button-secondary" onClick={loadMarkdown}>Markdown 적용</button><button className="button button-secondary" onClick={() => navigator.clipboard?.writeText(sourceMarkdown)}>복사</button><button className="button button-primary" onClick={loadMarkdown}>Markdown 저장</button></div><div className="scenario-writing-grid"><section className="writing-card"><div className="writing-card-header"><strong>시나리오 Markdown</strong><span>{markdownPreview?.title ?? '미리보기'}.md</span></div><textarea className="scenario-source" value={sourceMarkdown} onChange={(event) => setSourceMarkdown(event.target.value)} aria-label="시나리오 Markdown 원본" /></section><aside className="scenario-preview"><div className="writing-card-header"><strong>실행 미리보기</strong><span>{markdownPreview?.steps.length ?? 0}개 단계 인식</span></div>{markdownPreview ? <><div className="preview-before"><b>기본 URL</b><span>{markdownPreview.url}</span></div><article className="preview-scenario"><div><h2>{markdownPreview.title}</h2><span className="tag">자동 인식</span></div><ol>{markdownPreview.steps.map((step) => <li key={step.id}><b>{label[step.action]}</b><span>{actionText(step)}</span></li>)}</ol></article><p className="preview-note">Given / When / Then / And 문장을 자동으로 인식합니다. Markdown 적용 시 이 미리보기가 편집기에 반영됩니다.</p></> : <div className="preview-empty"><strong>시나리오 형식을 인식하지 못했습니다.</strong><p><code># 시나리오: 제목</code>과 <code>Given /login 페이지로 이동</code> 형식으로 작성해 주세요.</p></div>}</aside></div></> : <><div className="marker-toolbar"><strong>{isAddingMarker ? '⌖ 위치 선택 중' : '✣ 핀 수정 중'}</strong><button onClick={beginMarkerPlacement}>{isAddingMarker ? '다시 선택' : '마커 추가'}</button><button onClick={() => updateSteps(scenario.steps.slice(0, -1))}>마지막 삭제</button><button onClick={() => { updateSteps([]); setSelectedId('') }}>전체 초기화</button><button className="button button-secondary" onClick={() => setEditorMode('text')}>×&nbsp; 편집기로 돌아가기</button></div><div className="marker-editor-layout"><section className="browser-canvas marker-canvas"><div className="browser-bar"><span className="browser-dots" aria-hidden="true">● ● ●</span><input value={scenario.url} onChange={(e) => setScenario({ ...scenario, url: e.target.value })} aria-label="대상 URL" /><button className="browser-refresh" onClick={() => setWebviewKey((key) => key + 1)}>↻&nbsp; 새로고침</button></div><div className="mock-page"><webview key={webviewKey} className="target-frame" src={scenario.url} aria-label="시나리오 대상 페이지" /><div className="page-fallback"><div className="mock-logo">Electron 대상 페이지</div><p>데스크톱 웹뷰에서 대상 URL을 열었습니다. 연결 상태는 Playwright로 확인합니다.</p></div>{isAddingMarker && <div className="marker-placement-layer" onClick={placeMarker} aria-label="마커를 추가할 위치" />}{scenario.steps.map((step, index) => { const position = step.x === undefined || step.y === undefined ? defaultMarkerPosition(index) : { x: step.x, y: step.y }; return step.connected && <button key={step.id} className={'marker' + (selectedId === step.id ? ' selected' : '')} style={{ left: `${position.x}%`, top: `${position.y}%`, backgroundColor: step.color ?? markerColor(index) }} onClick={() => setSelectedId(step.id)} aria-label={`${step.id}번 ${step.target} 마커`}>{step.id}</button> })}</div></section><aside className="step-panel marker-steps"><div className="panel-heading"><h2>실행 단계</h2><span>{scenario.steps.length}개</span></div><ol className="step-list">{scenario.steps.map((step) => <li key={step.id} className={selectedId === step.id ? 'selected' : ''}><button onClick={() => setSelectedId(step.id)}><b>{step.id}</b><span><strong>{label[step.action]}</strong>{step.target}<small>{step.connected ? '연결됨' : '미연결 단계'}</small></span></button><button className="edit-step-button" onClick={() => setEditingMarker(step)} aria-label="단계 편집">✎</button><button className="delete-button" onClick={() => deleteStep(step.id)} aria-label={`${step.id}번 단계 삭제`}>×</button></li>)}</ol><button className="add-step" onClick={beginMarkerPlacement}>+ 새 마커 추가</button></aside></div></>}
         </>}
         {page === 'run' && <>
           <div className="page-title"><div><p className="eyebrow">RUN CONSOLE</p><h1>QA 실행</h1><p>{running ? '브라우저 상태를 유지하며 실행 중입니다.' : '실행할 시나리오를 선택하세요.'}</p></div>{running ? <button className="button danger" onClick={cancelRun}>실행 취소</button> : <button className="button button-primary" onClick={beginRun}>▶ 실행 시작</button>}</div>
@@ -231,5 +257,6 @@ export const App = (): JSX.Element => {
       <button className={page === 'run' ? 'bottom-nav-item active' : 'bottom-nav-item'} onClick={() => setPage('run')} aria-label="실행 콘솔"><span aria-hidden="true">▷</span><small>실행</small></button>
     </nav>
     {manual && <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="manual-title"><div className="manual-modal"><span className="manual-icon">⌨</span><p className="eyebrow">EXECUTION PAUSED · STEP {manual.id}</p><h2 id="manual-title">수동 입력이 필요합니다</h2><p>{manual.prompt || `${manual.target}를 입력해 주세요.`}</p><label>{manual.target}<input autoFocus type="password" value={manualValue} onChange={(e) => setManualValue(e.target.value)} placeholder="입력값" onKeyDown={(e) => e.key === 'Enter' && continueManual()} /></label><p className="security-note">입력값은 이번 실행에만 사용되며 시나리오, 로그, 리포트에 저장되지 않습니다.</p><div className="modal-actions"><button className="button button-secondary" onClick={cancelRun}>실행 취소</button><button className="button button-primary" onClick={continueManual} disabled={manual.required && !manualValue.trim()}>입력 후 계속</button></div></div></div>}
+    {markerDialog && <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="marker-action-title"><div className="manual-modal marker-action-modal"><p className="eyebrow">{pendingMarker ? "NEW MARKER" : "EDIT MARKER"} · STEP {markerDialog.id}</p><h2 id="marker-action-title">마커 액션 정의</h2><p>선택한 위치에서 실행할 액션을 설정해 주세요.</p><label>액션<select value={markerDialog.action} onChange={(e) => updateMarkerDialog({ action: e.target.value as Action })}>{Object.entries(label).map(([value, name]) => <option value={value} key={value}>{name}</option>)}</select></label><label>라벨<input autoFocus value={markerDialog.target} onChange={(e) => updateMarkerDialog({ target: e.target.value })} placeholder="예: 로그인 버튼" /></label>{['fill', 'select'].includes(markerDialog.action) && <label>값<input value={markerDialog.value ?? ''} onChange={(e) => updateMarkerDialog({ value: e.target.value })} placeholder="입력 또는 선택할 값" /></label>}{markerDialog.action === 'manualFill' && <label>안내 문구<input value={markerDialog.prompt ?? ''} onChange={(e) => updateMarkerDialog({ prompt: e.target.value, required: true })} placeholder="사용자에게 표시할 안내" /></label>}<div className="modal-actions"><button className="button button-secondary" onClick={closeMarkerDialog}>취소</button><button className="button button-primary" onClick={completeMarkerDialog} disabled={!markerDialog.target.trim()}>마커 편집 완료</button></div></div></div>}
   </main>
 }
