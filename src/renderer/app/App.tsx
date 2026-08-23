@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactElement } from 'react'
 
 type Action = 'goto' | 'fill' | 'manualFill' | 'click' | 'select' | 'expectText'
 type Step = { id: string; action: Action; target: string; value?: string; required?: boolean; prompt?: string; connected?: boolean; x?: number; y?: number; color?: string }
@@ -112,7 +112,7 @@ const applyMarkerPositions = (scenario: Scenario, store: MarkerPositionStore): S
   }) }
 }
 
-export const App = (): JSX.Element => {
+export const App = (): ReactElement => {
   const [scenario, setScenario] = useState<Scenario>(seed)
   const [sourceMarkdown, setSourceMarkdown] = useState(initialMarkdown)
   const [page, setPage] = useState<'scenarios' | 'editor' | 'run'>('scenarios')
@@ -128,6 +128,7 @@ export const App = (): JSX.Element => {
   const [stepPanelMoved, setStepPanelMoved] = useState(false)
   const [manual, setManual] = useState<Step | null>(null)
   const [manualValue, setManualValue] = useState('')
+  const [manualValueVisible, setManualValueVisible] = useState(false)
   const [running, setRunning] = useState(false)
   const [runLog, setRunLog] = useState<string[]>([])
   const [livePreview, setLivePreview] = useState(false)
@@ -181,7 +182,7 @@ export const App = (): JSX.Element => {
     } catch { window.localStorage.removeItem(runHistoryKey) }
   }, [])
   useEffect(() => window.electronAPI.onManualInputRequired((step) => {
-    setManual(step); setRunLog((logs) => [...logs, `단계 ${step.id}: ${step.target} 수동 입력 대기`])
+    setManual(step); setManualValueVisible(false); setRunLog((logs) => [...logs, `단계 ${step.id}: ${step.target} 수동 입력 대기`])
   }), [])
   useEffect(() => window.electronAPI.onQaProgress((progress) => {
     setRunProgress(progress)
@@ -371,10 +372,10 @@ export const App = (): JSX.Element => {
     if (!manual || (manual.required && !manualValue.trim())) return
     await window.electronAPI.submitManualInput(manualValue)
     setRunLog((logs) => [...logs, `단계 ${manual.id}: ${manual.target} 수동 입력 — 완료`])
-    setManualValue(''); setManual(null)
+    setManualValue(''); setManualValueVisible(false); setManual(null)
   }
   const cancelRun = async () => {
-    await window.electronAPI.cancelQa(); setManual(null); setRunning(false)
+    await window.electronAPI.cancelQa(); setManualValueVisible(false); setManual(null); setRunning(false)
     setRunLog((logs) => [...logs, '실행이 취소되었습니다. 이후 단계는 실행하지 않았습니다.'])
   }
   const estimatedSeconds = estimateDurationSeconds(scenario)
@@ -403,7 +404,7 @@ export const App = (): JSX.Element => {
       <button className={page === 'editor' ? 'bottom-nav-item active' : 'bottom-nav-item'} onClick={() => setPage('editor')} aria-label="작성/편집"><span aria-hidden="true">⌖</span><small>작성/편집</small></button>
       <button className={page === 'run' ? 'bottom-nav-item active' : 'bottom-nav-item'} onClick={() => setPage('run')} aria-label="실행 콘솔"><span aria-hidden="true">▷</span><small>실행</small></button>
     </nav>
-    {manual && <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="manual-title"><div className="manual-modal"><span className="manual-icon">⌨</span><p className="eyebrow">EXECUTION PAUSED · STEP {manual.id}</p><h2 id="manual-title">수동 입력이 필요합니다</h2><p>{manual.prompt || `${manual.target}를 입력해 주세요.`}</p><label>{manual.target}<input autoFocus type="password" value={manualValue} onChange={(e) => setManualValue(e.target.value)} placeholder="입력값" onKeyDown={(e) => e.key === 'Enter' && continueManual()} /></label><p className="security-note">입력값은 이번 실행에만 사용되며 시나리오, 로그, 리포트에 저장되지 않습니다.</p><div className="modal-actions"><button className="button button-secondary" onClick={cancelRun}>실행 취소</button><button className="button button-primary" onClick={continueManual} disabled={manual.required && !manualValue.trim()}>입력 후 계속</button></div></div></div>}
+    {manual && <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="manual-title"><div className="manual-modal"><span className="manual-icon">⌨</span><p className="eyebrow">EXECUTION PAUSED · STEP {manual.id}</p><h2 id="manual-title">수동 입력이 필요합니다</h2><p>{manual.prompt || `${manual.target}를 입력해 주세요.`}</p><label>{manual.target}<input autoFocus type={manualValueVisible ? 'text' : 'password'} value={manualValue} onChange={(e) => setManualValue(e.target.value)} placeholder="입력값" onKeyDown={(e) => e.key === 'Enter' && continueManual()} /></label><label className="manual-visibility-toggle"><input type="checkbox" checked={manualValueVisible} onChange={(event) => setManualValueVisible(event.target.checked)} /> 입력값 표시</label><p className="security-note">입력값은 이번 실행에만 사용되며 시나리오, 로그, 리포트에 저장되지 않습니다.</p><div className="modal-actions"><button className="button button-secondary" onClick={cancelRun}>실행 취소</button><button className="button button-primary" onClick={continueManual} disabled={manual.required && !manualValue.trim()}>입력 후 계속</button></div></div></div>}
     {markerDialog && <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="marker-action-title"><div className="manual-modal marker-action-modal"><p className="eyebrow">{pendingMarker ? "NEW MARKER" : "EDIT MARKER"} · STEP {markerDialog.id}</p><h2 id="marker-action-title">마커 액션 정의</h2><p>선택한 위치에서 실행할 액션을 설정해 주세요.</p><label>액션<select value={markerDialog.action} onChange={(e) => updateMarkerDialog({ action: e.target.value as Action })}>{Object.entries(label).map(([value, name]) => <option value={value} key={value}>{name}</option>)}</select></label><label>라벨<input autoFocus value={markerDialog.target} onChange={(e) => updateMarkerDialog({ target: e.target.value })} placeholder="예: 로그인 버튼" /></label>{['fill', 'select'].includes(markerDialog.action) && <label>값<input value={markerDialog.value ?? ''} onChange={(e) => updateMarkerDialog({ value: e.target.value })} placeholder="입력 또는 선택할 값" /></label>}{markerDialog.action === 'manualFill' && <label>안내 문구<input value={markerDialog.prompt ?? ''} onChange={(e) => updateMarkerDialog({ prompt: e.target.value, required: true })} placeholder="사용자에게 표시할 안내" /></label>}<div className="modal-actions"><button className="button button-secondary" onClick={closeMarkerDialog}>취소</button><button className="button button-primary" onClick={completeMarkerDialog} disabled={!markerDialog.target.trim()}>마커 편집 완료</button></div></div></div>}
   </main>
 }
