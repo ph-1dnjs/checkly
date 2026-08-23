@@ -1,6 +1,6 @@
 import 'dotenv/config'
 
-import { app, BrowserWindow, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import { autoUpdater } from 'electron-updater'
 import path from 'node:path'
@@ -9,6 +9,7 @@ import { chromium, type Browser, type Page } from '@playwright/test'
 
 type QaStep = { id: string; action: 'goto' | 'fill' | 'manualFill' | 'click' | 'select' | 'expectText'; target: string; value?: string; required?: boolean; prompt?: string }
 type QaScenario = { title: string; url: string; steps: QaStep[] }
+type QaRunOptions = { preview?: boolean }
 let activeRun: { browser?: Browser; resolveManual?: (value: string | null) => void; cancelled: boolean } | null = null
 
 const escapeHtml = (value: string): string => value.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!)
@@ -22,16 +23,49 @@ const writeRunReport = async (scenario: QaScenario, status: string, log: string[
   return directory
 }
 const scenarioStorePath = (): string => path.join(app.getPath('userData'), 'scenarios.md')
+const markerPositionStorePath = (): string => path.join(app.getPath('userData'), 'marker-positions.json')
 const loadScenarioMarkdown = async (): Promise<string | null> => {
   try { return await readFile(scenarioStorePath(), 'utf8') } catch { return null }
 }
 const saveScenarioMarkdown = async (markdown: string): Promise<void> => {
   await writeFile(scenarioStorePath(), markdown, 'utf8')
 }
+const scenarioFileFilter = [{ name: 'Markdown 시나리오', extensions: ['md', 'markdown'] }]
+const importScenarioFile = async (): Promise<string | null> => {
+  const result = await dialog.showOpenDialog({
+    title: '시나리오 불러오기',
+    properties: ['openFile'],
+    filters: scenarioFileFilter
+  })
+  if (result.canceled) return null
+  return readFile(result.filePaths[0], 'utf8')
+}
+const exportScenarioFile = async (markdown: string): Promise<string | null> => {
+  const result = await dialog.showSaveDialog({
+    title: '시나리오 저장하기',
+    defaultPath: 'scenario.md',
+    filters: scenarioFileFilter
+  })
+  if (result.canceled || !result.filePath) return null
+  await writeFile(result.filePath, markdown, 'utf8')
+  return result.filePath
+}
+const loadMarkerPositions = async (): Promise<string | null> => {
+  try { return await readFile(markerPositionStorePath(), 'utf8') } catch { return null }
+}
+const saveMarkerPositions = async (positions: string): Promise<void> => {
+  await writeFile(markerPositionStorePath(), positions, 'utf8')
+}
 
 const readableStep = (step: QaStep): string => `단계 ${step.id}: ${step.target} ${step.action === 'manualFill' ? '수동 입력' : step.action}`
-const inputFor = (page: Page, target: string) => page.locator(`input[placeholder*="${target}"], input[name*="${target}"], textarea[placeholder*="${target}"]`).first()
 const escapeRegex = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+const inputFor = (page: Page, target: string) => {
+  const normalized = target.replace(/\s*(필드|입력란)$/, '').trim()
+  const matcher = new RegExp(escapeRegex(normalized), 'i')
+  return page.getByLabel(matcher).or(page.getByPlaceholder(matcher)).or(page.locator(`input[name*="${normalized}"], textarea[name*="${normalized}"]`)).first()
+}
+const buttonFor = (page: Page, target: string) => page.getByRole('button', { name: new RegExp(escapeRegex(target.replace(/\s*버튼$/, '').trim()), 'i') })
+const routeFor = (target: string): string => /^(https?:\/\/|\/)/.test(target.trim()) ? target.trim() : '/'
 
 const inspectScenario = async (scenario: QaScenario): Promise<Array<{ id: string; connected: boolean }>> => {
   const browser = await chromium.launch({ headless: true })
@@ -51,16 +85,28 @@ const inspectScenario = async (scenario: QaScenario): Promise<Array<{ id: string
   }
 }
 
-const executeScenario = async (scenario: QaScenario, owner: BrowserWindow): Promise<{ status: string; log: string[]; reportPath?: string }> => {
+const executeScenario = async (scenario: QaScenario, owner: BrowserWindow, options: QaRunOptions = {}): Promise<{ status: string; log: string[]; reportPath?: string }> => {
   const log: string[] = []
-  const browser = await chromium.launch({ headless: true })
-  const run = { browser, cancelled: false } as NonNullable<typeof activeRun>
+  let browser: Browser | undefined
+  const run = { cancelled: false } as NonNullable<typeof activeRun>
   activeRun = run
-  const page = await browser.newPage()
   try {
-    for (const step of scenario.steps) {
+    owner.webContents.send('qa:progress', { current: 0, total: scenario.steps.length, step: '브라우저 시작 중' })
+    browser = await chromium.launch({ headless: true, timeout: 15_000 })
+    run.browser = browser
+    if (run.cancelled) return { status: 'cancelled', log: ['실행이 취소되었습니다.'], reportPath: await writeRunReport(scenario, 'cancelled', ['실행이 취소되었습니다.']) }
+    const page = await browser.newPage()
+    page.setDefaultTimeout(10_000)
+    page.setDefaultNavigationTimeout(15_000)
+    owner.webContents.send('qa:progress', { current: 0, total: scenario.steps.length, step: '기본 URL 접속 중' })
+    await page.goto(scenario.url, { waitUntil: 'domcontentloaded' })
+    if (options.preview) {
+      const screenshot = await page.screenshot({ type: 'jpeg', quality: 60 })
+      owner.webContents.send('qa:preview', `data:image/jpeg;base64,${screenshot.toString('base64')}`)
+    }
+    for (const [index, step] of scenario.steps.entries()) {
       if (run.cancelled) { const finalLog = [...log, '실행이 취소되었습니다.']; return { status: 'cancelled', log: finalLog, reportPath: await writeRunReport(scenario, 'cancelled', finalLog) } }
-      if (step.action === 'goto') await page.goto(new URL(step.target, scenario.url).toString())
+      if (step.action === 'goto') await page.goto(new URL(routeFor(step.target), scenario.url).toString(), { waitUntil: 'domcontentloaded' })
       if (step.action === 'fill') await inputFor(page, step.target).fill(step.value ?? '')
       if (step.action === 'manualFill') {
         owner.webContents.send('qa:manual-required', { id: step.id, target: step.target, prompt: step.prompt, required: step.required })
@@ -70,10 +116,17 @@ const executeScenario = async (scenario: QaScenario, owner: BrowserWindow): Prom
         await inputFor(page, step.target).fill(value)
         log.push(`${readableStep(step)} — 완료`)
       }
-      if (step.action === 'click') await page.getByRole('button', { name: step.target }).click()
+      if (step.action === 'click') await buttonFor(page, step.target).click()
       if (step.action === 'select') await page.getByLabel(step.target).selectOption(step.value ?? '')
       if (step.action === 'expectText') await page.getByText(step.target).first().waitFor({ state: 'visible' })
       if (step.action !== 'manualFill') log.push(`${readableStep(step)} — 완료`)
+      owner.webContents.send('qa:progress', { current: index + 1, total: scenario.steps.length, step: readableStep(step) })
+      if (options.preview) {
+        try {
+          const screenshot = await page.screenshot({ type: 'jpeg', quality: 60 })
+          owner.webContents.send('qa:preview', `data:image/jpeg;base64,${screenshot.toString('base64')}`)
+        } catch { /* 화면 미리보기 실패는 시나리오 결과에 영향을 주지 않는다. */ }
+      }
     }
     return { status: 'passed', log, reportPath: await writeRunReport(scenario, 'passed', log) }
   } catch (error) {
@@ -81,7 +134,7 @@ const executeScenario = async (scenario: QaScenario, owner: BrowserWindow): Prom
     return { status: 'failed', log: finalLog, reportPath: await writeRunReport(scenario, 'failed', finalLog) }
   } finally {
     activeRun = null
-    await browser.close()
+    await browser?.close()
   }
 }
 
@@ -116,7 +169,11 @@ app.whenReady().then(() => {
   ipcMain.handle('app:version', () => app.getVersion())
   ipcMain.handle('scenario:load', () => loadScenarioMarkdown())
   ipcMain.handle('scenario:save', (_event, markdown: string) => saveScenarioMarkdown(markdown))
-  ipcMain.handle('qa:start', async (event, scenario: QaScenario) => executeScenario(scenario, BrowserWindow.fromWebContents(event.sender)!))
+  ipcMain.handle('scenario:import-file', () => importScenarioFile())
+  ipcMain.handle('scenario:export-file', (_event, markdown: string) => exportScenarioFile(markdown))
+  ipcMain.handle('marker-positions:load', () => loadMarkerPositions())
+  ipcMain.handle('marker-positions:save', (_event, positions: string) => saveMarkerPositions(positions))
+  ipcMain.handle('qa:start', async (event, scenario: QaScenario, options: QaRunOptions) => executeScenario(scenario, BrowserWindow.fromWebContents(event.sender)!, options))
   ipcMain.handle('qa:inspect', (_event, scenario: QaScenario) => inspectScenario(scenario))
   ipcMain.handle('qa:manual-input', (_event, value: string) => activeRun?.resolveManual?.(value))
   ipcMain.handle('qa:cancel', async () => {

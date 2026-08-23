@@ -3,20 +3,29 @@ import { useEffect, useMemo, useState } from 'react'
 type Action = 'goto' | 'fill' | 'manualFill' | 'click' | 'select' | 'expectText'
 type Step = { id: string; action: Action; target: string; value?: string; required?: boolean; prompt?: string; connected?: boolean; x?: number; y?: number; color?: string }
 type Scenario = { id: string; title: string; url: string; steps: Step[] }
+type MarkerPosition = Pick<Step, 'action' | 'target' | 'value' | 'prompt' | 'x' | 'y' | 'color'>
+type MarkerPositionStore = Record<string, MarkerPosition[]>
 type RunRecord = { id: string; scenario: Scenario; status: 'passed' | 'failed'; ranAt: string }
 type RunSummary = { total: number; passed: number; failed: number }
+type RunProgress = { current: number; total: number; step: string }
 
 declare global {
   interface Window {
-    electronAPI?: {
+    electronAPI: {
       getAppVersion: () => Promise<string>
-      loadScenarioMarkdown?: () => Promise<string | null>
-      saveScenarioMarkdown?: (markdown: string) => Promise<void>
-      inspectScenario?: (scenario: Scenario) => Promise<Array<{ id: string; connected: boolean }>>
-      runQa?: (scenario: Scenario) => Promise<{ status: string; log: string[] }>
-      submitManualInput?: (value: string) => Promise<void>
-      cancelQa?: () => Promise<void>
-      onManualInputRequired?: (callback: (step: Step) => void) => () => void
+      loadScenarioMarkdown: () => Promise<string | null>
+      saveScenarioMarkdown: (markdown: string) => Promise<void>
+      importScenarioFile: () => Promise<string | null>
+      exportScenarioFile: (markdown: string) => Promise<string | null>
+      loadMarkerPositions: () => Promise<string | null>
+      saveMarkerPositions: (positions: string) => Promise<void>
+      inspectScenario: (scenario: Scenario) => Promise<Array<{ id: string; connected: boolean }>>
+      runQa: (scenario: Scenario, options?: { preview?: boolean }) => Promise<{ status: string; log: string[] }>
+      submitManualInput: (value: string) => Promise<void>
+      cancelQa: () => Promise<void>
+      onManualInputRequired: (callback: (step: Step) => void) => () => void
+      onQaProgress: (callback: (progress: RunProgress) => void) => () => void
+      onQaPreview: (callback: (image: string) => void) => () => void
     }
   }
 }
@@ -66,9 +75,12 @@ const parseMarkdown = (markdown: string): Scenario[] => {
       if (fill) return { id: String(stepIndex + 1), action: 'fill', target: fill[1], value: fill[2], connected: true }
       if (automatic) return { id: String(stepIndex + 1), action: 'fill', target: automatic[1], value: automatic[2], connected: true }
       if (select) return { id: String(stepIndex + 1), action: 'select', target: select[1], value: select[2], connected: true }
-      if (/페이지로\s*이동|접속|열기/.test(text)) return { id: String(stepIndex + 1), action: 'goto', target: text.replace(/\s*(페이지로\s*이동|접속|열기).*/, ''), connected: true }
+      if (/(페이지로?\s*이동|페이지\s*이동|접속|열기)/.test(text)) {
+        const target = text.replace(/\s*(페이지로?\s*이동|페이지\s*이동|접속|열기).*/, '').trim()
+        return { id: String(stepIndex + 1), action: 'goto', target: /^(https?:\/\/|\/)/.test(target) ? target : '/', connected: true }
+      }
       if (/보인다|포함된다|확인된다|표시된다/.test(text)) return { id: String(stepIndex + 1), action: 'expectText', target: text.replace(/\s*(텍스트가\s*)?(보인다|포함된다|확인된다|표시된다).*/, ''), connected: false }
-      return { id: String(stepIndex + 1), action: 'click', target: text.replace(/\s+(버튼을 )?클릭.*/, ''), connected: true }
+      return { id: String(stepIndex + 1), action: 'click', target: text.replace(/\s+(버튼을?|버튼)?\s*클릭.*/, '').trim(), connected: true }
     })
     return { id: `scenario-${index}`, title, url, steps }
   })
@@ -83,8 +95,22 @@ const replaceScenarioBlock = (markdown: string, title: string, replacement: stri
 }
 const initialMarkdown = `${markdownFor(seed)}\n\n# 시나리오: 주문 조회\nurl: https://example.com/orders\n\nGiven /orders 페이지로 이동한다\nThen 주문 목록 텍스트가 보인다`
 const runHistoryKey = 'checkly-run-history'
+const markerPositionKey = 'checkly-marker-positions'
 const defaultMarkerPosition = (index: number) => ({ x: [78, 50, 50, 85, 87][index] ?? 50, y: [20, 43, 58, 58, 84][index] ?? 50 })
 const markerColor = (index: number) => `hsl(${Math.round((index * 137.508 + 19) % 360)} 72% 48%)`
+const estimateDurationSeconds = (scenario: Scenario): number => scenario.steps.reduce((seconds, step) => seconds + (step.action === 'goto' ? 3 : step.action === 'manualFill' ? 15 : 1), 0)
+const formatDuration = (seconds: number): string => `${Math.floor(seconds / 60)}분 ${String(seconds % 60).padStart(2, '0')}초`
+const scenarioPositionKey = (scenario: Scenario): string => `${scenario.title}\n${scenario.url}`
+const markerPositionsFor = (scenario: Scenario): MarkerPosition[] => scenario.steps.flatMap((step) => step.x === undefined || step.y === undefined ? [] : [{ action: step.action, target: step.target, value: step.value, prompt: step.prompt, x: step.x, y: step.y, color: step.color }])
+const applyMarkerPositions = (scenario: Scenario, store: MarkerPositionStore): Scenario => {
+  const positions = [...(store[scenarioPositionKey(scenario)] ?? [])]
+  return { ...scenario, steps: scenario.steps.map((step) => {
+    const index = positions.findIndex((position) => position.action === step.action && position.target === step.target && position.value === step.value && position.prompt === step.prompt)
+    if (index < 0) return step
+    const [position] = positions.splice(index, 1)
+    return { ...step, x: position.x, y: position.y, color: position.color }
+  }) }
+}
 
 export const App = (): JSX.Element => {
   const [scenario, setScenario] = useState<Scenario>(seed)
@@ -104,20 +130,47 @@ export const App = (): JSX.Element => {
   const [manualValue, setManualValue] = useState('')
   const [running, setRunning] = useState(false)
   const [runLog, setRunLog] = useState<string[]>([])
+  const [livePreview, setLivePreview] = useState(false)
+  const [previewImage, setPreviewImage] = useState('')
+  const [runProgress, setRunProgress] = useState<RunProgress>({ current: 0, total: seed.steps.length, step: '' })
+  const [runStartedAt, setRunStartedAt] = useState<number | null>(null)
+  const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const [notice, setNotice] = useState('')
   const [runHistory, setRunHistory] = useState<RunRecord[]>([])
   const [runSummary, setRunSummary] = useState<RunSummary>({ total: 0, passed: 0, failed: 0 })
+  const [markerPositionsReady, setMarkerPositionsReady] = useState(false)
+  const [markerPositionStore, setMarkerPositionStore] = useState<MarkerPositionStore>({})
 
   useEffect(() => {
-    const restore = (stored: string | null): void => {
+    const restore = (stored: string | null, positionData: string | null): void => {
       if (!stored) return
       setSourceMarkdown(stored)
       const [first] = parseMarkdown(stored)
-      if (first) setScenario(first)
+      if (first) {
+        try {
+          const store = JSON.parse(positionData ?? '{}') as MarkerPositionStore
+          setMarkerPositionStore(store)
+          setScenario(applyMarkerPositions(first, store))
+        }
+        catch { setScenario(first) }
+      }
     }
-    if (window.electronAPI?.loadScenarioMarkdown) { window.electronAPI.loadScenarioMarkdown().then(restore); return }
-    restore(window.localStorage.getItem('autoqa-scenarios'))
+    const markdown = window.electronAPI.loadScenarioMarkdown()
+    const positions = window.electronAPI.loadMarkerPositions()
+    Promise.all([markdown, positions]).then(([stored, positionData]) => restore(stored, positionData)).finally(() => setMarkerPositionsReady(true))
   }, [])
+  useEffect(() => {
+    if (!markerPositionsReady) return
+    setMarkerPositionStore((store) => ({ ...store, [scenarioPositionKey(scenario)]: markerPositionsFor(scenario) }))
+  }, [scenario, markerPositionsReady])
+  useEffect(() => {
+    if (!markerPositionsReady) return
+    const save = async () => {
+      const serialized = JSON.stringify(markerPositionStore)
+      await window.electronAPI.saveMarkerPositions(serialized)
+    }
+    save().catch(() => setNotice('마커 위치를 저장하지 못했습니다.'))
+  }, [markerPositionStore, markerPositionsReady])
   useEffect(() => {
     const stored = window.localStorage.getItem(runHistoryKey)
     if (!stored) return
@@ -127,9 +180,19 @@ export const App = (): JSX.Element => {
       setRunSummary(data.summary ?? { total: 0, passed: 0, failed: 0 })
     } catch { window.localStorage.removeItem(runHistoryKey) }
   }, [])
-  useEffect(() => window.electronAPI?.onManualInputRequired?.((step) => {
+  useEffect(() => window.electronAPI.onManualInputRequired((step) => {
     setManual(step); setRunLog((logs) => [...logs, `단계 ${step.id}: ${step.target} 수동 입력 대기`])
   }), [])
+  useEffect(() => window.electronAPI.onQaProgress((progress) => {
+    setRunProgress(progress)
+    setRunLog((logs) => [...logs, `${progress.current}/${progress.total} ${progress.step}`])
+  }), [])
+  useEffect(() => window.electronAPI.onQaPreview((image) => setPreviewImage(image)), [])
+  useEffect(() => {
+    if (!running || !runStartedAt) return
+    const timer = window.setInterval(() => setElapsedSeconds(Math.floor((Date.now() - runStartedAt) / 1000)), 250)
+    return () => window.clearInterval(timer)
+  }, [running, runStartedAt])
   useEffect(() => {
     if (!stepPanelDrag) return
     const move = (event: PointerEvent) => {
@@ -142,7 +205,54 @@ export const App = (): JSX.Element => {
     return () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', stop) }
   }, [stepPanelDrag])
   useEffect(() => {
-    if (page !== 'editor' || editorMode !== 'marker' || !window.electronAPI?.inspectScenario) return
+    const items = [...document.querySelectorAll<HTMLLIElement>('.step-list li')]
+    const cleanup = items.map((item, index) => {
+      const id = scenario.steps[index]?.id
+      if (!id) return () => undefined
+      item.draggable = true
+      item.title = '드래그하여 실행 순서 변경'
+      const dragStart = (event: DragEvent) => {
+        event.dataTransfer?.setData('text/plain', id)
+        if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move'
+        item.classList.add('dragging')
+      }
+      const dragOver = (event: DragEvent) => { event.preventDefault(); if (event.dataTransfer) event.dataTransfer.dropEffect = 'move' }
+      const drop = (event: DragEvent) => {
+        event.preventDefault()
+        moveStep(event.dataTransfer?.getData('text/plain') ?? '', id)
+      }
+      const dragEnd = () => item.classList.remove('dragging')
+      item.addEventListener('dragstart', dragStart)
+      item.addEventListener('dragover', dragOver)
+      item.addEventListener('drop', drop)
+      item.addEventListener('dragend', dragEnd)
+      return () => {
+        item.removeEventListener('dragstart', dragStart)
+        item.removeEventListener('dragover', dragOver)
+        item.removeEventListener('drop', drop)
+        item.removeEventListener('dragend', dragEnd)
+      }
+    })
+    return () => cleanup.forEach((remove) => remove())
+  }, [scenario.steps, selectedId])
+  useEffect(() => {
+    if (page !== 'editor' || editorMode !== 'marker') return
+    const requestSave = (event: MouseEvent) => {
+      const target = event.target instanceof Element ? event.target.closest<HTMLButtonElement>('.marker-toolbar .button.button-secondary') : null
+      if (!target || !target.textContent?.includes('편집기로 돌아가기')) return
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      if (window.confirm('마커 편집기의 수정 사항을 저장하시겠습니까?')) {
+        void persistScenario().then(() => setEditorMode('text'))
+      } else {
+        setEditorMode('text')
+      }
+    }
+    window.addEventListener('click', requestSave, true)
+    return () => window.removeEventListener('click', requestSave, true)
+  }, [page, editorMode, scenario, sourceMarkdown])
+  useEffect(() => {
+    if (page !== 'editor' || editorMode !== 'marker') return
     window.electronAPI.inspectScenario(scenario).then((matches) => {
       updateSteps(scenario.steps.map((step) => ({ ...step, connected: matches.find((match) => match.id === step.id)?.connected ?? false })))
     }).catch(() => setNotice('대상 페이지를 확인하지 못했습니다. 기존 연결 정보를 유지합니다.'))
@@ -157,17 +267,22 @@ export const App = (): JSX.Element => {
   const persistScenario = async () => {
     const next = replaceScenarioBlock(sourceMarkdown, scenario.title, markdownFor(scenario))
     setSourceMarkdown(next)
-    if (window.electronAPI?.saveScenarioMarkdown) await window.electronAPI.saveScenarioMarkdown(next)
-    else window.localStorage.setItem('autoqa-scenarios', next)
+    await window.electronAPI.saveScenarioMarkdown(next)
     setNotice('변경사항을 기존 시나리오 블록에 저장했습니다.')
   }
-  const loadMarkdown = async () => {
-    const scenarios = parseMarkdown(sourceMarkdown)
+  const importScenario = async () => {
+    const markdown = await window.electronAPI.importScenarioFile()
+    if (markdown === null) return
+    const scenarios = parseMarkdown(markdown)
     if (!scenarios.length) { setNotice('불러올 수 있는 시나리오 제목과 단계를 확인해 주세요.'); return }
-    setScenario(scenarios[0]); setSelectedId(scenarios[0].steps[0]?.id ?? '')
-    if (window.electronAPI?.saveScenarioMarkdown) await window.electronAPI.saveScenarioMarkdown(sourceMarkdown)
-    else window.localStorage.setItem('autoqa-scenarios', sourceMarkdown)
+    const nextScenario = applyMarkerPositions(scenarios[0], markerPositionStore)
+    setSourceMarkdown(markdown); setScenario(nextScenario); setSelectedId(nextScenario.steps[0]?.id ?? '')
+    await window.electronAPI.saveScenarioMarkdown(markdown)
     setNotice(`${scenarios.length}개 시나리오를 불러왔습니다. 첫 시나리오를 마커로 편집할 수 있습니다.`)
+  }
+  const exportScenario = async () => {
+    const filePath = await window.electronAPI.exportScenarioFile(sourceMarkdown)
+    if (filePath) setNotice('시나리오 파일을 저장했습니다.')
   }
   const updateSteps = (steps: Step[]) => setScenario((current) => ({ ...current, steps: steps.map((s, i) => ({ ...s, id: String(i + 1) })) }))
   const recordRun = (completedScenario: Scenario, status: 'passed' | 'failed') => {
@@ -185,6 +300,18 @@ export const App = (): JSX.Element => {
   const deleteStep = (id: string) => {
     updateSteps(scenario.steps.filter((step) => step.id !== id))
     setSelectedId(String(Math.max(1, Number(id) - 1)))
+  }
+  const moveStep = (sourceId: string, targetId: string) => {
+    if (sourceId === targetId) return
+    const sourceIndex = scenario.steps.findIndex((step) => step.id === sourceId)
+    const targetIndex = scenario.steps.findIndex((step) => step.id === targetId)
+    if (sourceIndex < 0 || targetIndex < 0) return
+    const steps = [...scenario.steps]
+    const [moved] = steps.splice(sourceIndex, 1)
+    steps.splice(targetIndex, 0, moved)
+    const selectedStep = scenario.steps.find((step) => step.id === selectedId)
+    updateSteps(steps)
+    setSelectedId(selectedStep ? String(steps.indexOf(selectedStep) + 1) : '')
   }
   const beginMarkerPlacement = () => {
     setPendingMarker(null)
@@ -226,36 +353,33 @@ export const App = (): JSX.Element => {
     closeMarkerDialog()
   }
   const beginRun = async (scenarioToRun = scenario) => {
-    setPage('run'); setRunning(true); setRunLog(['기본 URL 상태 점검 완료', '시나리오 실행을 시작했습니다.'])
-    if (window.electronAPI?.runQa) {
-      window.electronAPI.runQa(scenarioToRun).then((result) => {
-        setRunLog((logs) => [...logs, ...result.log, result.status === 'passed' ? '시나리오 통과' : result.status === 'cancelled' ? '실행 취소됨' : '실행 실패'])
-        if (result.status === 'passed' || result.status === 'failed') recordRun(scenarioToRun, result.status)
-        setRunning(false)
-      })
-      return
-    }
-    const manualStep = scenarioToRun.steps.find((step) => step.action === 'manualFill')
-    if (manualStep) { setTimeout(() => { setManual(manualStep); setRunLog((logs) => [...logs, `단계 ${manualStep.id}: ${manualStep.target} 수동 입력 대기`]) }, 450); return }
-    await finishRun(scenarioToRun)
-  }
-  const finishRun = async (scenarioToRun = scenario) => {
-    const result = await window.electronAPI?.runQa?.(scenarioToRun)
-    setRunLog((logs) => [...logs, ...(result?.log ?? ['단계 실행 완료']), result?.status === 'failed' ? '실행 실패' : '시나리오 통과'])
-    recordRun(scenarioToRun, result?.status === 'failed' ? 'failed' : 'passed')
-    setRunning(false)
+    const startedAt = Date.now()
+    setPage('run'); setRunning(true); setPreviewImage(''); setRunStartedAt(startedAt); setElapsedSeconds(0)
+    setRunProgress({ current: 0, total: scenarioToRun.steps.length, step: '' })
+    setRunLog(['기본 URL 상태 점검 완료', '시나리오 실행을 시작했습니다.'])
+    window.electronAPI.runQa(scenarioToRun, { preview: livePreview }).then((result) => {
+      setRunLog((logs) => [...logs, ...result.log, result.status === 'passed' ? '시나리오 통과' : result.status === 'cancelled' ? '실행 취소됨' : '실행 실패'])
+      if (result.status === 'passed' || result.status === 'failed') recordRun(scenarioToRun, result.status)
+      if (result.status === 'passed') setRunProgress({ current: scenarioToRun.steps.length, total: scenarioToRun.steps.length, step: '시나리오 완료' })
+      setRunning(false)
+    }).catch((error: unknown) => {
+      setRunLog((logs) => [...logs, `시나리오 실행을 시작하지 못했습니다: ${error instanceof Error ? error.message : String(error)}`])
+      setRunning(false)
+    })
   }
   const continueManual = async () => {
     if (!manual || (manual.required && !manualValue.trim())) return
-    await window.electronAPI?.submitManualInput?.(manualValue)
+    await window.electronAPI.submitManualInput(manualValue)
     setRunLog((logs) => [...logs, `단계 ${manual.id}: ${manual.target} 수동 입력 — 완료`])
     setManualValue(''); setManual(null)
-    if (!window.electronAPI?.runQa) await finishRun()
   }
   const cancelRun = async () => {
-    await window.electronAPI?.cancelQa?.(); setManual(null); setRunning(false)
+    await window.electronAPI.cancelQa(); setManual(null); setRunning(false)
     setRunLog((logs) => [...logs, '실행이 취소되었습니다. 이후 단계는 실행하지 않았습니다.'])
   }
+  const estimatedSeconds = estimateDurationSeconds(scenario)
+  const progressPercent = runProgress.total ? Math.round(runProgress.current / runProgress.total * 100) : 0
+  const estimatedCompletion = runStartedAt ? new Date(runStartedAt + estimatedSeconds * 1000).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : null
 
   return <main className={`workspace${page === 'editor' && editorMode === 'marker' ? ' screen-extract-workspace' : ''}`}>
       <section className="content">
@@ -267,11 +391,11 @@ export const App = (): JSX.Element => {
         {page === 'editor' && <>
           <div className="page-title editor-page-title"><div><p className="eyebrow">SCENARIO WORKSPACE</p><h1>시나리오 작성 / 편집</h1><p>{editorMode === 'text' ? '텍스트 기반 시나리오를 작성하고 실행 단계를 미리 확인하세요.' : '대상 화면에서 마커를 선택해 액션과 순서를 편집하세요.'}</p></div><div className="editor-mode-switch"><button className={editorMode === 'text' ? 'active' : ''} onClick={() => setEditorMode('text')}>텍스트 편집</button><button className={editorMode === 'marker' ? 'active' : ''} onClick={() => setEditorMode('marker')}>화면에서 추출</button></div></div>
           {notice && <div className="notice">✓ {notice}</div>}
-          {editorMode === 'text' ? <><div className="editor-actions"><button className="button button-secondary" onClick={loadMarkdown}>Markdown 적용</button><button className="button button-secondary" onClick={() => navigator.clipboard?.writeText(sourceMarkdown)}>복사</button><button className="button button-primary" onClick={loadMarkdown}>Markdown 저장</button></div><div className="scenario-writing-grid"><section className="writing-card"><div className="writing-card-header"><strong>시나리오 Markdown</strong><span>{markdownPreview?.title ?? '미리보기'}.md</span></div><textarea className="scenario-source" value={sourceMarkdown} onChange={(event) => setSourceMarkdown(event.target.value)} aria-label="시나리오 Markdown 원본" /></section><aside className="scenario-preview"><div className="writing-card-header"><strong>실행 미리보기</strong><span>{markdownPreview?.steps.length ?? 0}개 단계 인식</span></div>{markdownPreview ? <><div className="preview-before"><b>기본 URL</b><span>{markdownPreview.url}</span></div><article className="preview-scenario"><div><h2>{markdownPreview.title}</h2><span className="tag">자동 인식</span></div><ol>{markdownPreview.steps.map((step) => <li key={step.id}><b>{label[step.action]}</b><span>{actionText(step)}</span></li>)}</ol></article><p className="preview-note">Given / When / Then / And 문장을 자동으로 인식합니다. Markdown 적용 시 이 미리보기가 편집기에 반영됩니다.</p></> : <div className="preview-empty"><strong>시나리오 형식을 인식하지 못했습니다.</strong><p><code># 시나리오: 제목</code>과 <code>Given /login 페이지로 이동</code> 형식으로 작성해 주세요.</p></div>}</aside></div></> : <><div className="marker-toolbar"><strong>{isAddingMarker ? '⌖ 위치 선택 중' : '✣ 핀 수정 중'}</strong><button onClick={beginMarkerPlacement}>{isAddingMarker ? '다시 선택' : '마커 추가'}</button><button onClick={() => updateSteps(scenario.steps.slice(0, -1))}>마지막 삭제</button><button onClick={() => { updateSteps([]); setSelectedId('') }}>전체 초기화</button><button className="button button-secondary" onClick={() => setEditorMode('text')}>×&nbsp; 편집기로 돌아가기</button></div><div className="marker-editor-layout"><section className="browser-canvas marker-canvas"><div className="browser-bar"><span className="browser-dots" aria-hidden="true">● ● ●</span><input value={scenario.url} onChange={(e) => setScenario({ ...scenario, url: e.target.value })} aria-label="대상 URL" /><button className="browser-refresh" onClick={() => setWebviewKey((key) => key + 1)}>↻&nbsp; 새로고침</button></div><div className="mock-page"><webview key={webviewKey} className="target-frame" src={scenario.url} aria-label="시나리오 대상 페이지" /><div className="page-fallback"><div className="mock-logo">Electron 대상 페이지</div><p>데스크톱 웹뷰에서 대상 URL을 열었습니다. 연결 상태는 Playwright로 확인합니다.</p></div>{isAddingMarker && <div className="marker-placement-layer" onClick={placeMarker} aria-label="마커를 추가할 위치" />}{scenario.steps.map((step, index) => { const position = step.x === undefined || step.y === undefined ? defaultMarkerPosition(index) : { x: step.x, y: step.y }; return step.connected && <button key={step.id} className={'marker' + (selectedId === step.id ? ' selected' : '')} style={{ left: `${position.x}%`, top: `${position.y}%`, backgroundColor: step.color ?? markerColor(index) }} onClick={() => setSelectedId(step.id)} aria-label={`${step.id}번 ${step.target} 마커`}>{step.id}</button> })}</div></section>{stepPanelCollapsed ? <button className="step-panel-toggle collapsed" style={stepPanelPosition} onPointerDown={beginStepPanelDrag} onClick={() => !stepPanelMoved && setStepPanelCollapsed(false)} aria-label="실행 단계 열기"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg></button> : <aside className="step-panel marker-steps" style={stepPanelPosition}><div className="panel-heading step-panel-handle" onPointerDown={beginStepPanelDrag}><h2>실행 단계</h2><span>{scenario.steps.length}개</span><button className="step-panel-toggle" onPointerDown={(event) => event.stopPropagation()} onClick={() => setStepPanelCollapsed(true)} aria-label="실행 단계 접기"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 15 6-6 6 6" /></svg></button></div><ol className="step-list">{scenario.steps.map((step) => <li key={step.id} className={selectedId === step.id ? "selected" : ""}><button onClick={() => setSelectedId(step.id)}><b>{step.id}</b><span><strong>{label[step.action]}</strong>{step.target}<small>{step.connected ? "연결됨" : "미연결 단계"}</small></span></button><button className="edit-step-button" onClick={() => setEditingMarker(step)} aria-label="단계 편집">✎</button><button className="delete-button" onClick={() => deleteStep(step.id)} aria-label="단계 삭제">×</button></li>)}</ol><button className="add-step" onClick={beginMarkerPlacement}>+ 새 마커 추가</button></aside>}</div></>}
+          {editorMode === 'text' ? <><div className="editor-actions"><button className="button button-secondary" onClick={importScenario}>시나리오 불러오기</button><button className="button button-primary" onClick={exportScenario}>시나리오 저장하기</button></div><div className="scenario-writing-grid"><section className="writing-card"><div className="writing-card-header"><strong>시나리오 Markdown</strong><span>{markdownPreview?.title ?? '미리보기'}.md</span></div><textarea className="scenario-source" value={sourceMarkdown} onChange={(event) => setSourceMarkdown(event.target.value)} aria-label="시나리오 Markdown 원본" /></section><aside className="scenario-preview"><div className="writing-card-header"><strong>실행 미리보기</strong><span>{markdownPreview?.steps.length ?? 0}개 단계 인식</span></div>{markdownPreview ? <><div className="preview-before"><b>기본 URL</b><span>{markdownPreview.url}</span></div><article className="preview-scenario"><div><h2>{markdownPreview.title}</h2><span className="tag">자동 인식</span></div><ol>{markdownPreview.steps.map((step) => <li key={step.id}><b>{label[step.action]}</b><span>{actionText(step)}</span></li>)}</ol></article><p className="preview-note">Given / When / Then / And 문장을 자동으로 인식합니다. 불러온 시나리오는 화면 편집기에 반영됩니다.</p></> : <div className="preview-empty"><strong>시나리오 형식을 인식하지 못했습니다.</strong><p><code># 시나리오: 제목</code>과 <code>Given /login 페이지로 이동</code> 형식으로 작성해 주세요.</p></div>}</aside></div></> : <><div className="marker-toolbar"><strong>{isAddingMarker ? '⌖ 위치 선택 중' : '✣ 핀 수정 중'}</strong><button onClick={beginMarkerPlacement}>{isAddingMarker ? '다시 선택' : '마커 추가'}</button><button onClick={() => updateSteps(scenario.steps.slice(0, -1))}>마지막 삭제</button><button onClick={() => { updateSteps([]); setSelectedId('') }}>전체 초기화</button><button className="button button-secondary" onClick={() => setEditorMode('text')}>×&nbsp; 편집기로 돌아가기</button></div><div className="marker-editor-layout"><section className="browser-canvas marker-canvas"><div className="browser-bar"><span className="browser-dots" aria-hidden="true">● ● ●</span><input value={scenario.url} onChange={(e) => setScenario({ ...scenario, url: e.target.value })} aria-label="대상 URL" /><button className="browser-refresh" onClick={() => setWebviewKey((key) => key + 1)}>↻&nbsp; 새로고침</button></div><div className="mock-page"><webview key={webviewKey} className="target-frame" src={scenario.url} aria-label="시나리오 대상 페이지" /><div className="page-fallback"><div className="mock-logo">Electron 대상 페이지</div><p>데스크톱 웹뷰에서 대상 URL을 열었습니다. 연결 상태는 Playwright로 확인합니다.</p></div>{isAddingMarker && <div className="marker-placement-layer" onClick={placeMarker} aria-label="마커를 추가할 위치" />}{scenario.steps.map((step, index) => { const position = step.x === undefined || step.y === undefined ? defaultMarkerPosition(index) : { x: step.x, y: step.y }; return step.connected && <button key={step.id} className={'marker' + (selectedId === step.id ? ' selected' : '')} style={{ left: `${position.x}%`, top: `${position.y}%`, backgroundColor: step.color ?? markerColor(index) }} onClick={() => setSelectedId(step.id)} aria-label={`${step.id}번 ${step.target} 마커`}>{step.id}</button> })}</div></section>{stepPanelCollapsed ? <button className="step-panel-toggle collapsed" style={stepPanelPosition} onPointerDown={beginStepPanelDrag} onClick={() => !stepPanelMoved && setStepPanelCollapsed(false)} aria-label="실행 단계 열기"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg></button> : <aside className="step-panel marker-steps" style={stepPanelPosition}><div className="panel-heading step-panel-handle" onPointerDown={beginStepPanelDrag}><h2>실행 단계</h2><span>{scenario.steps.length}개</span><button className="step-panel-toggle" onPointerDown={(event) => event.stopPropagation()} onClick={() => setStepPanelCollapsed(true)} aria-label="실행 단계 접기"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 15 6-6 6 6" /></svg></button></div><ol className="step-list">{scenario.steps.map((step) => <li key={step.id} className={selectedId === step.id ? "selected" : ""}><button onClick={() => setSelectedId(step.id)}><b>{step.id}</b><span><strong>{label[step.action]}</strong>{step.target}<small>{step.connected ? "연결됨" : "미연결 단계"}</small></span></button><button className="edit-step-button" onClick={() => setEditingMarker(step)} aria-label="단계 편집">✎</button><button className="delete-button" onClick={() => deleteStep(step.id)} aria-label="단계 삭제">×</button></li>)}</ol><button className="add-step" onClick={beginMarkerPlacement}>+ 새 마커 추가</button></aside>}</div></>}
         </>}
         {page === 'run' && <>
-          <div className="page-title"><div><p className="eyebrow">RUN CONSOLE</p><h1>QA 실행</h1><p>{running ? '브라우저 상태를 유지하며 실행 중입니다.' : '실행할 시나리오를 선택하세요.'}</p></div>{running ? <button className="button danger" onClick={cancelRun}>실행 취소</button> : <button className="button button-primary" onClick={beginRun}>▶ 실행 시작</button>}</div>
-          <div className="run-layout"><section className="run-main"><div className="run-state"><span className={running ? 'pulse' : 'check'}>{running ? '◌' : '✓'}</span><div><strong>{manual ? '수동 입력 대기 중' : running ? '시나리오 실행 중' : '실행 준비됨'}</strong><p>{manual ? `${manual.target} 값을 기다리고 있습니다.` : `${scenario.title} · ${scenario.steps.length}개 단계`}</p></div></div><div className="progress"><span style={{ width: running ? '58%' : '100%' }} /></div><div className="log-box" aria-live="polite">{runLog.length ? runLog.map((log, i) => <p key={i}><time>{String(i + 9).padStart(2, '0')}:24</time>{log}</p>) : <p className="muted">실행 로그가 여기에 표시됩니다.</p>}</div></section><aside className="run-side"><h2>실행 설정</h2><label>브라우저<select><option>Chromium</option><option>Firefox</option></select></label><label>워커 수<select><option>1</option></select></label><label className="toggle"><input type="checkbox" defaultChecked /> 헤드리스 실행</label><label className="toggle"><input type="checkbox" /> 실패 즉시 중단</label></aside></div>
+          <div className="page-title"><div><p className="eyebrow">RUN CONSOLE</p><h1>QA 실행</h1><p>{running ? '브라우저 상태를 유지하며 실행 중입니다.' : '실행할 시나리오를 선택하세요.'}</p></div>{running ? <button className="button danger" onClick={cancelRun}>실행 취소</button> : <button className="button button-primary" onClick={() => void beginRun()}>▶ 실행 시작</button>}</div>
+          <div className="run-layout"><section className="run-main"><div className="run-state"><span className={running ? 'pulse' : 'check'}>{running ? '◌' : '✓'}</span><div><strong>{manual ? '수동 입력 대기 중' : running ? '시나리오 실행 중' : '실행 준비됨'}</strong><p>{manual ? `${manual.target} 값을 기다리고 있습니다.` : `${scenario.title} · ${scenario.steps.length}개 단계`}</p></div></div><section className="run-scenario-preview" aria-label="실행 시나리오 미리보기"><div><strong>{scenario.title}</strong><span>{scenario.url}</span></div><ol>{scenario.steps.map((step) => <li key={step.id} className={running && step.id === String(runProgress.current) ? 'current' : ''}><b>{step.id}</b>{actionText(step)}</li>)}</ol></section><div className="run-timing"><span>진행 {runProgress.current}/{runProgress.total} · {progressPercent}%</span><span>경과 {formatDuration(elapsedSeconds)}</span><span>예상 {formatDuration(estimatedSeconds)}{estimatedCompletion ? ` · 완료 ${estimatedCompletion}` : ''}</span></div><div className="progress" aria-label={`실행 진행률 ${progressPercent}%`}><span style={{ width: `${progressPercent}%` }} /></div>{livePreview && <section className="live-preview" aria-label="실시간 테스트 화면"><div><strong>실시간 테스트 화면</strong><span>단계마다 캡처되어 실행 속도가 다소 느려질 수 있습니다.</span></div>{previewImage ? <img src={previewImage} alt="현재 테스트 실행 화면" /> : <p>첫 실행 화면을 기다리고 있습니다.</p>}</section>}<div className="log-box" aria-live="polite">{runLog.length ? runLog.map((log, i) => <p key={i}><time>{String(i + 9).padStart(2, '0')}:24</time>{log}</p>) : <p className="muted">실행 로그가 여기에 표시됩니다.</p>}</div></section><aside className="run-side"><h2>실행 설정</h2><label>브라우저<select><option>Chromium</option><option>Firefox</option></select></label><label>워커 수<select><option>1</option></select></label><label className="toggle"><input type="checkbox" checked={livePreview} onChange={(event) => setLivePreview(event.target.checked)} disabled={running} /> 실시간 테스트 화면 보기</label><p className="run-setting-help">화면을 캡처해 보여주므로 실행 시간이 조금 늘어날 수 있습니다. 끄면 백그라운드에서 더 빠르게 실행합니다.</p><label className="toggle"><input type="checkbox" /> 실패 즉시 중단</label></aside></div>
         </>}
       </section>
     <nav className="bottom-navigation" aria-label="주요 메뉴">
