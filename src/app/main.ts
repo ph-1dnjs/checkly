@@ -7,7 +7,7 @@ import path from 'node:path'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { chromium, type Browser, type Page } from '@playwright/test'
 
-type QaStep = { id: string; action: 'goto' | 'fill' | 'manualFill' | 'click' | 'select' | 'expectText'; target: string; value?: string; required?: boolean; prompt?: string }
+type QaStep = { id: string; action: 'goto' | 'fill' | 'manualFill' | 'click' | 'select' | 'expectText'; target: string; value?: string; required?: boolean; prompt?: string; occurrence?: number }
 type QaScenario = { title: string; url: string; steps: QaStep[] }
 type QaRunOptions = { preview?: boolean }
 let activeRun: { browser?: Browser; resolveManual?: (value: string | null) => void; cancelled: boolean } | null = null
@@ -64,8 +64,35 @@ const inputFor = (page: Page, target: string) => {
   const matcher = new RegExp(escapeRegex(normalized), 'i')
   return page.getByLabel(matcher).or(page.getByPlaceholder(matcher)).or(page.locator(`input[name*="${normalized}"], textarea[name*="${normalized}"]`)).first()
 }
-const buttonFor = (page: Page, target: string) => page.getByRole('button', { name: new RegExp(escapeRegex(target.replace(/\s*버튼$/, '').trim()), 'i') })
+const actionTargetFor = (target: string): string => target.replace(/\s+(버튼을?|버튼)?\s*클릭$/, '').trim()
+const buttonFor = (page: Page, target: string, occurrence = 1) => page.getByRole('button', { name: new RegExp(escapeRegex(actionTargetFor(target).replace(/\s*버튼$/, '').trim()), 'i') }).nth(Math.max(0, occurrence - 1))
 const routeFor = (target: string): string => /^(https?:\/\/|\/)/.test(target.trim()) ? target.trim() : '/'
+const resultTargetFor = (text: string): string => {
+  let target = text.trim()
+  let previous = ''
+  while (target !== previous) {
+    previous = target
+    target = target
+      .replace(/\s*결과\s*확인(?:을)?(?:한다)?\s*$/, '')
+      .replace(/\s+(?:버튼(?:을)?\s*)?클릭\s*$/, '')
+      .trim()
+  }
+  return target
+}
+const waitForVisibleText = async (page: Page, target: string): Promise<void> => {
+  const matcher = new RegExp(escapeRegex(target), 'i')
+  const deadline = Date.now() + 10_000
+  while (Date.now() < deadline) {
+    const candidates = await page.getByText(matcher).all()
+    for (const candidate of candidates) {
+      try {
+        if (await candidate.isVisible()) return
+      } catch { /* 화면 전환 중 분리된 요소는 다음 반복에서 다시 찾는다. */ }
+    }
+    await page.waitForTimeout(100)
+  }
+  throw new Error(`결과 텍스트 '${target}'가 10초 안에 화면에 표시되지 않았습니다.`)
+}
 
 const inspectScenario = async (scenario: QaScenario): Promise<Array<{ id: string; connected: boolean }>> => {
   const browser = await chromium.launch({ headless: true })
@@ -75,9 +102,14 @@ const inspectScenario = async (scenario: QaScenario): Promise<Array<{ id: string
     return await Promise.all(scenario.steps.map(async (step) => {
       if (step.action === 'goto') return { id: step.id, connected: true }
       const target = new RegExp(escapeRegex(step.target), 'i')
+      const resultTarget = resultTargetFor(step.target)
       const locator = step.action === 'fill' || step.action === 'manualFill'
         ? page.getByLabel(target).or(inputFor(page, step.target))
-        : page.getByRole(step.action === 'expectText' ? 'heading' : 'button', { name: target }).or(page.getByText(target).first())
+        : step.action === 'click' && resultTarget !== step.target
+          ? page.getByText(resultTarget).first()
+        : step.action === 'click'
+          ? buttonFor(page, step.target, step.occurrence)
+          : page.getByRole('heading', { name: target }).or(page.getByText(target).first())
       return { id: step.id, connected: await locator.count() > 0 }
     }))
   } finally {
@@ -116,9 +148,13 @@ const executeScenario = async (scenario: QaScenario, owner: BrowserWindow, optio
         await inputFor(page, step.target).fill(value)
         log.push(`${readableStep(step)} — 완료`)
       }
-      if (step.action === 'click') await buttonFor(page, step.target).click()
+      if (step.action === 'click') {
+        const resultTarget = resultTargetFor(step.target)
+        if (resultTarget !== step.target) await waitForVisibleText(page, resultTarget)
+        else await buttonFor(page, step.target, step.occurrence).click()
+      }
       if (step.action === 'select') await page.getByLabel(step.target).selectOption(step.value ?? '')
-      if (step.action === 'expectText') await page.getByText(step.target).first().waitFor({ state: 'visible' })
+      if (step.action === 'expectText') await waitForVisibleText(page, resultTargetFor(step.target))
       if (step.action !== 'manualFill') log.push(`${readableStep(step)} — 완료`)
       owner.webContents.send('qa:progress', { current: index + 1, total: scenario.steps.length, step: readableStep(step) })
       if (options.preview) {

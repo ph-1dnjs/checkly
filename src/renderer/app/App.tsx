@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState, type ReactElement } from 'react'
 
 type Action = 'goto' | 'fill' | 'manualFill' | 'click' | 'select' | 'expectText'
-type Step = { id: string; action: Action; target: string; value?: string; required?: boolean; prompt?: string; connected?: boolean; x?: number; y?: number; color?: string }
+type Step = { id: string; action: Action; target: string; value?: string; required?: boolean; prompt?: string; occurrence?: number; connected?: boolean; x?: number; y?: number; color?: string }
 type Scenario = { id: string; title: string; url: string; steps: Step[] }
-type MarkerPosition = Pick<Step, 'action' | 'target' | 'value' | 'prompt' | 'x' | 'y' | 'color'>
+type MarkerPosition = Pick<Step, 'action' | 'target' | 'value' | 'prompt' | 'occurrence' | 'x' | 'y' | 'color'>
 type MarkerPositionStore = Record<string, MarkerPosition[]>
 type RunRecord = { id: string; scenario: Scenario; status: 'passed' | 'failed'; ranAt: string }
 type RunSummary = { total: number; passed: number; failed: number }
@@ -47,7 +47,7 @@ const actionText = (step: Step) => step.action === 'manualFill'
   : step.action === 'goto' ? `${step.target} 페이지로 이동`
     : step.action === 'fill' ? `${step.target}에 '${step.value || ''}' 입력`
       : step.action === 'select' ? `${step.target}에서 '${step.value || ''}' 선택`
-      : `${step.target} ${label[step.action]}`
+      : step.action === 'click' ? `${step.target}${step.occurrence && step.occurrence > 1 ? ` [${step.occurrence}번째]` : ''} 클릭` : `${step.target} ${label[step.action]}`
 
 const markdownFor = (scenario: Scenario) => [
   `# 시나리오: ${scenario.title}`,
@@ -57,6 +57,18 @@ const markdownFor = (scenario: Scenario) => [
 ].join('\n')
 
 const scenarioHeader = /^#{1,3}\s*시나리오:\s*(.+)$|^Scenario:\s*(.+)$/i
+const resultTargetFor = (text: string): string => {
+  let target = text.trim()
+  let previous = ''
+  while (target !== previous) {
+    previous = target
+    target = target
+      .replace(/\s*결과\s*확인(?:을)?(?:한다)?\s*$/, '')
+      .replace(/\s+(?:버튼(?:을)?\s*)?클릭\s*$/, '')
+      .trim()
+  }
+  return target
+}
 const parseMarkdown = (markdown: string): Scenario[] => {
   const blocks = markdown.split(/(?=^#{1,3}\s*시나리오:|^Scenario:)/im).filter(Boolean)
   return blocks.map((block, index) => {
@@ -66,7 +78,7 @@ const parseMarkdown = (markdown: string): Scenario[] => {
     const steps = lines.filter((line) => /^(Given|When|Then|And|But)\s+/i.test(line)).map((line, stepIndex): Step => {
       const keyword = line.match(/^(Given|When|Then|And|But)\s+/i)?.[1].toLowerCase()
       const text = line.replace(/^(Given|When|Then|And|But)\s+/i, '')
-      if (keyword === 'then') return { id: String(stepIndex + 1), action: 'expectText', target: text.replace(/\s*(텍스트가\s*)?(보인다|포함된다|확인된다|표시된다).*/, ''), connected: false }
+      if (keyword === 'then') return { id: String(stepIndex + 1), action: 'expectText', target: resultTargetFor(text.replace(/\s*(텍스트가\s*)?(보인다|포함된다|확인된다|표시된다).*/, '')), connected: false }
       const manual = text.match(/^(.+?)\s+수동 입력(?:\s*\[(.+)\])?$/)
       const fill = text.match(/^(.+?)(?:에|을|를)?\s*['"](.*)['"]\s*(?:자동\s*)?(?:입력|작성)/)
       const automatic = text.match(/^(.+?)\s+(?:자동|일반)\s*입력(?:\s*\[(.*)\])?$/)
@@ -79,8 +91,10 @@ const parseMarkdown = (markdown: string): Scenario[] => {
         const target = text.replace(/\s*(페이지로?\s*이동|페이지\s*이동|접속|열기).*/, '').trim()
         return { id: String(stepIndex + 1), action: 'goto', target: /^(https?:\/\/|\/)/.test(target) ? target : '/', connected: true }
       }
-      if (/보인다|포함된다|확인된다|표시된다/.test(text)) return { id: String(stepIndex + 1), action: 'expectText', target: text.replace(/\s*(텍스트가\s*)?(보인다|포함된다|확인된다|표시된다).*/, ''), connected: false }
-      return { id: String(stepIndex + 1), action: 'click', target: text.replace(/\s+(버튼을?|버튼)?\s*클릭.*/, '').trim(), connected: true }
+      if (/보인다|포함된다|확인된다|표시된다|결과\s*확인/.test(text)) return { id: String(stepIndex + 1), action: 'expectText', target: resultTargetFor(text.replace(/\s*(텍스트가\s*)?(보인다|포함된다|확인된다|표시된다).*/, '')), connected: false }
+      const clickText = text.replace(/\s+(버튼을?|버튼)?\s*클릭.*/, '').trim()
+      const occurrence = Number(clickText.match(/\[(\d+)번째\]$/)?.[1]) || undefined
+      return { id: String(stepIndex + 1), action: 'click', target: clickText.replace(/\s*\[\d+번째\]$/, '').trim(), occurrence, connected: true }
     })
     return { id: `scenario-${index}`, title, url, steps }
   })
@@ -101,11 +115,11 @@ const markerColor = (index: number) => `hsl(${Math.round((index * 137.508 + 19) 
 const estimateDurationSeconds = (scenario: Scenario): number => scenario.steps.reduce((seconds, step) => seconds + (step.action === 'goto' ? 3 : step.action === 'manualFill' ? 15 : 1), 0)
 const formatDuration = (seconds: number): string => `${Math.floor(seconds / 60)}분 ${String(seconds % 60).padStart(2, '0')}초`
 const scenarioPositionKey = (scenario: Scenario): string => `${scenario.title}\n${scenario.url}`
-const markerPositionsFor = (scenario: Scenario): MarkerPosition[] => scenario.steps.flatMap((step) => step.x === undefined || step.y === undefined ? [] : [{ action: step.action, target: step.target, value: step.value, prompt: step.prompt, x: step.x, y: step.y, color: step.color }])
+const markerPositionsFor = (scenario: Scenario): MarkerPosition[] => scenario.steps.flatMap((step) => step.x === undefined || step.y === undefined ? [] : [{ action: step.action, target: step.target, value: step.value, prompt: step.prompt, occurrence: step.occurrence, x: step.x, y: step.y, color: step.color }])
 const applyMarkerPositions = (scenario: Scenario, store: MarkerPositionStore): Scenario => {
   const positions = [...(store[scenarioPositionKey(scenario)] ?? [])]
   return { ...scenario, steps: scenario.steps.map((step) => {
-    const index = positions.findIndex((position) => position.action === step.action && position.target === step.target && position.value === step.value && position.prompt === step.prompt)
+    const index = positions.findIndex((position) => position.action === step.action && position.target === step.target && position.value === step.value && position.prompt === step.prompt && position.occurrence === step.occurrence)
     if (index < 0) return step
     const [position] = positions.splice(index, 1)
     return { ...step, x: position.x, y: position.y, color: position.color }
@@ -405,6 +419,6 @@ export const App = (): ReactElement => {
       <button className={page === 'run' ? 'bottom-nav-item active' : 'bottom-nav-item'} onClick={() => setPage('run')} aria-label="실행 콘솔"><span aria-hidden="true">▷</span><small>실행</small></button>
     </nav>
     {manual && <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="manual-title"><div className="manual-modal"><span className="manual-icon">⌨</span><p className="eyebrow">EXECUTION PAUSED · STEP {manual.id}</p><h2 id="manual-title">수동 입력이 필요합니다</h2><p>{manual.prompt || `${manual.target}를 입력해 주세요.`}</p><label>{manual.target}<input autoFocus type={manualValueVisible ? 'text' : 'password'} value={manualValue} onChange={(e) => setManualValue(e.target.value)} placeholder="입력값" onKeyDown={(e) => e.key === 'Enter' && continueManual()} /></label><label className="manual-visibility-toggle"><input type="checkbox" checked={manualValueVisible} onChange={(event) => setManualValueVisible(event.target.checked)} /> 입력값 표시</label><p className="security-note">입력값은 이번 실행에만 사용되며 시나리오, 로그, 리포트에 저장되지 않습니다.</p><div className="modal-actions"><button className="button button-secondary" onClick={cancelRun}>실행 취소</button><button className="button button-primary" onClick={continueManual} disabled={manual.required && !manualValue.trim()}>입력 후 계속</button></div></div></div>}
-    {markerDialog && <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="marker-action-title"><div className="manual-modal marker-action-modal"><p className="eyebrow">{pendingMarker ? "NEW MARKER" : "EDIT MARKER"} · STEP {markerDialog.id}</p><h2 id="marker-action-title">마커 액션 정의</h2><p>선택한 위치에서 실행할 액션을 설정해 주세요.</p><label>액션<select value={markerDialog.action} onChange={(e) => updateMarkerDialog({ action: e.target.value as Action })}>{Object.entries(label).map(([value, name]) => <option value={value} key={value}>{name}</option>)}</select></label><label>라벨<input autoFocus value={markerDialog.target} onChange={(e) => updateMarkerDialog({ target: e.target.value })} placeholder="예: 로그인 버튼" /></label>{['fill', 'select'].includes(markerDialog.action) && <label>값<input value={markerDialog.value ?? ''} onChange={(e) => updateMarkerDialog({ value: e.target.value })} placeholder="입력 또는 선택할 값" /></label>}{markerDialog.action === 'manualFill' && <label>안내 문구<input value={markerDialog.prompt ?? ''} onChange={(e) => updateMarkerDialog({ prompt: e.target.value, required: true })} placeholder="사용자에게 표시할 안내" /></label>}<div className="modal-actions"><button className="button button-secondary" onClick={closeMarkerDialog}>취소</button><button className="button button-primary" onClick={completeMarkerDialog} disabled={!markerDialog.target.trim()}>마커 편집 완료</button></div></div></div>}
+    {markerDialog && <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="marker-action-title"><div className="manual-modal marker-action-modal"><p className="eyebrow">{pendingMarker ? "NEW MARKER" : "EDIT MARKER"} · STEP {markerDialog.id}</p><h2 id="marker-action-title">마커 액션 정의</h2><p>선택한 위치에서 실행할 액션을 설정해 주세요.</p><label>액션<select value={markerDialog.action} onChange={(e) => updateMarkerDialog({ action: e.target.value as Action })}>{Object.entries(label).map(([value, name]) => <option value={value} key={value}>{name}</option>)}</select></label><label>라벨<input autoFocus value={markerDialog.target} onChange={(e) => updateMarkerDialog({ target: e.target.value })} placeholder="예: 로그인 버튼" /></label>{markerDialog.action === 'click' && <label>동일 대상 순서<input type="number" min="1" value={markerDialog.occurrence ?? 1} onChange={(e) => { const occurrence = Math.max(1, Number(e.target.value) || 1); updateMarkerDialog({ occurrence: occurrence === 1 ? undefined : occurrence }) }} /><small>같은 이름의 버튼이 여러 개면 클릭할 순서를 지정합니다.</small></label>}{['fill', 'select'].includes(markerDialog.action) && <label>값<input value={markerDialog.value ?? ''} onChange={(e) => updateMarkerDialog({ value: e.target.value })} placeholder="입력 또는 선택할 값" /></label>}{markerDialog.action === 'manualFill' && <label>안내 문구<input value={markerDialog.prompt ?? ''} onChange={(e) => updateMarkerDialog({ prompt: e.target.value, required: true })} placeholder="사용자에게 표시할 안내" /></label>}<div className="modal-actions"><button className="button button-secondary" onClick={closeMarkerDialog}>취소</button><button className="button button-primary" onClick={completeMarkerDialog} disabled={!markerDialog.target.trim()}>마커 편집 완료</button></div></div></div>}
   </main>
 }
