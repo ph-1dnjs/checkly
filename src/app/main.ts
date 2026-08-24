@@ -4,8 +4,8 @@ import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import { autoUpdater } from 'electron-updater'
 import path from 'node:path'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { chromium, type Browser, type Page } from '@playwright/test'
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { chromium, type Browser, type BrowserContext, type Page, type Video } from '@playwright/test'
 
 type QaStep = { id: string; action: 'goto' | 'fill' | 'manualFill' | 'click' | 'select' | 'expectText'; target: string; value?: string; required?: boolean; prompt?: string; occurrence?: number }
 type QaScenario = { title: string; url: string; steps: QaStep[] }
@@ -55,6 +55,14 @@ const loadMarkerPositions = async (): Promise<string | null> => {
 }
 const saveMarkerPositions = async (positions: string): Promise<void> => {
   await writeFile(markerPositionStorePath(), positions, 'utf8')
+}
+const failureVideoFileName = (scenario: QaScenario): string => {
+  const now = new Date()
+  const timestamp = [now.getFullYear(), now.getMonth() + 1, now.getDate(), now.getHours(), now.getMinutes(), now.getSeconds()]
+    .map((value, index) => index === 0 ? String(value) : String(value).padStart(2, '0'))
+    .join('')
+  const title = scenario.title.replace(/[\\/:*?"<>|]/g, '_').trim() || '시나리오'
+  return `${title}_실패${timestamp}.webm`
 }
 
 const readableStep = (step: QaStep): string => `단계 ${step.id}: ${step.target} ${step.action === 'manualFill' ? '수동 입력' : step.action}`
@@ -120,6 +128,9 @@ const inspectScenario = async (scenario: QaScenario): Promise<Array<{ id: string
 const executeScenario = async (scenario: QaScenario, owner: BrowserWindow, options: QaRunOptions = {}): Promise<{ status: string; log: string[]; reportPath?: string }> => {
   const log: string[] = []
   let browser: Browser | undefined
+  let context: BrowserContext | undefined
+  let video: Video | null = null
+  let failed = false
   const run = { cancelled: false } as NonNullable<typeof activeRun>
   activeRun = run
   try {
@@ -127,7 +138,11 @@ const executeScenario = async (scenario: QaScenario, owner: BrowserWindow, optio
     browser = await chromium.launch({ headless: true, timeout: 15_000 })
     run.browser = browser
     if (run.cancelled) return { status: 'cancelled', log: ['실행이 취소되었습니다.'], reportPath: await writeRunReport(scenario, 'cancelled', ['실행이 취소되었습니다.']) }
-    const page = await browser.newPage()
+    const videoDirectory = path.join(app.getPath('userData'), 'videos', 'temporary')
+    await mkdir(videoDirectory, { recursive: true })
+    context = await browser.newContext({ recordVideo: { dir: videoDirectory, size: { width: 1280, height: 720 } } })
+    const page = await context.newPage()
+    video = page.video()
     page.setDefaultTimeout(10_000)
     page.setDefaultNavigationTimeout(15_000)
     owner.webContents.send('qa:progress', { current: 0, total: scenario.steps.length, step: '기본 URL 접속 중' })
@@ -166,10 +181,20 @@ const executeScenario = async (scenario: QaScenario, owner: BrowserWindow, optio
     }
     return { status: 'passed', log, reportPath: await writeRunReport(scenario, 'passed', log) }
   } catch (error) {
+    failed = true
     const finalLog = [...log, `실행 실패: ${error instanceof Error ? error.message : String(error)}`]
     return { status: 'failed', log: finalLog, reportPath: await writeRunReport(scenario, 'failed', finalLog) }
   } finally {
     activeRun = null
+    try { await context?.close() } catch { /* 취소로 브라우저가 먼저 닫힌 경우는 무시한다. */ }
+    if (failed && video) {
+      try {
+        const sourcePath = await video.path()
+        const destination = path.join(app.getPath('downloads'), failureVideoFileName(scenario))
+        await rename(sourcePath, destination)
+        owner.webContents.send('qa:failure-video', destination)
+      } catch { owner.webContents.send('qa:failure-video', null) }
+    }
     await browser?.close()
   }
 }
@@ -211,6 +236,11 @@ app.whenReady().then(() => {
   ipcMain.handle('marker-positions:save', (_event, positions: string) => saveMarkerPositions(positions))
   ipcMain.handle('qa:start', async (event, scenario: QaScenario, options: QaRunOptions) => executeScenario(scenario, BrowserWindow.fromWebContents(event.sender)!, options))
   ipcMain.handle('qa:inspect', (_event, scenario: QaScenario) => inspectScenario(scenario))
+  ipcMain.handle('qa:open-failure-video', async (_event, filePath: string) => {
+    if (path.dirname(filePath) !== app.getPath('downloads')) throw new Error('허용되지 않은 영상 경로입니다.')
+    await readFile(filePath)
+    shell.showItemInFolder(filePath)
+  })
   ipcMain.handle('qa:manual-input', (_event, value: string) => activeRun?.resolveManual?.(value))
   ipcMain.handle('qa:cancel', async () => {
     if (!activeRun) return

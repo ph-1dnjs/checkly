@@ -21,11 +21,13 @@ declare global {
       saveMarkerPositions: (positions: string) => Promise<void>
       inspectScenario: (scenario: Scenario) => Promise<Array<{ id: string; connected: boolean }>>
       runQa: (scenario: Scenario, options?: { preview?: boolean }) => Promise<{ status: string; log: string[] }>
+      openFailureVideo: (filePath: string) => Promise<void>
       submitManualInput: (value: string) => Promise<void>
       cancelQa: () => Promise<void>
       onManualInputRequired: (callback: (step: Step) => void) => () => void
       onQaProgress: (callback: (progress: RunProgress) => void) => () => void
       onQaPreview: (callback: (image: string) => void) => () => void
+      onFailureVideo: (callback: (filePath: string | null) => void) => () => void
     }
   }
 }
@@ -147,6 +149,7 @@ export const App = (): ReactElement => {
   const [runLog, setRunLog] = useState<string[]>([])
   const [livePreview, setLivePreview] = useState(false)
   const [previewImage, setPreviewImage] = useState('')
+  const [failureVideoPath, setFailureVideoPath] = useState<string | null>(null)
   const [runProgress, setRunProgress] = useState<RunProgress>({ current: 0, total: seed.steps.length, step: '' })
   const [runStartedAt, setRunStartedAt] = useState<number | null>(null)
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
@@ -203,6 +206,10 @@ export const App = (): ReactElement => {
     setRunLog((logs) => [...logs, `${progress.current}/${progress.total} ${progress.step}`])
   }), [])
   useEffect(() => window.electronAPI.onQaPreview((image) => setPreviewImage(image)), [])
+  useEffect(() => window.electronAPI.onFailureVideo((filePath) => {
+    setFailureVideoPath(filePath)
+    setRunLog((logs) => [...logs, filePath ? '실패 실행 영상을 다운로드 폴더에 저장했습니다.' : '실패 실행 영상을 저장하지 못했습니다.'])
+  }), [])
   useEffect(() => {
     if (!running || !runStartedAt) return
     const timer = window.setInterval(() => setElapsedSeconds(Math.floor((Date.now() - runStartedAt) / 1000)), 250)
@@ -369,7 +376,7 @@ export const App = (): ReactElement => {
   }
   const beginRun = async (scenarioToRun = scenario) => {
     const startedAt = Date.now()
-    setPage('run'); setRunning(true); setPreviewImage(''); setRunStartedAt(startedAt); setElapsedSeconds(0)
+    setPage('run'); setRunning(true); setPreviewImage(''); setFailureVideoPath(null); setRunStartedAt(startedAt); setElapsedSeconds(0)
     setRunProgress({ current: 0, total: scenarioToRun.steps.length, step: '' })
     setRunLog(['기본 URL 상태 점검 완료', '시나리오 실행을 시작했습니다.'])
     window.electronAPI.runQa(scenarioToRun, { preview: livePreview }).then((result) => {
@@ -412,6 +419,7 @@ export const App = (): ReactElement => {
           <div className="page-title"><div><p className="eyebrow">RUN CONSOLE</p><h1>QA 실행</h1><p>{running ? '브라우저 상태를 유지하며 실행 중입니다.' : '실행할 시나리오를 선택하세요.'}</p></div>{running ? <button className="button danger" onClick={cancelRun}>실행 취소</button> : <button className="button button-primary" onClick={() => void beginRun()}>▶ 실행 시작</button>}</div>
           <div className="run-layout"><section className="run-main"><div className="run-state"><span className={running ? 'pulse' : 'check'}>{running ? '◌' : '✓'}</span><div><strong>{manual ? '수동 입력 대기 중' : running ? '시나리오 실행 중' : '실행 준비됨'}</strong><p>{manual ? `${manual.target} 값을 기다리고 있습니다.` : `${scenario.title} · ${scenario.steps.length}개 단계`}</p></div></div><section className="run-scenario-preview" aria-label="실행 시나리오 미리보기"><div><strong>{scenario.title}</strong><span>{scenario.url}</span></div><ol>{scenario.steps.map((step) => <li key={step.id} className={running && step.id === String(runProgress.current) ? 'current' : ''}><b>{step.id}</b>{actionText(step)}</li>)}</ol></section><div className="run-timing"><span>진행 {runProgress.current}/{runProgress.total} · {progressPercent}%</span><span>경과 {formatDuration(elapsedSeconds)}</span><span>예상 {formatDuration(estimatedSeconds)}{estimatedCompletion ? ` · 완료 ${estimatedCompletion}` : ''}</span></div><div className="progress" aria-label={`실행 진행률 ${progressPercent}%`}><span style={{ width: `${progressPercent}%` }} /></div>{livePreview && <section className="live-preview" aria-label="실시간 테스트 화면"><div><strong>실시간 테스트 화면</strong><span>단계마다 캡처되어 실행 속도가 다소 느려질 수 있습니다.</span></div>{previewImage ? <img src={previewImage} alt="현재 테스트 실행 화면" /> : <p>첫 실행 화면을 기다리고 있습니다.</p>}</section>}<div className="log-box" aria-live="polite">{runLog.length ? runLog.map((log, i) => <p key={i}><time>{String(i + 9).padStart(2, '0')}:24</time>{log}</p>) : <p className="muted">실행 로그가 여기에 표시됩니다.</p>}</div></section><aside className="run-side"><h2>실행 설정</h2><label>브라우저<select><option>Chromium</option><option>Firefox</option></select></label><label>워커 수<select><option>1</option></select></label><label className="toggle"><input type="checkbox" checked={livePreview} onChange={(event) => setLivePreview(event.target.checked)} disabled={running} /> 실시간 테스트 화면 보기</label><p className="run-setting-help">화면을 캡처해 보여주므로 실행 시간이 조금 늘어날 수 있습니다. 끄면 백그라운드에서 더 빠르게 실행합니다.</p><label className="toggle"><input type="checkbox" /> 실패 즉시 중단</label></aside></div>
         </>}
+        {failureVideoPath && <button className="button button-secondary" onClick={() => void window.electronAPI.openFailureVideo(failureVideoPath)}>실패 실행 영상 위치 열기</button>}
       </section>
     <nav className="bottom-navigation" aria-label="주요 메뉴">
       <button className={page === 'scenarios' ? 'bottom-nav-item active' : 'bottom-nav-item'} onClick={() => setPage('scenarios')} aria-label="대시보드"><span aria-hidden="true">⌂</span><small>대시보드</small></button>

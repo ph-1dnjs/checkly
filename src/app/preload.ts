@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveMarkerPositions: (positions: string): Promise<void> => ipcRenderer.invoke('marker-positions:save', positions),
   inspectScenario: (scenario: unknown): Promise<unknown> => ipcRenderer.invoke('qa:inspect', scenario),
   runQa: (scenario: unknown, options?: { preview?: boolean }): Promise<unknown> => ipcRenderer.invoke('qa:start', scenario, options),
+  openFailureVideo: (filePath: string): Promise<void> => ipcRenderer.invoke('qa:open-failure-video', filePath),
   submitManualInput: (value: string): Promise<void> => ipcRenderer.invoke('qa:manual-input', value),
   cancelQa: (): Promise<void> => ipcRenderer.invoke('qa:cancel'),
   onManualInputRequired: (callback: (step: unknown) => void): (() => void) => {
@@ -26,5 +27,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const listener = (_event: Electron.IpcRendererEvent, image: unknown): void => callback(image)
     ipcRenderer.on('qa:preview', listener)
     return () => ipcRenderer.removeListener('qa:preview', listener)
+  },
+  onFailureVideo: (callback: (filePath: unknown) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, filePath: unknown): void => callback(filePath)
+    ipcRenderer.on('qa:failure-video', listener)
+    return () => ipcRenderer.removeListener('qa:failure-video', listener)
   }
 })
