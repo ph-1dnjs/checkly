@@ -28,7 +28,11 @@ declare global {
     electronAPI: {
       loadScenarioMarkdown: () => Promise<string | null>;
       saveScenarioMarkdown: (value: string) => Promise<void>;
-      importScenarioFile: () => Promise<string | null>;
+      importScenarioFile: () => Promise<{
+        markdown: string;
+        filePath: string;
+      } | null>;
+      saveImportedScenarioFile: (value: string) => Promise<string | null>;
       exportScenarioFile: (value: string) => Promise<string | null>;
       loadMarkerPositions: () => Promise<string | null>;
       saveMarkerPositions: (value: string) => Promise<void>;
@@ -37,8 +41,9 @@ declare global {
       ) => Promise<Array<{ id: string; connected: boolean }>>;
       runQa: (
         value: Scenario,
-        options?: { preview?: boolean },
+        options?: { preview?: boolean; workerId?: string },
       ) => Promise<{ status: string; log: string[] }>;
+      finishQaWorker: (workerId: string) => Promise<void>;
       openFailureVideo: (value: string) => Promise<void>;
       submitManualInput: (value: string) => Promise<void>;
       cancelQa: () => Promise<void>;
@@ -186,6 +191,7 @@ const replaceScenarioMarkdown = (
 export const App = (): ReactElement => {
   const [scenario, setScenario] = useState(seedScenario);
   const [sourceMarkdown, setSourceMarkdown] = useState(initialMarkdown);
+  const [scenarioFilePath, setScenarioFilePath] = useState<string | null>(null);
   const [route, setRoute] = useState<Route>("scenarios");
   const [editorMode, setEditorMode] = useState<"text" | "marker">("text");
   const [selectedId, setSelectedId] = useState("3");
@@ -382,11 +388,26 @@ export const App = (): ReactElement => {
   };
 
   const importScenario = async () => {
-    const markdown = await window.electronAPI.importScenarioFile();
-    if (!markdown) return;
-    updateSource(markdown);
-    await window.electronAPI.saveScenarioMarkdown(markdown);
+    const imported = await window.electronAPI.importScenarioFile();
+    if (!imported) return;
+    updateSource(imported.markdown);
+    setScenarioFilePath(imported.filePath);
+    await window.electronAPI.saveScenarioMarkdown(imported.markdown);
     setNotice("시나리오를 불러왔습니다.");
+  };
+
+  const saveScenarioFile = async () => {
+    try {
+      const filePath = scenarioFilePath
+        ? await window.electronAPI.saveImportedScenarioFile(sourceMarkdown)
+        : await window.electronAPI.exportScenarioFile(sourceMarkdown);
+      if (!filePath) return;
+      setScenarioFilePath(filePath);
+      await window.electronAPI.saveScenarioMarkdown(sourceMarkdown);
+      setNotice("시나리오를 저장했습니다.");
+    } catch {
+      setNotice("시나리오를 저장하지 못했습니다.");
+    }
   };
 
   const recordRun = (completed: Scenario, status: "passed" | "failed") =>
@@ -434,6 +455,7 @@ export const App = (): ReactElement => {
         try {
           const result = await window.electronAPI.runQa(runScenario, {
             preview: livePreview,
+            workerId: String(sequence),
           });
           if (sequence !== runSequence.current) break;
           setRunLog((logs) => [
@@ -451,6 +473,7 @@ export const App = (): ReactElement => {
           ]);
         }
       }
+      await window.electronAPI.finishQaWorker(String(sequence));
       if (sequence === runSequence.current) setRunning(false);
     })();
   };
@@ -496,6 +519,8 @@ export const App = (): ReactElement => {
     updateSource(markdown);
     try {
       await window.electronAPI.saveScenarioMarkdown(markdown);
+      if (scenarioFilePath)
+        await window.electronAPI.saveImportedScenarioFile(markdown);
       setNotice("시나리오를 저장했습니다.");
     } catch {
       setNotice("시나리오를 저장하지 못했습니다.");
@@ -551,6 +576,7 @@ export const App = (): ReactElement => {
             mode={editorMode}
             scenario={scenario}
             sourceMarkdown={sourceMarkdown}
+            scenarioFilePath={scenarioFilePath}
             previews={previews}
             notice={notice}
             selectedId={selectedId}
@@ -564,9 +590,7 @@ export const App = (): ReactElement => {
             webviewKey={0}
             onModeChange={setEditorMode}
             onImport={() => void importScenario()}
-            onExport={() =>
-              void window.electronAPI.exportScenarioFile(sourceMarkdown)
-            }
+            onExport={() => void saveScenarioFile()}
             onSourceChange={updateSource}
             onScenarioChange={setScenario}
             onRefresh={() => undefined}

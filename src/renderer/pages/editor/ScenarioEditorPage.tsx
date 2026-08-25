@@ -17,6 +17,7 @@ type Props = {
   mode: "text" | "marker";
   scenario: Scenario;
   sourceMarkdown: string;
+  scenarioFilePath: string | null;
   previews: Scenario[];
   notice: string;
   selectedId: string;
@@ -55,6 +56,7 @@ export const ScenarioEditorPage = ({
   mode,
   scenario,
   sourceMarkdown,
+  scenarioFilePath,
   previews,
   notice,
   selectedId,
@@ -139,6 +141,9 @@ export const ScenarioEditorPage = ({
           <button className="button button-primary" onClick={onExport}>
             시나리오 저장하기
           </button>
+          <span className="scenario-file-path" title={scenarioFilePath ?? undefined}>
+            {scenarioFilePath ?? "저장된 파일 없음"}
+          </span>
         </div>
         <div className="scenario-writing-grid">
           <section className="writing-card">
