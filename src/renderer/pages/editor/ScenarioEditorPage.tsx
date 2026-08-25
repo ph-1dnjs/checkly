@@ -1,4 +1,9 @@
-import type { MouseEvent, PointerEvent } from "react";
+import {
+  useRef,
+  useState,
+  type MouseEvent,
+  type PointerEvent,
+} from "react";
 import {
   actionLabel,
   defaultMarkerPosition,
@@ -12,10 +17,11 @@ type Props = {
   mode: "text" | "marker";
   scenario: Scenario;
   sourceMarkdown: string;
-  preview: Scenario | undefined;
+  previews: Scenario[];
   notice: string;
   selectedId: string;
   isAddingMarker: boolean;
+  markersVisible: boolean;
   stepPanelCollapsed: boolean;
   stepPanelPosition: { top: number; left: number };
   stepPanelMoved: boolean;
@@ -29,6 +35,7 @@ type Props = {
   onScenarioChange: (scenario: Scenario) => void;
   onRefresh: () => void;
   onBeginMarkerPlacement: () => void;
+  onToggleMarkersVisible: () => void;
   onPlaceMarker: (event: MouseEvent<HTMLDivElement>) => void;
   onDeleteLast: () => void;
   onClearSteps: () => void;
@@ -36,6 +43,7 @@ type Props = {
   onSelectStep: (id: string) => void;
   onEditStep: (step: Step) => void;
   onDeleteStep: (id: string) => void;
+  onReorderSteps: (draggedId: string, targetId: string) => void;
   onStepPanelDrag: (event: PointerEvent<HTMLElement>) => void;
   onToggleStepPanel: (collapsed: boolean) => void;
   onUpdateMarkerDialog: (changes: Partial<Step>) => void;
@@ -47,10 +55,11 @@ export const ScenarioEditorPage = ({
   mode,
   scenario,
   sourceMarkdown,
-  preview,
+  previews,
   notice,
   selectedId,
   isAddingMarker,
+  markersVisible,
   stepPanelCollapsed,
   stepPanelPosition,
   stepPanelMoved,
@@ -64,6 +73,7 @@ export const ScenarioEditorPage = ({
   onScenarioChange,
   onRefresh,
   onBeginMarkerPlacement,
+  onToggleMarkersVisible,
   onPlaceMarker,
   onDeleteLast,
   onClearSteps,
@@ -71,13 +81,29 @@ export const ScenarioEditorPage = ({
   onSelectStep,
   onEditStep,
   onDeleteStep,
+  onReorderSteps,
   onStepPanelDrag,
   onToggleStepPanel,
   onUpdateMarkerDialog,
   onCloseMarkerDialog,
   onCompleteMarkerDialog,
-}: Props) => (
-  <>
+}: Props) => {
+  const [draggedStepId, setDraggedStepId] = useState<string | null>(null);
+  const stepDrag = useRef<{
+    id: string;
+    pointerId: number;
+    startX: number;
+    startY: number;
+    moved: boolean;
+  } | null>(null);
+
+  const clearStepDrag = () => {
+    stepDrag.current = null;
+    setDraggedStepId(null);
+  };
+
+  return (
+    <>
     <div className="page-title editor-page-title">
       <div>
         <p className="eyebrow">SCENARIO WORKSPACE</p>
@@ -118,7 +144,7 @@ export const ScenarioEditorPage = ({
           <section className="writing-card">
             <div className="writing-card-header">
               <strong>시나리오 Markdown</strong>
-              <span>{preview?.title ?? "미리보기"}.md</span>
+              <span>{previews[0]?.title ?? "미리보기"}.md</span>
             </div>
             <textarea
               className="scenario-source"
@@ -130,28 +156,34 @@ export const ScenarioEditorPage = ({
           <aside className="scenario-preview">
             <div className="writing-card-header">
               <strong>실행 미리보기</strong>
-              <span>{preview?.steps.length ?? 0}개 단계 인식</span>
+              <span>
+                {previews.length}개 시나리오 · {previews.reduce((total, item) => total + item.steps.length, 0)}개 단계 인식
+              </span>
             </div>
-            {preview ? (
+            {previews.length > 0 ? (
               <>
-                <div className="preview-before">
-                  <b>기본 URL</b>
-                  <span>{preview.url}</span>
+                <div className="preview-scenario-list">
+                  {previews.map((preview) => (
+                    <article className="preview-scenario" key={preview.id}>
+                      <div>
+                        <h2>{preview.title}</h2>
+                        <span className="tag">자동 인식</span>
+                      </div>
+                      <div className="preview-before">
+                        <b>기본 URL</b>
+                        <span>{preview.url}</span>
+                      </div>
+                      <ol>
+                        {preview.steps.map((step) => (
+                          <li key={step.id}>
+                            <b>{actionLabel[step.action]}</b>
+                            <span>{step.target}</span>
+                          </li>
+                        ))}
+                      </ol>
+                    </article>
+                  ))}
                 </div>
-                <article className="preview-scenario">
-                  <div>
-                    <h2>{preview.title}</h2>
-                    <span className="tag">자동 인식</span>
-                  </div>
-                  <ol>
-                    {preview.steps.map((step) => (
-                      <li key={step.id}>
-                        <b>{actionLabel[step.action]}</b>
-                        <span>{step.target}</span>
-                      </li>
-                    ))}
-                  </ol>
-                </article>
                 <p className="preview-note">
                   Given / When / Then / And 문장을 자동으로 인식합니다. 불러온
                   시나리오는 화면 편집기에 반영됩니다.
@@ -176,6 +208,12 @@ export const ScenarioEditorPage = ({
           <strong>{isAddingMarker ? "⌖ 위치 선택 중" : "✣ 핀 수정 중"}</strong>
           <button onClick={onBeginMarkerPlacement}>
             {isAddingMarker ? "다시 선택" : "마커 추가"}
+          </button>
+          <button
+            onClick={onToggleMarkersVisible}
+            aria-pressed={markersVisible}
+          >
+            {markersVisible ? "마커 숨기기" : "마커 보이기"}
           </button>
           <button onClick={onDeleteLast}>마지막 삭제</button>
           <button onClick={onClearSteps}>전체 초기화</button>
@@ -220,7 +258,7 @@ export const ScenarioEditorPage = ({
                   aria-label="마커를 추가할 위치"
                 />
               )}
-              {scenario.steps.map((step, index) => {
+              {markersVisible && scenario.steps.map((step, index) => {
                 const position =
                   step.x === undefined || step.y === undefined
                     ? defaultMarkerPosition(index)
@@ -285,9 +323,59 @@ export const ScenarioEditorPage = ({
                 {scenario.steps.map((step) => (
                   <li
                     key={step.id}
-                    className={selectedId === step.id ? "selected" : ""}
+                    className={`${selectedId === step.id ? "selected" : ""}${draggedStepId === step.id ? " dragging" : ""}`}
+                    data-step-id={step.id}
                   >
-                    <button onClick={() => onSelectStep(step.id)}>
+                    <button
+                      type="button"
+                      className="step-drag-handle"
+                      aria-label={`${step.id}번 단계 순서 변경`}
+                      onPointerDown={(event) => {
+                        stepDrag.current = {
+                          id: step.id,
+                          pointerId: event.pointerId,
+                          startX: event.clientX,
+                          startY: event.clientY,
+                          moved: false,
+                        };
+                        event.currentTarget.setPointerCapture(event.pointerId);
+                      }}
+                      onPointerMove={(event) => {
+                        const drag = stepDrag.current;
+                        if (!drag || drag.pointerId !== event.pointerId) return;
+                        if (
+                          !drag.moved &&
+                          Math.hypot(
+                            event.clientX - drag.startX,
+                            event.clientY - drag.startY,
+                          ) > 5
+                        ) {
+                          drag.moved = true;
+                          setDraggedStepId(drag.id);
+                        }
+                      }}
+                      onPointerUp={(event) => {
+                        const drag = stepDrag.current;
+                        if (!drag || drag.pointerId !== event.pointerId) return;
+                        event.currentTarget.releasePointerCapture(event.pointerId);
+                        if (drag.moved) {
+                          const target = document
+                            .elementFromPoint(event.clientX, event.clientY)
+                            ?.closest<HTMLLIElement>("[data-step-id]");
+                          const targetId = target?.dataset.stepId;
+                          if (targetId) onReorderSteps(drag.id, targetId);
+                          event.preventDefault();
+                        }
+                        clearStepDrag();
+                      }}
+                      onPointerCancel={clearStepDrag}
+                    >
+                      ⠿
+                    </button>
+                    <button
+                      className="step-select-button"
+                      onClick={() => onSelectStep(step.id)}
+                    >
                       <b>{step.id}</b>
                       <span>
                         <strong>{actionLabel[step.action]}</strong>
@@ -447,5 +535,6 @@ export const ScenarioEditorPage = ({
         </div>
       </div>
     )}
-  </>
-);
+    </>
+  );
+};

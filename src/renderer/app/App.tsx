@@ -1,6 +1,7 @@
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   type MouseEvent,
   type PointerEvent,
@@ -83,6 +84,7 @@ const parseMarkdown = (markdown: string): Scenario[] =>
           const fill = text.match(
             /^(.+?)(?:에|을|를)?\s*['"](.*)['"]\s*(?:자동\s*)?(?:입력|작성)/,
           );
+          const select = text.match(/^(.+?)(?:에서|에)\s*['"](.*)['"]\s*선택/);
           if (/보인다|포함된다|확인된다|표시된다|결과\s*확인/.test(text))
             return {
               id: String(stepIndex + 1),
@@ -105,6 +107,14 @@ const parseMarkdown = (markdown: string): Scenario[] =>
               action: "fill",
               target: fill[1],
               value: fill[2],
+              connected: true,
+            };
+          if (select)
+            return {
+              id: String(stepIndex + 1),
+              action: "select",
+              target: select[1],
+              value: select[2],
               connected: true,
             };
           if (/(페이지로?\s*이동|접속|열기)/.test(text))
@@ -143,6 +153,35 @@ const applyPositions = (
       : step;
   }),
 });
+const scenarioToMarkdown = (scenario: Scenario): string =>
+  [
+    `# 시나리오: ${scenario.title}`,
+    `url: ${scenario.url}`,
+    "",
+    ...scenario.steps.map((step, index) => {
+      const prefix = index === 0 ? "Given" : step.action === "expectText" ? "Then" : "And";
+      if (step.action === "goto") return `${prefix} ${step.target} 페이지로 이동한다`;
+      if (step.action === "fill") return `${prefix} ${step.target}에 '${step.value ?? ""}' 입력`;
+      if (step.action === "manualFill") return `${prefix} ${step.target} 수동 입력${step.prompt ? ` [${step.prompt}]` : ""}`;
+      if (step.action === "select") return `${prefix} ${step.target}에서 '${step.value ?? ""}' 선택`;
+      if (step.action === "expectText") return `${prefix} ${step.target} 텍스트가 보인다`;
+      return `${prefix} ${step.target} 버튼 클릭`;
+    }),
+  ].join("\n");
+const replaceScenarioMarkdown = (
+  sourceMarkdown: string,
+  scenario: Scenario,
+): string => {
+  const blocks = sourceMarkdown
+    .split(/(?=^#{1,3}\s*시나리오:|^Scenario:)/im)
+    .filter(Boolean);
+  const index = parseMarkdown(sourceMarkdown).findIndex(
+    (item) => item.id === scenario.id,
+  );
+  if (index < 0) return scenarioToMarkdown(scenario);
+  blocks[index] = scenarioToMarkdown(scenario);
+  return blocks.join("\n\n").trim();
+};
 
 export const App = (): ReactElement => {
   const [scenario, setScenario] = useState(seedScenario);
@@ -153,6 +192,7 @@ export const App = (): ReactElement => {
   const [editingMarker, setEditingMarker] = useState<Step | null>(null);
   const [pendingMarker, setPendingMarker] = useState<Step | null>(null);
   const [isAddingMarker, setIsAddingMarker] = useState(false);
+  const [markersVisible, setMarkersVisible] = useState(true);
   const [stepPanelCollapsed, setStepPanelCollapsed] = useState(false);
   const [stepPanelPosition, setStepPanelPosition] = useState({
     top: 78,
@@ -163,10 +203,12 @@ export const App = (): ReactElement => {
     y: number;
   } | null>(null);
   const [stepPanelMoved, setStepPanelMoved] = useState(false);
+  const [saveBeforeReturning, setSaveBeforeReturning] = useState(false);
   const [manual, setManual] = useState<Step | null>(null);
   const [manualValue, setManualValue] = useState("");
   const [manualValueVisible, setManualValueVisible] = useState(false);
   const [running, setRunning] = useState(false);
+  const [runningScenario, setRunningScenario] = useState(seedScenario);
   const [runLog, setRunLog] = useState<string[]>([]);
   const [runProgress, setRunProgress] = useState<RunProgress>({
     current: 0,
@@ -186,6 +228,8 @@ export const App = (): ReactElement => {
     failed: 0,
   });
   const [positionStore, setPositionStore] = useState<MarkerPositionStore>({});
+  const runCancelled = useRef(false);
+  const runSequence = useRef(0);
 
   const updateSteps = (steps: Step[]) =>
     setScenario((current) => ({
@@ -310,9 +354,19 @@ export const App = (): ReactElement => {
       .catch(() => setNotice("대상 페이지를 확인하지 못했습니다."));
   }, [route, editorMode]);
 
-  const preview = useMemo(
-    () => parseMarkdown(sourceMarkdown)[0],
-    [sourceMarkdown],
+  const previews = useMemo(() => parseMarkdown(sourceMarkdown), [sourceMarkdown]);
+  const executableScenario = useMemo(() => {
+    const savedScenario = parseMarkdown(sourceMarkdown).find(
+      (item) => item.id === scenario.id,
+    );
+    return savedScenario
+      ? applyPositions(savedScenario, positionStore)
+      : scenario;
+  }, [positionStore, scenario, sourceMarkdown]);
+  const executableScenarios = useMemo(
+    () =>
+      previews.map((item) => applyPositions(item, positionStore)),
+    [positionStore, previews],
   );
 
   const markerDialog = pendingMarker ?? editingMarker;
@@ -354,28 +408,54 @@ export const App = (): ReactElement => {
       return nextHistory;
     });
 
-  const beginRun = (toRun = scenario) => {
+  const beginRuns = (scenarios: Scenario[]) => {
+    const toRun = scenarios.length ? scenarios : [scenario];
+    const sequence = ++runSequence.current;
     setRoute("run");
     setRunning(true);
+    runCancelled.current = false;
+    setRunningScenario(toRun[0]);
     setRunStartedAt(Date.now());
     setElapsedSeconds(0);
     setPreviewImage("");
-    setRunProgress({ current: 0, total: toRun.steps.length, step: "" });
-    setRunLog(["기본 URL 상태 점검 완료", "시나리오 실행을 시작했습니다."]);
-    void window.electronAPI
-      .runQa(toRun, { preview: livePreview })
-      .then((result) => {
+    setRunProgress({ current: 0, total: toRun[0].steps.length, step: "" });
+    setRunLog([`${toRun.length}개 시나리오 실행을 시작했습니다.`]);
+    void (async () => {
+      for (const [index, runScenario] of toRun.entries()) {
+        if (runCancelled.current || sequence !== runSequence.current) break;
+        setRunningScenario(runScenario);
+        setRunStartedAt(Date.now());
+        setElapsedSeconds(0);
+        setRunProgress({ current: 0, total: runScenario.steps.length, step: "" });
         setRunLog((logs) => [
           ...logs,
-          ...result.log,
-          result.status === "passed" ? "시나리오 통과" : "실행 실패",
+          `[${index + 1}/${toRun.length}] ${runScenario.title} 실행 시작`,
         ]);
-        if (result.status === "passed" || result.status === "failed")
-          recordRun(toRun, result.status);
-        setRunning(false);
-      })
-      .catch(() => setRunning(false));
+        try {
+          const result = await window.electronAPI.runQa(runScenario, {
+            preview: livePreview,
+          });
+          if (sequence !== runSequence.current) break;
+          setRunLog((logs) => [
+            ...logs,
+            ...result.log,
+            `[${index + 1}/${toRun.length}] ${runScenario.title} ${result.status === "passed" ? "통과" : result.status === "cancelled" ? "취소" : "실패"}`,
+          ]);
+          if (result.status === "passed" || result.status === "failed")
+            recordRun(runScenario, result.status);
+          if (result.status === "cancelled") break;
+        } catch {
+          setRunLog((logs) => [
+            ...logs,
+            `[${index + 1}/${toRun.length}] ${runScenario.title} 실행 실패`,
+          ]);
+        }
+      }
+      if (sequence === runSequence.current) setRunning(false);
+    })();
   };
+
+  const beginRun = (toRun = scenario) => beginRuns([toRun]);
 
   const placeMarker = (event: MouseEvent<HTMLDivElement>) => {
     const bounds = event.currentTarget.getBoundingClientRect();
@@ -411,6 +491,20 @@ export const App = (): ReactElement => {
     setEditingMarker(null);
   };
 
+  const saveMarkerEditsAndReturn = async () => {
+    const markdown = replaceScenarioMarkdown(sourceMarkdown, scenario);
+    updateSource(markdown);
+    try {
+      await window.electronAPI.saveScenarioMarkdown(markdown);
+      setNotice("시나리오를 저장했습니다.");
+    } catch {
+      setNotice("시나리오를 저장하지 못했습니다.");
+    } finally {
+      setSaveBeforeReturning(false);
+      setEditorMode("text");
+    }
+  };
+
   const panelDrag = (event: PointerEvent<HTMLElement>) => {
     const bounds = event.currentTarget.getBoundingClientRect();
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -419,6 +513,19 @@ export const App = (): ReactElement => {
       x: event.clientX - bounds.left,
       y: event.clientY - bounds.top,
     });
+  };
+
+  const reorderSteps = (draggedId: string, targetId: string) => {
+    const fromIndex = scenario.steps.findIndex((step) => step.id === draggedId);
+    const targetIndex = scenario.steps.findIndex((step) => step.id === targetId);
+    if (fromIndex < 0 || targetIndex < 0 || fromIndex === targetIndex) return;
+
+    const reordered = [...scenario.steps];
+    const [draggedStep] = reordered.splice(fromIndex, 1);
+    reordered.splice(targetIndex, 0, draggedStep);
+    const selectedStep = scenario.steps.find((step) => step.id === selectedId);
+    updateSteps(reordered);
+    if (selectedStep) setSelectedId(String(reordered.indexOf(selectedStep) + 1));
   };
 
   return (
@@ -444,10 +551,11 @@ export const App = (): ReactElement => {
             mode={editorMode}
             scenario={scenario}
             sourceMarkdown={sourceMarkdown}
-            preview={preview}
+            previews={previews}
             notice={notice}
             selectedId={selectedId}
             isAddingMarker={isAddingMarker}
+            markersVisible={markersVisible}
             stepPanelCollapsed={stepPanelCollapsed}
             stepPanelPosition={stepPanelPosition}
             stepPanelMoved={stepPanelMoved}
@@ -463,15 +571,19 @@ export const App = (): ReactElement => {
             onScenarioChange={setScenario}
             onRefresh={() => undefined}
             onBeginMarkerPlacement={() => setIsAddingMarker(true)}
+            onToggleMarkersVisible={() =>
+              setMarkersVisible((visible) => !visible)
+            }
             onPlaceMarker={placeMarker}
             onDeleteLast={() => updateSteps(scenario.steps.slice(0, -1))}
             onClearSteps={() => updateSteps([])}
-            onReturnToText={() => setEditorMode("text")}
+            onReturnToText={() => setSaveBeforeReturning(true)}
             onSelectStep={setSelectedId}
             onEditStep={setEditingMarker}
             onDeleteStep={(id) =>
               updateSteps(scenario.steps.filter((step) => step.id !== id))
             }
+            onReorderSteps={reorderSteps}
             onStepPanelDrag={panelDrag}
             onToggleStepPanel={setStepPanelCollapsed}
             onUpdateMarkerDialog={updateMarker}
@@ -484,7 +596,8 @@ export const App = (): ReactElement => {
         )}
         {route === "run" && (
           <RunPage
-            scenario={scenario}
+            scenario={running ? runningScenario : executableScenario}
+            scenarioCount={executableScenarios.length}
             running={running}
             manual={manual}
             runLog={runLog}
@@ -493,8 +606,11 @@ export const App = (): ReactElement => {
             runStartedAt={runStartedAt}
             livePreview={livePreview}
             previewImage={previewImage}
-            onRun={() => beginRun()}
+            onRun={() => beginRuns(executableScenarios)}
+            onImport={() => void importScenario()}
             onCancel={() => {
+              runCancelled.current = true;
+              runSequence.current += 1;
               void window.electronAPI.cancelQa();
               setRunning(false);
             }}
@@ -513,6 +629,28 @@ export const App = (): ReactElement => {
         )}
       </section>
       <BottomNavigation route={route} onNavigate={setRoute} />
+      {saveBeforeReturning && (
+        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="save-scenario-title">
+          <div className="manual-modal">
+            <h2 id="save-scenario-title">시나리오를 저장할까요?</h2>
+            <p>화면에서 수정한 실행 단계를 Markdown 시나리오에 반영합니다.</p>
+            <div className="modal-actions">
+              <button onClick={() => setSaveBeforeReturning(false)}>취소</button>
+              <button
+                onClick={() => {
+                  setSaveBeforeReturning(false);
+                  setEditorMode("text");
+                }}
+              >
+                저장하지 않고 돌아가기
+              </button>
+              <button className="button button-primary" onClick={() => void saveMarkerEditsAndReturn()}>
+                저장 후 돌아가기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {manual && (
         <div className="modal-backdrop" role="dialog" aria-modal="true">
           <div className="manual-modal">

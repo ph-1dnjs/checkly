@@ -9,6 +9,7 @@ import {
 
 type Props = {
   scenario: Scenario;
+  scenarioCount: number;
   running: boolean;
   manual: Step | null;
   runLog: string[];
@@ -18,12 +19,14 @@ type Props = {
   livePreview: boolean;
   previewImage: string;
   onRun: () => void;
+  onImport: () => void;
   onCancel: () => void;
   onLivePreviewChange: (value: boolean) => void;
 };
 
 export const RunPage = ({
   scenario,
+  scenarioCount,
   running,
   manual,
   runLog,
@@ -33,6 +36,7 @@ export const RunPage = ({
   livePreview,
   previewImage,
   onRun,
+  onImport,
   onCancel,
   onLivePreviewChange,
 }: Props) => {
@@ -63,9 +67,14 @@ export const RunPage = ({
             실행 취소
           </button>
         ) : (
-          <button className="button button-primary" onClick={onRun}>
-            ▶ 실행 시작
-          </button>
+          <div className="run-header-actions">
+            <button className="button button-secondary" onClick={onImport}>
+              시나리오 불러오기
+            </button>
+            <button className="button button-primary" onClick={onRun}>
+              ▶ 실행 시작
+            </button>
+          </div>
         )}
       </div>
       <div className="run-layout">
@@ -85,7 +94,7 @@ export const RunPage = ({
               <p>
                 {manual
                   ? `${manual.target} 값을 기다리고 있습니다.`
-                  : `${scenario.title} · ${scenario.steps.length}개 단계`}
+                  : `${scenarioCount}개 시나리오 · ${scenario.steps.length}개 단계`}
               </p>
             </div>
           </div>
