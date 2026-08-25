@@ -17,16 +17,18 @@ UI 작업은 [DESIGN.md](DESIGN.md)의 디자인 기준을 따릅니다.
 ```bash
 cp .env.example .env
 npm install
-npm run dev
+npm start
 ```
 
 ## 명령어
 
 ```bash
-npm test          # Playwright 테스트
+npm start         # 애플리케이션 실행
 npm run build     # 렌더러와 Electron 프로세스 빌드
 npm run package   # 설치 파일 생성
 ```
+
+현재 자동화 테스트는 구성되어 있지 않습니다.
 
 ## 환경 변수와 보안
 
