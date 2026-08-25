@@ -91,7 +91,29 @@ const inputFor = (page: Page, target: string) => {
   return page.getByLabel(matcher).or(page.getByPlaceholder(matcher)).or(page.locator(`input[name*="${normalized}"], textarea[name*="${normalized}"]`)).first()
 }
 const actionTargetFor = (target: string): string => target.replace(/\s+(버튼을?|버튼)?\s*클릭$/, '').trim()
-const buttonFor = (page: Page, target: string, occurrence = 1) => page.getByRole('button', { name: new RegExp(escapeRegex(actionTargetFor(target).replace(/\s*버튼$/, '').trim()), 'i') }).nth(Math.max(0, occurrence - 1))
+const buttonFor = async (page: Page, target: string, occurrence = 1) => {
+  const name = actionTargetFor(target)
+    .replace(/\s*(아이콘|icon)$/, '')
+    .replace(/\s*버튼$/, '')
+    .trim()
+  const buttons = page.getByRole('button', { name: new RegExp(escapeRegex(name), 'i') })
+  if (occurrence > 1) return buttons.nth(occurrence - 1)
+
+  for (let index = (await buttons.count()) - 1; index >= 0; index -= 1) {
+    const button = buttons.nth(index)
+    if (!(await button.isVisible())) continue
+    const isTopmost = await button.evaluate((element) => {
+      const rect = element.getBoundingClientRect()
+      const topElement = document.elementFromPoint(
+        rect.left + rect.width / 2,
+        rect.top + rect.height / 2,
+      )
+      return topElement === element || element.contains(topElement)
+    })
+    if (isTopmost) return button
+  }
+  return buttons.first()
+}
 const routeFor = (target: string): string => /^(https?:\/\/|\/)/.test(target.trim()) ? target.trim() : '/'
 const resultTargetFor = (text: string): string => {
   let target = text.trim()
@@ -134,7 +156,7 @@ const inspectScenario = async (scenario: QaScenario): Promise<Array<{ id: string
         : step.action === 'click' && resultTarget !== step.target
           ? page.getByText(resultTarget).first()
         : step.action === 'click'
-          ? buttonFor(page, step.target, step.occurrence)
+          ? await buttonFor(page, step.target, step.occurrence)
           : page.getByRole('heading', { name: target }).or(page.getByText(target).first())
       return { id: step.id, connected: await locator.count() > 0 }
     }))
@@ -202,7 +224,7 @@ const executeScenario = async (scenario: QaScenario, owner: BrowserWindow, optio
       if (step.action === 'click') {
         const resultTarget = resultTargetFor(step.target)
         if (resultTarget !== step.target) await waitForVisibleText(page, resultTarget)
-        else await buttonFor(page, step.target, step.occurrence).click()
+        else await (await buttonFor(page, step.target, step.occurrence)).click()
       }
       if (step.action === 'select') await page.getByLabel(step.target).selectOption(step.value ?? '')
       if (step.action === 'expectText') await waitForVisibleText(page, resultTargetFor(step.target))

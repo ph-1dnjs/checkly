@@ -19,6 +19,7 @@ type Props = {
   sourceMarkdown: string;
   scenarioFilePath: string | null;
   previews: Scenario[];
+  markerScenarioId: string;
   notice: string;
   selectedId: string;
   isAddingMarker: boolean;
@@ -30,6 +31,7 @@ type Props = {
   pendingMarker: Step | null;
   webviewKey: number;
   onModeChange: (mode: "text" | "marker") => void;
+  onSelectMarkerScenario: (id: string) => void;
   onImport: () => void;
   onExport: () => void;
   onSourceChange: (markdown: string) => void;
@@ -37,7 +39,7 @@ type Props = {
   onRefresh: () => void;
   onBeginMarkerPlacement: () => void;
   onToggleMarkersVisible: () => void;
-  onPlaceMarker: (event: MouseEvent<HTMLDivElement>) => void;
+  onPlaceMarker: (position: { x: number; y: number; target: string }) => void;
   onDeleteLast: () => void;
   onClearSteps: () => void;
   onReturnToText: () => void;
@@ -58,6 +60,7 @@ export const ScenarioEditorPage = ({
   sourceMarkdown,
   scenarioFilePath,
   previews,
+  markerScenarioId,
   notice,
   selectedId,
   isAddingMarker,
@@ -69,6 +72,7 @@ export const ScenarioEditorPage = ({
   pendingMarker,
   webviewKey,
   onModeChange,
+  onSelectMarkerScenario,
   onImport,
   onExport,
   onSourceChange,
@@ -98,10 +102,28 @@ export const ScenarioEditorPage = ({
     startY: number;
     moved: boolean;
   } | null>(null);
+  const targetFrameRef = useRef<Electron.WebviewTag | null>(null);
 
   const clearStepDrag = () => {
     stepDrag.current = null;
     setDraggedStepId(null);
+  };
+
+  const placeMarkerAt = async (event: MouseEvent<HTMLDivElement>) => {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const x = Math.round(((event.clientX - bounds.left) / bounds.width) * 1000) / 10;
+    const y = Math.round(((event.clientY - bounds.top) / bounds.height) * 1000) / 10;
+    const pageX = Math.round(event.clientX - bounds.left);
+    const pageY = Math.round(event.clientY - bounds.top);
+    let target = "";
+    try {
+      target = await targetFrameRef.current?.executeJavaScript(
+        `(() => { const element = document.elementFromPoint(${pageX}, ${pageY}); const interactive = element?.closest('[aria-label], button, [role="button"], a, input, select, textarea'); return interactive?.getAttribute('aria-label') || element?.getAttribute('aria-label') || ''; })()`,
+      ) ?? "";
+    } catch {
+      // 웹뷰가 아직 로드되지 않았거나 접근할 수 없는 경우 직접 입력으로 이어집니다.
+    }
+    onPlaceMarker({ x, y, target });
   };
 
   return (
@@ -131,7 +153,12 @@ export const ScenarioEditorPage = ({
         </button>
       </div>
     </div>
-    {notice && <div className="notice">✓ {notice}</div>}
+    <div
+      className={`notice${notice ? "" : " notice-hidden"}`}
+      aria-live="polite"
+    >
+      {notice && `✓ ${notice}`}
+    </div>
     {mode === "text" ? (
       <>
         <div className="editor-actions">
@@ -211,6 +238,21 @@ export const ScenarioEditorPage = ({
       <>
         <div className="marker-toolbar">
           <strong>{isAddingMarker ? "⌖ 위치 선택 중" : "✣ 핀 수정 중"}</strong>
+          {previews.length > 1 && (
+            <label className="marker-scenario-select">
+              편집 시나리오
+              <select
+                value={markerScenarioId}
+                onChange={(event) => onSelectMarkerScenario(event.target.value)}
+              >
+                {previews.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <button onClick={onBeginMarkerPlacement}>
             {isAddingMarker ? "다시 선택" : "마커 추가"}
           </button>
@@ -245,6 +287,7 @@ export const ScenarioEditorPage = ({
             </div>
             <div className="mock-page">
               <webview
+                ref={targetFrameRef}
                 className="target-frame"
                 src={scenario.url}
                 aria-label="시나리오 대상 페이지"
@@ -259,7 +302,7 @@ export const ScenarioEditorPage = ({
               {isAddingMarker && (
                 <div
                   className="marker-placement-layer"
-                  onClick={onPlaceMarker}
+                  onClick={(event) => void placeMarkerAt(event)}
                   aria-label="마커를 추가할 위치"
                 />
               )}

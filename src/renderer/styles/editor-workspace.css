@@ -9,4 +9,6 @@
 .step-list li[data-step-id].dragging { opacity:.45; }
 .scenario-preview { display:flex; flex-direction:column; }.preview-scenario-list { display:grid; flex:1; min-height:0; gap:12px; overflow:auto; padding:16px; }.preview-scenario-list .preview-scenario { margin:0; }.preview-scenario-list .preview-before { margin:12px; }.scenario-preview .preview-note { flex:none; margin:0 16px 16px; }
 .editor-actions .scenario-file-path { min-width:0; margin-left:auto; overflow:hidden; color:#6c6e63; font-size:12px; text-align:right; text-overflow:ellipsis; white-space:nowrap; }
+.marker-scenario-select { display:flex; align-items:center; gap:6px; color:#4d4f46; font-size:12px; font-weight:700; }.marker-scenario-select select { max-width:150px; padding:6px 8px; border:1px solid #bfc1b7; border-radius:4px; background:#fff; color:#23251d; }
+.notice { box-sizing:border-box; min-height:42px; }.notice-hidden { visibility:hidden; }
 .input-target-alert { display:grid; gap:3px; margin:-2px 0 13px; padding:10px; border:1px solid #e5c573; border-radius:4px; background:#fff7df; color:#79530d; font-size:12px; line-height:1.5; }.input-target-alert strong { font-size:12px; }

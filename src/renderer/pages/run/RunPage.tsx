@@ -6,9 +6,11 @@ import {
   type Scenario,
   type Step,
 } from "../../shared/model/scenario";
+import { useEffect, useState } from "react";
 
 type Props = {
   scenario: Scenario;
+  scenarios: Scenario[];
   scenarioCount: number;
   running: boolean;
   manual: Step | null;
@@ -26,6 +28,7 @@ type Props = {
 
 export const RunPage = ({
   scenario,
+  scenarios,
   scenarioCount,
   running,
   manual,
@@ -40,6 +43,19 @@ export const RunPage = ({
   onCancel,
   onLivePreviewChange,
 }: Props) => {
+  const [previewIndex, setPreviewIndex] = useState(0);
+  const previewScenario = scenarios[previewIndex] ?? scenario;
+
+  useEffect(() => {
+    setPreviewIndex((index) => Math.min(index, Math.max(0, scenarios.length - 1)));
+  }, [scenarios.length]);
+
+  useEffect(() => {
+    if (!running) return;
+    const index = scenarios.findIndex((item) => item.id === scenario.id);
+    if (index >= 0) setPreviewIndex(index);
+  }, [running, scenario.id, scenarios]);
+
   const estimatedSeconds = estimateDurationSeconds(scenario);
   const progressPercent = runProgress.total
     ? Math.round((runProgress.current / runProgress.total) * 100)
@@ -102,16 +118,39 @@ export const RunPage = ({
             className="run-scenario-preview"
             aria-label="실행 시나리오 미리보기"
           >
-            <div>
-              <strong>{scenario.title}</strong>
-              <span>{scenario.url}</span>
+            <div className="run-preview-heading">
+              <div>
+                <strong>{previewScenario.title}</strong>
+                <span>{previewScenario.url}</span>
+              </div>
+              {scenarios.length > 1 && (
+                <div className="run-preview-navigation" aria-label="시나리오 미리보기 이동">
+                  <button
+                    onClick={() => setPreviewIndex((index) => index - 1)}
+                    disabled={previewIndex === 0}
+                    aria-label="이전 시나리오"
+                  >
+                    ‹
+                  </button>
+                  <span>{previewIndex + 1} / {scenarios.length}</span>
+                  <button
+                    onClick={() => setPreviewIndex((index) => index + 1)}
+                    disabled={previewIndex === scenarios.length - 1}
+                    aria-label="다음 시나리오"
+                  >
+                    ›
+                  </button>
+                </div>
+              )}
             </div>
             <ol>
-              {scenario.steps.map((step) => (
+              {previewScenario.steps.map((step) => (
                 <li
                   key={step.id}
                   className={
-                    running && step.id === String(runProgress.current)
+                    running &&
+                    previewScenario.id === scenario.id &&
+                    step.id === String(runProgress.current)
                       ? "current"
                       : ""
                   }

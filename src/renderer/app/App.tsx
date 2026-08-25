@@ -3,7 +3,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type MouseEvent,
   type PointerEvent,
   type ReactElement,
 } from "react";
@@ -86,10 +85,14 @@ const parseMarkdown = (markdown: string): Scenario[] =>
             )
             .trim();
           const manual = text.match(/^(.+?)\s+수동 입력(?:\s*\[(.+)\])?$/);
-          const fill = text.match(
-            /^(.+?)(?:에|을|를)?\s*['"](.*)['"]\s*(?:자동\s*)?(?:입력|작성)/,
-          );
-          const select = text.match(/^(.+?)(?:에서|에)\s*['"](.*)['"]\s*선택/);
+          const fill =
+            text.match(/^(.+?)\s*`(.*?)`\s*(?:자동\s*)?(?:입력|작성)/) ??
+            text.match(
+              /^(.+?)(?:에|을|를)?\s*['"](.*)['"]\s*(?:자동\s*)?(?:입력|작성)/,
+            );
+          const select =
+            text.match(/^(.+?)\s*`(.*?)`\s*선택/) ??
+            text.match(/^(.+?)(?:에서|에)\s*['"](.*)['"]\s*선택/);
           if (/보인다|포함된다|확인된다|표시된다|결과\s*확인/.test(text))
             return {
               id: String(stepIndex + 1),
@@ -110,7 +113,7 @@ const parseMarkdown = (markdown: string): Scenario[] =>
             return {
               id: String(stepIndex + 1),
               action: "fill",
-              target: fill[1],
+              target: fill[1].replace(/(에서|에|을|를)$/, "").trim(),
               value: fill[2],
               connected: true,
             };
@@ -118,7 +121,7 @@ const parseMarkdown = (markdown: string): Scenario[] =>
             return {
               id: String(stepIndex + 1),
               action: "select",
-              target: select[1],
+              target: select[1].replace(/(에서|에|을|를)$/, "").trim(),
               value: select[2],
               connected: true,
             };
@@ -166,9 +169,9 @@ const scenarioToMarkdown = (scenario: Scenario): string =>
     ...scenario.steps.map((step, index) => {
       const prefix = index === 0 ? "Given" : step.action === "expectText" ? "Then" : "And";
       if (step.action === "goto") return `${prefix} ${step.target} 페이지로 이동한다`;
-      if (step.action === "fill") return `${prefix} ${step.target}에 '${step.value ?? ""}' 입력`;
+      if (step.action === "fill") return `${prefix} ${step.target}에 \`${step.value ?? ""}\` 입력`;
       if (step.action === "manualFill") return `${prefix} ${step.target} 수동 입력${step.prompt ? ` [${step.prompt}]` : ""}`;
-      if (step.action === "select") return `${prefix} ${step.target}에서 '${step.value ?? ""}' 선택`;
+      if (step.action === "select") return `${prefix} ${step.target}에서 \`${step.value ?? ""}\` 선택`;
       if (step.action === "expectText") return `${prefix} ${step.target} 텍스트가 보인다`;
       return `${prefix} ${step.target} 버튼 클릭`;
     }),
@@ -181,7 +184,9 @@ const replaceScenarioMarkdown = (
     .split(/(?=^#{1,3}\s*시나리오:|^Scenario:)/im)
     .filter(Boolean);
   const index = parseMarkdown(sourceMarkdown).findIndex(
-    (item) => item.id === scenario.id,
+    (item) =>
+      item.id === scenario.id ||
+      (item.title === scenario.title && item.url === scenario.url),
   );
   if (index < 0) return scenarioToMarkdown(scenario);
   blocks[index] = scenarioToMarkdown(scenario);
@@ -191,6 +196,7 @@ const replaceScenarioMarkdown = (
 export const App = (): ReactElement => {
   const [scenario, setScenario] = useState(seedScenario);
   const [sourceMarkdown, setSourceMarkdown] = useState(initialMarkdown);
+  const [markerScenarioId, setMarkerScenarioId] = useState("");
   const [scenarioFilePath, setScenarioFilePath] = useState<string | null>(null);
   const [route, setRoute] = useState<Route>("scenarios");
   const [editorMode, setEditorMode] = useState<"text" | "marker">("text");
@@ -254,7 +260,10 @@ export const App = (): ReactElement => {
         if (markdown) {
           setSourceMarkdown(markdown);
           const first = parseMarkdown(markdown)[0];
-          if (first) setScenario(applyPositions(first, store));
+          if (first) {
+            setScenario(applyPositions(first, store));
+            setMarkerScenarioId(first.id);
+          }
         }
       })
       .catch(() => setNotice("저장된 시나리오를 불러오지 못했습니다."));
@@ -326,6 +335,12 @@ export const App = (): ReactElement => {
   }, [running, runStartedAt]);
 
   useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(""), 3000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
+
+  useEffect(() => {
     if (!stepPanelDrag) return;
     const move = (event: globalThis.PointerEvent) => {
       setStepPanelMoved(true);
@@ -383,6 +398,7 @@ export const App = (): ReactElement => {
     if (next) {
       const positioned = applyPositions(next, positionStore);
       setScenario(positioned);
+      setMarkerScenarioId(positioned.id);
       setSelectedId(positioned.steps[0]?.id ?? "");
     }
   };
@@ -480,16 +496,15 @@ export const App = (): ReactElement => {
 
   const beginRun = (toRun = scenario) => beginRuns([toRun]);
 
-  const placeMarker = (event: MouseEvent<HTMLDivElement>) => {
-    const bounds = event.currentTarget.getBoundingClientRect();
+  const placeMarker = ({ x, y, target }: { x: number; y: number; target: string }) => {
     const index = scenario.steps.length;
     setPendingMarker({
       id: String(index + 1),
       action: "click",
-      target: "",
+      target,
       connected: true,
-      x: Math.round(((event.clientX - bounds.left) / bounds.width) * 1000) / 10,
-      y: Math.round(((event.clientY - bounds.top) / bounds.height) * 1000) / 10,
+      x,
+      y,
       color: markerColor(index),
     });
     setIsAddingMarker(false);
@@ -530,6 +545,17 @@ export const App = (): ReactElement => {
     }
   };
 
+  const selectMarkerScenario = (id: string) => {
+    const nextMarkdown = replaceScenarioMarkdown(sourceMarkdown, scenario);
+    const nextScenario = parseMarkdown(nextMarkdown).find((item) => item.id === id);
+    if (!nextScenario) return;
+    const positioned = applyPositions(nextScenario, positionStore);
+    setSourceMarkdown(nextMarkdown);
+    setScenario(positioned);
+    setMarkerScenarioId(id);
+    setSelectedId(positioned.steps[0]?.id ?? "");
+  };
+
   const panelDrag = (event: PointerEvent<HTMLElement>) => {
     const bounds = event.currentTarget.getBoundingClientRect();
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -564,6 +590,7 @@ export const App = (): ReactElement => {
             summary={runSummary}
             onEdit={(item) => {
               setScenario(item);
+              setMarkerScenarioId(item.id);
               setEditorMode("marker");
               setRoute("editor");
             }}
@@ -578,6 +605,7 @@ export const App = (): ReactElement => {
             sourceMarkdown={sourceMarkdown}
             scenarioFilePath={scenarioFilePath}
             previews={previews}
+            markerScenarioId={markerScenarioId || previews[0]?.id || ""}
             notice={notice}
             selectedId={selectedId}
             isAddingMarker={isAddingMarker}
@@ -589,6 +617,7 @@ export const App = (): ReactElement => {
             pendingMarker={pendingMarker}
             webviewKey={0}
             onModeChange={setEditorMode}
+            onSelectMarkerScenario={selectMarkerScenario}
             onImport={() => void importScenario()}
             onExport={() => void saveScenarioFile()}
             onSourceChange={updateSource}
@@ -621,6 +650,7 @@ export const App = (): ReactElement => {
         {route === "run" && (
           <RunPage
             scenario={running ? runningScenario : executableScenario}
+            scenarios={executableScenarios}
             scenarioCount={executableScenarios.length}
             running={running}
             manual={manual}
