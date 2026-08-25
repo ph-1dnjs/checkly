@@ -43,7 +43,7 @@ declare global {
         options?: { preview?: boolean; workerId?: string },
       ) => Promise<{ status: string; log: string[] }>;
       finishQaWorker: (workerId: string) => Promise<void>;
-      openFailureVideo: (value: string) => Promise<void>;
+      downloadFailureVideo: (value: string) => Promise<string | null>;
       submitManualInput: (value: string) => Promise<void>;
       cancelQa: () => Promise<void>;
       onManualInputRequired: (callback: (value: Step) => void) => () => void;
@@ -264,6 +264,7 @@ export const App = (): ReactElement => {
   const [livePreview, setLivePreview] = useState(false);
   const [previewImage, setPreviewImage] = useState("");
   const [failureVideoPath, setFailureVideoPath] = useState<string | null>(null);
+  const [downloadToast, setDownloadToast] = useState(false);
   const [notice, setNotice] = useState("");
   const [runHistory, setRunHistory] = useState<RunRecord[]>([]);
   const [runSummary, setRunSummary] = useState<RunSummary>({
@@ -373,6 +374,12 @@ export const App = (): ReactElement => {
     const timer = window.setTimeout(() => setNotice(""), 3000);
     return () => window.clearTimeout(timer);
   }, [notice]);
+
+  useEffect(() => {
+    if (!downloadToast) return;
+    const timer = window.setTimeout(() => setDownloadToast(false), 3000);
+    return () => window.clearTimeout(timer);
+  }, [downloadToast]);
 
   useEffect(() => {
     if (!stepPanelDrag) return;
@@ -489,6 +496,7 @@ export const App = (): ReactElement => {
     setRunStartedAt(Date.now());
     setElapsedSeconds(0);
     setPreviewImage("");
+    setFailureVideoPath(null);
     setRunProgress({ current: 0, total: toRun[0].steps.length, step: "" });
     setRunLog([`${toRun.length}개 시나리오 실행을 시작했습니다.`]);
     void (async () => {
@@ -703,19 +711,24 @@ export const App = (): ReactElement => {
               setRunning(false);
             }}
             onLivePreviewChange={setLivePreview}
+            failureVideoAvailable={Boolean(failureVideoPath)}
+            onDownloadFailureVideo={() => {
+              if (!failureVideoPath) return;
+              void window.electronAPI
+                .downloadFailureVideo(failureVideoPath)
+                .then((filePath) => {
+                  if (filePath) setDownloadToast(true);
+                })
+                .catch(() => setNotice("실패 실행 영상을 다운로드하지 못했습니다."));
+            }}
           />
         )}
-        {failureVideoPath && (
-          <button
-            className="button button-secondary"
-            onClick={() =>
-              void window.electronAPI.openFailureVideo(failureVideoPath)
-            }
-          >
-            실패 실행 영상 위치 열기
-          </button>
-        )}
       </section>
+      {downloadToast && (
+        <div className="download-toast" role="status">
+          ✓ 실패 실행 영상을 다운로드했습니다.
+        </div>
+      )}
       <BottomNavigation route={route} onNavigate={setRoute} />
       {saveBeforeReturning && (
         <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="save-scenario-title">

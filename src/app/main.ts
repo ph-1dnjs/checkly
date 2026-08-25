@@ -4,7 +4,7 @@ import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import { autoUpdater } from 'electron-updater'
 import path from 'node:path'
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { chromium, type Browser, type BrowserContext, type Page, type Video } from '@playwright/test'
 
 type QaStep = { id: string; action: 'goto' | 'fill' | 'manualFill' | 'click' | 'select' | 'expectText'; target: string; value?: string; required?: boolean; prompt?: string; condition?: string; waitSeconds?: number; occurrence?: number }
@@ -82,6 +82,7 @@ const failureVideoFileName = (scenario: QaScenario): string => {
   const title = scenario.title.replace(/[\\/:*?"<>|]/g, '_').trim() || '시나리오'
   return `${title}_실패${timestamp}.webm`
 }
+const failureVideoDirectory = (): string => path.join(app.getPath('userData'), 'videos', 'failures')
 
 const readableStep = (step: QaStep): string => `단계 ${step.id}: ${step.target} ${step.action === 'manualFill' ? '수동 입력' : step.action}`
 const escapeRegex = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -257,7 +258,8 @@ const executeScenario = async (scenario: QaScenario, owner: BrowserWindow, optio
     if (failed && video) {
       try {
         const sourcePath = await video.path()
-        const destination = path.join(app.getPath('downloads'), failureVideoFileName(scenario))
+        const destination = path.join(failureVideoDirectory(), failureVideoFileName(scenario))
+        await mkdir(failureVideoDirectory(), { recursive: true })
         await rename(sourcePath, destination)
         owner.webContents.send('qa:failure-video', destination)
       } catch { owner.webContents.send('qa:failure-video', null) }
@@ -304,10 +306,12 @@ app.whenReady().then(() => {
   ipcMain.handle('qa:start', async (event, scenario: QaScenario, options: QaRunOptions) => executeScenario(scenario, BrowserWindow.fromWebContents(event.sender)!, options))
   ipcMain.handle('qa:finish-worker', (_event, workerId: string) => closeScenarioWorker(workerId))
   ipcMain.handle('qa:inspect', (_event, scenario: QaScenario) => inspectScenario(scenario))
-  ipcMain.handle('qa:open-failure-video', async (_event, filePath: string) => {
-    if (path.dirname(filePath) !== app.getPath('downloads')) throw new Error('허용되지 않은 영상 경로입니다.')
+  ipcMain.handle('qa:download-failure-video', async (_event, filePath: string) => {
+    if (path.dirname(filePath) !== failureVideoDirectory()) throw new Error('허용되지 않은 영상 경로입니다.')
     await readFile(filePath)
-    shell.showItemInFolder(filePath)
+    const destination = path.join(app.getPath('downloads'), path.basename(filePath))
+    await copyFile(filePath, destination)
+    return destination
   })
   ipcMain.handle('qa:manual-input', (_event, value: string) => activeRun?.resolveManual?.(value))
   ipcMain.handle('qa:cancel', async () => {

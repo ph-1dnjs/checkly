@@ -12,7 +12,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   inspectScenario: (scenario: unknown): Promise<unknown> => ipcRenderer.invoke('qa:inspect', scenario),
   runQa: (scenario: unknown, options?: { preview?: boolean; workerId?: string }): Promise<unknown> => ipcRenderer.invoke('qa:start', scenario, options),
   finishQaWorker: (workerId: string): Promise<void> => ipcRenderer.invoke('qa:finish-worker', workerId),
-  openFailureVideo: (filePath: string): Promise<void> => ipcRenderer.invoke('qa:open-failure-video', filePath),
+  downloadFailureVideo: (filePath: string): Promise<string | null> => ipcRenderer.invoke('qa:download-failure-video', filePath),
   submitManualInput: (value: string): Promise<void> => ipcRenderer.invoke('qa:manual-input', value),
   cancelQa: (): Promise<void> => ipcRenderer.invoke('qa:cancel'),
   onManualInputRequired: (callback: (step: unknown) => void): (() => void) => {
