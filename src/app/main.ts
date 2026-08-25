@@ -7,7 +7,7 @@ import path from 'node:path'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { chromium, type Browser, type BrowserContext, type Page, type Video } from '@playwright/test'
 
-type QaStep = { id: string; action: 'goto' | 'fill' | 'manualFill' | 'click' | 'select' | 'expectText'; target: string; value?: string; required?: boolean; prompt?: string; occurrence?: number }
+type QaStep = { id: string; action: 'goto' | 'fill' | 'manualFill' | 'click' | 'select' | 'expectText'; target: string; value?: string; required?: boolean; prompt?: string; condition?: string; waitSeconds?: number; occurrence?: number }
 type QaScenario = { title: string; url: string; steps: QaStep[] }
 type QaRunOptions = { preview?: boolean; workerId?: string }
 let activeRun: { browser?: Browser; resolveManual?: (value: string | null) => void; cancelled: boolean } | null = null
@@ -127,9 +127,9 @@ const resultTargetFor = (text: string): string => {
   }
   return target
 }
-const waitForVisibleText = async (page: Page, target: string): Promise<void> => {
+const waitForVisibleText = async (page: Page, target: string, timeout = 10_000): Promise<void> => {
   const matcher = new RegExp(escapeRegex(target), 'i')
-  const deadline = Date.now() + 10_000
+  const deadline = Date.now() + timeout
   while (Date.now() < deadline) {
     const candidates = await page.getByText(matcher).all()
     for (const candidate of candidates) {
@@ -139,7 +139,16 @@ const waitForVisibleText = async (page: Page, target: string): Promise<void> => 
     }
     await page.waitForTimeout(100)
   }
-  throw new Error(`결과 텍스트 '${target}'가 10초 안에 화면에 표시되지 않았습니다.`)
+  throw new Error(`결과 텍스트 '${target}'가 ${Math.ceil(timeout / 1000)}초 안에 화면에 표시되지 않았습니다.`)
+}
+const hasVisibleText = async (page: Page, target: string): Promise<boolean> => {
+  const candidates = await page.getByText(new RegExp(escapeRegex(target), 'i')).all()
+  for (const candidate of candidates) {
+    try {
+      if (await candidate.isVisible()) return true
+    } catch { /* 화면 전환 중 분리된 요소는 조건 불충족으로 처리한다. */ }
+  }
+  return false
 }
 
 const inspectScenario = async (scenario: QaScenario): Promise<Array<{ id: string; connected: boolean }>> => {
@@ -211,6 +220,11 @@ const executeScenario = async (scenario: QaScenario, owner: BrowserWindow, optio
     }
     for (const [index, step] of scenario.steps.entries()) {
       if (run.cancelled) { const finalLog = [...log, '실행이 취소되었습니다.']; return { status: 'cancelled', log: finalLog, reportPath: await writeRunReport(scenario, 'cancelled', finalLog) } }
+      if (step.condition && !(await hasVisibleText(page, step.condition))) {
+        log.push(`${readableStep(step)} — 조건 '${step.condition}' 미충족으로 건너뜀`)
+        owner.webContents.send('qa:progress', { current: index + 1, total: scenario.steps.length, step: readableStep(step) })
+        continue
+      }
       if (step.action === 'goto') await page.goto(new URL(routeFor(step.target), scenario.url).toString(), { waitUntil: 'domcontentloaded' })
       if (step.action === 'fill') await inputFor(page, step.target).fill(step.value ?? '')
       if (step.action === 'manualFill') {
@@ -227,7 +241,7 @@ const executeScenario = async (scenario: QaScenario, owner: BrowserWindow, optio
         else await (await buttonFor(page, step.target, step.occurrence)).click()
       }
       if (step.action === 'select') await page.getByLabel(step.target).selectOption(step.value ?? '')
-      if (step.action === 'expectText') await waitForVisibleText(page, resultTargetFor(step.target))
+      if (step.action === 'expectText') await waitForVisibleText(page, resultTargetFor(step.target), (step.waitSeconds ?? 10) * 1000)
       if (step.action !== 'manualFill') log.push(`${readableStep(step)} — 완료`)
       owner.webContents.send('qa:progress', { current: index + 1, total: scenario.steps.length, step: readableStep(step) })
     }

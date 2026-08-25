@@ -498,6 +498,19 @@ export const ScenarioEditorPage = ({
               placeholder="예: 로그인 버튼"
             />
           </label>
+          <label>
+            실행 조건 (선택)
+            <input
+              value={markerDialog.condition ?? ""}
+              onChange={(event) =>
+                onUpdateMarkerDialog({
+                  condition: event.target.value || undefined,
+                })
+              }
+              placeholder="예: 로그인 완료"
+            />
+            <small>화면에 이 텍스트가 보일 때만 실행합니다.</small>
+          </label>
           {["fill", "manualFill"].includes(markerDialog.action) && (
             <div className="input-target-alert" role="alert">
               <strong>입력 대상 확인</strong>
@@ -508,13 +521,29 @@ export const ScenarioEditorPage = ({
             </div>
           )}
           {markerDialog.action === "expectText" && (
-            <div className="input-target-alert" role="alert">
-              <strong>확인할 결과 텍스트 입력</strong>
-              <span>
-                라벨에 실행 후 화면에 표시되어야 하는 텍스트를 입력해 주세요.
-                해당 텍스트를 찾지 못하면 결과 확인 단계가 실패합니다.
-              </span>
-            </div>
+            <>
+              <div className="input-target-alert" role="alert">
+                <strong>확인할 결과 텍스트 입력</strong>
+                <span>
+                  라벨에 실행 후 화면에 표시되어야 하는 텍스트를 입력해 주세요.
+                  해당 텍스트를 찾지 못하면 결과 확인 단계가 실패합니다.
+                </span>
+              </div>
+              <label>
+                결과 확인 대기 시간 (초)
+                <input
+                  type="number"
+                  min="1"
+                  value={markerDialog.waitSeconds ?? 10}
+                  onChange={(event) =>
+                    onUpdateMarkerDialog({
+                      waitSeconds: Math.max(1, Number(event.target.value) || 10),
+                    })
+                  }
+                />
+                <small>기본 대기 시간은 10초입니다.</small>
+              </label>
+            </>
           )}
           {markerDialog.action === "click" && (
             <label>

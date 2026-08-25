@@ -13,6 +13,8 @@ export type Step = {
   value?: string;
   required?: boolean;
   prompt?: string;
+  condition?: string;
+  waitSeconds?: number;
   occurrence?: number;
   connected?: boolean;
   x?: number;
@@ -28,7 +30,7 @@ export type Scenario = {
 };
 export type MarkerPosition = Pick<
   Step,
-  "action" | "target" | "value" | "prompt" | "occurrence" | "x" | "y" | "color"
+  "action" | "target" | "value" | "prompt" | "condition" | "waitSeconds" | "occurrence" | "x" | "y" | "color"
 >;
 export type MarkerPositionStore = Record<string, MarkerPosition[]>;
 export type RunRecord = {
@@ -93,7 +95,13 @@ export const estimateDurationSeconds = (scenario: Scenario): number =>
   scenario.steps.reduce(
     (seconds, step) =>
       seconds +
-      (step.action === "goto" ? 3 : step.action === "manualFill" ? 15 : 1),
+      (step.action === "goto"
+        ? 3
+        : step.action === "manualFill"
+          ? 15
+          : step.action === "expectText"
+            ? step.waitSeconds ?? 1
+            : 1),
     0,
   );
 export const formatDuration = (seconds: number): string =>

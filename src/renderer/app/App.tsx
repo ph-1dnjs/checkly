@@ -75,9 +75,17 @@ const parseMarkdown = (markdown: string): Scenario[] =>
           ?.slice(4)
           .trim() || seedScenario.url;
       const steps = lines
-        .filter((line) => /^(Given|When|Then|And|But)\s+/i.test(line))
+        .filter((line) => /^(Given|When|Then|And|But|If)\s+/i.test(line))
         .map((line, stepIndex): Step => {
-          const text = line.replace(/^(Given|When|Then|And|But)\s+/i, "");
+          const rawText = line.replace(/^(Given|When|Then|And|But|If)\s+/i, "");
+          const conditional = rawText.match(
+            /^화면에\s*`(.+?)`\s*가\s*있는\s*경우\s+(.+)$/,
+          );
+          const condition = conditional?.[1];
+          const conditionalText = conditional?.[2] ?? rawText;
+          const waitMatch = conditionalText.match(/\[대기\s*(\d+)초\]\s*$/);
+          const waitSeconds = waitMatch ? Number(waitMatch[1]) : undefined;
+          const text = conditionalText.replace(/\s*\[대기\s*\d+초\]\s*$/, "");
           const result = text
             .replace(
               /\s*(텍스트가\s*)?(보인다|포함된다|확인된다|표시된다).*/,
@@ -98,6 +106,8 @@ const parseMarkdown = (markdown: string): Scenario[] =>
               id: String(stepIndex + 1),
               action: "expectText",
               target: result,
+              condition,
+              waitSeconds,
               connected: false,
             };
           if (manual)
@@ -107,6 +117,7 @@ const parseMarkdown = (markdown: string): Scenario[] =>
               target: manual[1],
               prompt: manual[2],
               required: true,
+              condition,
               connected: true,
             };
           if (fill)
@@ -115,6 +126,7 @@ const parseMarkdown = (markdown: string): Scenario[] =>
               action: "fill",
               target: fill[1].replace(/(에서|에|을|를)$/, "").trim(),
               value: fill[2],
+              condition,
               connected: true,
             };
           if (select)
@@ -123,6 +135,7 @@ const parseMarkdown = (markdown: string): Scenario[] =>
               action: "select",
               target: select[1].replace(/(에서|에|을|를)$/, "").trim(),
               value: select[2],
+              condition,
               connected: true,
             };
           if (/(페이지로?\s*이동|접속|열기)/.test(text))
@@ -132,12 +145,14 @@ const parseMarkdown = (markdown: string): Scenario[] =>
               target:
                 text.replace(/\s*(페이지로?\s*이동|접속|열기).*/, "").trim() ||
                 "/",
+              condition,
               connected: true,
             };
           return {
             id: String(stepIndex + 1),
             action: "click",
             target: text.replace(/\s+(버튼을?|버튼)?\s*클릭.*/, "").trim(),
+            condition,
             connected: true,
           };
         });
@@ -154,7 +169,9 @@ const applyPositions = (
         item.action === step.action &&
         item.target === step.target &&
         item.value === step.value &&
-        item.prompt === step.prompt,
+        item.prompt === step.prompt &&
+        item.condition === step.condition &&
+        item.waitSeconds === step.waitSeconds,
     );
     return position
       ? { ...step, x: position.x, y: position.y, color: position.color }
@@ -168,12 +185,19 @@ const scenarioToMarkdown = (scenario: Scenario): string =>
     "",
     ...scenario.steps.map((step, index) => {
       const prefix = index === 0 ? "Given" : step.action === "expectText" ? "Then" : "And";
-      if (step.action === "goto") return `${prefix} ${step.target} 페이지로 이동한다`;
-      if (step.action === "fill") return `${prefix} ${step.target}에 \`${step.value ?? ""}\` 입력`;
-      if (step.action === "manualFill") return `${prefix} ${step.target} 수동 입력${step.prompt ? ` [${step.prompt}]` : ""}`;
-      if (step.action === "select") return `${prefix} ${step.target}에서 \`${step.value ?? ""}\` 선택`;
-      if (step.action === "expectText") return `${prefix} ${step.target} 텍스트가 보인다`;
-      return `${prefix} ${step.target} 버튼 클릭`;
+      const action =
+        step.action === "goto"
+          ? `${step.target} 페이지로 이동한다`
+          : step.action === "fill"
+            ? `${step.target}에 \`${step.value ?? ""}\` 입력`
+            : step.action === "manualFill"
+              ? `${step.target} 수동 입력${step.prompt ? ` [${step.prompt}]` : ""}`
+              : step.action === "select"
+                ? `${step.target}에서 \`${step.value ?? ""}\` 선택`
+                : step.action === "expectText"
+                  ? `${step.target} 텍스트가 보인다${step.waitSeconds ? ` [대기 ${step.waitSeconds}초]` : ""}`
+                  : `${step.target} 버튼 클릭`;
+      return `${prefix} ${step.condition ? `화면에 \`${step.condition}\`가 있는 경우 ` : ""}${action}`;
     }),
   ].join("\n");
 const replaceScenarioMarkdown = (
@@ -281,6 +305,8 @@ export const App = (): ReactElement => {
                 target: step.target,
                 value: step.value,
                 prompt: step.prompt,
+                condition: step.condition,
+                waitSeconds: step.waitSeconds,
                 occurrence: step.occurrence,
                 x: step.x,
                 y: step.y,
