@@ -11,7 +11,7 @@ test('restores markers and resumes a paused manual-input step without exposing t
 
   await page.getByRole('button', { name: '변경사항 저장' }).click()
   await expect.poll(() => page.evaluate(() => localStorage.getItem('autoqa-scenarios'))).toContain('# 시나리오: 주문 조회')
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('autoqa-scenarios'))).not.toContain("이메일에 'qa@example.com' 입력")
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('autoqa-scenarios'))).not.toContain('`이메일`에 `qa@example.com` 입력')
   await page.getByRole('button', { name: '실행', exact: true }).click()
   await expect(page.getByRole('heading', { name: '수동 입력이 필요합니다' })).toBeVisible()
   await page.getByPlaceholder('입력값').fill('123456')
@@ -35,6 +35,6 @@ test('edits a marker value and keeps an unmatched manual marker until it is reco
   await page.getByRole('button', { name: '현재 요소에 재연결' }).click()
   await page.getByRole('button', { name: '변경사항 저장' }).click()
 
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('autoqa-scenarios'))).toContain("이메일에 'changed@example.com' 입력")
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('autoqa-scenarios'))).toContain('인증번호 수동 입력 [인증번호를 입력해 주세요.]')
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('autoqa-scenarios'))).toContain('`이메일`에 `changed@example.com` 입력')
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('autoqa-scenarios'))).toContain('`인증번호` 수동 입력 [인증번호를 입력해 주세요.]')
 })

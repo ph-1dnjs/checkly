@@ -54,9 +54,11 @@ declare global {
   }
 }
 
-const initialMarkdown = `# 시나리오: 로그인\nurl: https://example.com/login\n\nGiven /login 페이지로 이동한다\nAnd 이메일에 'qa@example.com' 입력\nAnd 인증번호 수동 입력 [인증번호를 입력해 주세요.]\nAnd 로그인 버튼 클릭\nThen 대시보드 텍스트가 보인다`;
+const initialMarkdown = `# 시나리오: 로그인\nurl: https://example.com/login\n\nGiven \`/login\` 페이지로 이동한다\nAnd \`이메일\`에 \`qa@example.com\` 입력\nAnd \`인증번호\` 수동 입력 [인증번호를 입력해 주세요.]\nAnd \`로그인\` 버튼 클릭\nThen \`대시보드\` 텍스트가 보인다`;
 const positionKey = (scenario: Scenario) =>
   `${scenario.title}\n${scenario.url}`;
+const unquoteMarkdownValue = (value: string) =>
+  value.trim().replace(/^`([\s\S]*)`$/, "$1");
 const parseMarkdown = (markdown: string): Scenario[] =>
   markdown
     .split(/(?=^#{1,3}\s*시나리오:|^Scenario:)/im)
@@ -105,7 +107,7 @@ const parseMarkdown = (markdown: string): Scenario[] =>
             return {
               id: String(stepIndex + 1),
               action: "expectText",
-              target: result,
+              target: unquoteMarkdownValue(result),
               condition,
               waitSeconds,
               connected: false,
@@ -114,7 +116,7 @@ const parseMarkdown = (markdown: string): Scenario[] =>
             return {
               id: String(stepIndex + 1),
               action: "manualFill",
-              target: manual[1],
+              target: unquoteMarkdownValue(manual[1]),
               prompt: manual[2],
               required: true,
               condition,
@@ -124,7 +126,9 @@ const parseMarkdown = (markdown: string): Scenario[] =>
             return {
               id: String(stepIndex + 1),
               action: "fill",
-              target: fill[1].replace(/(에서|에|을|를)$/, "").trim(),
+              target: unquoteMarkdownValue(
+                fill[1].replace(/(에서|에|을|를)$/, "").trim(),
+              ),
               value: fill[2],
               condition,
               connected: true,
@@ -133,7 +137,9 @@ const parseMarkdown = (markdown: string): Scenario[] =>
             return {
               id: String(stepIndex + 1),
               action: "select",
-              target: select[1].replace(/(에서|에|을|를)$/, "").trim(),
+              target: unquoteMarkdownValue(
+                select[1].replace(/(에서|에|을|를)$/, "").trim(),
+              ),
               value: select[2],
               condition,
               connected: true,
@@ -142,16 +148,18 @@ const parseMarkdown = (markdown: string): Scenario[] =>
             return {
               id: String(stepIndex + 1),
               action: "goto",
-              target:
-                text.replace(/\s*(페이지로?\s*이동|접속|열기).*/, "").trim() ||
-                "/",
+              target: unquoteMarkdownValue(
+                text.replace(/\s*(페이지로?\s*이동|접속|열기).*/, "").trim(),
+              ) || "/",
               condition,
               connected: true,
             };
           return {
             id: String(stepIndex + 1),
             action: "click",
-            target: text.replace(/\s+(버튼을?|버튼)?\s*클릭.*/, "").trim(),
+            target: unquoteMarkdownValue(
+              text.replace(/\s+(버튼을?|버튼)?\s*클릭.*/, "").trim(),
+            ),
             condition,
             connected: true,
           };
@@ -187,16 +195,16 @@ const scenarioToMarkdown = (scenario: Scenario): string =>
       const prefix = index === 0 ? "Given" : step.action === "expectText" ? "Then" : "And";
       const action =
         step.action === "goto"
-          ? `${step.target} 페이지로 이동한다`
+          ? `\`${step.target}\` 페이지로 이동한다`
           : step.action === "fill"
-            ? `${step.target}에 \`${step.value ?? ""}\` 입력`
+            ? `\`${step.target}\`에 \`${step.value ?? ""}\` 입력`
             : step.action === "manualFill"
-              ? `${step.target} 수동 입력${step.prompt ? ` [${step.prompt}]` : ""}`
+              ? `\`${step.target}\` 수동 입력${step.prompt ? ` [${step.prompt}]` : ""}`
               : step.action === "select"
-                ? `${step.target}에서 \`${step.value ?? ""}\` 선택`
+                ? `\`${step.target}\`에서 \`${step.value ?? ""}\` 선택`
                 : step.action === "expectText"
-                  ? `${step.target} 텍스트가 보인다${step.waitSeconds ? ` [대기 ${step.waitSeconds}초]` : ""}`
-                  : `${step.target} 버튼 클릭`;
+                  ? `\`${step.target}\` 텍스트가 보인다${step.waitSeconds ? ` [대기 ${step.waitSeconds}초]` : ""}`
+                  : `\`${step.target}\` 버튼 클릭`;
       return `${prefix} ${step.condition ? `화면에 \`${step.condition}\`가 있는 경우 ` : ""}${action}`;
     }),
   ].join("\n");
