@@ -264,8 +264,7 @@ export const App = (): ReactElement => {
   const [livePreview, setLivePreview] = useState(false);
   const [previewImage, setPreviewImage] = useState("");
   const [failureVideoPath, setFailureVideoPath] = useState<string | null>(null);
-  const [downloadToast, setDownloadToast] = useState(false);
-  const [notice, setNotice] = useState("");
+  const [toast, setToast] = useState("");
   const [runHistory, setRunHistory] = useState<RunRecord[]>([]);
   const [runSummary, setRunSummary] = useState<RunSummary>({
     total: 0,
@@ -299,7 +298,7 @@ export const App = (): ReactElement => {
           }
         }
       })
-      .catch(() => setNotice("저장된 시나리오를 불러오지 못했습니다."));
+      .catch(() => setToast("저장된 시나리오를 불러오지 못했습니다."));
   }, []);
 
   useEffect(() => {
@@ -329,7 +328,7 @@ export const App = (): ReactElement => {
   useEffect(() => {
     void window.electronAPI
       .saveMarkerPositions(JSON.stringify(positionStore))
-      .catch(() => setNotice("마커 위치를 저장하지 못했습니다."));
+      .catch(() => setToast("마커 위치를 저장하지 못했습니다."));
   }, [positionStore]);
 
   useEffect(
@@ -370,16 +369,10 @@ export const App = (): ReactElement => {
   }, [running, runStartedAt]);
 
   useEffect(() => {
-    if (!notice) return;
-    const timer = window.setTimeout(() => setNotice(""), 3000);
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(""), 3000);
     return () => window.clearTimeout(timer);
-  }, [notice]);
-
-  useEffect(() => {
-    if (!downloadToast) return;
-    const timer = window.setTimeout(() => setDownloadToast(false), 3000);
-    return () => window.clearTimeout(timer);
-  }, [downloadToast]);
+  }, [toast]);
 
   useEffect(() => {
     if (!stepPanelDrag) return;
@@ -413,7 +406,7 @@ export const App = (): ReactElement => {
           })),
         ),
       )
-      .catch(() => setNotice("대상 페이지를 확인하지 못했습니다."));
+      .catch(() => setToast("대상 페이지를 확인하지 못했습니다."));
   }, [route, editorMode]);
 
   const previews = useMemo(() => parseMarkdown(sourceMarkdown), [sourceMarkdown]);
@@ -450,7 +443,7 @@ export const App = (): ReactElement => {
     updateSource(imported.markdown);
     setScenarioFilePath(imported.filePath);
     await window.electronAPI.saveScenarioMarkdown(imported.markdown);
-    setNotice("시나리오를 불러왔습니다.");
+    setToast("시나리오를 불러왔습니다.");
   };
 
   const saveScenarioFile = async () => {
@@ -461,9 +454,9 @@ export const App = (): ReactElement => {
       if (!filePath) return;
       setScenarioFilePath(filePath);
       await window.electronAPI.saveScenarioMarkdown(sourceMarkdown);
-      setNotice("시나리오를 저장했습니다.");
+      setToast("시나리오를 저장했습니다.");
     } catch {
-      setNotice("시나리오를 저장하지 못했습니다.");
+      setToast("시나리오를 저장하지 못했습니다.");
     }
   };
 
@@ -578,9 +571,9 @@ export const App = (): ReactElement => {
       await window.electronAPI.saveScenarioMarkdown(markdown);
       if (scenarioFilePath)
         await window.electronAPI.saveImportedScenarioFile(markdown);
-      setNotice("시나리오를 저장했습니다.");
+      setToast("시나리오를 저장했습니다.");
     } catch {
-      setNotice("시나리오를 저장하지 못했습니다.");
+      setToast("시나리오를 저장하지 못했습니다.");
     } finally {
       setSaveBeforeReturning(false);
       setEditorMode("text");
@@ -648,7 +641,6 @@ export const App = (): ReactElement => {
             scenarioFilePath={scenarioFilePath}
             previews={previews}
             markerScenarioId={markerScenarioId || previews[0]?.id || ""}
-            notice={notice}
             selectedId={selectedId}
             isAddingMarker={isAddingMarker}
             markersVisible={markersVisible}
@@ -717,16 +709,16 @@ export const App = (): ReactElement => {
               void window.electronAPI
                 .downloadFailureVideo(failureVideoPath)
                 .then((filePath) => {
-                  if (filePath) setDownloadToast(true);
+                  if (filePath) setToast("실패 실행 영상을 다운로드했습니다.");
                 })
-                .catch(() => setNotice("실패 실행 영상을 다운로드하지 못했습니다."));
+                .catch(() => setToast("실패 실행 영상을 다운로드하지 못했습니다."));
             }}
           />
         )}
       </section>
-      {downloadToast && (
-        <div className="download-toast" role="status">
-          ✓ 실패 실행 영상을 다운로드했습니다.
+      {toast && (
+        <div className="toast" role="status" aria-live="polite">
+          ✓ {toast}
         </div>
       )}
       <BottomNavigation route={route} onNavigate={setRoute} />

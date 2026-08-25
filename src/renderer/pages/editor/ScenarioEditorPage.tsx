@@ -20,7 +20,6 @@ type Props = {
   scenarioFilePath: string | null;
   previews: Scenario[];
   markerScenarioId: string;
-  notice: string;
   selectedId: string;
   isAddingMarker: boolean;
   markersVisible: boolean;
@@ -61,7 +60,6 @@ export const ScenarioEditorPage = ({
   scenarioFilePath,
   previews,
   markerScenarioId,
-  notice,
   selectedId,
   isAddingMarker,
   markersVisible,
@@ -152,12 +150,6 @@ export const ScenarioEditorPage = ({
           화면에서 추출
         </button>
       </div>
-    </div>
-    <div
-      className={`notice${notice ? "" : " notice-hidden"}`}
-      aria-live="polite"
-    >
-      {notice && `✓ ${notice}`}
     </div>
     {mode === "text" ? (
       <>
