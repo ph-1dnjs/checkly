@@ -120,7 +120,35 @@ export const ScenarioEditorPage = ({
     let target = "";
     try {
       target = await targetFrameRef.current?.executeJavaScript(
-        `(() => { const element = document.elementFromPoint(${pageX}, ${pageY}); const interactive = element?.closest('[aria-label], button, [role="button"], a, input, select, textarea'); return interactive?.getAttribute('aria-label') || element?.getAttribute('aria-label') || ''; })()`,
+        `(() => {
+          const element = document.elementFromPoint(${pageX}, ${pageY});
+          const target = element?.closest('label, button, [role="button"], a, input, select, textarea, [data-label], [aria-label]') ?? element;
+          if (!target) return '';
+
+          const text = (target instanceof HTMLElement ? target.innerText : target.textContent ?? '').replace(/\\s+/g, ' ').trim();
+          const choiceInput = target.matches('label') && target.querySelector('input[type="checkbox"], input[type="radio"]');
+          if (choiceInput) {
+            const attributes = ['data-scope', 'data-part']
+              .filter((name) => target.hasAttribute(name))
+              .map((name) => '[' + name + '="' + CSS.escape(target.getAttribute(name) ?? '') + '"]')
+              .join('');
+            if (attributes) return 'css=label' + attributes;
+          }
+          if (text) return text;
+
+          const label = target.getAttribute('data-label') || target.getAttribute('aria-label');
+          if (label) return label;
+
+          const tag = target.tagName.toLowerCase();
+          const attributes = ['data-testid', 'data-test', 'data-qa', 'data-scope', 'data-part', 'name', 'type', 'value']
+            .filter((name) => target.hasAttribute(name))
+            .map((name) => '[' + name + '="' + CSS.escape(target.getAttribute(name) ?? '') + '"]')
+            .join('');
+          if (attributes) return 'css=' + tag + attributes;
+          if (target.id) return 'css=#' + CSS.escape(target.id);
+          const classes = Array.from(target.classList).map((name) => '.' + CSS.escape(name)).join('');
+          return 'css=' + tag + classes;
+        })()`,
       ) ?? "";
     } catch {
       // 웹뷰가 아직 로드되지 않았거나 접근할 수 없는 경우 직접 입력으로 이어집니다.
@@ -545,17 +573,19 @@ export const ScenarioEditorPage = ({
               </label>
             )}
           </fieldset>
-          {markerDialog.action === "expectText" && (
+          {["click", "expectText"].includes(markerDialog.action) && (
             <>
-              <div className="input-target-alert" role="alert">
-                <strong>확인할 결과 텍스트 입력</strong>
-                <span>
-                  라벨에 실행 후 화면에 표시되어야 하는 텍스트를 입력해 주세요.
-                  해당 텍스트를 찾지 못하면 결과 확인 단계가 실패합니다.
-                </span>
-              </div>
+              {markerDialog.action === "expectText" && (
+                <div className="input-target-alert" role="alert">
+                  <strong>확인할 결과 텍스트 입력</strong>
+                  <span>
+                    라벨에 실행 후 화면에 표시되어야 하는 텍스트를 입력해 주세요.
+                    해당 텍스트를 찾지 못하면 결과 확인 단계가 실패합니다.
+                  </span>
+                </div>
+              )}
               <label>
-                결과 확인 대기 시간 (초)
+                {markerDialog.action === "click" ? "클릭 대상 대기 시간 (초)" : "결과 확인 대기 시간 (초)"}
                 <input
                   type="number"
                   min="1"
@@ -566,7 +596,7 @@ export const ScenarioEditorPage = ({
                     })
                   }
                 />
-                <small>기본 대기 시간은 10초입니다.</small>
+                <small>{markerDialog.action === "click" ? "클릭 대상이 준비될 때까지 기다립니다. 기본값은 10초입니다." : "기본 대기 시간은 10초입니다."}</small>
               </label>
             </>
           )}
@@ -588,7 +618,7 @@ export const ScenarioEditorPage = ({
                 }}
               />
               <small>
-                같은 이름의 버튼이 여러 개면 클릭할 순서를 지정합니다.
+                같은 이름의 클릭 대상이 여러 개면 클릭할 순서를 지정합니다.
               </small>
             </label>
           )}
@@ -634,6 +664,22 @@ export const ScenarioEditorPage = ({
                 placeholder="사용자에게 표시할 안내"
               />
             </label>
+          )}
+          {markerDialog.action === "manualResult" && (
+            <>
+              <div className="input-target-alert" role="alert">
+                <strong>진행자 수동 판정</strong>
+                <span>결제 등 자동 확인이 어려운 단계입니다. 실행 시 최대 5분 동안 성공 또는 실패를 직접 선택합니다.</span>
+              </div>
+              <label>
+                안내 문구
+                <input
+                  value={markerDialog.prompt ?? ""}
+                  onChange={(event) => onUpdateMarkerDialog({ prompt: event.target.value })}
+                  placeholder="예: 나이스페이 결제 후 결과를 선택해 주세요"
+                />
+              </label>
+            </>
           )}
           <div className="modal-actions">
             <button

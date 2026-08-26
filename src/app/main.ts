@@ -5,12 +5,13 @@ import { is } from '@electron-toolkit/utils'
 import { autoUpdater } from 'electron-updater'
 import path from 'node:path'
 import { copyFile, mkdir, readFile, rename, writeFile } from 'node:fs/promises'
-import { chromium, type Browser, type BrowserContext, type Page, type Video } from '@playwright/test'
+import { chromium, type Browser, type BrowserContext, type Locator, type Page, type Video } from '@playwright/test'
 
-type QaStep = { id: string; action: 'goto' | 'fill' | 'fileUpload' | 'manualFill' | 'click' | 'select' | 'expectText'; target: string; value?: string; required?: boolean; prompt?: string; condition?: string; waitSeconds?: number; occurrence?: number }
+type QaStep = { id: string; action: 'goto' | 'fill' | 'fileUpload' | 'manualFill' | 'manualResult' | 'click' | 'select' | 'expectText'; target: string; value?: string; required?: boolean; prompt?: string; condition?: string; waitSeconds?: number; occurrence?: number }
 type QaScenario = { title: string; url: string; steps: QaStep[] }
 type QaRunOptions = { preview?: boolean; workerId?: string }
-let activeRun: { browser?: Browser; resolveManual?: (value: string | null) => void; cancelled: boolean } | null = null
+type ManualResult = { status: 'passed' | 'failed'; reason?: string }
+let activeRun: { browser?: Browser; resolveManual?: (value: string | null) => void; resolveManualResult?: (value: ManualResult) => void; cancelled: boolean } | null = null
 let activeScenarioFilePath: string | null = null
 let scenarioWorker: { id: string; browser: Browser; context: BrowserContext } | null = null
 
@@ -84,7 +85,7 @@ const failureVideoFileName = (scenario: QaScenario): string => {
 }
 const failureVideoDirectory = (): string => path.join(app.getPath('userData'), 'videos', 'failures')
 
-const readableStep = (step: QaStep): string => `단계 ${step.id}: ${step.target} ${step.action === 'manualFill' ? '수동 입력' : step.action === 'fileUpload' ? '파일 업로드' : step.action}`
+const readableStep = (step: QaStep): string => `단계 ${step.id}: ${step.target} ${step.action === 'manualFill' ? '수동 입력' : step.action === 'manualResult' ? '수동 결과 확인' : step.action === 'fileUpload' ? '파일 업로드' : step.action}`
 const escapeRegex = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 const inputFor = (page: Page, target: string) => {
   const normalized = target.replace(/\s*(필드|입력란)$/, '').trim()
@@ -92,28 +93,52 @@ const inputFor = (page: Page, target: string) => {
   return page.getByLabel(matcher).or(page.getByPlaceholder(matcher)).or(page.locator(`input[name*="${normalized}"], textarea[name*="${normalized}"]`)).first()
 }
 const actionTargetFor = (target: string): string => target.replace(/\s+(버튼을?|버튼)?\s*클릭$/, '').trim()
-const buttonFor = async (page: Page, target: string, occurrence = 1) => {
+const clickTargetFor = async (page: Page, target: string, occurrence = 1, timeout = 0): Promise<Locator> => {
   const name = actionTargetFor(target)
     .replace(/\s*(아이콘|icon)$/, '')
     .replace(/\s*버튼$/, '')
     .trim()
-  const buttons = page.getByRole('button', { name: new RegExp(escapeRegex(name), 'i') })
-  if (occurrence > 1) return buttons.nth(occurrence - 1)
+  const selector = name.match(/^css=(.+)$/i)?.[1]?.trim()
+  if (selector) return page.locator(selector).nth(Math.max(0, occurrence - 1))
 
-  for (let index = (await buttons.count()) - 1; index >= 0; index -= 1) {
-    const button = buttons.nth(index)
-    if (!(await button.isVisible())) continue
-    const isTopmost = await button.evaluate((element) => {
-      const rect = element.getBoundingClientRect()
-      const topElement = document.elementFromPoint(
-        rect.left + rect.width / 2,
-        rect.top + rect.height / 2,
-      )
-      return topElement === element || element.contains(topElement)
-    })
-    if (isTopmost) return button
+  // 체크박스와 라디오는 숨겨진 input 대신 label을 클릭해야 UI 이벤트가 정상적으로 전달된다.
+  // 마커가 줄바꿈을 공백으로 정리하므로, 라벨 비교도 공백을 무시해 일관되게 처리한다.
+  const matcher = new RegExp(escapeRegex(name), 'i')
+  const normalizedName = name.replace(/[\s\u200b]+/g, '')
+  const deadline = Date.now() + timeout
+  while (true) {
+    for (const frame of page.frames()) {
+      const labels = await frame.locator('label').all()
+      const matchingLabels: Locator[] = []
+      for (const label of labels) {
+        const text = await label.textContent()
+        if (text?.replace(/[\s\u200b]+/g, '').includes(normalizedName)) matchingLabels.push(label)
+      }
+      if (matchingLabels.length) return matchingLabels[Math.min(occurrence - 1, matchingLabels.length - 1)]
+
+      // 일부 UI 컴포넌트는 label 역할을 노출하지 않는다. 자식 텍스트 클릭도 부모의 클릭 이벤트로 전달된다.
+      const textTargets = frame.getByText(matcher)
+      if (await textTargets.count()) return textTargets.nth(Math.max(0, occurrence - 1))
+    }
+
+    const buttons = page.getByRole('button', { name: matcher })
+    if (await buttons.count()) {
+      if (occurrence > 1) return buttons.nth(occurrence - 1)
+      for (let index = (await buttons.count()) - 1; index >= 0; index -= 1) {
+        const button = buttons.nth(index)
+        if (!(await button.isVisible())) continue
+        const isTopmost = await button.evaluate((element) => {
+          const rect = element.getBoundingClientRect()
+          const topElement = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2)
+          return topElement === element || element.contains(topElement)
+        })
+        if (isTopmost) return button
+      }
+      return buttons.first()
+    }
+    if (Date.now() >= deadline) return buttons.first()
+    await page.waitForTimeout(100)
   }
-  return buttons.first()
 }
 const routeFor = (target: string): string => /^(https?:\/\/|\/)/.test(target.trim()) ? target.trim() : '/'
 const resultTargetFor = (text: string): string => {
@@ -158,7 +183,7 @@ const inspectScenario = async (scenario: QaScenario): Promise<Array<{ id: string
     const page = await browser.newPage()
     await page.goto(scenario.url, { waitUntil: 'domcontentloaded', timeout: 15_000 })
     return await Promise.all(scenario.steps.map(async (step) => {
-      if (step.action === 'goto') return { id: step.id, connected: true }
+      if (step.action === 'goto' || step.action === 'manualResult') return { id: step.id, connected: true }
       const target = new RegExp(escapeRegex(step.target), 'i')
       const resultTarget = resultTargetFor(step.target)
       const locator = step.action === 'fill' || step.action === 'manualFill' || step.action === 'fileUpload'
@@ -166,7 +191,7 @@ const inspectScenario = async (scenario: QaScenario): Promise<Array<{ id: string
         : step.action === 'click' && resultTarget !== step.target
           ? page.getByText(resultTarget).first()
         : step.action === 'click'
-          ? await buttonFor(page, step.target, step.occurrence)
+          ? await clickTargetFor(page, step.target, step.occurrence)
           : page.getByRole('heading', { name: target }).or(page.getByText(target).first())
       return { id: step.id, connected: await locator.count() > 0 }
     }))
@@ -240,14 +265,39 @@ const executeScenario = async (scenario: QaScenario, owner: BrowserWindow, optio
         await inputFor(page, step.target).fill(value)
         log.push(`${readableStep(step)} — 완료`)
       }
+      if (step.action === 'manualResult') {
+        owner.webContents.send('qa:manual-result-required', { id: step.id, target: step.target, prompt: step.prompt, timeoutSeconds: 300 })
+        const result = await new Promise<ManualResult>((resolve) => {
+          const timeout = setTimeout(() => {
+            run.resolveManualResult = undefined
+            resolve({ status: 'failed', reason: '수동 결과 확인 시간(5분)을 초과했습니다.' })
+          }, 300_000)
+          run.resolveManualResult = (value) => {
+            clearTimeout(timeout)
+            resolve(value)
+          }
+        })
+        run.resolveManualResult = undefined
+        if (run.cancelled) { const finalLog = [...log, '실행이 취소되었습니다.']; return { status: 'cancelled', log: finalLog, reportPath: await writeRunReport(scenario, 'cancelled', finalLog) } }
+        if (result.status === 'failed') {
+          const reason = result.reason?.trim() || '진행자가 실패로 판정했습니다.'
+          const finalLog = [...log, `${readableStep(step)} — 실패: ${reason}`]
+          failed = true
+          return { status: 'failed', log: finalLog, reportPath: await writeRunReport(scenario, 'failed', finalLog) }
+        }
+        log.push(`${readableStep(step)} — 진행자가 성공으로 판정`)
+      }
       if (step.action === 'click') {
         const resultTarget = resultTargetFor(step.target)
         if (resultTarget !== step.target) await waitForVisibleText(page, resultTarget)
-        else await (await buttonFor(page, step.target, step.occurrence)).click()
+        else {
+          const timeout = (step.waitSeconds ?? 10) * 1000
+          await (await clickTargetFor(page, step.target, step.occurrence, timeout)).click({ timeout })
+        }
       }
       if (step.action === 'select') await page.getByLabel(step.target).selectOption(step.value ?? '')
       if (step.action === 'expectText') await waitForVisibleText(page, resultTargetFor(step.target), (step.waitSeconds ?? 10) * 1000)
-      if (step.action !== 'manualFill') log.push(`${readableStep(step)} — 완료`)
+      if (step.action !== 'manualFill' && step.action !== 'manualResult') log.push(`${readableStep(step)} — 완료`)
       owner.webContents.send('qa:progress', { current: index + 1, total: scenario.steps.length, step: readableStep(step) })
     }
     return { status: 'passed', log, reportPath: await writeRunReport(scenario, 'passed', log) }
@@ -322,6 +372,7 @@ app.whenReady().then(() => {
     return destination
   })
   ipcMain.handle('qa:manual-input', (_event, value: string) => activeRun?.resolveManual?.(value))
+  ipcMain.handle('qa:manual-result', (_event, result: ManualResult) => activeRun?.resolveManualResult?.(result))
   ipcMain.handle('qa:cancel', async () => {
     if (!activeRun) {
       await closeScenarioWorker()
@@ -329,6 +380,7 @@ app.whenReady().then(() => {
     }
     activeRun.cancelled = true
     activeRun.resolveManual?.(null)
+    activeRun.resolveManualResult?.({ status: 'failed', reason: '실행이 취소되었습니다.' })
     await closeScenarioWorker()
   })
   createWindow()

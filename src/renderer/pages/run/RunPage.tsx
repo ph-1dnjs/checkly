@@ -14,6 +14,7 @@ type Props = {
   scenarioCount: number;
   running: boolean;
   manual: Step | null;
+  manualResult: Step | null;
   runLog: string[];
   runProgress: RunProgress;
   elapsedSeconds: number;
@@ -34,6 +35,7 @@ export const RunPage = ({
   scenarioCount,
   running,
   manual,
+  manualResult,
   runLog,
   runProgress,
   elapsedSeconds,
@@ -105,15 +107,15 @@ export const RunPage = ({
             </span>
             <div>
               <strong>
-                {manual
-                  ? "수동 입력 대기 중"
+                {manual || manualResult
+                  ? manualResult ? "수동 결과 확인 대기 중" : "수동 입력 대기 중"
                   : running
                     ? "시나리오 실행 중"
                     : "실행 준비됨"}
               </strong>
               <p>
-                {manual
-                  ? `${manual.target} 값을 기다리고 있습니다.`
+                {manual || manualResult
+                  ? manualResult ? `${manualResult.target} 결과를 기다리고 있습니다. (최대 5분)` : `${manual!.target} 값을 기다리고 있습니다.`
                   : `${scenarioCount}개 시나리오 · ${scenario.steps.length}개 단계`}
               </p>
             </div>

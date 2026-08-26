@@ -15,11 +15,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   finishQaWorker: (workerId: string): Promise<void> => ipcRenderer.invoke('qa:finish-worker', workerId),
   downloadFailureVideo: (filePath: string): Promise<string | null> => ipcRenderer.invoke('qa:download-failure-video', filePath),
   submitManualInput: (value: string): Promise<void> => ipcRenderer.invoke('qa:manual-input', value),
+  submitManualResult: (result: { status: 'passed' | 'failed'; reason?: string }): Promise<void> => ipcRenderer.invoke('qa:manual-result', result),
   cancelQa: (): Promise<void> => ipcRenderer.invoke('qa:cancel'),
   onManualInputRequired: (callback: (step: unknown) => void): (() => void) => {
     const listener = (_event: Electron.IpcRendererEvent, step: unknown): void => callback(step)
     ipcRenderer.on('qa:manual-required', listener)
     return () => ipcRenderer.removeListener('qa:manual-required', listener)
+  },
+  onManualResultRequired: (callback: (step: unknown) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, step: unknown): void => callback(step)
+    ipcRenderer.on('qa:manual-result-required', listener)
+    return () => ipcRenderer.removeListener('qa:manual-result-required', listener)
   },
   onQaProgress: (callback: (progress: unknown) => void): (() => void) => {
     const listener = (_event: Electron.IpcRendererEvent, progress: unknown): void => callback(progress)

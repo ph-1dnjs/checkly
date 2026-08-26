@@ -47,8 +47,10 @@ declare global {
       finishQaWorker: (workerId: string) => Promise<void>;
       downloadFailureVideo: (value: string) => Promise<string | null>;
       submitManualInput: (value: string) => Promise<void>;
+      submitManualResult: (result: { status: "passed" | "failed"; reason?: string }) => Promise<void>;
       cancelQa: () => Promise<void>;
       onManualInputRequired: (callback: (value: Step) => void) => () => void;
+      onManualResultRequired: (callback: (value: Step & { timeoutSeconds?: number }) => void) => () => void;
       onQaProgress: (callback: (value: RunProgress) => void) => () => void;
       onQaPreview: (callback: (value: string) => void) => () => void;
       onFailureVideo: (callback: (value: string | null) => void) => () => void;
@@ -90,6 +92,8 @@ const parseMarkdown = (markdown: string): Scenario[] =>
           const waitMatch = conditionalText.match(/\[대기\s*(\d+)초\]\s*$/);
           const waitSeconds = waitMatch ? Number(waitMatch[1]) : undefined;
           const text = conditionalText.replace(/\s*\[대기\s*\d+초\]\s*$/, "");
+          const occurrenceMatch = text.match(/\[(\d+)번째\]\s*(?:버튼을?|버튼)?\s*클릭/);
+          const occurrence = occurrenceMatch ? Number(occurrenceMatch[1]) : undefined;
           const result = text
             .replace(
               /\s*(텍스트가\s*)?(보인다|포함된다|확인된다|표시된다).*/,
@@ -97,6 +101,7 @@ const parseMarkdown = (markdown: string): Scenario[] =>
             )
             .trim();
           const manual = text.match(/^(.+?)\s+수동 입력(?:\s*\[(.+)\])?$/);
+          const manualResult = text.match(/^(.+?)\s+수동 결과 확인(?:\s*\[(.+)\])?$/);
           const fileUpload =
             text.match(/^`(.+?)`(?:에|에서)?\s*`(.*?)`\s*파일\s*업로드/) ??
             text.match(/^(.+?)(?:에|에서)?\s*['"](.*)['"]\s*파일\s*업로드/);
@@ -112,6 +117,15 @@ const parseMarkdown = (markdown: string): Scenario[] =>
             text.match(/^`(.+?)`(?:에서|에)?\s*`(.*?)`\s*선택/) ??
             text.match(/^(.+?)\s*`(.*?)`\s*선택/) ??
             text.match(/^(.+?)(?:에서|에)\s*['"](.*)['"]\s*선택/);
+          if (manualResult)
+            return {
+              id: String(stepIndex + 1),
+              action: "manualResult",
+              target: unquoteMarkdownValue(manualResult[1]),
+              prompt: manualResult[2],
+              condition,
+              connected: true,
+            };
           if (/보인다|포함된다|확인된다|표시된다|결과\s*확인/.test(text))
             return {
               id: String(stepIndex + 1),
@@ -179,9 +193,14 @@ const parseMarkdown = (markdown: string): Scenario[] =>
             id: String(stepIndex + 1),
             action: "click",
             target: unquoteMarkdownValue(
-              text.replace(/\s+(버튼을?|버튼)?\s*클릭.*/, "").trim(),
+              text
+                .replace(/\s*\[\d+번째\]\s*(?:버튼을?|버튼)?\s*클릭.*/, "")
+                .replace(/\s+(버튼을?|버튼)?\s*클릭.*/, "")
+                .trim(),
             ),
+            occurrence: occurrence && occurrence > 1 ? occurrence : undefined,
             condition,
+            waitSeconds,
             connected: true,
           };
         });
@@ -203,7 +222,13 @@ const applyPositions = (
         item.waitSeconds === step.waitSeconds,
     );
     return position
-      ? { ...step, x: position.x, y: position.y, color: position.color }
+      ? {
+          ...step,
+          occurrence: position.occurrence,
+          x: position.x,
+          y: position.y,
+          color: position.color,
+        }
       : step;
   }),
 });
@@ -224,11 +249,13 @@ const scenarioToMarkdown = (scenario: Scenario): string =>
                 ? `\`${step.target}\`에 \`${step.value ?? ""}\` 파일 업로드`
               : step.action === "manualFill"
               ? `\`${step.target}\` 수동 입력${step.prompt ? ` [${step.prompt}]` : ""}`
+              : step.action === "manualResult"
+                ? `\`${step.target}\` 수동 결과 확인${step.prompt ? ` [${step.prompt}]` : ""}`
               : step.action === "select"
                 ? `\`${step.target}\`에서 \`${step.value ?? ""}\` 선택`
                 : step.action === "expectText"
                   ? `\`${step.target}\` 텍스트가 보인다${step.waitSeconds ? ` [대기 ${step.waitSeconds}초]` : ""}`
-                  : `\`${step.target}\` 버튼 클릭`;
+                  : `\`${step.target}\`${step.occurrence && step.occurrence > 1 ? ` [${step.occurrence}번째]` : ""} 클릭${step.waitSeconds ? ` [대기 ${step.waitSeconds}초]` : ""}`;
       return `${prefix} ${step.condition ? `화면에 \`${step.condition}\`가 있는 경우 ` : ""}${action}`;
     }),
   ].join("\n");
@@ -284,6 +311,8 @@ export const App = (): ReactElement => {
   const [manual, setManual] = useState<Step | null>(null);
   const [manualValue, setManualValue] = useState("");
   const [manualValueVisible, setManualValueVisible] = useState(false);
+  const [manualResult, setManualResult] = useState<(Step & { timeoutSeconds?: number }) | null>(null);
+  const [manualFailureReason, setManualFailureReason] = useState("");
   const [running, setRunning] = useState(false);
   const [runningScenario, setRunningScenario] = useState(seedScenario);
   const [runLog, setRunLog] = useState<string[]>([]);
@@ -373,6 +402,19 @@ export const App = (): ReactElement => {
         setRunLog((logs) => [
           ...logs,
           `단계 ${step.id}: ${step.target} 수동 입력 대기`,
+        ]);
+      }),
+    [],
+  );
+
+  useEffect(
+    () =>
+      window.electronAPI.onManualResultRequired((step) => {
+        setManualFailureReason("");
+        setManualResult(step);
+        setRunLog((logs) => [
+          ...logs,
+          `단계 ${step.id}: ${step.target} 수동 결과 확인 대기 (최대 5분)`,
         ]);
       }),
     [],
@@ -809,6 +851,7 @@ export const App = (): ReactElement => {
             scenarioCount={executableScenarios.length}
             running={running}
             manual={manual}
+            manualResult={manualResult}
             runLog={runLog}
             runProgress={runProgress}
             elapsedSeconds={elapsedSeconds}
@@ -997,6 +1040,45 @@ export const App = (): ReactElement => {
                 }}
               >
                 입력 후 계속
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {manualResult && (
+        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="manual-result-title">
+          <div className="manual-modal">
+            <h2 id="manual-result-title">수동 결과 확인이 필요합니다</h2>
+            <p>{manualResult.prompt || `${manualResult.target} 진행 후 결과를 선택해 주세요.`}</p>
+            <p className="security-note">최대 5분 동안 대기합니다. 실패를 선택하면 사유가 실행 로그와 보고서에 기록됩니다.</p>
+            <label>
+              실패 사유
+              <input
+                autoFocus
+                value={manualFailureReason}
+                onChange={(event) => setManualFailureReason(event.target.value)}
+                placeholder="실패 시 사유를 입력하세요"
+              />
+            </label>
+            <div className="modal-actions">
+              <button
+                className="button danger"
+                disabled={!manualFailureReason.trim()}
+                onClick={() => {
+                  void window.electronAPI.submitManualResult({ status: "failed", reason: manualFailureReason.trim() });
+                  setManualResult(null);
+                }}
+              >
+                실패로 기록
+              </button>
+              <button
+                className="button button-primary"
+                onClick={() => {
+                  void window.electronAPI.submitManualResult({ status: "passed" });
+                  setManualResult(null);
+                }}
+              >
+                성공 후 계속
               </button>
             </div>
           </div>
