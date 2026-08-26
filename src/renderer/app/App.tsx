@@ -14,6 +14,7 @@ import { BottomNavigation } from "../widgets/BottomNavigation";
 import {
   markerColor,
   seedScenario,
+  type Action,
   type MarkerPositionStore,
   type Route,
   type RunProgress,
@@ -683,15 +684,17 @@ export const App = (): ReactElement => {
     x,
     y,
     target,
+    action,
   }: {
     x: number;
     y: number;
     target: string;
+    action: Action;
   }) => {
     const index = scenario.steps.length;
     setPendingMarker({
       id: String(index + 1),
-      action: "click",
+      action,
       target,
       connected: true,
       x,

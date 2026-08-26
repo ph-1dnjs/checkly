@@ -92,6 +92,12 @@ const inputFor = (page: Page, target: string) => {
   const matcher = new RegExp(escapeRegex(normalized), 'i')
   return page.getByLabel(matcher).or(page.getByPlaceholder(matcher)).or(page.locator(`input[name*="${normalized}"], textarea[name*="${normalized}"]`)).first()
 }
+const selectFor = (page: Page, target: string) => {
+  const selector = target.match(/^css=(.+)$/i)?.[1]?.trim()
+  if (selector) return page.locator(selector).first()
+  const matcher = new RegExp(escapeRegex(target), 'i')
+  return page.getByLabel(matcher).or(page.locator(`select[name*="${target}"]`)).first()
+}
 const actionTargetFor = (target: string): string => target.replace(/\s+(버튼을?|버튼)?\s*클릭$/, '').trim()
 const clickTargetFor = async (page: Page, target: string, occurrence = 1, timeout = 0): Promise<Locator> => {
   const name = actionTargetFor(target)
@@ -295,7 +301,11 @@ const executeScenario = async (scenario: QaScenario, owner: BrowserWindow, optio
           await (await clickTargetFor(page, step.target, step.occurrence, timeout)).click({ timeout })
         }
       }
-      if (step.action === 'select') await page.getByLabel(step.target).selectOption(step.value ?? '')
+      if (step.action === 'select') {
+        const select = selectFor(page, step.target)
+        try { await select.selectOption({ label: step.value ?? '' }) }
+        catch { await select.selectOption(step.value ?? '') }
+      }
       if (step.action === 'expectText') await waitForVisibleText(page, resultTargetFor(step.target), (step.waitSeconds ?? 10) * 1000)
       if (step.action !== 'manualFill' && step.action !== 'manualResult') log.push(`${readableStep(step)} — 완료`)
       owner.webContents.send('qa:progress', { current: index + 1, total: scenario.steps.length, step: readableStep(step) })

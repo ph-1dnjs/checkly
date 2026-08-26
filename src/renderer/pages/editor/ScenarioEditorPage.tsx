@@ -40,7 +40,7 @@ type Props = {
   onRefresh: () => void;
   onBeginMarkerPlacement: () => void;
   onToggleMarkersVisible: () => void;
-  onPlaceMarker: (position: { x: number; y: number; target: string }) => void;
+  onPlaceMarker: (position: { x: number; y: number; target: string; action: Action }) => void;
   onDeleteLast: () => void;
   onClearSteps: () => void;
   onReturnToText: () => void;
@@ -117,13 +117,18 @@ export const ScenarioEditorPage = ({
     const y = Math.round(((event.clientY - bounds.top) / bounds.height) * 1000) / 10;
     const pageX = Math.round(event.clientX - bounds.left);
     const pageY = Math.round(event.clientY - bounds.top);
-    let target = "";
+    let marker: { target: string; action: Action } = { target: "", action: "click" };
     try {
-      target = await targetFrameRef.current?.executeJavaScript(
+      marker = await targetFrameRef.current?.executeJavaScript(
         `(() => {
           const element = document.elementFromPoint(${pageX}, ${pageY});
           const target = element?.closest('label, button, [role="button"], a, input, select, textarea, [data-label], [aria-label]') ?? element;
           if (!target) return '';
+          const action = target.matches('select') ? 'select' : 'click';
+          if (target.matches('select')) {
+            const label = target.labels?.[0]?.innerText || target.getAttribute('aria-label');
+            if (label) return { target: label.replace(/\\s+/g, ' ').trim(), action };
+          }
 
           const text = (target instanceof HTMLElement ? target.innerText : target.textContent ?? '').replace(/\\s+/g, ' ').trim();
           const choiceInput = target.matches('label') && target.querySelector('input[type="checkbox"], input[type="radio"]');
@@ -132,28 +137,28 @@ export const ScenarioEditorPage = ({
               .filter((name) => target.hasAttribute(name))
               .map((name) => '[' + name + '="' + CSS.escape(target.getAttribute(name) ?? '') + '"]')
               .join('');
-            if (attributes) return 'css=label' + attributes;
+            if (attributes) return { target: 'css=label' + attributes, action };
           }
-          if (text) return text;
+          if (text) return { target: text, action };
 
           const label = target.getAttribute('data-label') || target.getAttribute('aria-label');
-          if (label) return label;
+          if (label) return { target: label, action };
 
           const tag = target.tagName.toLowerCase();
           const attributes = ['data-testid', 'data-test', 'data-qa', 'data-scope', 'data-part', 'name', 'type', 'value']
             .filter((name) => target.hasAttribute(name))
             .map((name) => '[' + name + '="' + CSS.escape(target.getAttribute(name) ?? '') + '"]')
             .join('');
-          if (attributes) return 'css=' + tag + attributes;
-          if (target.id) return 'css=#' + CSS.escape(target.id);
+          if (attributes) return { target: 'css=' + tag + attributes, action };
+          if (target.id) return { target: 'css=#' + CSS.escape(target.id), action };
           const classes = Array.from(target.classList).map((name) => '.' + CSS.escape(name)).join('');
-          return 'css=' + tag + classes;
+          return { target: 'css=' + tag + classes, action };
         })()`,
-      ) ?? "";
+      ) ?? marker;
     } catch {
       // 웹뷰가 아직 로드되지 않았거나 접근할 수 없는 경우 직접 입력으로 이어집니다.
     }
-    onPlaceMarker({ x, y, target });
+    onPlaceMarker({ x, y, ...marker });
   };
 
   return (
@@ -528,12 +533,12 @@ export const ScenarioEditorPage = ({
               placeholder="예: 로그인 버튼"
             />
           </label>
-          {["fill", "manualFill", "fileUpload"].includes(markerDialog.action) && (
+          {["fill", "manualFill", "fileUpload", "select"].includes(markerDialog.action) && (
             <div className="input-target-alert" role="alert">
               <strong>입력 대상 확인</strong>
               <span>
-                라벨은 페이지의 label, placeholder 또는 name과 일치해야 합니다.
-                다르면 입력 단계가 실패할 수 있습니다.
+                라벨 또는 CSS 대상은 페이지의 실제 입력/선택 요소와 일치해야 합니다.
+                다르면 실행 단계가 실패할 수 있습니다.
               </span>
             </div>
           )}
@@ -624,7 +629,7 @@ export const ScenarioEditorPage = ({
           )}
           {["fill", "select", "fileUpload"].includes(markerDialog.action) && (
             <label>
-              {markerDialog.action === "fileUpload" ? "업로드할 파일" : "값"}
+              {markerDialog.action === "fileUpload" ? "업로드할 파일" : markerDialog.action === "select" ? "선택할 값" : "값"}
               <div className={markerDialog.action === "fileUpload" ? "file-upload-value" : undefined}>
                 <input
                   value={markerDialog.value ?? ""}
