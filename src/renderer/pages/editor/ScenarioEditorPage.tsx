@@ -33,6 +33,8 @@ type Props = {
   onSelectMarkerScenario: (id: string) => void;
   onImport: () => void;
   onExport: () => void;
+  onSelectUploadFile: () => Promise<string | null>;
+  onRun: () => void;
   onSourceChange: (markdown: string) => void;
   onScenarioChange: (scenario: Scenario) => void;
   onRefresh: () => void;
@@ -73,6 +75,8 @@ export const ScenarioEditorPage = ({
   onSelectMarkerScenario,
   onImport,
   onExport,
+  onSelectUploadFile,
+  onRun,
   onSourceChange,
   onScenarioChange,
   onRefresh,
@@ -159,6 +163,9 @@ export const ScenarioEditorPage = ({
           </button>
           <button className="button button-primary" onClick={onExport}>
             시나리오 저장하기
+          </button>
+          <button className="button button-run" onClick={onRun}>
+            ▶ 바로 실행
           </button>
           <span className="scenario-file-path" title={scenarioFilePath ?? undefined}>
             {scenarioFilePath ?? "저장된 파일 없음"}
@@ -256,6 +263,9 @@ export const ScenarioEditorPage = ({
           </button>
           <button onClick={onDeleteLast}>마지막 삭제</button>
           <button onClick={onClearSteps}>전체 초기화</button>
+          <button className="button button-run" onClick={onRun}>
+            ▶ 바로 실행
+          </button>
           <button className="button button-secondary" onClick={onReturnToText}>
             ×&nbsp; 편집기로 돌아가기
           </button>
@@ -490,20 +500,7 @@ export const ScenarioEditorPage = ({
               placeholder="예: 로그인 버튼"
             />
           </label>
-          <label>
-            실행 조건 (선택)
-            <input
-              value={markerDialog.condition ?? ""}
-              onChange={(event) =>
-                onUpdateMarkerDialog({
-                  condition: event.target.value || undefined,
-                })
-              }
-              placeholder="예: 로그인 완료"
-            />
-            <small>화면에 이 텍스트가 보일 때만 실행합니다.</small>
-          </label>
-          {["fill", "manualFill"].includes(markerDialog.action) && (
+          {["fill", "manualFill", "fileUpload"].includes(markerDialog.action) && (
             <div className="input-target-alert" role="alert">
               <strong>입력 대상 확인</strong>
               <span>
@@ -512,6 +509,42 @@ export const ScenarioEditorPage = ({
               </span>
             </div>
           )}
+          <fieldset className="execution-condition">
+            <legend>실행 조건</legend>
+            <div className="execution-condition-options">
+              <label>
+                <input
+                  type="radio"
+                  name="execution-condition"
+                  checked={markerDialog.condition !== undefined}
+                  onChange={() => onUpdateMarkerDialog({ condition: "" })}
+                />
+                Y
+              </label>
+              <label>
+                <input
+                  type="radio"
+                  name="execution-condition"
+                  checked={markerDialog.condition === undefined}
+                  onChange={() => onUpdateMarkerDialog({ condition: undefined })}
+                />
+                N
+              </label>
+            </div>
+            {markerDialog.condition !== undefined && (
+              <label className="execution-condition-input">
+                실행 조건
+                <input
+                  value={markerDialog.condition}
+                  onChange={(event) =>
+                    onUpdateMarkerDialog({ condition: event.target.value })
+                  }
+                  placeholder="예: 로그인 완료"
+                />
+                <small>화면에 이 텍스트가 보일 때만 실행합니다.</small>
+              </label>
+            )}
+          </fieldset>
           {markerDialog.action === "expectText" && (
             <>
               <div className="input-target-alert" role="alert">
@@ -559,16 +592,32 @@ export const ScenarioEditorPage = ({
               </small>
             </label>
           )}
-          {["fill", "select"].includes(markerDialog.action) && (
+          {["fill", "select", "fileUpload"].includes(markerDialog.action) && (
             <label>
-              값
-              <input
-                value={markerDialog.value ?? ""}
-                onChange={(event) =>
-                  onUpdateMarkerDialog({ value: event.target.value })
-                }
-                placeholder="입력 또는 선택할 값"
-              />
+              {markerDialog.action === "fileUpload" ? "업로드할 파일" : "값"}
+              <div className={markerDialog.action === "fileUpload" ? "file-upload-value" : undefined}>
+                <input
+                  value={markerDialog.value ?? ""}
+                  onChange={(event) =>
+                    onUpdateMarkerDialog({ value: event.target.value })
+                  }
+                  placeholder={markerDialog.action === "fileUpload" ? "파일 경로를 입력하거나 선택하세요" : "입력 또는 선택할 값"}
+                />
+                {markerDialog.action === "fileUpload" && (
+                  <button
+                    type="button"
+                    className="button button-secondary"
+                    onClick={() => void onSelectUploadFile().then((filePath) => {
+                      if (filePath) onUpdateMarkerDialog({ value: filePath });
+                    })}
+                  >
+                    파일 선택
+                  </button>
+                )}
+              </div>
+              {markerDialog.action === "fileUpload" && (
+                <small>테스트를 실행할 컴퓨터에서 접근 가능한 파일을 선택하세요.</small>
+              )}
             </label>
           )}
           {markerDialog.action === "manualFill" && (

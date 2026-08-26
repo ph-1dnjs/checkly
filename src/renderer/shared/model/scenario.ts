@@ -1,6 +1,7 @@
 export type Action =
   | "goto"
   | "fill"
+  | "fileUpload"
   | "manualFill"
   | "click"
   | "select"
@@ -72,6 +73,7 @@ export const seedScenario: Scenario = {
 export const actionLabel: Record<Action, string> = {
   goto: "페이지 이동",
   fill: "일반 입력 (자동)",
+  fileUpload: "파일 업로드",
   manualFill: "수동 입력",
   click: "클릭",
   select: "선택",
@@ -85,6 +87,8 @@ export const actionText = (step: Step): string =>
       ? `${step.target} 페이지로 이동`
       : step.action === "fill"
         ? `${step.target}에 '${step.value || ""}' 입력`
+        : step.action === "fileUpload"
+          ? `${step.target}에 '${step.value || ""}' 파일 업로드`
         : step.action === "select"
           ? `${step.target}에서 '${step.value || ""}' 선택`
           : step.action === "click"

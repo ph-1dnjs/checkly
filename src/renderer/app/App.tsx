@@ -4,6 +4,7 @@ import {
   useRef,
   useState,
   type PointerEvent,
+  type CSSProperties,
   type ReactElement,
 } from "react";
 import { DashboardPage } from "../pages/dashboard/DashboardPage";
@@ -33,6 +34,7 @@ declare global {
       } | null>;
       saveImportedScenarioFile: (value: string) => Promise<string | null>;
       exportScenarioFile: (value: string) => Promise<string | null>;
+      selectUploadFile: () => Promise<string | null>;
       loadMarkerPositions: () => Promise<string | null>;
       saveMarkerPositions: (value: string) => Promise<void>;
       inspectScenario: (
@@ -95,12 +97,19 @@ const parseMarkdown = (markdown: string): Scenario[] =>
             )
             .trim();
           const manual = text.match(/^(.+?)\s+수동 입력(?:\s*\[(.+)\])?$/);
+          const fileUpload =
+            text.match(/^`(.+?)`(?:에|에서)?\s*`(.*?)`\s*파일\s*업로드/) ??
+            text.match(/^(.+?)(?:에|에서)?\s*['"](.*)['"]\s*파일\s*업로드/);
           const fill =
+            text.match(
+              /^`(.+?)`(?:에|에서|을|를)?\s*`(.*?)`\s*(?:자동\s*)?(?:입력|작성)/,
+            ) ??
             text.match(/^(.+?)\s*`(.*?)`\s*(?:자동\s*)?(?:입력|작성)/) ??
             text.match(
               /^(.+?)(?:에|을|를)?\s*['"](.*)['"]\s*(?:자동\s*)?(?:입력|작성)/,
             );
           const select =
+            text.match(/^`(.+?)`(?:에서|에)?\s*`(.*?)`\s*선택/) ??
             text.match(/^(.+?)\s*`(.*?)`\s*선택/) ??
             text.match(/^(.+?)(?:에서|에)\s*['"](.*)['"]\s*선택/);
           if (/보인다|포함된다|확인된다|표시된다|결과\s*확인/.test(text))
@@ -119,6 +128,17 @@ const parseMarkdown = (markdown: string): Scenario[] =>
               target: unquoteMarkdownValue(manual[1]),
               prompt: manual[2],
               required: true,
+              condition,
+              connected: true,
+            };
+          if (fileUpload)
+            return {
+              id: String(stepIndex + 1),
+              action: "fileUpload",
+              target: unquoteMarkdownValue(
+                fileUpload[1].replace(/(에서|에)$/, "").trim(),
+              ),
+              value: fileUpload[2],
               condition,
               connected: true,
             };
@@ -148,9 +168,10 @@ const parseMarkdown = (markdown: string): Scenario[] =>
             return {
               id: String(stepIndex + 1),
               action: "goto",
-              target: unquoteMarkdownValue(
-                text.replace(/\s*(페이지로?\s*이동|접속|열기).*/, "").trim(),
-              ) || "/",
+              target:
+                unquoteMarkdownValue(
+                  text.replace(/\s*(페이지로?\s*이동|접속|열기).*/, "").trim(),
+                ) || "/",
               condition,
               connected: true,
             };
@@ -192,13 +213,16 @@ const scenarioToMarkdown = (scenario: Scenario): string =>
     `url: ${scenario.url}`,
     "",
     ...scenario.steps.map((step, index) => {
-      const prefix = index === 0 ? "Given" : step.action === "expectText" ? "Then" : "And";
+      const prefix =
+        index === 0 ? "Given" : step.action === "expectText" ? "Then" : "And";
       const action =
         step.action === "goto"
           ? `\`${step.target}\` 페이지로 이동한다`
-          : step.action === "fill"
-            ? `\`${step.target}\`에 \`${step.value ?? ""}\` 입력`
-            : step.action === "manualFill"
+            : step.action === "fill"
+              ? `\`${step.target}\`에 \`${step.value ?? ""}\` 입력`
+              : step.action === "fileUpload"
+                ? `\`${step.target}\`에 \`${step.value ?? ""}\` 파일 업로드`
+              : step.action === "manualFill"
               ? `\`${step.target}\` 수동 입력${step.prompt ? ` [${step.prompt}]` : ""}`
               : step.action === "select"
                 ? `\`${step.target}\`에서 \`${step.value ?? ""}\` 선택`
@@ -223,6 +247,15 @@ const replaceScenarioMarkdown = (
   if (index < 0) return scenarioToMarkdown(scenario);
   blocks[index] = scenarioToMarkdown(scenario);
   return blocks.join("\n\n").trim();
+};
+
+type RunNotification = {
+  total: number;
+  currentScenario: number;
+  scenarioTitle: string;
+  status: "running" | "passed" | "failed" | "cancelled";
+  passed: number;
+  failed: number;
 };
 
 export const App = (): ReactElement => {
@@ -265,6 +298,8 @@ export const App = (): ReactElement => {
   const [previewImage, setPreviewImage] = useState("");
   const [failureVideoPath, setFailureVideoPath] = useState<string | null>(null);
   const [toast, setToast] = useState("");
+  const [runNotification, setRunNotification] =
+    useState<RunNotification | null>(null);
   const [runHistory, setRunHistory] = useState<RunRecord[]>([]);
   const [runSummary, setRunSummary] = useState<RunSummary>({
     total: 0,
@@ -409,7 +444,10 @@ export const App = (): ReactElement => {
       .catch(() => setToast("대상 페이지를 확인하지 못했습니다."));
   }, [route, editorMode]);
 
-  const previews = useMemo(() => parseMarkdown(sourceMarkdown), [sourceMarkdown]);
+  const previews = useMemo(
+    () => parseMarkdown(sourceMarkdown),
+    [sourceMarkdown],
+  );
   const executableScenario = useMemo(() => {
     const savedScenario = parseMarkdown(sourceMarkdown).find(
       (item) => item.id === scenario.id,
@@ -419,12 +457,21 @@ export const App = (): ReactElement => {
       : scenario;
   }, [positionStore, scenario, sourceMarkdown]);
   const executableScenarios = useMemo(
-    () =>
-      previews.map((item) => applyPositions(item, positionStore)),
+    () => previews.map((item) => applyPositions(item, positionStore)),
     [positionStore, previews],
   );
 
   const markerDialog = pendingMarker ?? editingMarker;
+  const runProgressPercent = runProgress.total
+    ? Math.round((runProgress.current / runProgress.total) * 100)
+    : 0;
+  const scenarioProgressPercent = runNotification
+    ? Math.round(
+        ((runNotification.currentScenario - 1 + runProgressPercent / 100) /
+          runNotification.total) *
+          100,
+      )
+    : 0;
 
   const updateSource = (markdown: string) => {
     setSourceMarkdown(markdown);
@@ -479,10 +526,10 @@ export const App = (): ReactElement => {
       return nextHistory;
     });
 
-  const beginRuns = (scenarios: Scenario[]) => {
+  const beginRuns = (scenarios: Scenario[], background = false) => {
     const toRun = scenarios.length ? scenarios : [scenario];
     const sequence = ++runSequence.current;
-    setRoute("run");
+    if (!background) setRoute("run");
     setRunning(true);
     runCancelled.current = false;
     setRunningScenario(toRun[0]);
@@ -492,17 +539,43 @@ export const App = (): ReactElement => {
     setFailureVideoPath(null);
     setRunProgress({ current: 0, total: toRun[0].steps.length, step: "" });
     setRunLog([`${toRun.length}개 시나리오 실행을 시작했습니다.`]);
+    setRunNotification({
+      total: toRun.length,
+      currentScenario: 1,
+      scenarioTitle: toRun[0].title,
+      status: "running",
+      passed: 0,
+      failed: 0,
+    });
     void (async () => {
+      let passed = 0;
+      let failed = 0;
+      let cancelled = false;
       for (const [index, runScenario] of toRun.entries()) {
-        if (runCancelled.current || sequence !== runSequence.current) break;
+        if (runCancelled.current || sequence !== runSequence.current) {
+          cancelled = true;
+          break;
+        }
         setRunningScenario(runScenario);
         setRunStartedAt(Date.now());
         setElapsedSeconds(0);
-        setRunProgress({ current: 0, total: runScenario.steps.length, step: "" });
+        setRunProgress({
+          current: 0,
+          total: runScenario.steps.length,
+          step: "",
+        });
         setRunLog((logs) => [
           ...logs,
           `[${index + 1}/${toRun.length}] ${runScenario.title} 실행 시작`,
         ]);
+        setRunNotification(
+          (notification) =>
+            notification && {
+              ...notification,
+              currentScenario: index + 1,
+              scenarioTitle: runScenario.title,
+            },
+        );
         try {
           const result = await window.electronAPI.runQa(runScenario, {
             preview: livePreview,
@@ -514,10 +587,18 @@ export const App = (): ReactElement => {
             ...result.log,
             `[${index + 1}/${toRun.length}] ${runScenario.title} ${result.status === "passed" ? "통과" : result.status === "cancelled" ? "취소" : "실패"}`,
           ]);
-          if (result.status === "passed" || result.status === "failed")
+          if (result.status === "passed" || result.status === "failed") {
             recordRun(runScenario, result.status);
-          if (result.status === "cancelled") break;
+            passed += Number(result.status === "passed");
+            failed += Number(result.status === "failed");
+          }
+          if (result.status === "cancelled") {
+            cancelled = true;
+            break;
+          }
         } catch {
+          failed += 1;
+          recordRun(runScenario, "failed");
           setRunLog((logs) => [
             ...logs,
             `[${index + 1}/${toRun.length}] ${runScenario.title} 실행 실패`,
@@ -525,13 +606,46 @@ export const App = (): ReactElement => {
         }
       }
       await window.electronAPI.finishQaWorker(String(sequence));
-      if (sequence === runSequence.current) setRunning(false);
+      if (sequence === runSequence.current) {
+        setRunning(false);
+        setRunNotification(
+          (notification) =>
+            notification && {
+              ...notification,
+              status: cancelled ? "cancelled" : failed ? "failed" : "passed",
+              passed,
+              failed,
+            },
+        );
+      }
     })();
   };
 
   const beginRun = (toRun = scenario) => beginRuns([toRun]);
 
-  const placeMarker = ({ x, y, target }: { x: number; y: number; target: string }) => {
+  const runEditorContent = () => {
+    const markdown =
+      editorMode === "marker"
+        ? replaceScenarioMarkdown(sourceMarkdown, scenario)
+        : sourceMarkdown;
+    const scenarios = parseMarkdown(markdown).map((item) =>
+      editorMode === "marker" && item.id === scenario.id
+        ? scenario
+        : applyPositions(item, positionStore),
+    );
+    setSourceMarkdown(markdown);
+    beginRuns(scenarios, true);
+  };
+
+  const placeMarker = ({
+    x,
+    y,
+    target,
+  }: {
+    x: number;
+    y: number;
+    target: string;
+  }) => {
     const index = scenario.steps.length;
     setPendingMarker({
       id: String(index + 1),
@@ -582,7 +696,9 @@ export const App = (): ReactElement => {
 
   const selectMarkerScenario = (id: string) => {
     const nextMarkdown = replaceScenarioMarkdown(sourceMarkdown, scenario);
-    const nextScenario = parseMarkdown(nextMarkdown).find((item) => item.id === id);
+    const nextScenario = parseMarkdown(nextMarkdown).find(
+      (item) => item.id === id,
+    );
     if (!nextScenario) return;
     const positioned = applyPositions(nextScenario, positionStore);
     setSourceMarkdown(nextMarkdown);
@@ -603,7 +719,9 @@ export const App = (): ReactElement => {
 
   const reorderSteps = (draggedId: string, targetId: string) => {
     const fromIndex = scenario.steps.findIndex((step) => step.id === draggedId);
-    const targetIndex = scenario.steps.findIndex((step) => step.id === targetId);
+    const targetIndex = scenario.steps.findIndex(
+      (step) => step.id === targetId,
+    );
     if (fromIndex < 0 || targetIndex < 0 || fromIndex === targetIndex) return;
 
     const reordered = [...scenario.steps];
@@ -611,7 +729,8 @@ export const App = (): ReactElement => {
     reordered.splice(targetIndex, 0, draggedStep);
     const selectedStep = scenario.steps.find((step) => step.id === selectedId);
     updateSteps(reordered);
-    if (selectedStep) setSelectedId(String(reordered.indexOf(selectedStep) + 1));
+    if (selectedStep)
+      setSelectedId(String(reordered.indexOf(selectedStep) + 1));
   };
 
   return (
@@ -654,6 +773,8 @@ export const App = (): ReactElement => {
             onSelectMarkerScenario={selectMarkerScenario}
             onImport={() => void importScenario()}
             onExport={() => void saveScenarioFile()}
+            onSelectUploadFile={() => window.electronAPI.selectUploadFile()}
+            onRun={runEditorContent}
             onSourceChange={updateSource}
             onScenarioChange={setScenario}
             onRefresh={() => undefined}
@@ -701,6 +822,13 @@ export const App = (): ReactElement => {
               runSequence.current += 1;
               void window.electronAPI.cancelQa();
               setRunning(false);
+              setRunNotification(
+                (notification) =>
+                  notification && {
+                    ...notification,
+                    status: "cancelled",
+                  },
+              );
             }}
             onLivePreviewChange={setLivePreview}
             failureVideoAvailable={Boolean(failureVideoPath)}
@@ -711,7 +839,9 @@ export const App = (): ReactElement => {
                 .then((filePath) => {
                   if (filePath) setToast("실패 실행 영상을 다운로드했습니다.");
                 })
-                .catch(() => setToast("실패 실행 영상을 다운로드하지 못했습니다."));
+                .catch(() =>
+                  setToast("실패 실행 영상을 다운로드하지 못했습니다."),
+                );
             }}
           />
         )}
@@ -721,14 +851,102 @@ export const App = (): ReactElement => {
           ✓ {toast}
         </div>
       )}
+      {runNotification && route !== "run" && (
+        <section
+          className={`run-notification ${runNotification.status}`}
+          role="status"
+          aria-live="polite"
+          aria-label="시나리오 실행 알림"
+        >
+          <button
+            className="run-notification-close"
+            onClick={() => setRunNotification(null)}
+            aria-label="실행 알림 닫기"
+          >
+            ×
+          </button>
+          {runNotification.status === "running" ? (
+            <>
+              <div
+                className="run-notification-scenario-progress"
+                style={
+                  {
+                    "--scenario-progress": `${scenarioProgressPercent}%`,
+                  } as CSSProperties
+                }
+                aria-label={`시나리오 묶음 진행률 ${scenarioProgressPercent}%`}
+              >
+                <div
+                  className="run-notification-progress"
+                  style={
+                    { "--progress": `${runProgressPercent}%` } as CSSProperties
+                  }
+                  aria-label={`현재 시나리오 단계 진행률 ${runProgressPercent}%`}
+                >
+                  <span>{runProgressPercent}%</span>
+                </div>
+              </div>
+              <div className="run-notification-copy">
+                <strong>시나리오 실행 중</strong>
+                <span>
+                  {runNotification.currentScenario}/{runNotification.total}개 ·{" "}
+                  {runNotification.scenarioTitle}
+                </span>
+                <small>
+                  현재 단계 {runProgress.step || "시작 준비"} · {elapsedSeconds}
+                  초 경과
+                </small>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="run-notification-result">
+                {runNotification.status === "passed"
+                  ? "✓"
+                  : runNotification.status === "failed"
+                    ? "!"
+                    : "—"}
+              </div>
+              <div className="run-notification-copy">
+                <strong>
+                  {runNotification.status === "passed"
+                    ? "시나리오 실행 성공"
+                    : runNotification.status === "failed"
+                      ? "시나리오 실행 실패"
+                      : "시나리오 실행 취소"}
+                </strong>
+                <div className="run-notification-summary">
+                  <span>{runNotification.total}개 실행</span>
+                  <i aria-hidden="true">·</i>
+                  <b className="passed">성공 {runNotification.passed}</b>
+                  <b className="failed">실패 {runNotification.failed}</b>
+                </div>
+              </div>
+            </>
+          )}
+          <button
+            className="button button-secondary run-notification-link"
+            onClick={() => setRoute("run")}
+          >
+            바로가기 <span aria-hidden="true">→</span>
+          </button>
+        </section>
+      )}
       <BottomNavigation route={route} onNavigate={setRoute} />
       {saveBeforeReturning && (
-        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="save-scenario-title">
+        <div
+          className="modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="save-scenario-title"
+        >
           <div className="manual-modal">
             <h2 id="save-scenario-title">시나리오를 저장할까요?</h2>
             <p>화면에서 수정한 실행 단계를 Markdown 시나리오에 반영합니다.</p>
             <div className="modal-actions">
-              <button onClick={() => setSaveBeforeReturning(false)}>취소</button>
+              <button onClick={() => setSaveBeforeReturning(false)}>
+                취소
+              </button>
               <button
                 onClick={() => {
                   setSaveBeforeReturning(false);
@@ -737,7 +955,10 @@ export const App = (): ReactElement => {
               >
                 저장하지 않고 돌아가기
               </button>
-              <button className="button button-primary" onClick={() => void saveMarkerEditsAndReturn()}>
+              <button
+                className="button button-primary"
+                onClick={() => void saveMarkerEditsAndReturn()}
+              >
                 저장 후 돌아가기
               </button>
             </div>

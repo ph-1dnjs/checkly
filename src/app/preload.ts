@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   importScenarioFile: (): Promise<{ markdown: string; filePath: string } | null> => ipcRenderer.invoke('scenario:import-file'),
   saveImportedScenarioFile: (markdown: string): Promise<string | null> => ipcRenderer.invoke('scenario:save-imported-file', markdown),
   exportScenarioFile: (markdown: string): Promise<string | null> => ipcRenderer.invoke('scenario:export-file', markdown),
+  selectUploadFile: (): Promise<string | null> => ipcRenderer.invoke('qa:select-upload-file'),
   loadMarkerPositions: (): Promise<string | null> => ipcRenderer.invoke('marker-positions:load'),
   saveMarkerPositions: (positions: string): Promise<void> => ipcRenderer.invoke('marker-positions:save', positions),
   inspectScenario: (scenario: unknown): Promise<unknown> => ipcRenderer.invoke('qa:inspect', scenario),

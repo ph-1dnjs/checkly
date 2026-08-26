@@ -7,7 +7,7 @@ import path from 'node:path'
 import { copyFile, mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { chromium, type Browser, type BrowserContext, type Page, type Video } from '@playwright/test'
 
-type QaStep = { id: string; action: 'goto' | 'fill' | 'manualFill' | 'click' | 'select' | 'expectText'; target: string; value?: string; required?: boolean; prompt?: string; condition?: string; waitSeconds?: number; occurrence?: number }
+type QaStep = { id: string; action: 'goto' | 'fill' | 'fileUpload' | 'manualFill' | 'click' | 'select' | 'expectText'; target: string; value?: string; required?: boolean; prompt?: string; condition?: string; waitSeconds?: number; occurrence?: number }
 type QaScenario = { title: string; url: string; steps: QaStep[] }
 type QaRunOptions = { preview?: boolean; workerId?: string }
 let activeRun: { browser?: Browser; resolveManual?: (value: string | null) => void; cancelled: boolean } | null = null
@@ -84,7 +84,7 @@ const failureVideoFileName = (scenario: QaScenario): string => {
 }
 const failureVideoDirectory = (): string => path.join(app.getPath('userData'), 'videos', 'failures')
 
-const readableStep = (step: QaStep): string => `단계 ${step.id}: ${step.target} ${step.action === 'manualFill' ? '수동 입력' : step.action}`
+const readableStep = (step: QaStep): string => `단계 ${step.id}: ${step.target} ${step.action === 'manualFill' ? '수동 입력' : step.action === 'fileUpload' ? '파일 업로드' : step.action}`
 const escapeRegex = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 const inputFor = (page: Page, target: string) => {
   const normalized = target.replace(/\s*(필드|입력란)$/, '').trim()
@@ -161,7 +161,7 @@ const inspectScenario = async (scenario: QaScenario): Promise<Array<{ id: string
       if (step.action === 'goto') return { id: step.id, connected: true }
       const target = new RegExp(escapeRegex(step.target), 'i')
       const resultTarget = resultTargetFor(step.target)
-      const locator = step.action === 'fill' || step.action === 'manualFill'
+      const locator = step.action === 'fill' || step.action === 'manualFill' || step.action === 'fileUpload'
         ? page.getByLabel(target).or(inputFor(page, step.target))
         : step.action === 'click' && resultTarget !== step.target
           ? page.getByText(resultTarget).first()
@@ -228,6 +228,10 @@ const executeScenario = async (scenario: QaScenario, owner: BrowserWindow, optio
       }
       if (step.action === 'goto') await page.goto(new URL(routeFor(step.target), scenario.url).toString(), { waitUntil: 'domcontentloaded' })
       if (step.action === 'fill') await inputFor(page, step.target).fill(step.value ?? '')
+      if (step.action === 'fileUpload') {
+        if (!step.value?.trim()) throw new Error(`파일 업로드 단계 '${step.target}'에 업로드할 파일 경로가 없습니다.`)
+        await inputFor(page, step.target).setInputFiles(step.value)
+      }
       if (step.action === 'manualFill') {
         owner.webContents.send('qa:manual-required', { id: step.id, target: step.target, prompt: step.prompt, required: step.required })
         const value = await new Promise<string | null>((resolve) => { run.resolveManual = resolve })
@@ -304,6 +308,10 @@ app.whenReady().then(() => {
   ipcMain.handle('marker-positions:load', () => loadMarkerPositions())
   ipcMain.handle('marker-positions:save', (_event, positions: string) => saveMarkerPositions(positions))
   ipcMain.handle('qa:start', async (event, scenario: QaScenario, options: QaRunOptions) => executeScenario(scenario, BrowserWindow.fromWebContents(event.sender)!, options))
+  ipcMain.handle('qa:select-upload-file', async (): Promise<string | null> => {
+    const result = await dialog.showOpenDialog({ title: '업로드할 파일 선택', properties: ['openFile'] })
+    return result.canceled ? null : result.filePaths[0] ?? null
+  })
   ipcMain.handle('qa:finish-worker', (_event, workerId: string) => closeScenarioWorker(workerId))
   ipcMain.handle('qa:inspect', (_event, scenario: QaScenario) => inspectScenario(scenario))
   ipcMain.handle('qa:download-failure-video', async (_event, filePath: string) => {
