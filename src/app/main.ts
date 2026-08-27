@@ -7,13 +7,14 @@ import path from 'node:path'
 import { copyFile, mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { chromium, type Browser, type BrowserContext, type Locator, type Page, type Video } from '@playwright/test'
 
-type QaStep = { id: string; action: 'goto' | 'fill' | 'fileUpload' | 'manualFill' | 'manualResult' | 'click' | 'select' | 'expectText'; target: string; value?: string; required?: boolean; prompt?: string; condition?: string; waitSeconds?: number; occurrence?: number }
+type QaStep = { id: string; action: 'goto' | 'fill' | 'fileUpload' | 'manualFill' | 'manualControl' | 'manualResult' | 'click' | 'select' | 'expectText'; target: string; value?: string; required?: boolean; prompt?: string; condition?: string; waitSeconds?: number; occurrence?: number }
 type QaScenario = { title: string; url: string; steps: QaStep[] }
-type QaRunOptions = { preview?: boolean; workerId?: string }
+type QaRunOptions = { preview?: boolean; workerId?: string; headed?: boolean }
 type ManualResult = { status: 'passed' | 'failed'; reason?: string }
-let activeRun: { browser?: Browser; resolveManual?: (value: string | null) => void; resolveManualResult?: (value: ManualResult) => void; cancelled: boolean } | null = null
+type ManualControlResult = { status: 'continue' | 'failed'; reason?: string }
+let activeRun: { browser?: Browser; resolveManual?: (value: string | null) => void; resolveManualControl?: (value: ManualControlResult) => void; resolveManualResult?: (value: ManualResult) => void; cancelled: boolean } | null = null
 let activeScenarioFilePath: string | null = null
-let scenarioWorker: { id: string; browser: Browser; context: BrowserContext } | null = null
+let scenarioWorker: { id: string; browser: Browser; context: BrowserContext; headed: boolean } | null = null
 
 const closeScenarioWorker = async (workerId?: string): Promise<void> => {
   if (!scenarioWorker || (workerId && scenarioWorker.id !== workerId)) return
@@ -85,7 +86,7 @@ const failureVideoFileName = (scenario: QaScenario): string => {
 }
 const failureVideoDirectory = (): string => path.join(app.getPath('userData'), 'videos', 'failures')
 
-const readableStep = (step: QaStep): string => `단계 ${step.id}: ${step.target} ${step.action === 'manualFill' ? '수동 입력' : step.action === 'manualResult' ? '수동 결과 확인' : step.action === 'fileUpload' ? '파일 업로드' : step.action}`
+const readableStep = (step: QaStep): string => `단계 ${step.id}: ${step.target} ${step.action === 'manualFill' ? '수동 입력' : step.action === 'manualControl' ? '브라우저 직접 제어' : step.action === 'manualResult' ? '수동 결과 확인' : step.action === 'fileUpload' ? '파일 업로드' : step.action}`
 const escapeRegex = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 const inputFor = (page: Page, target: string) => {
   const normalized = target.replace(/\s*(필드|입력란)$/, '').trim()
@@ -189,7 +190,7 @@ const inspectScenario = async (scenario: QaScenario): Promise<Array<{ id: string
     const page = await browser.newPage()
     await page.goto(scenario.url, { waitUntil: 'domcontentloaded', timeout: 15_000 })
     return await Promise.all(scenario.steps.map(async (step) => {
-      if (step.action === 'goto' || step.action === 'manualResult') return { id: step.id, connected: true }
+      if (step.action === 'goto' || step.action === 'manualControl' || step.action === 'manualResult') return { id: step.id, connected: true }
       const target = new RegExp(escapeRegex(step.target), 'i')
       const resultTarget = resultTargetFor(step.target)
       const locator = step.action === 'fill' || step.action === 'manualFill' || step.action === 'fileUpload'
@@ -218,13 +219,15 @@ const executeScenario = async (scenario: QaScenario, owner: BrowserWindow, optio
   activeRun = run
   try {
     owner.webContents.send('qa:progress', { current: 0, total: scenario.steps.length, step: '브라우저 시작 중' })
-    if (scenarioWorker && scenarioWorker.id !== options.workerId) await closeScenarioWorker()
+    const needsManualControl = scenario.steps.some((step) => step.action === 'manualControl')
+    const headed = options.headed ?? needsManualControl
+    if (scenarioWorker && (scenarioWorker.id !== options.workerId || scenarioWorker.headed !== headed)) await closeScenarioWorker()
     if (!scenarioWorker) {
-      const workerBrowser = await chromium.launch({ headless: true, timeout: 15_000 })
+      const workerBrowser = await chromium.launch({ headless: !headed, timeout: 15_000 })
       const videoDirectory = path.join(app.getPath('userData'), 'videos', 'temporary')
-      await mkdir(videoDirectory, { recursive: true })
-      const workerContext = await workerBrowser.newContext({ recordVideo: { dir: videoDirectory, size: { width: 1280, height: 720 } } })
-      scenarioWorker = { id: options.workerId ?? `${Date.now()}`, browser: workerBrowser, context: workerContext }
+      if (!headed) await mkdir(videoDirectory, { recursive: true })
+      const workerContext = await workerBrowser.newContext(headed ? {} : { recordVideo: { dir: videoDirectory, size: { width: 1280, height: 720 } } })
+      scenarioWorker = { id: options.workerId ?? `${Date.now()}`, browser: workerBrowser, context: workerContext, headed }
     }
     browser = scenarioWorker.browser
     context = scenarioWorker.context
@@ -271,6 +274,32 @@ const executeScenario = async (scenario: QaScenario, owner: BrowserWindow, optio
         await inputFor(page, step.target).fill(value)
         log.push(`${readableStep(step)} — 완료`)
       }
+      if (step.action === 'manualControl') {
+        if (previewInterval) {
+          clearInterval(previewInterval)
+          previewInterval = undefined
+        }
+        owner.webContents.send('qa:manual-control-required', { id: step.id, target: step.target, prompt: step.prompt, timeoutSeconds: 300 })
+        const result = await new Promise<ManualControlResult>((resolve) => {
+          const timeout = setTimeout(() => {
+            run.resolveManualControl = undefined
+            resolve({ status: 'failed', reason: '브라우저 직접 제어 시간(5분)을 초과했습니다.' })
+          }, 300_000)
+          run.resolveManualControl = (value) => {
+            clearTimeout(timeout)
+            resolve(value)
+          }
+        })
+        run.resolveManualControl = undefined
+        if (run.cancelled) { const finalLog = [...log, '실행이 취소되었습니다.']; return { status: 'cancelled', log: finalLog, reportPath: await writeRunReport(scenario, 'cancelled', finalLog) } }
+        if (result.status === 'failed') {
+          const reason = result.reason?.trim() || '진행자가 실패로 판정했습니다.'
+          const finalLog = [...log, `${readableStep(step)} — 실패: ${reason}`]
+          failed = true
+          return { status: 'failed', log: finalLog, reportPath: await writeRunReport(scenario, 'failed', finalLog) }
+        }
+        log.push(`${readableStep(step)} — 제어 완료`)
+      }
       if (step.action === 'manualResult') {
         owner.webContents.send('qa:manual-result-required', { id: step.id, target: step.target, prompt: step.prompt, timeoutSeconds: 300 })
         const result = await new Promise<ManualResult>((resolve) => {
@@ -307,7 +336,7 @@ const executeScenario = async (scenario: QaScenario, owner: BrowserWindow, optio
         catch { await select.selectOption(step.value ?? '') }
       }
       if (step.action === 'expectText') await waitForVisibleText(page, resultTargetFor(step.target), (step.waitSeconds ?? 10) * 1000)
-      if (step.action !== 'manualFill' && step.action !== 'manualResult') log.push(`${readableStep(step)} — 완료`)
+      if (step.action !== 'manualFill' && step.action !== 'manualControl' && step.action !== 'manualResult') log.push(`${readableStep(step)} — 완료`)
       owner.webContents.send('qa:progress', { current: index + 1, total: scenario.steps.length, step: readableStep(step) })
     }
     return { status: 'passed', log, reportPath: await writeRunReport(scenario, 'passed', log) }
@@ -382,6 +411,7 @@ app.whenReady().then(() => {
     return destination
   })
   ipcMain.handle('qa:manual-input', (_event, value: string) => activeRun?.resolveManual?.(value))
+  ipcMain.handle('qa:manual-control', (_event, result: ManualControlResult) => activeRun?.resolveManualControl?.(result))
   ipcMain.handle('qa:manual-result', (_event, result: ManualResult) => activeRun?.resolveManualResult?.(result))
   ipcMain.handle('qa:cancel', async () => {
     if (!activeRun) {
@@ -390,6 +420,7 @@ app.whenReady().then(() => {
     }
     activeRun.cancelled = true
     activeRun.resolveManual?.(null)
+    activeRun.resolveManualControl?.({ status: 'failed', reason: '실행이 취소되었습니다.' })
     activeRun.resolveManualResult?.({ status: 'failed', reason: '실행이 취소되었습니다.' })
     await closeScenarioWorker()
   })

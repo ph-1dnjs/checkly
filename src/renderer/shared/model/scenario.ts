@@ -3,6 +3,7 @@ export type Action =
   | "fill"
   | "fileUpload"
   | "manualFill"
+  | "manualControl"
   | "manualResult"
   | "click"
   | "select"
@@ -76,6 +77,7 @@ export const actionLabel: Record<Action, string> = {
   fill: "일반 입력 (자동)",
   fileUpload: "파일 업로드",
   manualFill: "수동 입력",
+  manualControl: "브라우저 직접 제어",
   manualResult: "수동 결과 확인",
   click: "클릭",
   select: "선택",
@@ -85,6 +87,8 @@ export const actionLabel: Record<Action, string> = {
 export const actionText = (step: Step): string =>
   step.action === "manualFill"
     ? `${step.target} 수동 입력${step.prompt ? ` [${step.prompt}]` : ""}`
+    : step.action === "manualControl"
+      ? `${step.target} 브라우저 직접 제어 (최대 5분)${step.prompt ? ` [${step.prompt}]` : ""}`
     : step.action === "manualResult"
       ? `${step.target} 수동 결과 확인 (최대 5분)${step.prompt ? ` [${step.prompt}]` : ""}`
     : step.action === "goto"
@@ -107,6 +111,8 @@ export const estimateDurationSeconds = (scenario: Scenario): number =>
         ? 3
         : step.action === "manualFill"
           ? 15
+          : step.action === "manualControl"
+            ? 300
           : step.action === "manualResult"
             ? 300
           : step.action === "expectText"

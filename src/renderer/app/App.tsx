@@ -43,14 +43,16 @@ declare global {
       ) => Promise<Array<{ id: string; connected: boolean }>>;
       runQa: (
         value: Scenario,
-        options?: { preview?: boolean; workerId?: string },
+        options?: { preview?: boolean; workerId?: string; headed?: boolean },
       ) => Promise<{ status: string; log: string[] }>;
       finishQaWorker: (workerId: string) => Promise<void>;
       downloadFailureVideo: (value: string) => Promise<string | null>;
       submitManualInput: (value: string) => Promise<void>;
+      submitManualControl: (result: { status: "continue" | "failed"; reason?: string }) => Promise<void>;
       submitManualResult: (result: { status: "passed" | "failed"; reason?: string }) => Promise<void>;
       cancelQa: () => Promise<void>;
       onManualInputRequired: (callback: (value: Step) => void) => () => void;
+      onManualControlRequired: (callback: (value: Step & { timeoutSeconds?: number }) => void) => () => void;
       onManualResultRequired: (callback: (value: Step & { timeoutSeconds?: number }) => void) => () => void;
       onQaProgress: (callback: (value: RunProgress) => void) => () => void;
       onQaPreview: (callback: (value: string) => void) => () => void;
@@ -102,6 +104,7 @@ const parseMarkdown = (markdown: string): Scenario[] =>
             )
             .trim();
           const manual = text.match(/^(.+?)\s+수동 입력(?:\s*\[(.+)\])?$/);
+          const manualControl = text.match(/^(.+?)\s+브라우저 직접 제어(?:\s*\[(.+)\])?$/);
           const manualResult = text.match(/^(.+?)\s+수동 결과 확인(?:\s*\[(.+)\])?$/);
           const fileUpload =
             text.match(/^`(.+?)`(?:에|에서)?\s*`(.*?)`\s*파일\s*업로드/) ??
@@ -124,6 +127,15 @@ const parseMarkdown = (markdown: string): Scenario[] =>
               action: "manualResult",
               target: unquoteMarkdownValue(manualResult[1]),
               prompt: manualResult[2],
+              condition,
+              connected: true,
+            };
+          if (manualControl)
+            return {
+              id: String(stepIndex + 1),
+              action: "manualControl",
+              target: unquoteMarkdownValue(manualControl[1]),
+              prompt: manualControl[2],
               condition,
               connected: true,
             };
@@ -250,6 +262,8 @@ const scenarioToMarkdown = (scenario: Scenario): string =>
                 ? `\`${step.target}\`에 \`${step.value ?? ""}\` 파일 업로드`
               : step.action === "manualFill"
               ? `\`${step.target}\` 수동 입력${step.prompt ? ` [${step.prompt}]` : ""}`
+              : step.action === "manualControl"
+                ? `\`${step.target}\` 브라우저 직접 제어${step.prompt ? ` [${step.prompt}]` : ""}`
               : step.action === "manualResult"
                 ? `\`${step.target}\` 수동 결과 확인${step.prompt ? ` [${step.prompt}]` : ""}`
               : step.action === "select"
@@ -310,6 +324,8 @@ export const App = (): ReactElement => {
   const [stepPanelMoved, setStepPanelMoved] = useState(false);
   const [saveBeforeReturning, setSaveBeforeReturning] = useState(false);
   const [manual, setManual] = useState<Step | null>(null);
+  const [manualControl, setManualControl] = useState<(Step & { timeoutSeconds?: number }) | null>(null);
+  const [manualControlFailureReason, setManualControlFailureReason] = useState("");
   const [manualValue, setManualValue] = useState("");
   const [manualValueVisible, setManualValueVisible] = useState(false);
   const [manualResult, setManualResult] = useState<(Step & { timeoutSeconds?: number }) | null>(null);
@@ -403,6 +419,19 @@ export const App = (): ReactElement => {
         setRunLog((logs) => [
           ...logs,
           `단계 ${step.id}: ${step.target} 수동 입력 대기`,
+        ]);
+      }),
+    [],
+  );
+
+  useEffect(
+    () =>
+      window.electronAPI.onManualControlRequired((step) => {
+        setManualControlFailureReason("");
+        setManualControl(step);
+        setRunLog((logs) => [
+          ...logs,
+          `단계 ${step.id}: ${step.target} 브라우저 직접 제어 대기 (최대 5분)`,
         ]);
       }),
     [],
@@ -571,6 +600,9 @@ export const App = (): ReactElement => {
 
   const beginRuns = (scenarios: Scenario[], background = false) => {
     const toRun = scenarios.length ? scenarios : [scenario];
+    const includesManualControl = toRun.some((item) =>
+      item.steps.some((step) => step.action === "manualControl"),
+    );
     const sequence = ++runSequence.current;
     if (!background) setRoute("run");
     setRunning(true);
@@ -581,7 +613,12 @@ export const App = (): ReactElement => {
     setPreviewImage("");
     setFailureVideoPath(null);
     setRunProgress({ current: 0, total: toRun[0].steps.length, step: "" });
-    setRunLog([`${toRun.length}개 시나리오 실행을 시작했습니다.`]);
+    setRunLog([
+      `${toRun.length}개 시나리오 실행을 시작했습니다.`,
+      ...(includesManualControl
+        ? ["브라우저 직접 제어 단계가 있어 전체 흐름을 같은 보이는 브라우저에서 실행합니다. 미리보기는 직접 제어 단계에서만 중지되고, 실패 영상은 저장되지 않습니다."]
+        : []),
+    ]);
     setRunNotification({
       total: toRun.length,
       currentScenario: 1,
@@ -623,6 +660,7 @@ export const App = (): ReactElement => {
           const result = await window.electronAPI.runQa(runScenario, {
             preview: livePreview,
             workerId: String(sequence),
+            headed: includesManualControl,
           });
           if (sequence !== runSequence.current) break;
           setRunLog((logs) => [
@@ -854,6 +892,7 @@ export const App = (): ReactElement => {
             scenarioCount={executableScenarios.length}
             running={running}
             manual={manual}
+            manualControl={manualControl}
             manualResult={manualResult}
             runLog={runLog}
             runProgress={runProgress}
@@ -1082,6 +1121,45 @@ export const App = (): ReactElement => {
                 }}
               >
                 성공 후 계속
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {manualControl && (
+        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="manual-control-title">
+          <div className="manual-modal">
+            <h2 id="manual-control-title">브라우저 직접 제어가 필요합니다</h2>
+            <p>{manualControl.prompt || `${manualControl.target}에서 필요한 절차를 완료해 주세요.`}</p>
+            <p className="security-note">별도 Chromium 창에서 결제를 진행하세요. 이 단계에서는 화면 미리보기와 영상 녹화가 비활성화됩니다.</p>
+            <label>
+              실패 사유
+              <input
+                autoFocus
+                value={manualControlFailureReason}
+                onChange={(event) => setManualControlFailureReason(event.target.value)}
+                placeholder="실패 시 사유를 입력하세요"
+              />
+            </label>
+            <div className="modal-actions">
+              <button
+                className="button danger"
+                disabled={!manualControlFailureReason.trim()}
+                onClick={() => {
+                  void window.electronAPI.submitManualControl({ status: "failed", reason: manualControlFailureReason.trim() });
+                  setManualControl(null);
+                }}
+              >
+                실패로 기록
+              </button>
+              <button
+                className="button button-primary"
+                onClick={() => {
+                  void window.electronAPI.submitManualControl({ status: "continue" });
+                  setManualControl(null);
+                }}
+              >
+                완료 후 계속
               </button>
             </div>
           </div>

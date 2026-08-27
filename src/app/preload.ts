@@ -11,10 +11,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   loadMarkerPositions: (): Promise<string | null> => ipcRenderer.invoke('marker-positions:load'),
   saveMarkerPositions: (positions: string): Promise<void> => ipcRenderer.invoke('marker-positions:save', positions),
   inspectScenario: (scenario: unknown): Promise<unknown> => ipcRenderer.invoke('qa:inspect', scenario),
-  runQa: (scenario: unknown, options?: { preview?: boolean; workerId?: string }): Promise<unknown> => ipcRenderer.invoke('qa:start', scenario, options),
+  runQa: (scenario: unknown, options?: { preview?: boolean; workerId?: string; headed?: boolean }): Promise<unknown> => ipcRenderer.invoke('qa:start', scenario, options),
   finishQaWorker: (workerId: string): Promise<void> => ipcRenderer.invoke('qa:finish-worker', workerId),
   downloadFailureVideo: (filePath: string): Promise<string | null> => ipcRenderer.invoke('qa:download-failure-video', filePath),
   submitManualInput: (value: string): Promise<void> => ipcRenderer.invoke('qa:manual-input', value),
+  submitManualControl: (result: { status: 'continue' | 'failed'; reason?: string }): Promise<void> => ipcRenderer.invoke('qa:manual-control', result),
   submitManualResult: (result: { status: 'passed' | 'failed'; reason?: string }): Promise<void> => ipcRenderer.invoke('qa:manual-result', result),
   cancelQa: (): Promise<void> => ipcRenderer.invoke('qa:cancel'),
   onManualInputRequired: (callback: (step: unknown) => void): (() => void) => {
@@ -26,6 +27,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const listener = (_event: Electron.IpcRendererEvent, step: unknown): void => callback(step)
     ipcRenderer.on('qa:manual-result-required', listener)
     return () => ipcRenderer.removeListener('qa:manual-result-required', listener)
+  },
+  onManualControlRequired: (callback: (step: unknown) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, step: unknown): void => callback(step)
+    ipcRenderer.on('qa:manual-control-required', listener)
+    return () => ipcRenderer.removeListener('qa:manual-control-required', listener)
   },
   onQaProgress: (callback: (progress: unknown) => void): (() => void) => {
     const listener = (_event: Electron.IpcRendererEvent, progress: unknown): void => callback(progress)

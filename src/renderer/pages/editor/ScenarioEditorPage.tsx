@@ -670,6 +670,22 @@ export const ScenarioEditorPage = ({
               />
             </label>
           )}
+          {markerDialog.action === "manualControl" && (
+            <>
+              <div className="input-target-alert" role="alert">
+                <strong>브라우저 직접 제어</strong>
+                <span>실행 시 별도 Chromium 창이 열립니다. 결제 모달·팝업을 직접 조작한 뒤 앱에서 계속을 선택하세요. 이 시나리오에서는 미리보기와 실패 영상이 저장되지 않습니다.</span>
+              </div>
+              <label>
+                안내 문구
+                <input
+                  value={markerDialog.prompt ?? ""}
+                  onChange={(event) => onUpdateMarkerDialog({ prompt: event.target.value })}
+                  placeholder="예: 나이스페이 테스트 결제를 완료한 뒤 계속을 누르세요"
+                />
+              </label>
+            </>
+          )}
           {markerDialog.action === "manualResult" && (
             <>
               <div className="input-target-alert" role="alert">
