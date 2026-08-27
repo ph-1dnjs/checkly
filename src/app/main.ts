@@ -99,6 +99,10 @@ const selectFor = (page: Page, target: string) => {
   const matcher = new RegExp(escapeRegex(target), 'i')
   return page.getByLabel(matcher).or(page.locator(`select[name*="${target}"]`)).first()
 }
+const isNativeSelect = async (locator: Locator): Promise<boolean> => {
+  if (!(await locator.count())) return false
+  return locator.evaluate((element) => element instanceof HTMLSelectElement)
+}
 const actionTargetFor = (target: string): string => target.replace(/\s+(버튼을?|버튼)?\s*클릭$/, '').trim()
 const clickTargetFor = async (page: Page, target: string, occurrence = 1, timeout = 0): Promise<Locator> => {
   const name = actionTargetFor(target)
@@ -106,44 +110,56 @@ const clickTargetFor = async (page: Page, target: string, occurrence = 1, timeou
     .replace(/\s*버튼$/, '')
     .trim()
   const selector = name.match(/^css=(.+)$/i)?.[1]?.trim()
-  if (selector) return page.locator(selector).nth(Math.max(0, occurrence - 1))
-
+  const cssTargets = selector ? page.locator(selector) : null
   // 체크박스와 라디오는 숨겨진 input 대신 label을 클릭해야 UI 이벤트가 정상적으로 전달된다.
   // 마커가 줄바꿈을 공백으로 정리하므로, 라벨 비교도 공백을 무시해 일관되게 처리한다.
-  const matcher = new RegExp(escapeRegex(name), 'i')
-  const normalizedName = name.replace(/[\s\u200b]+/g, '')
+  const matcher = selector ? null : new RegExp(escapeRegex(name), 'i')
+  const normalizedName = selector ? '' : name.replace(/[\s\u200b]+/g, '')
   const deadline = Date.now() + timeout
   while (true) {
+    if (cssTargets) {
+      const visibleTargets: Locator[] = []
+      for (let index = 0; index < await cssTargets.count(); index += 1) {
+        const cssTarget = cssTargets.nth(index)
+        if (await cssTarget.isVisible()) visibleTargets.push(cssTarget)
+      }
+      if (visibleTargets.length >= occurrence) return visibleTargets[occurrence - 1]
+      if (Date.now() >= deadline) throw new Error(`CSS 클릭 대상 '${selector}'의 ${occurrence}번째 보이는 요소를 찾지 못했습니다.`)
+      await page.waitForTimeout(100)
+      continue
+    }
+
+    // 접근성 이름이 있는 버튼을 가장 먼저 찾는다. 일반 텍스트보다 버튼을 우선해야
+    // 네비게이션·레이블의 중복 텍스트가 "n번째" 클릭 대상으로 섞이지 않는다.
+    const visibleButtons: Locator[] = []
+    for (const frame of page.frames()) {
+      const buttons = frame.getByRole('button', { name: matcher! })
+      for (let index = 0; index < await buttons.count(); index += 1) {
+        const button = buttons.nth(index)
+        if (await button.isVisible()) visibleButtons.push(button)
+      }
+    }
+    if (visibleButtons.length >= occurrence) return visibleButtons[occurrence - 1]
+
     for (const frame of page.frames()) {
       const labels = await frame.locator('label').all()
       const matchingLabels: Locator[] = []
       for (const label of labels) {
         const text = await label.textContent()
-        if (text?.replace(/[\s\u200b]+/g, '').includes(normalizedName)) matchingLabels.push(label)
+        if (text?.replace(/[\s\u200b]+/g, '').includes(normalizedName) && await label.isVisible()) matchingLabels.push(label)
       }
-      if (matchingLabels.length) return matchingLabels[Math.min(occurrence - 1, matchingLabels.length - 1)]
+      if (matchingLabels.length >= occurrence) return matchingLabels[occurrence - 1]
 
       // 일부 UI 컴포넌트는 label 역할을 노출하지 않는다. 자식 텍스트 클릭도 부모의 클릭 이벤트로 전달된다.
-      const textTargets = frame.getByText(matcher)
-      if (await textTargets.count()) return textTargets.nth(Math.max(0, occurrence - 1))
-    }
-
-    const buttons = page.getByRole('button', { name: matcher })
-    if (await buttons.count()) {
-      if (occurrence > 1) return buttons.nth(occurrence - 1)
-      for (let index = (await buttons.count()) - 1; index >= 0; index -= 1) {
-        const button = buttons.nth(index)
-        if (!(await button.isVisible())) continue
-        const isTopmost = await button.evaluate((element) => {
-          const rect = element.getBoundingClientRect()
-          const topElement = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2)
-          return topElement === element || element.contains(topElement)
-        })
-        if (isTopmost) return button
+      const textTargets = frame.getByText(matcher!)
+      const visibleTextTargets: Locator[] = []
+      for (let index = 0; index < await textTargets.count(); index += 1) {
+        const textTarget = textTargets.nth(index)
+        if (await textTarget.isVisible()) visibleTextTargets.push(textTarget)
       }
-      return buttons.first()
+      if (visibleTextTargets.length >= occurrence) return visibleTextTargets[occurrence - 1]
     }
-    if (Date.now() >= deadline) return buttons.first()
+    if (Date.now() >= deadline) throw new Error(`클릭 대상 '${name}'의 ${occurrence}번째 보이는 요소를 찾지 못했습니다.`)
     await page.waitForTimeout(100)
   }
 }
@@ -174,14 +190,19 @@ const waitForVisibleText = async (page: Page, target: string, timeout = 10_000):
   }
   throw new Error(`결과 텍스트 '${target}'가 ${Math.ceil(timeout / 1000)}초 안에 화면에 표시되지 않았습니다.`)
 }
-const hasVisibleText = async (page: Page, target: string): Promise<boolean> => {
-  const candidates = await page.getByText(new RegExp(escapeRegex(target), 'i')).all()
-  for (const candidate of candidates) {
-    try {
-      if (await candidate.isVisible()) return true
-    } catch { /* 화면 전환 중 분리된 요소는 조건 불충족으로 처리한다. */ }
+const hasVisibleText = async (page: Page, target: string, timeout = 0): Promise<boolean> => {
+  const matcher = new RegExp(escapeRegex(target), 'i')
+  const deadline = Date.now() + timeout
+  while (true) {
+    const candidates = await page.getByText(matcher).all()
+    for (const candidate of candidates) {
+      try {
+        if (await candidate.isVisible()) return true
+      } catch { /* 화면 전환 중 분리된 요소는 다음 반복에서 다시 찾는다. */ }
+    }
+    if (Date.now() >= deadline) return false
+    await page.waitForTimeout(100)
   }
-  return false
 }
 
 const inspectScenario = async (scenario: QaScenario): Promise<Array<{ id: string; connected: boolean }>> => {
@@ -255,7 +276,9 @@ const executeScenario = async (scenario: QaScenario, owner: BrowserWindow, optio
     }
     for (const [index, step] of scenario.steps.entries()) {
       if (run.cancelled) { const finalLog = [...log, '실행이 취소되었습니다.']; return { status: 'cancelled', log: finalLog, reportPath: await writeRunReport(scenario, 'cancelled', finalLog) } }
-      if (step.condition && !(await hasVisibleText(page, step.condition))) {
+      // 조건부 단계는 직전 클릭으로 표시되는 모달·토스트의 렌더링 시간을 짧게 허용한다.
+      // 필요하면 시나리오의 [대기 N초]로 이 시간을 늘릴 수 있다.
+      if (step.condition && !(await hasVisibleText(page, step.condition, (step.waitSeconds ?? 1) * 1000))) {
         log.push(`${readableStep(step)} — 조건 '${step.condition}' 미충족으로 건너뜀`)
         owner.webContents.send('qa:progress', { current: index + 1, total: scenario.steps.length, step: readableStep(step) })
         continue
@@ -332,8 +355,14 @@ const executeScenario = async (scenario: QaScenario, owner: BrowserWindow, optio
       }
       if (step.action === 'select') {
         const select = selectFor(page, step.target)
-        try { await select.selectOption({ label: step.value ?? '' }) }
-        catch { await select.selectOption(step.value ?? '') }
+        if (await isNativeSelect(select)) {
+          try { await select.selectOption({ label: step.value ?? '' }) }
+          catch { await select.selectOption(step.value ?? '') }
+        } else {
+          const timeout = (step.waitSeconds ?? 10) * 1000
+          await (await clickTargetFor(page, step.target, 1, timeout)).click({ timeout })
+          await (await clickTargetFor(page, step.value ?? '', 1, timeout)).click({ timeout })
+        }
       }
       if (step.action === 'expectText') await waitForVisibleText(page, resultTargetFor(step.target), (step.waitSeconds ?? 10) * 1000)
       if (step.action !== 'manualFill' && step.action !== 'manualControl' && step.action !== 'manualResult') log.push(`${readableStep(step)} — 완료`)

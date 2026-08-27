@@ -178,6 +178,7 @@ const parseMarkdown = (markdown: string): Scenario[] =>
               ),
               value: fill[2],
               condition,
+              waitSeconds,
               connected: true,
             };
           if (select)
@@ -189,6 +190,7 @@ const parseMarkdown = (markdown: string): Scenario[] =>
               ),
               value: select[2],
               condition,
+              waitSeconds,
               connected: true,
             };
           if (/(페이지로?\s*이동|접속|열기)/.test(text))
