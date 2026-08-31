@@ -38,8 +38,10 @@ export type MarkerPosition = Pick<
 export type MarkerPositionStore = Record<string, MarkerPosition[]>;
 export type RunRecord = {
   id: string;
-  scenario: Scenario;
+  scenarios: Scenario[];
   status: "passed" | "failed";
+  passed: number;
+  failed: number;
   ranAt: string;
 };
 export type RunSummary = { total: number; passed: number; failed: number };

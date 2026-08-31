@@ -47,6 +47,7 @@ declare global {
       ) => Promise<{ status: string; log: string[] }>;
       finishQaWorker: (workerId: string) => Promise<void>;
       downloadRunVideo: (value: string) => Promise<string | null>;
+      mergeRunVideos: (values: string[]) => Promise<string | null>;
       submitManualInput: (value: string) => Promise<void>;
       submitManualControl: (result: { status: "continue" | "failed"; reason?: string }) => Promise<void>;
       controlManualBrowser: (event: { type: "click" | "wheel" | "key" | "text"; x?: number; y?: number; deltaY?: number; key?: string; text?: string }) => Promise<void>;
@@ -344,7 +345,8 @@ export const App = (): ReactElement => {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [livePreview, setLivePreview] = useState(false);
   const [previewImage, setPreviewImage] = useState("");
-  const [runVideoPath, setRunVideoPath] = useState<string | null>(null);
+  const [runVideos, setRunVideos] = useState<Array<{ scenario: Scenario; path: string }>>([]);
+  const [fullRunVideoPath, setFullRunVideoPath] = useState<string | null>(null);
   const [toast, setToast] = useState("");
   const [runNotification, setRunNotification] =
     useState<RunNotification | null>(null);
@@ -357,6 +359,8 @@ export const App = (): ReactElement => {
   const [positionStore, setPositionStore] = useState<MarkerPositionStore>({});
   const runCancelled = useRef(false);
   const runSequence = useRef(0);
+  const runVideoPaths = useRef<string[]>([]);
+  const runVideoScenario = useRef<Scenario | null>(null);
 
   const updateSteps = (steps: Step[]) =>
     setScenario((current) => ({
@@ -465,7 +469,18 @@ export const App = (): ReactElement => {
 
   useEffect(() => window.electronAPI.onQaPreview(setPreviewImage), []);
 
-  useEffect(() => window.electronAPI.onRunVideo(setRunVideoPath), []);
+  useEffect(
+    () =>
+      window.electronAPI.onRunVideo((filePath) => {
+        if (!filePath || !runVideoScenario.current) return;
+        runVideoPaths.current.push(filePath);
+        setRunVideos((videos) => [
+          ...videos,
+          { scenario: runVideoScenario.current!, path: filePath },
+        ]);
+      }),
+    [],
+  );
 
   useEffect(() => {
     if (!running || !runStartedAt) return;
@@ -580,13 +595,16 @@ export const App = (): ReactElement => {
     }
   };
 
-  const recordRun = (completed: Scenario, status: "passed" | "failed") =>
+  const recordRun = (completed: Scenario[], passed: number, failed: number) =>
     setRunHistory((history) => {
+      const status = failed ? "failed" : "passed";
       const nextHistory = [
         {
           id: `${Date.now()}`,
-          scenario: completed,
+          scenarios: completed,
           status,
+          passed,
+          failed,
           ranAt: new Date().toISOString(),
         },
         ...history,
@@ -612,7 +630,10 @@ export const App = (): ReactElement => {
     setRunStartedAt(Date.now());
     setElapsedSeconds(0);
     setPreviewImage("");
-    setRunVideoPath(null);
+    setRunVideos([]);
+    setFullRunVideoPath(null);
+    runVideoPaths.current = [];
+    runVideoScenario.current = null;
     setRunProgress({ current: 0, total: toRun[0].steps.length, step: "" });
     setRunLog([
       `${toRun.length}개 시나리오 실행을 시작했습니다.`,
@@ -658,6 +679,7 @@ export const App = (): ReactElement => {
             },
         );
         try {
+          runVideoScenario.current = runScenario;
           const result = await window.electronAPI.runQa(runScenario, {
             preview: livePreview,
             workerId: String(sequence),
@@ -669,7 +691,6 @@ export const App = (): ReactElement => {
             `[${index + 1}/${toRun.length}] ${runScenario.title} ${result.status === "passed" ? "통과" : result.status === "cancelled" ? "취소" : "실패"}`,
           ]);
           if (result.status === "passed" || result.status === "failed") {
-            recordRun(runScenario, result.status);
             passed += Number(result.status === "passed");
             failed += Number(result.status === "failed");
           }
@@ -679,7 +700,6 @@ export const App = (): ReactElement => {
           }
         } catch {
           failed += 1;
-          recordRun(runScenario, "failed");
           setRunLog((logs) => [
             ...logs,
             `[${index + 1}/${toRun.length}] ${runScenario.title} 실행 실패`,
@@ -688,6 +708,15 @@ export const App = (): ReactElement => {
       }
       await window.electronAPI.finishQaWorker(String(sequence));
       if (sequence === runSequence.current) {
+        if (!cancelled) {
+          recordRun(toRun, passed, failed);
+          try {
+            const videoPath = await window.electronAPI.mergeRunVideos(runVideoPaths.current);
+            setFullRunVideoPath(videoPath);
+          } catch {
+            setToast("전체 시나리오 영상을 만들지 못했습니다.");
+          }
+        }
         setRunning(false);
         setRunNotification(
           (notification) =>
@@ -701,8 +730,6 @@ export const App = (): ReactElement => {
       }
     })();
   };
-
-  const beginRun = (toRun = scenario) => beginRuns([toRun]);
 
   const runEditorContent = () => {
     const markdown =
@@ -825,13 +852,7 @@ export const App = (): ReactElement => {
           <DashboardPage
             history={runHistory}
             summary={runSummary}
-            onEdit={(item) => {
-              setScenario(item);
-              setMarkerScenarioId(item.id);
-              setEditorMode("marker");
-              setRoute("editor");
-            }}
-            onQuickStart={beginRun}
+            onQuickStart={(scenarios) => beginRuns(scenarios)}
             onOpenRun={() => setRoute("run")}
           />
         )}
@@ -925,17 +946,27 @@ export const App = (): ReactElement => {
               );
             }}
             onLivePreviewChange={setLivePreview}
-            runVideoAvailable={Boolean(runVideoPath)}
-            onDownloadRunVideo={() => {
-              if (!runVideoPath) return;
+            runVideos={runVideos}
+            fullRunVideoAvailable={Boolean(fullRunVideoPath)}
+            onDownloadRunVideo={(videoPath) => {
+              if (!videoPath) return;
               void window.electronAPI
-                .downloadRunVideo(runVideoPath)
+                .downloadRunVideo(videoPath)
                 .then((filePath) => {
                   if (filePath) setToast("실행 영상을 다운로드했습니다.");
                 })
                 .catch(() =>
                   setToast("실행 영상을 다운로드하지 못했습니다."),
                 );
+            }}
+            onDownloadFullRunVideo={() => {
+              if (!fullRunVideoPath) return;
+              void window.electronAPI
+                .downloadRunVideo(fullRunVideoPath)
+                .then((filePath) => {
+                  if (filePath) setToast("전체 시나리오 영상을 다운로드했습니다.");
+                })
+                .catch(() => setToast("전체 시나리오 영상을 다운로드하지 못했습니다."));
             }}
           />
         )}

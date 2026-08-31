@@ -4,8 +4,13 @@ import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import { autoUpdater } from 'electron-updater'
 import path from 'node:path'
-import { copyFile, mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { execFile } from 'node:child_process'
+import { copyFile, mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
+import { promisify } from 'node:util'
+import ffmpegPath from 'ffmpeg-static'
 import { chromium, type Browser, type BrowserContext, type Locator, type Page, type Video } from '@playwright/test'
+
+const executeFile = promisify(execFile)
 
 type QaStep = { id: string; action: 'goto' | 'fill' | 'fileUpload' | 'manualFill' | 'manualControl' | 'manualResult' | 'click' | 'select' | 'expectText'; target: string; value?: string; required?: boolean; prompt?: string; condition?: string; waitSeconds?: number; occurrence?: number }
 type QaScenario = { title: string; url: string; steps: QaStep[] }
@@ -104,6 +109,31 @@ const runVideoFileName = (scenario: QaScenario): string => {
   return `${title}_실행${timestamp}.webm`
 }
 const runVideoDirectory = (): string => path.join(app.getPath('userData'), 'videos', 'runs')
+const fullRunVideoFileName = (): string => `전체_시나리오_실행${Date.now()}.webm`
+const ffmpegExecutablePath = ffmpegPath?.replace('app.asar', 'app.asar.unpacked')
+
+const mergeRunVideos = async (filePaths: string[]): Promise<string | null> => {
+  const videos = [...new Set(filePaths)]
+  if (!videos.length) return null
+  if (!ffmpegExecutablePath) throw new Error('영상 병합 도구를 찾을 수 없습니다.')
+  if (videos.some((filePath) => path.dirname(filePath) !== runVideoDirectory())) {
+    throw new Error('허용되지 않은 영상 경로입니다.')
+  }
+  const manifestPath = path.join(runVideoDirectory(), `concat-${Date.now()}.txt`)
+  const destination = path.join(runVideoDirectory(), fullRunVideoFileName())
+  await mkdir(runVideoDirectory(), { recursive: true })
+  await writeFile(
+    manifestPath,
+    videos.map((filePath) => `file '${filePath.replace(/'/g, "'\\\\''")}'`).join('\n'),
+    'utf8',
+  )
+  try {
+    await executeFile(ffmpegExecutablePath, ['-y', '-f', 'concat', '-safe', '0', '-i', manifestPath, '-c', 'copy', destination])
+    return destination
+  } finally {
+    await unlink(manifestPath).catch(() => undefined)
+  }
+}
 
 const readableStep = (step: QaStep): string => `단계 ${step.id}: ${step.target} ${step.action === 'manualFill' ? '수동 입력' : step.action === 'manualControl' ? '브라우저 직접 제어' : step.action === 'manualResult' ? '수동 결과 확인' : step.action === 'fileUpload' ? '파일 업로드' : step.action}`
 const escapeRegex = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -454,6 +484,7 @@ app.whenReady().then(() => {
     await copyFile(filePath, destination)
     return destination
   })
+  ipcMain.handle('qa:merge-run-videos', async (_event, filePaths: string[]) => mergeRunVideos(filePaths))
   ipcMain.handle('qa:manual-input', (_event, value: string) => activeRun?.resolveManual?.(value))
   ipcMain.handle('qa:manual-control', (_event, result: ManualControlResult) => activeRun?.resolveManualControl?.(result))
   ipcMain.handle('qa:manual-browser-event', (_event, event: ManualBrowserEvent) => controlManualBrowser(event))

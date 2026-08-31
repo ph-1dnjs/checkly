@@ -29,8 +29,10 @@ type Props = {
   onImport: () => void;
   onCancel: () => void;
   onLivePreviewChange: (value: boolean) => void;
-  runVideoAvailable: boolean;
-  onDownloadRunVideo: () => void;
+  runVideos: Array<{ scenario: Scenario; path: string }>;
+  fullRunVideoAvailable: boolean;
+  onDownloadRunVideo: (path: string) => void;
+  onDownloadFullRunVideo: () => void;
 };
 
 export const RunPage = ({
@@ -54,8 +56,10 @@ export const RunPage = ({
   onImport,
   onCancel,
   onLivePreviewChange,
-  runVideoAvailable,
+  runVideos,
+  fullRunVideoAvailable,
   onDownloadRunVideo,
+  onDownloadFullRunVideo,
 }: Props) => {
   const [previewIndex, setPreviewIndex] = useState(0);
   const [manualFailureReason, setManualFailureReason] = useState("");
@@ -153,15 +157,36 @@ export const RunPage = ({
                   : `${scenarioCount}개 시나리오 · ${scenario.steps.length}개 단계`}
               </p>
             </div>
-            {runVideoAvailable && !running && (
+            {fullRunVideoAvailable && !running && (
               <button
                 className="button button-secondary run-video-download"
-                onClick={onDownloadRunVideo}
+                onClick={onDownloadFullRunVideo}
               >
-                영상 다운로드
+                전체 시나리오 영상 다운로드
               </button>
             )}
           </div>
+          {runVideos.length > 0 && !running && (
+            <section className="run-video-list" aria-label="시나리오별 실행 영상">
+              <div>
+                <strong>시나리오별 실행 영상</strong>
+                <span>각 시나리오의 실행 영상을 개별로 다운로드할 수 있습니다.</span>
+              </div>
+              <ol>
+                {runVideos.map(({ scenario: videoScenario, path }, index) => (
+                  <li key={path}>
+                    <span>{index + 1}. {videoScenario.title}</span>
+                    <button
+                      className="button button-secondary"
+                      onClick={() => onDownloadRunVideo(path)}
+                    >
+                      영상 다운로드
+                    </button>
+                  </li>
+                ))}
+              </ol>
+            </section>
+          )}
           <section
             className="run-scenario-preview"
             aria-label="실행 시나리오 미리보기"

@@ -1,21 +1,15 @@
-import type {
-  RunRecord,
-  RunSummary,
-  Scenario,
-} from "../../shared/model/scenario";
+import type { RunRecord, RunSummary, Scenario } from "../../shared/model/scenario";
 
 type Props = {
   history: RunRecord[];
   summary: RunSummary;
-  onEdit: (scenario: Scenario) => void;
-  onQuickStart: (scenario: Scenario) => void;
+  onQuickStart: (scenarios: Scenario[]) => void;
   onOpenRun: () => void;
 };
 
 export const DashboardPage = ({
   history,
   summary,
-  onEdit,
   onQuickStart,
   onOpenRun,
 }: Props) => (
@@ -24,7 +18,7 @@ export const DashboardPage = ({
       <div>
         <p className="eyebrow">DASHBOARD</p>
         <h1>대시보드</h1>
-        <p>최근 실행 현황을 확인하고 이전 시나리오를 빠르게 다시 시작하세요.</p>
+        <p>최근 실행 현황을 확인하고 이전 실행 묶음을 빠르게 다시 시작하세요.</p>
       </div>
     </div>
     <section className="run-summary" aria-label="실행 요약">
@@ -58,7 +52,7 @@ export const DashboardPage = ({
       <div className="panel-heading">
         <div>
           <p className="eyebrow">RECENT RUNS</p>
-          <h2>이전 실행 시나리오</h2>
+          <h2>이전 실행 기록</h2>
         </div>
         <span>최근 {history.length}/5</span>
       </div>
@@ -76,25 +70,19 @@ export const DashboardPage = ({
                 {record.status === "passed" ? "✓" : "!"}
               </div>
               <div className="recent-run-info">
-                <strong>{record.scenario.title}</strong>
-                <span>{record.scenario.url}</span>
+                <strong>{record.scenarios[0]?.title ?? "시나리오 실행"}{record.scenarios.length > 1 ? ` 외 ${record.scenarios.length - 1}개` : ""}</strong>
+                <span>{record.scenarios.map((scenario) => scenario.title).join(" · ")}</span>
                 <small>
-                  {record.scenario.steps.length}개 단계 ·{" "}
+                  {record.scenarios.length}개 시나리오 · 성공 {record.passed} · 실패 {record.failed} ·{" "}
                   {new Date(record.ranAt).toLocaleString("ko-KR")}
                 </small>
               </div>
               <div className="recent-run-actions">
                 <button
-                  className="button button-secondary"
-                  onClick={() => onEdit(record.scenario)}
-                >
-                  편집
-                </button>
-                <button
                   className="button button-primary"
-                  onClick={() => onQuickStart(record.scenario)}
+                  onClick={() => onQuickStart(record.scenarios)}
                 >
-                  퀵 스타트
+                  전체 퀵 스타트
                 </button>
               </div>
             </li>
