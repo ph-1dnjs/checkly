@@ -6,7 +6,7 @@ import {
   type Scenario,
   type Step,
 } from "../../shared/model/scenario";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type MouseEvent, type WheelEvent } from "react";
 
 type Props = {
   scenario: Scenario;
@@ -22,6 +22,9 @@ type Props = {
   runStartedAt: number | null;
   livePreview: boolean;
   previewImage: string;
+  onManualBrowserEvent: (event: { type: "click" | "wheel" | "key" | "text"; x?: number; y?: number; deltaY?: number; key?: string; text?: string }) => void;
+  onCompleteManualControl: () => void;
+  onFailManualControl: (reason: string) => void;
   onRun: () => void;
   onImport: () => void;
   onCancel: () => void;
@@ -44,6 +47,9 @@ export const RunPage = ({
   runStartedAt,
   livePreview,
   previewImage,
+  onManualBrowserEvent,
+  onCompleteManualControl,
+  onFailManualControl,
   onRun,
   onImport,
   onCancel,
@@ -52,6 +58,8 @@ export const RunPage = ({
   onDownloadFailureVideo,
 }: Props) => {
   const [previewIndex, setPreviewIndex] = useState(0);
+  const [manualFailureReason, setManualFailureReason] = useState("");
+  const manualImageRef = useRef<HTMLImageElement | null>(null);
   const previewScenario = scenarios[previewIndex] ?? scenario;
 
   useEffect(() => {
@@ -64,7 +72,31 @@ export const RunPage = ({
     if (index >= 0) setPreviewIndex(index);
   }, [running, scenario.id, scenarios]);
 
+  useEffect(() => {
+    setManualFailureReason("");
+  }, [manualControl?.id]);
+
   const estimatedSeconds = estimateDurationSeconds(scenario);
+  const browserPoint = (event: MouseEvent<HTMLImageElement> | WheelEvent<HTMLImageElement>) => {
+    const image = manualImageRef.current;
+    if (!image || !image.naturalWidth || !image.naturalHeight) return null;
+    const bounds = image.getBoundingClientRect();
+    return {
+      x: ((event.clientX - bounds.left) / bounds.width) * image.naturalWidth,
+      y: ((event.clientY - bounds.top) / bounds.height) * image.naturalHeight,
+    };
+  };
+  const handleManualKey = (event: KeyboardEvent<HTMLImageElement>) => {
+    if (!manualControl) return;
+    event.preventDefault();
+    if (event.key.length === 1 && !event.metaKey && !event.ctrlKey && !event.altKey) {
+      onManualBrowserEvent({ type: "text", text: event.key });
+      return;
+    }
+    const key = event.key === " " ? "Space" : event.key;
+    const modifiers = `${event.metaKey ? "Meta+" : event.ctrlKey ? "Control+" : event.altKey ? "Alt+" : ""}${event.shiftKey ? "Shift+" : ""}`;
+    onManualBrowserEvent({ type: "key", key: `${modifiers}${key}` });
+  };
   const progressPercent = runProgress.total
     ? Math.round((runProgress.current / runProgress.total) * 100)
     : 0;
@@ -194,18 +226,47 @@ export const RunPage = ({
           >
             <span style={{ width: `${progressPercent}%` }} />
           </div>
-          {livePreview && (
+          {(livePreview || manualControl) && (
             <section className="live-preview" aria-label="실시간 테스트 화면">
               <div>
-                <strong>실시간 테스트 화면</strong>
+                <strong>{manualControl ? "브라우저 직접 제어" : "실시간 테스트 화면"}</strong>
                 <span>
-                  단계마다 캡처되어 실행 속도가 다소 느려질 수 있습니다.
+                  {manualControl ? manualControl.prompt || `${manualControl.target}에서 필요한 절차를 완료해 주세요.` : "단계마다 캡처되어 실행 속도가 다소 느려질 수 있습니다."}
                 </span>
               </div>
               {previewImage ? (
-                <img src={previewImage} alt="현재 테스트 실행 화면" />
+                <img
+                  ref={manualImageRef}
+                  className={manualControl ? "manual-browser-screen" : ""}
+                  src={previewImage}
+                  alt={manualControl ? "직접 조작할 브라우저 화면" : "현재 테스트 실행 화면"}
+                  tabIndex={manualControl ? 0 : -1}
+                  onClick={manualControl ? (event) => {
+                    const point = browserPoint(event);
+                    if (point) onManualBrowserEvent({ type: "click", ...point });
+                    event.currentTarget.focus();
+                  } : undefined}
+                  onWheel={manualControl ? (event) => {
+                    event.preventDefault();
+                    const point = browserPoint(event);
+                    if (point) onManualBrowserEvent({ type: "wheel", deltaY: event.deltaY, ...point });
+                  } : undefined}
+                  onKeyDown={manualControl ? handleManualKey : undefined}
+                  onPaste={manualControl ? (event: ClipboardEvent<HTMLImageElement>) => {
+                    event.preventDefault();
+                    const text = event.clipboardData.getData("text");
+                    if (text) onManualBrowserEvent({ type: "text", text });
+                  } : undefined}
+                />
               ) : (
                 <p>첫 실행 화면을 기다리고 있습니다.</p>
+              )}
+              {manualControl && (
+                <div className="manual-browser-actions">
+                  <input value={manualFailureReason} onChange={(event) => setManualFailureReason(event.target.value)} placeholder="실패 시 사유를 입력하세요" />
+                  <button className="button danger" disabled={!manualFailureReason.trim()} onClick={() => onFailManualControl(manualFailureReason.trim())}>실패로 기록</button>
+                  <button className="button button-primary" onClick={onCompleteManualControl}>완료 후 계속</button>
+                </div>
               )}
             </section>
           )}

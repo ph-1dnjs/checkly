@@ -43,12 +43,13 @@ declare global {
       ) => Promise<Array<{ id: string; connected: boolean }>>;
       runQa: (
         value: Scenario,
-        options?: { preview?: boolean; workerId?: string; headed?: boolean },
+        options?: { preview?: boolean; workerId?: string },
       ) => Promise<{ status: string; log: string[] }>;
       finishQaWorker: (workerId: string) => Promise<void>;
       downloadFailureVideo: (value: string) => Promise<string | null>;
       submitManualInput: (value: string) => Promise<void>;
       submitManualControl: (result: { status: "continue" | "failed"; reason?: string }) => Promise<void>;
+      controlManualBrowser: (event: { type: "click" | "wheel" | "key" | "text"; x?: number; y?: number; deltaY?: number; key?: string; text?: string }) => Promise<void>;
       submitManualResult: (result: { status: "passed" | "failed"; reason?: string }) => Promise<void>;
       cancelQa: () => Promise<void>;
       onManualInputRequired: (callback: (value: Step) => void) => () => void;
@@ -327,7 +328,6 @@ export const App = (): ReactElement => {
   const [saveBeforeReturning, setSaveBeforeReturning] = useState(false);
   const [manual, setManual] = useState<Step | null>(null);
   const [manualControl, setManualControl] = useState<(Step & { timeoutSeconds?: number }) | null>(null);
-  const [manualControlFailureReason, setManualControlFailureReason] = useState("");
   const [manualValue, setManualValue] = useState("");
   const [manualValueVisible, setManualValueVisible] = useState(false);
   const [manualResult, setManualResult] = useState<(Step & { timeoutSeconds?: number }) | null>(null);
@@ -429,7 +429,6 @@ export const App = (): ReactElement => {
   useEffect(
     () =>
       window.electronAPI.onManualControlRequired((step) => {
-        setManualControlFailureReason("");
         setManualControl(step);
         setRunLog((logs) => [
           ...logs,
@@ -618,7 +617,7 @@ export const App = (): ReactElement => {
     setRunLog([
       `${toRun.length}개 시나리오 실행을 시작했습니다.`,
       ...(includesManualControl
-        ? ["브라우저 직접 제어 단계가 있어 전체 흐름을 같은 보이는 브라우저에서 실행합니다. 미리보기는 직접 제어 단계에서만 중지되고, 실패 영상은 저장되지 않습니다."]
+        ? ["브라우저 직접 제어 단계에서는 실행 화면에서 같은 브라우저 세션을 조작할 수 있습니다."]
         : []),
     ]);
     setRunNotification({
@@ -662,7 +661,6 @@ export const App = (): ReactElement => {
           const result = await window.electronAPI.runQa(runScenario, {
             preview: livePreview,
             workerId: String(sequence),
-            headed: includesManualControl,
           });
           if (sequence !== runSequence.current) break;
           setRunLog((logs) => [
@@ -902,6 +900,15 @@ export const App = (): ReactElement => {
             runStartedAt={runStartedAt}
             livePreview={livePreview}
             previewImage={previewImage}
+            onManualBrowserEvent={(event) => void window.electronAPI.controlManualBrowser(event)}
+            onCompleteManualControl={() => {
+              void window.electronAPI.submitManualControl({ status: "continue" });
+              setManualControl(null);
+            }}
+            onFailManualControl={(reason) => {
+              void window.electronAPI.submitManualControl({ status: "failed", reason });
+              setManualControl(null);
+            }}
             onRun={() => beginRuns(executableScenarios)}
             onImport={() => void importScenario()}
             onCancel={() => {
@@ -1123,45 +1130,6 @@ export const App = (): ReactElement => {
                 }}
               >
                 성공 후 계속
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {manualControl && (
-        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="manual-control-title">
-          <div className="manual-modal">
-            <h2 id="manual-control-title">브라우저 직접 제어가 필요합니다</h2>
-            <p>{manualControl.prompt || `${manualControl.target}에서 필요한 절차를 완료해 주세요.`}</p>
-            <p className="security-note">별도 Chromium 창에서 결제를 진행하세요. 이 단계에서는 화면 미리보기와 영상 녹화가 비활성화됩니다.</p>
-            <label>
-              실패 사유
-              <input
-                autoFocus
-                value={manualControlFailureReason}
-                onChange={(event) => setManualControlFailureReason(event.target.value)}
-                placeholder="실패 시 사유를 입력하세요"
-              />
-            </label>
-            <div className="modal-actions">
-              <button
-                className="button danger"
-                disabled={!manualControlFailureReason.trim()}
-                onClick={() => {
-                  void window.electronAPI.submitManualControl({ status: "failed", reason: manualControlFailureReason.trim() });
-                  setManualControl(null);
-                }}
-              >
-                실패로 기록
-              </button>
-              <button
-                className="button button-primary"
-                onClick={() => {
-                  void window.electronAPI.submitManualControl({ status: "continue" });
-                  setManualControl(null);
-                }}
-              >
-                완료 후 계속
               </button>
             </div>
           </div>

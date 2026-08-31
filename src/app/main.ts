@@ -9,12 +9,13 @@ import { chromium, type Browser, type BrowserContext, type Locator, type Page, t
 
 type QaStep = { id: string; action: 'goto' | 'fill' | 'fileUpload' | 'manualFill' | 'manualControl' | 'manualResult' | 'click' | 'select' | 'expectText'; target: string; value?: string; required?: boolean; prompt?: string; condition?: string; waitSeconds?: number; occurrence?: number }
 type QaScenario = { title: string; url: string; steps: QaStep[] }
-type QaRunOptions = { preview?: boolean; workerId?: string; headed?: boolean }
+type QaRunOptions = { preview?: boolean; workerId?: string }
 type ManualResult = { status: 'passed' | 'failed'; reason?: string }
 type ManualControlResult = { status: 'continue' | 'failed'; reason?: string }
-let activeRun: { browser?: Browser; resolveManual?: (value: string | null) => void; resolveManualControl?: (value: ManualControlResult) => void; resolveManualResult?: (value: ManualResult) => void; cancelled: boolean } | null = null
+type ManualBrowserEvent = { type: 'click' | 'wheel' | 'key' | 'text'; x?: number; y?: number; deltaY?: number; key?: string; text?: string }
+let activeRun: { browser?: Browser; page?: Page; resolveManual?: (value: string | null) => void; resolveManualControl?: (value: ManualControlResult) => void; resolveManualResult?: (value: ManualResult) => void; cancelled: boolean } | null = null
 let activeScenarioFilePath: string | null = null
-let scenarioWorker: { id: string; browser: Browser; context: BrowserContext; headed: boolean } | null = null
+let scenarioWorker: { id: string; browser: Browser; context: BrowserContext } | null = null
 
 const closeScenarioWorker = async (workerId?: string): Promise<void> => {
   if (!scenarioWorker || (workerId && scenarioWorker.id !== workerId)) return
@@ -22,6 +23,24 @@ const closeScenarioWorker = async (workerId?: string): Promise<void> => {
   scenarioWorker = null
   try { await worker.context.close() } catch { /* 이미 종료된 컨텍스트는 무시한다. */ }
   try { await worker.browser.close() } catch { /* 이미 종료된 브라우저는 무시한다. */ }
+}
+
+const controlManualBrowser = async (event: ManualBrowserEvent): Promise<void> => {
+  const page = activeRun?.page
+  if (!page || activeRun?.cancelled) return
+  if (event.type === 'click' && Number.isFinite(event.x) && Number.isFinite(event.y)) {
+    await page.mouse.click(event.x!, event.y!)
+    return
+  }
+  if (event.type === 'wheel' && Number.isFinite(event.deltaY)) {
+    await page.mouse.wheel(0, event.deltaY!)
+    return
+  }
+  if (event.type === 'text' && event.text) {
+    await page.keyboard.insertText(event.text)
+    return
+  }
+  if (event.type === 'key' && event.key) await page.keyboard.press(event.key)
 }
 
 const escapeHtml = (value: string): string => value.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!)
@@ -240,33 +259,37 @@ const executeScenario = async (scenario: QaScenario, owner: BrowserWindow, optio
   activeRun = run
   try {
     owner.webContents.send('qa:progress', { current: 0, total: scenario.steps.length, step: '브라우저 시작 중' })
-    const needsManualControl = scenario.steps.some((step) => step.action === 'manualControl')
-    const headed = options.headed ?? needsManualControl
-    if (scenarioWorker && (scenarioWorker.id !== options.workerId || scenarioWorker.headed !== headed)) await closeScenarioWorker()
+    if (scenarioWorker && scenarioWorker.id !== options.workerId) await closeScenarioWorker()
     if (!scenarioWorker) {
-      const workerBrowser = await chromium.launch({ headless: !headed, timeout: 15_000 })
+      const workerBrowser = await chromium.launch({ headless: true, timeout: 15_000 })
       const videoDirectory = path.join(app.getPath('userData'), 'videos', 'temporary')
-      if (!headed) await mkdir(videoDirectory, { recursive: true })
-      const workerContext = await workerBrowser.newContext(headed ? {} : { recordVideo: { dir: videoDirectory, size: { width: 1280, height: 720 } } })
-      scenarioWorker = { id: options.workerId ?? `${Date.now()}`, browser: workerBrowser, context: workerContext, headed }
+      await mkdir(videoDirectory, { recursive: true })
+      const workerContext = await workerBrowser.newContext({ viewport: { width: 1280, height: 720 }, recordVideo: { dir: videoDirectory, size: { width: 1280, height: 720 } } })
+      scenarioWorker = { id: options.workerId ?? `${Date.now()}`, browser: workerBrowser, context: workerContext }
     }
     browser = scenarioWorker.browser
     context = scenarioWorker.context
     run.browser = browser
     if (run.cancelled) return { status: 'cancelled', log: ['실행이 취소되었습니다.'], reportPath: await writeRunReport(scenario, 'cancelled', ['실행이 취소되었습니다.']) }
     page = await context.newPage()
+    run.page = page
+    context.on('page', (popup) => {
+      run.page = popup
+      popup.once('close', () => { if (!run.cancelled) run.page = page })
+    })
     video = page.video()
     page.setDefaultTimeout(10_000)
     page.setDefaultNavigationTimeout(15_000)
     owner.webContents.send('qa:progress', { current: 0, total: scenario.steps.length, step: '기본 URL 접속 중' })
     await page.goto(scenario.url, { waitUntil: 'domcontentloaded' })
-    if (options.preview) {
+    if (options.preview || scenario.steps.some((step) => step.action === 'manualControl')) {
       let capturing = false
       const sendPreview = async (): Promise<void> => {
-        if (capturing || !page || owner.webContents.isDestroyed()) return
+        const previewPage = run.page ?? page
+        if (capturing || !previewPage || owner.webContents.isDestroyed()) return
         capturing = true
         try {
-          const screenshot = await page.screenshot({ type: 'jpeg', quality: 60 })
+          const screenshot = await previewPage.screenshot({ type: 'jpeg', quality: 60 })
           owner.webContents.send('qa:preview', `data:image/jpeg;base64,${screenshot.toString('base64')}`)
         } catch { /* 화면 전환 또는 종료 중인 캡처는 무시한다. */ }
         finally { capturing = false }
@@ -298,10 +321,6 @@ const executeScenario = async (scenario: QaScenario, owner: BrowserWindow, optio
         log.push(`${readableStep(step)} — 완료`)
       }
       if (step.action === 'manualControl') {
-        if (previewInterval) {
-          clearInterval(previewInterval)
-          previewInterval = undefined
-        }
         owner.webContents.send('qa:manual-control-required', { id: step.id, target: step.target, prompt: step.prompt, timeoutSeconds: 300 })
         const result = await new Promise<ManualControlResult>((resolve) => {
           const timeout = setTimeout(() => {
@@ -441,6 +460,7 @@ app.whenReady().then(() => {
   })
   ipcMain.handle('qa:manual-input', (_event, value: string) => activeRun?.resolveManual?.(value))
   ipcMain.handle('qa:manual-control', (_event, result: ManualControlResult) => activeRun?.resolveManualControl?.(result))
+  ipcMain.handle('qa:manual-browser-event', (_event, event: ManualBrowserEvent) => controlManualBrowser(event))
   ipcMain.handle('qa:manual-result', (_event, result: ManualResult) => activeRun?.resolveManualResult?.(result))
   ipcMain.handle('qa:cancel', async () => {
     if (!activeRun) {
