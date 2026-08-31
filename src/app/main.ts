@@ -95,15 +95,15 @@ const loadMarkerPositions = async (): Promise<string | null> => {
 const saveMarkerPositions = async (positions: string): Promise<void> => {
   await writeFile(markerPositionStorePath(), positions, 'utf8')
 }
-const failureVideoFileName = (scenario: QaScenario): string => {
+const runVideoFileName = (scenario: QaScenario): string => {
   const now = new Date()
   const timestamp = [now.getFullYear(), now.getMonth() + 1, now.getDate(), now.getHours(), now.getMinutes(), now.getSeconds()]
     .map((value, index) => index === 0 ? String(value) : String(value).padStart(2, '0'))
     .join('')
   const title = scenario.title.replace(/[\\/:*?"<>|]/g, '_').trim() || '시나리오'
-  return `${title}_실패${timestamp}.webm`
+  return `${title}_실행${timestamp}.webm`
 }
-const failureVideoDirectory = (): string => path.join(app.getPath('userData'), 'videos', 'failures')
+const runVideoDirectory = (): string => path.join(app.getPath('userData'), 'videos', 'runs')
 
 const readableStep = (step: QaStep): string => `단계 ${step.id}: ${step.target} ${step.action === 'manualFill' ? '수동 입력' : step.action === 'manualControl' ? '브라우저 직접 제어' : step.action === 'manualResult' ? '수동 결과 확인' : step.action === 'fileUpload' ? '파일 업로드' : step.action}`
 const escapeRegex = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -254,7 +254,6 @@ const executeScenario = async (scenario: QaScenario, owner: BrowserWindow, optio
   let page: Page | undefined
   let video: Video | null = null
   let previewInterval: ReturnType<typeof setInterval> | undefined
-  let failed = false
   const run = { cancelled: false } as NonNullable<typeof activeRun>
   activeRun = run
   try {
@@ -337,7 +336,6 @@ const executeScenario = async (scenario: QaScenario, owner: BrowserWindow, optio
         if (result.status === 'failed') {
           const reason = result.reason?.trim() || '진행자가 실패로 판정했습니다.'
           const finalLog = [...log, `${readableStep(step)} — 실패: ${reason}`]
-          failed = true
           return { status: 'failed', log: finalLog, reportPath: await writeRunReport(scenario, 'failed', finalLog) }
         }
         log.push(`${readableStep(step)} — 제어 완료`)
@@ -359,7 +357,6 @@ const executeScenario = async (scenario: QaScenario, owner: BrowserWindow, optio
         if (result.status === 'failed') {
           const reason = result.reason?.trim() || '진행자가 실패로 판정했습니다.'
           const finalLog = [...log, `${readableStep(step)} — 실패: ${reason}`]
-          failed = true
           return { status: 'failed', log: finalLog, reportPath: await writeRunReport(scenario, 'failed', finalLog) }
         }
         log.push(`${readableStep(step)} — 진행자가 성공으로 판정`)
@@ -389,21 +386,20 @@ const executeScenario = async (scenario: QaScenario, owner: BrowserWindow, optio
     }
     return { status: 'passed', log, reportPath: await writeRunReport(scenario, 'passed', log) }
   } catch (error) {
-    failed = true
     const finalLog = [...log, `실행 실패: ${error instanceof Error ? error.message : String(error)}`]
     return { status: 'failed', log: finalLog, reportPath: await writeRunReport(scenario, 'failed', finalLog) }
   } finally {
     activeRun = null
     if (previewInterval) clearInterval(previewInterval)
     try { await page?.close() } catch { /* 취소로 페이지가 먼저 닫힌 경우는 무시한다. */ }
-    if (failed && video) {
+    if (video) {
       try {
         const sourcePath = await video.path()
-        const destination = path.join(failureVideoDirectory(), failureVideoFileName(scenario))
-        await mkdir(failureVideoDirectory(), { recursive: true })
+        const destination = path.join(runVideoDirectory(), runVideoFileName(scenario))
+        await mkdir(runVideoDirectory(), { recursive: true })
         await rename(sourcePath, destination)
-        owner.webContents.send('qa:failure-video', destination)
-      } catch { owner.webContents.send('qa:failure-video', null) }
+        owner.webContents.send('qa:run-video', destination)
+      } catch { owner.webContents.send('qa:run-video', null) }
     }
   }
 }
@@ -451,8 +447,8 @@ app.whenReady().then(() => {
   })
   ipcMain.handle('qa:finish-worker', (_event, workerId: string) => closeScenarioWorker(workerId))
   ipcMain.handle('qa:inspect', (_event, scenario: QaScenario) => inspectScenario(scenario))
-  ipcMain.handle('qa:download-failure-video', async (_event, filePath: string) => {
-    if (path.dirname(filePath) !== failureVideoDirectory()) throw new Error('허용되지 않은 영상 경로입니다.')
+  ipcMain.handle('qa:download-run-video', async (_event, filePath: string) => {
+    if (path.dirname(filePath) !== runVideoDirectory()) throw new Error('허용되지 않은 영상 경로입니다.')
     await readFile(filePath)
     const destination = path.join(app.getPath('downloads'), path.basename(filePath))
     await copyFile(filePath, destination)

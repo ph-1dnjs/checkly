@@ -46,7 +46,7 @@ declare global {
         options?: { preview?: boolean; workerId?: string },
       ) => Promise<{ status: string; log: string[] }>;
       finishQaWorker: (workerId: string) => Promise<void>;
-      downloadFailureVideo: (value: string) => Promise<string | null>;
+      downloadRunVideo: (value: string) => Promise<string | null>;
       submitManualInput: (value: string) => Promise<void>;
       submitManualControl: (result: { status: "continue" | "failed"; reason?: string }) => Promise<void>;
       controlManualBrowser: (event: { type: "click" | "wheel" | "key" | "text"; x?: number; y?: number; deltaY?: number; key?: string; text?: string }) => Promise<void>;
@@ -57,7 +57,7 @@ declare global {
       onManualResultRequired: (callback: (value: Step & { timeoutSeconds?: number }) => void) => () => void;
       onQaProgress: (callback: (value: RunProgress) => void) => () => void;
       onQaPreview: (callback: (value: string) => void) => () => void;
-      onFailureVideo: (callback: (value: string | null) => void) => () => void;
+      onRunVideo: (callback: (value: string | null) => void) => () => void;
     };
   }
 }
@@ -344,7 +344,7 @@ export const App = (): ReactElement => {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [livePreview, setLivePreview] = useState(false);
   const [previewImage, setPreviewImage] = useState("");
-  const [failureVideoPath, setFailureVideoPath] = useState<string | null>(null);
+  const [runVideoPath, setRunVideoPath] = useState<string | null>(null);
   const [toast, setToast] = useState("");
   const [runNotification, setRunNotification] =
     useState<RunNotification | null>(null);
@@ -465,7 +465,7 @@ export const App = (): ReactElement => {
 
   useEffect(() => window.electronAPI.onQaPreview(setPreviewImage), []);
 
-  useEffect(() => window.electronAPI.onFailureVideo(setFailureVideoPath), []);
+  useEffect(() => window.electronAPI.onRunVideo(setRunVideoPath), []);
 
   useEffect(() => {
     if (!running || !runStartedAt) return;
@@ -612,7 +612,7 @@ export const App = (): ReactElement => {
     setRunStartedAt(Date.now());
     setElapsedSeconds(0);
     setPreviewImage("");
-    setFailureVideoPath(null);
+    setRunVideoPath(null);
     setRunProgress({ current: 0, total: toRun[0].steps.length, step: "" });
     setRunLog([
       `${toRun.length}개 시나리오 실행을 시작했습니다.`,
@@ -925,16 +925,16 @@ export const App = (): ReactElement => {
               );
             }}
             onLivePreviewChange={setLivePreview}
-            failureVideoAvailable={Boolean(failureVideoPath)}
-            onDownloadFailureVideo={() => {
-              if (!failureVideoPath) return;
+            runVideoAvailable={Boolean(runVideoPath)}
+            onDownloadRunVideo={() => {
+              if (!runVideoPath) return;
               void window.electronAPI
-                .downloadFailureVideo(failureVideoPath)
+                .downloadRunVideo(runVideoPath)
                 .then((filePath) => {
-                  if (filePath) setToast("실패 실행 영상을 다운로드했습니다.");
+                  if (filePath) setToast("실행 영상을 다운로드했습니다.");
                 })
                 .catch(() =>
-                  setToast("실패 실행 영상을 다운로드하지 못했습니다."),
+                  setToast("실행 영상을 다운로드하지 못했습니다."),
                 );
             }}
           />

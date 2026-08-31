@@ -29,8 +29,8 @@ type Props = {
   onImport: () => void;
   onCancel: () => void;
   onLivePreviewChange: (value: boolean) => void;
-  failureVideoAvailable: boolean;
-  onDownloadFailureVideo: () => void;
+  runVideoAvailable: boolean;
+  onDownloadRunVideo: () => void;
 };
 
 export const RunPage = ({
@@ -54,8 +54,8 @@ export const RunPage = ({
   onImport,
   onCancel,
   onLivePreviewChange,
-  failureVideoAvailable,
-  onDownloadFailureVideo,
+  runVideoAvailable,
+  onDownloadRunVideo,
 }: Props) => {
   const [previewIndex, setPreviewIndex] = useState(0);
   const [manualFailureReason, setManualFailureReason] = useState("");
@@ -153,12 +153,12 @@ export const RunPage = ({
                   : `${scenarioCount}개 시나리오 · ${scenario.steps.length}개 단계`}
               </p>
             </div>
-            {failureVideoAvailable && !running && (
+            {runVideoAvailable && !running && (
               <button
-                className="button button-secondary failure-video-download"
-                onClick={onDownloadFailureVideo}
+                className="button button-secondary run-video-download"
+                onClick={onDownloadRunVideo}
               >
-                실패 영상 다운로드
+                영상 다운로드
               </button>
             )}
           </div>

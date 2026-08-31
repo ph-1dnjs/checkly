@@ -13,7 +13,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   inspectScenario: (scenario: unknown): Promise<unknown> => ipcRenderer.invoke('qa:inspect', scenario),
   runQa: (scenario: unknown, options?: { preview?: boolean; workerId?: string; headed?: boolean }): Promise<unknown> => ipcRenderer.invoke('qa:start', scenario, options),
   finishQaWorker: (workerId: string): Promise<void> => ipcRenderer.invoke('qa:finish-worker', workerId),
-  downloadFailureVideo: (filePath: string): Promise<string | null> => ipcRenderer.invoke('qa:download-failure-video', filePath),
+  downloadRunVideo: (filePath: string): Promise<string | null> => ipcRenderer.invoke('qa:download-run-video', filePath),
   submitManualInput: (value: string): Promise<void> => ipcRenderer.invoke('qa:manual-input', value),
   submitManualControl: (result: { status: 'continue' | 'failed'; reason?: string }): Promise<void> => ipcRenderer.invoke('qa:manual-control', result),
   controlManualBrowser: (event: { type: 'click' | 'wheel' | 'key' | 'text'; x?: number; y?: number; deltaY?: number; key?: string; text?: string }): Promise<void> => ipcRenderer.invoke('qa:manual-browser-event', event),
@@ -44,9 +44,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('qa:preview', listener)
     return () => ipcRenderer.removeListener('qa:preview', listener)
   },
-  onFailureVideo: (callback: (filePath: unknown) => void): (() => void) => {
+  onRunVideo: (callback: (filePath: unknown) => void): (() => void) => {
     const listener = (_event: Electron.IpcRendererEvent, filePath: unknown): void => callback(filePath)
-    ipcRenderer.on('qa:failure-video', listener)
-    return () => ipcRenderer.removeListener('qa:failure-video', listener)
+    ipcRenderer.on('qa:run-video', listener)
+    return () => ipcRenderer.removeListener('qa:run-video', listener)
   }
 })
