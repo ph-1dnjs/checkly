@@ -126,3 +126,12 @@
     font-size: 11px;
   }
 }
+
+/* The dock follows the mockup's compact, icon-first composition. */
+.workspace .bottom-navigation { gap:4px; width:max-content; min-height:58px; height:58px; padding:7px; border-radius:999px; }
+.workspace .bottom-nav-brand { display:grid; width:42px; height:42px; place-items:center; border-radius:50%; background:#23251d; color:#fff; font-size:17px; font-weight:800; }
+.workspace .bottom-nav-divider { width:1px; height:24px; margin:0 5px; background:#bfc1b7; }.workspace .bottom-nav-divider-end { margin-left:7px; }
+.workspace .bottom-nav-item { flex-basis:42px; height:42px; }.workspace .bottom-nav-item span { width:28px; height:28px; font-size:17px; }.workspace .bottom-nav-item.active { flex-basis:42px; justify-content:center; padding:0; border-radius:50%; background:#f7a501; box-shadow:none; }.workspace .bottom-nav-item.active span { background:transparent; }.workspace .bottom-nav-item small { display:none; }
+.workspace .bottom-nav-run { display:flex; align-items:center; gap:8px; height:42px; padding:0 15px; border:1px solid #f7a501; border-radius:999px; background:#f7a501; color:#23251d; cursor:pointer; font-size:11px; font-weight:800; letter-spacing:.05em; }.workspace .bottom-nav-run i { width:7px; height:7px; border-radius:50%; background:currentColor; }.workspace .bottom-nav-run:hover { background:#dd9001; border-color:#dd9001; }
+.workspace .bottom-nav-run.danger,.workspace .bottom-nav-run.danger:hover { border-color:#c1543f; background:#c1543f; color:#fff; }
+@media (max-width:600px) { .workspace .bottom-nav-brand,.workspace .bottom-nav-divider { display:none; }.workspace .bottom-nav-run { padding:0 11px; }.workspace .bottom-navigation { max-width:calc(100% - 24px); } }

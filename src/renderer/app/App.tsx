@@ -8,9 +8,12 @@ import {
   type ReactElement,
 } from "react";
 import { DashboardPage } from "../pages/dashboard/DashboardPage";
+import { ScenarioLibraryPage } from "../pages/library/ScenarioLibraryPage";
 import { ScenarioEditorPage } from "../pages/editor/ScenarioEditorPage";
 import { RunPage } from "../pages/run/RunPage";
+import { SettingsPage } from "../pages/settings/SettingsPage";
 import { BottomNavigation } from "../widgets/BottomNavigation";
+import { RunReportDrawer } from "../widgets/RunReportDrawer";
 import {
   markerColor,
   seedScenario,
@@ -21,6 +24,7 @@ import {
   type RunRecord,
   type RunSummary,
   type Scenario,
+  type ScenarioRunResult,
   type Step,
 } from "../shared/model/scenario";
 
@@ -309,7 +313,7 @@ export const App = (): ReactElement => {
   const [sourceMarkdown, setSourceMarkdown] = useState(initialMarkdown);
   const [markerScenarioId, setMarkerScenarioId] = useState("");
   const [scenarioFilePath, setScenarioFilePath] = useState<string | null>(null);
-  const [route, setRoute] = useState<Route>("scenarios");
+  const [route, setRoute] = useState<Route>("dashboard");
   const [editorMode, setEditorMode] = useState<"text" | "marker">("text");
   const [selectedId, setSelectedId] = useState("3");
   const [editingMarker, setEditingMarker] = useState<Step | null>(null);
@@ -357,10 +361,13 @@ export const App = (): ReactElement => {
     failed: 0,
   });
   const [positionStore, setPositionStore] = useState<MarkerPositionStore>({});
+  const [liveResults, setLiveResults] = useState<ScenarioRunResult[]>([]);
+  const [openRunRecord, setOpenRunRecord] = useState<RunRecord | null>(null);
   const runCancelled = useRef(false);
   const runSequence = useRef(0);
   const runVideoPaths = useRef<string[]>([]);
   const runVideoScenario = useRef<Scenario | null>(null);
+  const runProgressRef = useRef<RunProgress>(runProgress);
 
   const updateSteps = (steps: Step[]) =>
     setScenario((current) => ({
@@ -458,6 +465,7 @@ export const App = (): ReactElement => {
   useEffect(
     () =>
       window.electronAPI.onQaProgress((progress) => {
+        runProgressRef.current = progress;
         setRunProgress(progress);
         setRunLog((logs) => [
           ...logs,
@@ -595,9 +603,14 @@ export const App = (): ReactElement => {
     }
   };
 
-  const recordRun = (completed: Scenario[], passed: number, failed: number) =>
+  const recordRun = (
+    completed: Scenario[],
+    passed: number,
+    failed: number,
+    results: ScenarioRunResult[],
+  ) =>
     setRunHistory((history) => {
-      const status = failed ? "failed" : "passed";
+      const status: "passed" | "failed" = failed ? "failed" : "passed";
       const nextHistory = [
         {
           id: `${Date.now()}`,
@@ -606,6 +619,7 @@ export const App = (): ReactElement => {
           passed,
           failed,
           ranAt: new Date().toISOString(),
+          results,
         },
         ...history,
       ].slice(0, 5);
@@ -634,7 +648,9 @@ export const App = (): ReactElement => {
     setFullRunVideoPath(null);
     runVideoPaths.current = [];
     runVideoScenario.current = null;
-    setRunProgress({ current: 0, total: toRun[0].steps.length, step: "" });
+    setLiveResults([]);
+    runProgressRef.current = { current: 0, total: toRun[0].steps.length, step: "" };
+    setRunProgress(runProgressRef.current);
     setRunLog([
       `${toRun.length}개 시나리오 실행을 시작했습니다.`,
       ...(includesManualControl
@@ -653,6 +669,7 @@ export const App = (): ReactElement => {
       let passed = 0;
       let failed = 0;
       let cancelled = false;
+      const collected: ScenarioRunResult[] = [];
       for (const [index, runScenario] of toRun.entries()) {
         if (runCancelled.current || sequence !== runSequence.current) {
           cancelled = true;
@@ -661,11 +678,12 @@ export const App = (): ReactElement => {
         setRunningScenario(runScenario);
         setRunStartedAt(Date.now());
         setElapsedSeconds(0);
-        setRunProgress({
+        runProgressRef.current = {
           current: 0,
           total: runScenario.steps.length,
           step: "",
-        });
+        };
+        setRunProgress(runProgressRef.current);
         setRunLog((logs) => [
           ...logs,
           `[${index + 1}/${toRun.length}] ${runScenario.title} 실행 시작`,
@@ -693,13 +711,41 @@ export const App = (): ReactElement => {
           if (result.status === "passed" || result.status === "failed") {
             passed += Number(result.status === "passed");
             failed += Number(result.status === "failed");
+            const entry: ScenarioRunResult = {
+              scenario: runScenario,
+              status: result.status,
+              failedStepIndex:
+                result.status === "failed"
+                  ? runProgressRef.current.current
+                  : undefined,
+              message:
+                result.status === "failed"
+                  ? result.log[result.log.length - 1]
+                  : undefined,
+            };
+            collected.push(entry);
+            setLiveResults((r) => [...r, entry]);
           }
           if (result.status === "cancelled") {
+            const entry: ScenarioRunResult = {
+              scenario: runScenario,
+              status: "cancelled",
+            };
+            collected.push(entry);
+            setLiveResults((r) => [...r, entry]);
             cancelled = true;
             break;
           }
-        } catch {
+        } catch (error) {
           failed += 1;
+          const entry: ScenarioRunResult = {
+            scenario: runScenario,
+            status: "failed",
+            failedStepIndex: runProgressRef.current.current,
+            message: error instanceof Error ? error.message : String(error),
+          };
+          collected.push(entry);
+          setLiveResults((r) => [...r, entry]);
           setRunLog((logs) => [
             ...logs,
             `[${index + 1}/${toRun.length}] ${runScenario.title} 실행 실패`,
@@ -709,7 +755,7 @@ export const App = (): ReactElement => {
       await window.electronAPI.finishQaWorker(String(sequence));
       if (sequence === runSequence.current) {
         if (!cancelled) {
-          recordRun(toRun, passed, failed);
+          recordRun(toRun, passed, failed, collected);
           try {
             const videoPath = await window.electronAPI.mergeRunVideos(runVideoPaths.current);
             setFullRunVideoPath(videoPath);
@@ -729,6 +775,20 @@ export const App = (): ReactElement => {
         );
       }
     })();
+  };
+
+  const cancelRuns = () => {
+    runCancelled.current = true;
+    runSequence.current += 1;
+    void window.electronAPI.cancelQa();
+    setRunning(false);
+    setRunNotification(
+      (notification) =>
+        notification && {
+          ...notification,
+          status: "cancelled",
+        },
+    );
   };
 
   const runEditorContent = () => {
@@ -845,15 +905,25 @@ export const App = (): ReactElement => {
 
   return (
     <main
-      className={`workspace${route === "editor" && editorMode === "marker" ? " screen-extract-workspace" : ""}`}
+      className={`workspace${route === "editor" && editorMode === "marker" ? " screen-extract-workspace" : ""}${route === "run" ? " run-workspace" : ""}`}
     >
       <section className="content">
-        {route === "scenarios" && (
+        {route === "dashboard" && (
           <DashboardPage
             history={runHistory}
             summary={runSummary}
             onQuickStart={(scenarios) => beginRuns(scenarios)}
             onOpenRun={() => setRoute("run")}
+            onOpenLibrary={() => setRoute("library")}
+            onOpenReport={setOpenRunRecord}
+          />
+        )}
+        {route === "library" && (
+          <ScenarioLibraryPage
+            scenarios={previews}
+            onCreate={() => { setEditorMode("text"); setRoute("editor"); }}
+            onEdit={(item) => { setScenario(applyPositions(item, positionStore)); setMarkerScenarioId(item.id); setEditorMode("text"); setRoute("editor"); }}
+            onRun={(item) => beginRuns([item])}
           />
         )}
         {route === "editor" && (
@@ -910,7 +980,7 @@ export const App = (): ReactElement => {
           <RunPage
             scenario={running ? runningScenario : executableScenario}
             scenarios={executableScenarios}
-            scenarioCount={executableScenarios.length}
+            scenarioResults={liveResults}
             running={running}
             manual={manual}
             manualControl={manualControl}
@@ -930,21 +1000,9 @@ export const App = (): ReactElement => {
               void window.electronAPI.submitManualControl({ status: "failed", reason });
               setManualControl(null);
             }}
-            onRun={() => beginRuns(executableScenarios)}
+            onRun={(items) => beginRuns(items?.length ? items : executableScenarios)}
             onImport={() => void importScenario()}
-            onCancel={() => {
-              runCancelled.current = true;
-              runSequence.current += 1;
-              void window.electronAPI.cancelQa();
-              setRunning(false);
-              setRunNotification(
-                (notification) =>
-                  notification && {
-                    ...notification,
-                    status: "cancelled",
-                  },
-              );
-            }}
+            onCancel={cancelRuns}
             onLivePreviewChange={setLivePreview}
             runVideos={runVideos}
             fullRunVideoAvailable={Boolean(fullRunVideoPath)}
@@ -970,7 +1028,16 @@ export const App = (): ReactElement => {
             }}
           />
         )}
+        {route === "settings" && <SettingsPage scenario={scenario} />}
       </section>
+      <RunReportDrawer
+        record={openRunRecord}
+        onClose={() => setOpenRunRecord(null)}
+        onRerun={(scenarios) => {
+          setOpenRunRecord(null);
+          beginRuns(scenarios);
+        }}
+      />
       {toast && (
         <div className="toast" role="status" aria-live="polite">
           ✓ {toast}
@@ -1057,7 +1124,13 @@ export const App = (): ReactElement => {
           </button>
         </section>
       )}
-      <BottomNavigation route={route} onNavigate={setRoute} />
+      <BottomNavigation
+        route={route}
+        running={running}
+        onNavigate={setRoute}
+        onRun={() => beginRuns(executableScenarios)}
+        onCancel={cancelRuns}
+      />
       {saveBeforeReturning && (
         <div
           className="modal-backdrop"

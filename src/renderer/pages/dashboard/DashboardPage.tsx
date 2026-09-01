@@ -1,10 +1,17 @@
-import type { RunRecord, RunSummary, Scenario } from "../../shared/model/scenario";
+import {
+  estimateDurationSeconds,
+  type RunRecord,
+  type RunSummary,
+  type Scenario,
+} from "../../shared/model/scenario";
 
 type Props = {
   history: RunRecord[];
   summary: RunSummary;
   onQuickStart: (scenarios: Scenario[]) => void;
   onOpenRun: () => void;
+  onOpenLibrary: () => void;
+  onOpenReport: (record: RunRecord) => void;
 };
 
 export const DashboardPage = ({
@@ -12,54 +19,40 @@ export const DashboardPage = ({
   summary,
   onQuickStart,
   onOpenRun,
+  onOpenLibrary,
+  onOpenReport,
 }: Props) => (
   <>
     <div className="page-title">
       <div>
         <p className="eyebrow">DASHBOARD</p>
-        <h1>대시보드</h1>
-        <p>최근 실행 현황을 확인하고 이전 실행 묶음을 빠르게 다시 시작하세요.</p>
+        <h1>안정적으로 운영되고 있습니다</h1>
       </div>
+      <div className="dashboard-actions"><button className="button button-secondary" onClick={onOpenLibrary}>시나리오</button><button className="button button-primary" onClick={onOpenRun}>▶ 전체 실행</button></div>
     </div>
-    <section className="run-summary" aria-label="실행 요약">
-      <article>
-        <span>평균 통과율</span>
-        <strong>
-          {summary.total
-            ? Math.round((summary.passed / summary.total) * 100)
-            : 0}
-          %
-        </strong>
-        <small>통과 {summary.passed}회</small>
-      </article>
-      <article>
-        <span>실패율</span>
-        <strong>
-          {summary.total
-            ? Math.round((summary.failed / summary.total) * 100)
-            : 0}
-          %
-        </strong>
-        <small>실패 {summary.failed}회</small>
-      </article>
-      <article>
-        <span>전체 실행 수</span>
-        <strong>{summary.total}</strong>
-        <small>누적 실행 기준</small>
-      </article>
+    <section className="dashboard-overview" aria-label="실행 요약">
+      <div className="dashboard-rate">
+        <strong>{summary.total ? Math.round((summary.passed / summary.total) * 100) : 0}<small>%</small></strong>
+        {summary.total > 0 && <span className="dashboard-change">▲ 최근 실행 기준</span>}
+        <div className="run-history-tape" aria-hidden="true">
+          {Array.from({ length: 18 }, (_, index) => {
+            const record = history[index % Math.max(history.length, 1)];
+            return <i key={index} className={record?.status === "failed" ? "failed" : "passed"} />;
+          })}
+        </div>
+      </div>
     </section>
     <section className="recent-runs">
       <div className="panel-heading">
         <div>
           <p className="eyebrow">RECENT RUNS</p>
-          <h2>이전 실행 기록</h2>
         </div>
-        <span>최근 {history.length}/5</span>
+        <span className="dashboard-history-link">전체 기록 →</span>
       </div>
       {history.length ? (
         <ol className="recent-run-list">
           {history.map((record) => (
-            <li key={record.id}>
+            <li key={record.id} onClick={() => onOpenReport(record)} role="button" tabIndex={0}>
               <div
                 className={
                   record.status === "passed"
@@ -70,19 +63,23 @@ export const DashboardPage = ({
                 {record.status === "passed" ? "✓" : "!"}
               </div>
               <div className="recent-run-info">
-                <strong>{record.scenarios[0]?.title ?? "시나리오 실행"}{record.scenarios.length > 1 ? ` 외 ${record.scenarios.length - 1}개` : ""}</strong>
+                <strong>{record.scenarios.length > 1 ? `전체 회귀 · ${record.scenarios.length}개 시나리오` : record.scenarios[0]?.title ?? "시나리오 실행"}</strong>
                 <span>{record.scenarios.map((scenario) => scenario.title).join(" · ")}</span>
-                <small>
-                  {record.scenarios.length}개 시나리오 · 성공 {record.passed} · 실패 {record.failed} ·{" "}
-                  {new Date(record.ranAt).toLocaleString("ko-KR")}
-                </small>
+              </div>
+              <div className="recent-run-meta">
+                <span>{Math.round((record.passed / Math.max(record.passed + record.failed, 1)) * 100)}%</span>
+                <span>{formatSeconds(record.scenarios.reduce((total, item) => total + estimateDurationSeconds(item), 0))}</span>
+                <time dateTime={record.ranAt}>{new Date(record.ranAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}</time>
               </div>
               <div className="recent-run-actions">
                 <button
-                  className="button button-primary"
-                  onClick={() => onQuickStart(record.scenarios)}
+                  className="button button-secondary"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onQuickStart(record.scenarios);
+                  }}
                 >
-                  전체 퀵 스타트
+                  다시 실행
                 </button>
               </div>
             </li>
@@ -102,3 +99,6 @@ export const DashboardPage = ({
     </section>
   </>
 );
+
+const formatSeconds = (seconds: number) =>
+  `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;

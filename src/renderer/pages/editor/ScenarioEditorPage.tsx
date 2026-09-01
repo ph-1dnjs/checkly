@@ -6,12 +6,36 @@ import {
 } from "react";
 import {
   actionLabel,
+  actionText,
   defaultMarkerPosition,
   markerColor,
   type Action,
   type Scenario,
   type Step,
 } from "../../shared/model/scenario";
+
+const opTone: Record<Action, string> = {
+  goto: "#6e7fd2",
+  fill: "#3e7fa8",
+  fileUpload: "#3e7fa8",
+  manualFill: "#8fa3b4",
+  manualControl: "#d99b3d",
+  manualResult: "#d99b3d",
+  click: "#2e8c9e",
+  select: "#2e8c9e",
+  expectText: "#46a38b",
+};
+const opLabel: Record<Action, string> = {
+  goto: "GOTO",
+  fill: "FILL",
+  fileUpload: "UPLOAD",
+  manualFill: "MANUAL",
+  manualControl: "CONTROL",
+  manualResult: "RESULT",
+  click: "CLICK",
+  select: "SELECT",
+  expectText: "EXPECT",
+};
 
 type Props = {
   mode: "text" | "marker";
@@ -97,6 +121,15 @@ export const ScenarioEditorPage = ({
   onCompleteMarkerDialog,
 }: Props) => {
   const [draggedStepId, setDraggedStepId] = useState<string | null>(null);
+  const [openPreviewIds, setOpenPreviewIds] = useState<Set<string>>(
+    () => new Set(previews[0] ? [previews[0].id] : []),
+  );
+  const togglePreview = (id: string) =>
+    setOpenPreviewIds((ids) => {
+      const next = new Set(ids);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
   const stepDrag = useRef<{
     id: string;
     pointerId: number;
@@ -165,13 +198,8 @@ export const ScenarioEditorPage = ({
     <>
     <div className="page-title editor-page-title">
       <div>
-        <p className="eyebrow">SCENARIO WORKSPACE</p>
-        <h1>시나리오 작성 / 편집</h1>
-        <p>
-          {mode === "text"
-            ? "텍스트 기반 시나리오를 작성하고 실행 단계를 미리 확인하세요."
-            : "대상 화면에서 마커를 선택해 액션과 순서를 편집하세요."}
-        </p>
+        <p className="eyebrow">{previews[0]?.title ?? "새 시나리오"}.md</p>
+        <h1>{mode === "text" ? "시나리오 작성" : "화면에서 추출"}</h1>
       </div>
       <div className="editor-mode-switch">
         <button
@@ -191,31 +219,34 @@ export const ScenarioEditorPage = ({
     {mode === "text" ? (
       <>
         <div className="editor-actions">
-          <button className="button button-secondary" onClick={onImport}>
-            시나리오 불러오기
-          </button>
-          <button className="button button-primary" onClick={onExport}>
-            시나리오 저장하기
+          <button className="button button-secondary" onClick={() => onModeChange("marker")}>
+          화면에서 추출
+        </button>
+          <button className="button button-secondary" onClick={onExport}>
+            저장
           </button>
           <button className="button button-run" onClick={onRun}>
             ▶ 바로 실행
           </button>
-          <span className="scenario-file-path" title={scenarioFilePath ?? undefined}>
-            {scenarioFilePath ?? "저장된 파일 없음"}
-          </span>
+          <button className="button button-text-import" onClick={onImport}>불러오기</button>
         </div>
         <div className="scenario-writing-grid">
-          <section className="writing-card">
+          <section className="writing-card markdown-card">
             <div className="writing-card-header">
               <strong>시나리오 Markdown</strong>
               <span>{previews[0]?.title ?? "미리보기"}.md</span>
             </div>
-            <textarea
-              className="scenario-source"
-              value={sourceMarkdown}
-              onChange={(event) => onSourceChange(event.target.value)}
-              aria-label="시나리오 Markdown 원본"
-            />
+            <div className="markdown-editor-body">
+              <ol className="markdown-line-numbers" aria-hidden="true">
+                {sourceMarkdown.split("\n").map((_, index) => <li key={index}>{index + 1}</li>)}
+              </ol>
+              <textarea
+                className="scenario-source"
+                value={sourceMarkdown}
+                onChange={(event) => onSourceChange(event.target.value)}
+                aria-label="시나리오 Markdown 원본"
+              />
+            </div>
           </section>
           <aside className="scenario-preview">
             <div className="writing-card-header">
@@ -227,26 +258,50 @@ export const ScenarioEditorPage = ({
             {previews.length > 0 ? (
               <>
                 <div className="preview-scenario-list">
-                  {previews.map((preview) => (
-                    <article className="preview-scenario" key={preview.id}>
-                      <div>
-                        <h2>{preview.title}</h2>
-                        <span className="tag">자동 인식</span>
-                      </div>
-                      <div className="preview-before">
-                        <b>기본 URL</b>
-                        <span>{preview.url}</span>
-                      </div>
-                      <ol>
-                        {preview.steps.map((step) => (
-                          <li key={step.id}>
-                            <b>{actionLabel[step.action]}</b>
-                            <span>{step.target}</span>
-                          </li>
-                        ))}
-                      </ol>
-                    </article>
-                  ))}
+                  {previews.map((preview, index) => {
+                    const isOpen = openPreviewIds.has(preview.id);
+                    return (
+                      <article className="preview-scenario" key={preview.id}>
+                        <div
+                          className="preview-scenario-heading"
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => togglePreview(preview.id)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              togglePreview(preview.id);
+                            }
+                          }}
+                        >
+                          <span className="preview-index">{String(index + 1).padStart(2, "0")}</span>
+                          <h2>{preview.title}</h2>
+                          <span className="tag">{preview.steps.length}개 단계</span>
+                          <span className={`preview-caret${isOpen ? " open" : ""}`}>▾</span>
+                        </div>
+                        {isOpen && (
+                          <>
+                            <div className="preview-before">
+                              <b>URL</b>
+                              <span>{preview.url}</span>
+                            </div>
+                            <ol>
+                              {preview.steps.map((step) => (
+                                <li key={step.id}>
+                                  <b style={{ color: opTone[step.action] }}>{opLabel[step.action]}</b>
+                                  <span>{actionText(step)}</span>
+                                  <i
+                                    className={step.connected ? "linked" : ""}
+                                    title={step.connected ? "연결됨" : "미연결"}
+                                  />
+                                </li>
+                              ))}
+                            </ol>
+                          </>
+                        )}
+                      </article>
+                    );
+                  })}
                 </div>
                 <p className="preview-note">
                   Given / When / Then / And 문장을 자동으로 인식합니다. 불러온
@@ -268,6 +323,11 @@ export const ScenarioEditorPage = ({
       </>
     ) : (
       <>
+        <header className="marker-mode-header">
+          <button className="marker-back" onClick={onReturnToText}>‹</button>
+          <div><span>SCREEN EXTRACT</span><strong>{scenario.title}</strong></div>
+          <button className="button button-run" onClick={onRun}>▶ 바로 실행</button>
+        </header>
         <div className="marker-toolbar">
           <strong>{isAddingMarker ? "⌖ 위치 선택 중" : "✣ 핀 수정 중"}</strong>
           {previews.length > 1 && (

@@ -36,6 +36,12 @@ export type MarkerPosition = Pick<
   "action" | "target" | "value" | "prompt" | "condition" | "waitSeconds" | "occurrence" | "x" | "y" | "color"
 >;
 export type MarkerPositionStore = Record<string, MarkerPosition[]>;
+export type ScenarioRunResult = {
+  scenario: Scenario;
+  status: "passed" | "failed" | "cancelled";
+  failedStepIndex?: number;
+  message?: string;
+};
 export type RunRecord = {
   id: string;
   scenarios: Scenario[];
@@ -43,10 +49,11 @@ export type RunRecord = {
   passed: number;
   failed: number;
   ranAt: string;
+  results: ScenarioRunResult[];
 };
 export type RunSummary = { total: number; passed: number; failed: number };
 export type RunProgress = { current: number; total: number; step: string };
-export type Route = "scenarios" | "editor" | "run";
+export type Route = "dashboard" | "library" | "editor" | "run" | "settings";
 
 export const seedScenario: Scenario = {
   id: "login-qa",
