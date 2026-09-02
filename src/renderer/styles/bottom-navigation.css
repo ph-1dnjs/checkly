@@ -13,4 +13,6 @@
 .workspace .bottom-nav-run:hover { background:#12506a; }
 .workspace .bottom-nav-run .msi { font-size:21px; }
 .workspace .bottom-nav-run.danger,.workspace .bottom-nav-run.danger:hover { background:#b32318; color:#fff; }
+.workspace .bottom-nav-run.danger.confirm { background:#97180f; }
+.workspace .bottom-nav-run.danger.confirm:hover { background:#7c120b; }
 @media(max-width:600px) { .workspace .content { padding-bottom:80px; } .workspace .bottom-navigation { bottom:14px; gap:7px; } .workspace .bottom-nav-brand strong,.workspace .bottom-nav-brand span:not(.msi) { display:none; } .workspace .bottom-nav-controls { padding:0 4px; } .workspace .bottom-nav-item { flex-basis:34px; width:34px; } .workspace .bottom-nav-run { padding:0 14px; } }

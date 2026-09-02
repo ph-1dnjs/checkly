@@ -130,13 +130,16 @@ export const ScenarioEditorPage = ({
     const bounds = event.currentTarget.getBoundingClientRect();
     const x = Math.round(((event.clientX - bounds.left) / bounds.width) * 1000) / 10;
     const y = Math.round(((event.clientY - bounds.top) / bounds.height) * 1000) / 10;
-    const pageX = Math.round(event.clientX - bounds.left);
-    const pageY = Math.round(event.clientY - bounds.top);
+    const relativeX = (event.clientX - bounds.left) / bounds.width;
+    const relativeY = (event.clientY - bounds.top) / bounds.height;
     let marker: { target: string; action: Action } = { target: "", action: "click" };
     try {
       marker = await targetFrameRef.current?.executeJavaScript(
         `(() => {
-          const element = document.elementFromPoint(${pageX}, ${pageY});
+          const element = document.elementFromPoint(
+            ${relativeX} * window.innerWidth,
+            ${relativeY} * window.innerHeight,
+          );
           const target = element?.closest('label, button, [role="button"], a, input, select, textarea, [data-label], [aria-label]') ?? element;
           if (!target) return '';
           const action = target.matches('select') ? 'select' : 'click';

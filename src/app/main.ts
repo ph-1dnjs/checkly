@@ -48,6 +48,15 @@ const controlManualBrowser = async (event: ManualBrowserEvent): Promise<void> =>
   if (event.type === 'key' && event.key) await page.keyboard.press(event.key)
 }
 
+const setQaViewport = async (size: { width: number; height: number }): Promise<void> => {
+  const page = activeRun?.page
+  if (!page || activeRun?.cancelled || page.isClosed()) return
+  const width = Math.round(size.width)
+  const height = Math.round(size.height)
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width < 200 || height < 200) return
+  try { await page.setViewportSize({ width, height }) } catch { /* 화면 전환 중인 페이지는 무시한다. */ }
+}
+
 const escapeHtml = (value: string): string => value.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!)
 const writeRunReport = async (scenario: QaScenario, status: string, log: string[]): Promise<string> => {
   const runId = `run-${Date.now()}`
@@ -526,6 +535,7 @@ app.whenReady().then(() => {
   ipcMain.handle('qa:manual-input', (_event, value: string) => activeRun?.resolveManual?.(value))
   ipcMain.handle('qa:manual-control', (_event, result: ManualControlResult) => activeRun?.resolveManualControl?.(result))
   ipcMain.handle('qa:manual-browser-event', (_event, event: ManualBrowserEvent) => controlManualBrowser(event))
+  ipcMain.handle('qa:set-viewport', (_event, size: { width: number; height: number }) => setQaViewport(size))
   ipcMain.handle('qa:manual-result', (_event, result: ManualResult) => activeRun?.resolveManualResult?.(result))
   ipcMain.handle('qa:cancel', async () => {
     if (!activeRun) {

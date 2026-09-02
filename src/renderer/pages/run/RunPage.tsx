@@ -6,6 +6,7 @@ import {
   type Step,
 } from "../../shared/model/scenario";
 import {
+  useEffect,
   useRef,
   useState,
   type ClipboardEvent,
@@ -21,11 +22,26 @@ const WAIT = "#C08A15";
 const INK = "#14181C";
 const IDLE = "#A6AEB5";
 
+type FitMode = "fit" | "width" | "actual";
+
+const VIEWPORT_PRESETS: Array<{ key: string; w: number; h: number; label: string; title: string }> = [
+  { key: "1920x1080", w: 1920, h: 1080, label: "1920×1080", title: "와이드" },
+];
+
+const FIT_MODES: Array<{ key: FitMode; label: string; title: string }> = [
+  { key: "fit", label: "맞춘", title: "가로·세로 모두 들어가는 배율로 축소 (기본)" },
+  { key: "width", label: "너비", title: "패널 너비에 맞춰 표시 · 세로는 스크롤" },
+  { key: "actual", label: "1:1", title: "원본 픽셀 크기 · 직접 제어 시 권장" },
+];
+
+const CHROME_H = 22;
+
 type Props = {
   scenario: Scenario;
   scenarios: Scenario[];
   scenarioResults: ScenarioRunResult[];
   running: boolean;
+  confirmStop: boolean;
   manual: Step | null;
   manualValue: string;
   manualValueVisible: boolean;
@@ -51,8 +67,10 @@ type Props = {
   }) => void;
   onCompleteManualControl: () => void;
   onFailManualControl: (reason: string) => void;
+  onSetViewport: (width: number, height: number) => void;
   onGoToPicker: () => void;
   onCancel: () => void;
+  onPopout: (viewportLabel: string) => void;
   onLivePreviewChange: (value: boolean) => void;
   runVideos: Array<{ scenario: Scenario; path: string }>;
   fullRunVideoAvailable: boolean;
@@ -65,6 +83,7 @@ export const RunPage = ({
   scenarios,
   scenarioResults,
   running,
+  confirmStop,
   manual,
   manualValue,
   manualValueVisible,
@@ -81,8 +100,10 @@ export const RunPage = ({
   onManualBrowserEvent,
   onCompleteManualControl,
   onFailManualControl,
+  onSetViewport,
   onGoToPicker,
   onCancel,
+  onPopout,
   onLivePreviewChange,
   runVideos,
   fullRunVideoAvailable,
@@ -93,7 +114,40 @@ export const RunPage = ({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [selStep, setSelStep] = useState<string | null>(null);
   const [logFilter, setLogFilter] = useState<"ALL" | "ERR">("ALL");
+  const [vpKey, setVpKey] = useState("1920x1080");
+  const [fitMode, setFitMode] = useState<FitMode>("fit");
+  const [zen, setZen] = useState(false);
+  const [stageSize, setStageSize] = useState({ w: 0, h: 0 });
+  const [imgSize, setImgSize] = useState({ w: 1280, h: 720 });
+  const [customScale, setCustomScale] = useState<number | null>(null);
+  const [scaleDraft, setScaleDraft] = useState<string | null>(null);
   const manualImageRef = useRef<HTMLImageElement | null>(null);
+  const stageRef = useRef<HTMLDivElement | null>(null);
+  const onSetViewportRef = useRef(onSetViewport);
+  onSetViewportRef.current = onSetViewport;
+
+  useEffect(() => {
+    const el = stageRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() =>
+      setStageSize({ w: el.clientWidth, h: el.clientHeight }),
+    );
+    observer.observe(el);
+    setStageSize({ w: el.clientWidth, h: el.clientHeight });
+    return () => observer.disconnect();
+  }, [livePreview, zen]);
+
+  useEffect(() => {
+    if (!running || manualControl) return;
+    const preset = VIEWPORT_PRESETS.find((v) => v.key === vpKey) ?? VIEWPORT_PRESETS[0];
+    if (imgSize.w === preset.w && imgSize.h === preset.h) return;
+    onSetViewportRef.current(preset.w, preset.h);
+    // 새 시나리오 페이지는 항상 기본 크기로 열리고, 실행 시작 직후의 첫 요청은 백엔드에
+    // 페이지가 아직 없어 조용히 무시될 수 있다. imgSize만 의존성으로 두면 그 값이 우연히
+    // 초기값과 같을 때 다시 시도하지 않으므로, 매 프레임 바뀌는 previewImage에 걸어
+    // 실제로 수렴할 때까지 계속 재시도한다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [running, manualControl, vpKey, previewImage]);
 
   const browserPoint = (
     event: MouseEvent<HTMLImageElement> | WheelEvent<HTMLImageElement>,
@@ -153,6 +207,39 @@ export const RunPage = ({
             : IDLE;
   const canStop = running;
   const canReplay = !running;
+
+  const directOn = Boolean(manualControl);
+  const effectiveFit: FitMode = fitMode;
+  const vpPreset = VIEWPORT_PRESETS.find((v) => v.key === vpKey) ?? VIEWPORT_PRESETS[0];
+  const vpNow = directOn
+    ? { key: "capture", w: imgSize.w, h: imgSize.h, label: `${imgSize.w}×${imgSize.h}`, title: "실제 캡처 크기" }
+    : vpPreset;
+  const stageW = Math.max(0, stageSize.w - 24);
+  const stageH = Math.max(0, stageSize.h - 24);
+  let scale = 1;
+  if (effectiveFit === "width") scale = stageW > 0 ? stageW / vpNow.w : 1;
+  else if (effectiveFit === "fit")
+    scale = stageW > 0 && stageH > 0 ? Math.min(stageW / vpNow.w, (stageH - CHROME_H) / vpNow.h, 1) : 1;
+  scale = Math.max(0.08, Math.min(scale, 2));
+  if (customScale !== null) scale = customScale;
+  const displayScalePercent = scaleDraft ?? String(Math.round(scale * 100));
+  const commitScaleDraft = (raw: string) => {
+    const parsed = Number(raw);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      setCustomScale(Math.max(0.08, Math.min(parsed / 100, 2)));
+    }
+    setScaleDraft(null);
+  };
+  const pageW = Math.round(vpNow.w * scale);
+  const pageH = Math.round(vpNow.h * scale);
+  const needScroll = stageW > 0 && (pageW > stageW + 1 || pageH + CHROME_H > stageH + 1);
+  const cropLabel = needScroll
+    ? "스테이지보다 큼 · 스크롤로 이동"
+    : scale < 0.999
+      ? "축소 표시 · 잘림 없음"
+      : "원본 크기 · 1:1";
+  const cropFg = needScroll ? "#96690C" : scale < 0.999 ? "#8A939C" : "#1E7A4A";
+  const logCollapsed = zen || directOn;
 
   const currentStep = scenario.steps[runProgress.current];
   const nowAction = currentStep
@@ -260,9 +347,12 @@ export const RunPage = ({
             </div>
           </div>
           {canStop && (
-            <button className="run-stop-btn" onClick={onCancel}>
-              <span className="msi">stop</span>
-              중단
+            <button
+              className={`run-stop-btn${confirmStop ? " confirm" : ""}`}
+              onClick={onCancel}
+            >
+              <span className="msi">{confirmStop ? "stop_circle" : "stop"}</span>
+              {confirmStop ? "정말 중단합니다" : "실행 중단"}
             </button>
           )}
           {canReplay && (
@@ -375,7 +465,7 @@ export const RunPage = ({
         </div>
       )}
 
-      <div className="run-cols">
+      <div className={`run-cols${zen ? " run-cols-zen" : ""}`}>
         <div className="run-execution">
           <div className="run-col-head">
             <span>EXECUTION</span>
@@ -448,76 +538,213 @@ export const RunPage = ({
                   숨기기
                 </button>
               </div>
-              <div className="run-viewport-body">
-                {previewImage ? (
-                  <img
-                    ref={manualImageRef}
-                    className={manualControl ? "manual-browser-screen" : ""}
-                    src={previewImage}
-                    alt={
-                      manualControl ? "직접 조작할 브라우저 화면" : "현재 테스트 실행 화면"
-                    }
-                    tabIndex={manualControl ? 0 : -1}
-                    onClick={
-                      manualControl
-                        ? (event) => {
-                            const point = browserPoint(event);
-                            if (point) onManualBrowserEvent({ type: "click", ...point });
-                            event.currentTarget.focus();
-                          }
-                        : undefined
-                    }
-                    onWheel={
-                      manualControl
-                        ? (event) => {
-                            event.preventDefault();
-                            const point = browserPoint(event);
-                            if (point)
-                              onManualBrowserEvent({
-                                type: "wheel",
-                                deltaY: event.deltaY,
-                                ...point,
-                              });
-                          }
-                        : undefined
-                    }
-                    onKeyDown={manualControl ? handleManualKey : undefined}
-                    onPaste={
-                      manualControl
-                        ? (event: ClipboardEvent<HTMLImageElement>) => {
-                            event.preventDefault();
-                            const text = event.clipboardData.getData("text");
-                            if (text) onManualBrowserEvent({ type: "text", text });
-                          }
-                        : undefined
-                    }
-                  />
-                ) : (
-                  <div className="run-viewport-caption">NO ACTIVE SESSION</div>
-                )}
-                {manualControl && (
-                  <div className="manual-browser-actions">
-                    <input
-                      value={manualFailureReason}
-                      onChange={(event) => setManualFailureReason(event.target.value)}
-                      placeholder="실패 시 사유를 입력하세요"
-                    />
-                    <button
-                      className="button danger"
-                      disabled={!manualFailureReason.trim()}
-                      onClick={() => onFailManualControl(manualFailureReason.trim())}
-                    >
-                      실패로 기록
-                    </button>
-                    <button className="button button-primary" onClick={onCompleteManualControl}>
-                      완료 후 계속
-                    </button>
+
+              <div className="run-viewport-toolbar">
+                <div className="run-viewport-toolbar-scroll">
+                  <div className="run-vp-group">
+                    {VIEWPORT_PRESETS.map((preset) => (
+                      <button
+                        key={preset.key}
+                        type="button"
+                        title={`${preset.title} · ${preset.label}`}
+                        className={!directOn && vpKey === preset.key ? "active" : ""}
+                        disabled={directOn}
+                        onClick={() => {
+                          setVpKey(preset.key);
+                          setCustomScale(null);
+                        }}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
                   </div>
-                )}
+                  <span className="run-vp-divider" />
+                  <div className="run-vp-group">
+                    {FIT_MODES.map((mode) => (
+                      <button
+                        key={mode.key}
+                        type="button"
+                        title={mode.title}
+                        className={customScale === null && effectiveFit === mode.key ? "active" : ""}
+                        onClick={() => {
+                          setFitMode(mode.key);
+                          setCustomScale(null);
+                        }}
+                      >
+                        {mode.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="run-viewport-toolbar-right">
+                  <div
+                    className={`run-vp-scale${directOn ? " direct" : ""}`}
+                    title="실제 브라우저 픽셀 대비 표시 배율 · 직접 입력할 수 있습니다"
+                  >
+                    <input
+                      type="number"
+                      className="run-vp-scale-input"
+                      min={8}
+                      max={200}
+                      value={displayScalePercent}
+                      onFocus={(event) => {
+                        setScaleDraft(String(Math.round(scale * 100)));
+                        event.currentTarget.select();
+                      }}
+                      onChange={(event) => setScaleDraft(event.target.value)}
+                      onBlur={(event) => commitScaleDraft(event.currentTarget.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") event.currentTarget.blur();
+                        if (event.key === "Escape") {
+                          setScaleDraft(null);
+                          event.currentTarget.blur();
+                        }
+                      }}
+                      aria-label="표시 배율 직접 입력"
+                    />
+                    <span>%</span>
+                    <span className="run-vp-scale-note">
+                      {customScale !== null
+                        ? "직접 입력"
+                        : effectiveFit === "actual"
+                          ? "1:1"
+                          : effectiveFit === "width"
+                            ? "너비"
+                            : "맞춘"}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    className={zen ? "active" : ""}
+                    onClick={() => setZen((value) => !value)}
+                  >
+                    {zen ? "패널 복원" : "패널 최대화"}
+                  </button>
+                  <button
+                    type="button"
+                    title="실제 브라우저 창을 분리해 원본 크기로 조작"
+                    onClick={() => onPopout(vpNow.label)}
+                  >
+                    창 분리
+                  </button>
+                </div>
               </div>
+
+              {directOn && (
+                <div className="run-viewport-direct-banner">
+                  <span className="run-vp-direct-dot" />
+                  직접 제어 중 · 배율을 조정해도 클릭 좌표는 실제 화면 기준으로 자동 보정됩니다
+                  <span className="run-viewport-direct-hint">{vpNow.label} 세션</span>
+                </div>
+              )}
+
+              <div
+                ref={stageRef}
+                className="run-stage"
+                style={{ overflow: needScroll ? "auto" : "hidden" }}
+              >
+                <div
+                  className="run-frame"
+                  style={{ width: pageW, height: pageH + CHROME_H, borderColor: directOn ? "#C08A15" : undefined }}
+                >
+                  <div className="run-frame-chrome" style={{ height: CHROME_H }}>
+                    <span className="run-frame-dots">
+                      <i />
+                      <i />
+                      <i />
+                    </span>
+                    <div className="run-frame-url">{scenario.url}</div>
+                    <div className="run-frame-size">{vpNow.label}</div>
+                  </div>
+                  <div className="run-frame-body">
+                    {previewImage ? (
+                      <img
+                        ref={manualImageRef}
+                        className={manualControl ? "manual-browser-screen" : ""}
+                        src={previewImage}
+                        style={{ width: pageW, height: pageH }}
+                        onLoad={(event) =>
+                          setImgSize({
+                            w: event.currentTarget.naturalWidth || 1280,
+                            h: event.currentTarget.naturalHeight || 720,
+                          })
+                        }
+                        alt={
+                          manualControl ? "직접 조작할 브라우저 화면" : "현재 테스트 실행 화면"
+                        }
+                        tabIndex={manualControl ? 0 : -1}
+                        onClick={
+                          manualControl
+                            ? (event) => {
+                                const point = browserPoint(event);
+                                if (point) onManualBrowserEvent({ type: "click", ...point });
+                                event.currentTarget.focus();
+                              }
+                            : undefined
+                        }
+                        onWheel={
+                          manualControl
+                            ? (event) => {
+                                event.preventDefault();
+                                const point = browserPoint(event);
+                                if (point)
+                                  onManualBrowserEvent({
+                                    type: "wheel",
+                                    deltaY: event.deltaY,
+                                    ...point,
+                                  });
+                              }
+                            : undefined
+                        }
+                        onKeyDown={manualControl ? handleManualKey : undefined}
+                        onPaste={
+                          manualControl
+                            ? (event: ClipboardEvent<HTMLImageElement>) => {
+                                event.preventDefault();
+                                const text = event.clipboardData.getData("text");
+                                if (text) onManualBrowserEvent({ type: "text", text });
+                              }
+                            : undefined
+                        }
+                      />
+                    ) : (
+                      <div className="run-viewport-caption">NO ACTIVE SESSION</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="run-viewport-status">
+                <span>{vpNow.label}</span>
+                <span className="run-viewport-status-crop" style={{ color: cropFg }}>
+                  {cropLabel}
+                </span>
+              </div>
+
+              {manualControl && (
+                <div className="manual-browser-actions">
+                  <input
+                    value={manualFailureReason}
+                    onChange={(event) => setManualFailureReason(event.target.value)}
+                    placeholder="실패 시 사유를 입력하세요"
+                  />
+                  <button
+                    className="button danger"
+                    disabled={!manualFailureReason.trim()}
+                    onClick={() => onFailManualControl(manualFailureReason.trim())}
+                  >
+                    실패로 기록
+                  </button>
+                  <button className="button button-primary" onClick={onCompleteManualControl}>
+                    완료 후 계속
+                  </button>
+                </div>
+              )}
             </div>
           )}
-          <div className="run-console">
+          <div
+            className={`run-console${logCollapsed ? " run-console-collapsed" : livePreview ? " run-console-compact" : ""}`}
+          >
             <div className="run-col-head run-console-head">
               <span>CONSOLE</span>
               <div className="run-log-filters">

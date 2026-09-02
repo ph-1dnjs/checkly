@@ -5,6 +5,7 @@
 .screen-extract-workspace .content { width:100%; max-width:none; padding:0; }
 .screen-extract-workspace .editor-page-title,
 .screen-extract-workspace .bottom-navigation { display:none; }
+.screen-extract-workspace .modal-backdrop { z-index:61; }
 
 .extract-shell { position:fixed; inset:0; z-index:60; display:flex; flex-direction:column; background:#fff; animation:ckIn 160ms ease both; }
 

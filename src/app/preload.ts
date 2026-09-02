@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   submitManualInput: (value: string): Promise<void> => ipcRenderer.invoke('qa:manual-input', value),
   submitManualControl: (result: { status: 'continue' | 'failed'; reason?: string }): Promise<void> => ipcRenderer.invoke('qa:manual-control', result),
   controlManualBrowser: (event: { type: 'click' | 'wheel' | 'key' | 'text'; x?: number; y?: number; deltaY?: number; key?: string; text?: string }): Promise<void> => ipcRenderer.invoke('qa:manual-browser-event', event),
+  setQaViewport: (size: { width: number; height: number }): Promise<void> => ipcRenderer.invoke('qa:set-viewport', size),
   submitManualResult: (result: { status: 'passed' | 'failed'; reason?: string }): Promise<void> => ipcRenderer.invoke('qa:manual-result', result),
   cancelQa: (): Promise<void> => ipcRenderer.invoke('qa:cancel'),
   onManualInputRequired: (callback: (step: unknown) => void): (() => void) => {

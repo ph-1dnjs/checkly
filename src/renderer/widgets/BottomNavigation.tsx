@@ -3,6 +3,7 @@ import type { Route } from "../shared/model/scenario";
 type Props = {
   route: Route;
   running: boolean;
+  confirmStop: boolean;
   onNavigate: (route: Route) => void;
   onRun: () => void;
   onCancel: () => void;
@@ -18,6 +19,7 @@ const NAVS: Array<{ route: Route; label: string; icon: string }> = [
 export const BottomNavigation = ({
   route,
   running,
+  confirmStop,
   onNavigate,
   onRun,
   onCancel,
@@ -47,12 +49,16 @@ export const BottomNavigation = ({
       ))}
     </div>
     <button
-      className={`bottom-nav-run${running ? " danger" : ""}`}
+      className={`bottom-nav-run${running ? " danger" : ""}${confirmStop ? " confirm" : ""}`}
       onClick={running ? onCancel : onRun}
-      aria-label={running ? "시나리오 실행 중지" : "시나리오 실행"}
+      aria-label={
+        running ? (confirmStop ? "실행 중지 확인" : "시나리오 실행 중지") : "시나리오 실행"
+      }
     >
-      <span className="msi" aria-hidden="true">{running ? "stop" : "play_arrow"}</span>
-      {running ? "중단" : "실행"}
+      <span className="msi" aria-hidden="true">
+        {running ? "stop_circle" : "play_arrow"}
+      </span>
+      {running ? (confirmStop ? "정말 중단합니다" : "중지") : "실행"}
     </button>
   </nav>
 );
