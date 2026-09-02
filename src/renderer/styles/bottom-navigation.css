@@ -8,7 +8,6 @@
 .workspace .bottom-nav-item { display:grid; flex:0 0 40px; width:40px; height:34px; place-items:center; padding:0; border:0; border-radius:999px; background:transparent; color:#8c959d; cursor:pointer; transition:background .13s ease,color .13s ease; }
 .workspace .bottom-nav-item:hover { background:#262e35; color:#fff; }
 .workspace .bottom-nav-item.active { background:#262e35; color:#fff; }
-.workspace .bottom-nav-item span { display:none; }
 .workspace .bottom-nav-item .msi { font-size:21px; }
 .workspace .bottom-nav-run { display:flex; align-items:center; gap:9px; height:46px; padding:0 20px 0 16px; border:0; border-radius:999px; background:#17607f; color:#fff; cursor:pointer; font-size:14px; font-weight:600; letter-spacing:-.01em; white-space:nowrap; transition:background .13s ease; }
 .workspace .bottom-nav-run:hover { background:#12506a; }
