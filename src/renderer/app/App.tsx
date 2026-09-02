@@ -217,6 +217,7 @@ export const App = (): ReactElement => {
   const [positionStore, setPositionStore] = useState<MarkerPositionStore>({});
   const [liveResults, setLiveResults] = useState<ScenarioRunResult[]>([]);
   const [openRunRecord, setOpenRunRecord] = useState<RunRecord | null>(null);
+  const [runQueue, setRunQueue] = useState<Scenario[]>([]);
   const runCancelled = useRef(false);
   const runSequence = useRef(0);
   const runVideoPaths = useRef<string[]>([]);
@@ -497,6 +498,7 @@ export const App = (): ReactElement => {
     if (!background) setRoute("run");
     setRunning(true);
     runCancelled.current = false;
+    setRunQueue(toRun);
     setRunningScenario(toRun[0]);
     setRunStartedAt(Date.now());
     setElapsedSeconds(0);
@@ -835,7 +837,7 @@ export const App = (): ReactElement => {
         {route === "run" && (
           <RunPage
             scenario={running ? runningScenario : executableScenario}
-            scenarios={executableScenarios}
+            scenarios={runQueue.length ? runQueue : executableScenarios}
             scenarioResults={liveResults}
             running={running}
             manual={manual}

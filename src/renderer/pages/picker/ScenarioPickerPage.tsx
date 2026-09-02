@@ -20,17 +20,36 @@ export const ScenarioPickerPage = ({ onOpenEditor, onRun }: Props) => {
   const [pickedKeys, setPickedKeys] = useState<Set<string>>(new Set());
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
 
+  const applyFolderResult = async (result: {
+    folderPath: string | null;
+    files: FileEntry[];
+  }) => {
+    setFolderPath(result.folderPath);
+    const entries = await Promise.all(
+      result.files.map(async (file) => {
+        const markdown = await window.electronAPI.readScenarioFile(file.path);
+        return { file, scenarios: markdown ? parseMarkdown(markdown) : [] };
+      }),
+    );
+    // 시나리오 단계가 하나도 없는 파일은 FILES 목록에서 제외한다.
+    const withSteps = entries.filter(({ scenarios }) =>
+      scenarios.some((scenario) => scenario.steps.length > 0),
+    );
+    setFiles(withSteps.map(({ file }) => file));
+    setFileCache(
+      Object.fromEntries(withSteps.map(({ file, scenarios }) => [file.path, scenarios])),
+    );
+    setActiveFilePath((current) =>
+      current && withSteps.some(({ file }) => file.path === current)
+        ? current
+        : (withSteps[0]?.file.path ?? null),
+    );
+  };
+
   const refreshFolder = async () => {
     setLoadingFolder(true);
     try {
-      const result = await window.electronAPI.listScenarioFolder();
-      setFolderPath(result.folderPath);
-      setFiles(result.files);
-      setActiveFilePath((current) =>
-        current && result.files.some((file) => file.path === current)
-          ? current
-          : (result.files[0]?.path ?? null),
-      );
+      await applyFolderResult(await window.electronAPI.listScenarioFolder());
     } finally {
       setLoadingFolder(false);
     }
@@ -40,20 +59,13 @@ export const ScenarioPickerPage = ({ onOpenEditor, onRun }: Props) => {
     void refreshFolder();
   }, []);
 
-  useEffect(() => {
-    if (!activeFilePath || fileCache[activeFilePath]) return;
-    void window.electronAPI.readScenarioFile(activeFilePath).then((markdown) => {
-      if (markdown === null) return;
-      setFileCache((cache) => ({ ...cache, [activeFilePath]: parseMarkdown(markdown) }));
-    });
-  }, [activeFilePath, fileCache]);
-
   const chooseFolder = async () => {
-    const result = await window.electronAPI.chooseScenarioFolder();
-    setFolderPath(result.folderPath);
-    setFiles(result.files);
-    setFileCache({});
-    setActiveFilePath(result.files[0]?.path ?? null);
+    setLoadingFolder(true);
+    try {
+      await applyFolderResult(await window.electronAPI.chooseScenarioFolder());
+    } finally {
+      setLoadingFolder(false);
+    }
   };
 
   const activeFile = files.find((file) => file.path === activeFilePath) ?? null;

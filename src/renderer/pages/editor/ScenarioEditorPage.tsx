@@ -112,6 +112,7 @@ export const ScenarioEditorPage = ({
   onCompleteMarkerDialog,
 }: Props) => {
   const [draggedStepId, setDraggedStepId] = useState<string | null>(null);
+  const lineNumbersRef = useRef<HTMLOListElement | null>(null);
   const [openPreviewIds, setOpenPreviewIds] = useState<Set<string>>(
     () => new Set(previews[0] ? [previews[0].id] : []),
   );
@@ -228,13 +229,17 @@ export const ScenarioEditorPage = ({
               <span>{previews[0]?.title ?? "미리보기"}.md</span>
             </div>
             <div className="markdown-editor-body">
-              <ol className="markdown-line-numbers" aria-hidden="true">
+              <ol className="markdown-line-numbers" aria-hidden="true" ref={lineNumbersRef}>
                 {sourceMarkdown.split("\n").map((_, index) => <li key={index}>{index + 1}</li>)}
               </ol>
               <textarea
                 className="scenario-source"
                 value={sourceMarkdown}
                 onChange={(event) => onSourceChange(event.target.value)}
+                onScroll={(event) => {
+                  if (lineNumbersRef.current)
+                    lineNumbersRef.current.scrollTop = event.currentTarget.scrollTop;
+                }}
                 aria-label="시나리오 Markdown 원본"
               />
             </div>

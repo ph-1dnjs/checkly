@@ -28,15 +28,15 @@
 .editor-actions .button-text-import { border:0; background:transparent; color:#8a939c; font-weight:400; }
 .editor-actions .button-text-import:hover { color:#14181c; background:transparent; }
 
-.scenario-writing-grid { display:grid; grid-template-columns:1fr 1fr; grid-template-rows:minmax(0,1fr); min-height:0; height:calc(100vh - 168px); overflow:hidden; border-top:1px solid #e4e7ea; }
-.writing-card,.scenario-preview { display:flex; flex-direction:column; min-width:0; min-height:0; overflow:hidden; border:0; border-right:1px solid #e4e7ea; border-radius:0; background:#fff; }
+.scenario-writing-grid { display:grid; grid-template-columns:1fr 1fr; grid-template-rows:minmax(0,1fr); align-items:stretch; min-height:0; height:calc(100vh - 168px); overflow:hidden; border-top:1px solid #e4e7ea; }
+.writing-card,.scenario-preview { display:flex; flex-direction:column; min-width:0; min-height:0; height:100%; overflow:hidden; border:0; border-right:1px solid #e4e7ea; border-radius:0; background:#fff; }
 .writing-card-header { flex:none; display:flex; align-items:center; gap:10px; height:26px; padding:0 26px; border-bottom:1px solid #edf0f2; background:#fafbfc; color:#8a939c; font-family:D2Coding,ui-monospace,monospace; font-size:10px; letter-spacing:.08em; }
 .writing-card-header strong { color:#8a939c; font-weight:400; }
 .writing-card-header span { margin-left:auto; color:#8a939c; font-size:10px; }
 .markdown-editor-body { position:relative; flex:1 1 auto; display:flex; min-height:0; overflow:hidden; background:#fff; }
-.markdown-line-numbers { width:44px; flex:none; margin:0; padding:10px 8px 22px 0; overflow:hidden; list-style:none; color:#bfc6cc; font:12px/1.95 D2Coding,ui-monospace,monospace; text-align:right; user-select:none; }
+.markdown-line-numbers { width:44px; flex:none; margin:0; padding:10px 8px 22px 0; overflow-y:hidden; list-style:none; color:#bfc6cc; font:12px/1.95 D2Coding,ui-monospace,monospace; text-align:right; user-select:none; }
 .markdown-line-numbers li { height:23.4px; }
-.scenario-source { flex:1 1 auto; min-height:0; padding:10px 26px 22px 0; border:0; outline:0; resize:none; color:#3d4650; font:12px/1.95 D2Coding,ui-monospace,monospace; background:#fff; }
+.scenario-source { flex:1 1 auto; height:100%; min-height:0; padding:10px 26px 22px 0; border:0; outline:0; resize:none; overflow-y:auto; color:#3d4650; font:12px/1.95 D2Coding,ui-monospace,monospace; background:#fff; }
 
 .preview-scenario-list { flex:1 1 auto; min-height:0; overflow:auto; padding:0; }
 .preview-scenario { border-bottom:1px solid #edf0f2; }
