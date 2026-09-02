@@ -1,10 +1,10 @@
-# [API 연동] 시나리오 선택
+# [IPC 연동] 시나리오 선택
 
-| IPC | 용도 | 실패 시 |
-| --- | --- | --- |
-| `scenario:list-folder` | 저장된 폴더의 Markdown 목록 조회 | 빈 목록 반환 |
-| `scenario:choose-folder` | native 폴더 선택 후 경로 저장 | 취소 시 기존 목록 유지 |
-| `scenario:read-file` | 선택 파일의 Markdown 읽기 | `null` 반환 |
+| IPC | 입력 | 출력 | 실패·취소 |
+| --- | --- | --- | --- |
+| `scenario:list-folder` | 없음 | folderPath, file 목록 | 경로·읽기 오류면 null+빈 목록 |
+| `scenario:choose-folder` | 없음 | 선택 후 목록 | 취소면 기존 저장 폴더 목록 |
+| `scenario:read-file` | 절대 path | 원문 또는 null | read 오류면 null |
 
-목록 조회는 경로 오류나 읽기 오류를 내부에서 처리하여 `{ folderPath: null, files: [] }`를 반환합니다.
+file 목록은 name, path, ISO updatedAt을 포함합니다. renderer는 목록의 각 파일을 병렬로 읽어 parser 결과를 cache합니다.
 

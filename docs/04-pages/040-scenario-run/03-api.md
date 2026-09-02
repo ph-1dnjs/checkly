@@ -1,14 +1,29 @@
-# [API 연동] 시나리오 실행
+# [IPC 연동] 시나리오 실행
 
-| IPC | 호출 시점 | 용도 |
+## Command
+
+| IPC | 호출 | 핵심 입력·출력 |
 | --- | --- | --- |
-| `qa:start` | 시나리오별 시작 | Playwright 실행 |
-| `qa:cancel` | 중단 | 수동 Promise 해제·브라우저 종료 |
-| `qa:manual-input` | 수동 입력 완료 | 입력 단계 재개 |
-| `qa:manual-control` / `manual-result` | 수동 판단 | 계속·실패 결정 |
-| `qa:manual-browser-event` | 직접 제어 | 클릭·스크롤·키·텍스트 전달 |
-| `qa:download-run-video` | 단일 영상 다운로드 | Downloads 복사 |
-| `qa:merge-run-videos` | 전체 영상 요청 | ffmpeg concat |
+| `qa:start` | 시나리오마다 | Scenario + preview/workerId → status/log/reportPath |
+| `qa:finish-worker` | 큐 종료 | workerId → close |
+| `qa:cancel` | 실제 중지 | active run 해제·worker close |
+| `qa:manual-input` | 입력 제출 | string |
+| `qa:manual-control` | 직접 제어 완료·실패 | status/reason |
+| `qa:manual-browser-event` | preview 조작 | click/wheel/key/text |
+| `qa:manual-result` | 판정 | passed/failed + reason |
+| `qa:download-run-video` | 다운로드 | run path → Downloads path |
+| `qa:merge-run-videos` | 큐 완료 | path[] → merged path/null |
 
-main에서 renderer로 보내는 `qa:progress`, `qa:manual-required`, `qa:manual-control-required`, `qa:manual-result-required`, `qa:preview`, `qa:run-video` 이벤트가 화면 상태를 갱신합니다.
+## Event
+
+| 채널 | payload | App 처리 |
+| --- | --- | --- |
+| `qa:progress` | current/total/step | ref·state·로그 갱신 |
+| `qa:manual-required` | manualFill 단계 | 입력 UI |
+| `qa:manual-control-required` | 단계+300초 | 직접 제어 UI |
+| `qa:manual-result-required` | 단계+300초 | 판정 modal |
+| `qa:preview` | JPEG data URL | viewport 이미지 |
+| `qa:run-video` | path/null | 현재 시나리오와 path 수집 |
+
+`qa:start`의 main 결과에는 reportPath가 있지만 App 타입과 UI는 현재 이를 사용하지 않습니다.
 
