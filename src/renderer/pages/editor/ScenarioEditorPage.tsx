@@ -1,9 +1,4 @@
-import {
-  useRef,
-  useState,
-  type MouseEvent,
-  type PointerEvent,
-} from "react";
+import { useRef, useState, type MouseEvent } from "react";
 import {
   actionLabel,
   actionText,
@@ -13,6 +8,14 @@ import {
   type Scenario,
   type Step,
 } from "../../shared/model/scenario";
+
+type Device = "mobile" | "tablet" | "desktop";
+
+const DEVICES: Array<{ id: Device; label: string; w: string; h: string; frame: string }> = [
+  { id: "mobile", label: "모바일", w: "9px", h: "14px", frame: "390px" },
+  { id: "tablet", label: "태블릿", w: "13px", h: "14px", frame: "834px" },
+  { id: "desktop", label: "데스크톱", w: "16px", h: "11px", frame: "100%" },
+];
 
 const opLabel: Record<Action, string> = {
   goto: "GOTO",
@@ -37,12 +40,8 @@ type Props = {
   selectedId: string;
   isAddingMarker: boolean;
   markersVisible: boolean;
-  stepPanelCollapsed: boolean;
-  stepPanelPosition: { top: number; left: number };
-  stepPanelMoved: boolean;
   markerDialog: Step | null;
   pendingMarker: Step | null;
-  webviewKey: number;
   onModeChange: (mode: "text" | "marker") => void;
   onSelectMarkerScenario: (id: string) => void;
   onImport: () => void;
@@ -51,7 +50,6 @@ type Props = {
   onRun: () => void;
   onSourceChange: (markdown: string) => void;
   onScenarioChange: (scenario: Scenario) => void;
-  onRefresh: () => void;
   onBeginMarkerPlacement: () => void;
   onToggleMarkersVisible: () => void;
   onPlaceMarker: (position: { x: number; y: number; target: string; action: Action }) => void;
@@ -62,8 +60,6 @@ type Props = {
   onEditStep: (step: Step) => void;
   onDeleteStep: (id: string) => void;
   onReorderSteps: (draggedId: string, targetId: string) => void;
-  onStepPanelDrag: (event: PointerEvent<HTMLElement>) => void;
-  onToggleStepPanel: (collapsed: boolean) => void;
   onUpdateMarkerDialog: (changes: Partial<Step>) => void;
   onCloseMarkerDialog: () => void;
   onCompleteMarkerDialog: () => void;
@@ -80,12 +76,8 @@ export const ScenarioEditorPage = ({
   selectedId,
   isAddingMarker,
   markersVisible,
-  stepPanelCollapsed,
-  stepPanelPosition,
-  stepPanelMoved,
   markerDialog,
   pendingMarker,
-  webviewKey,
   onModeChange,
   onSelectMarkerScenario,
   onImport,
@@ -94,7 +86,6 @@ export const ScenarioEditorPage = ({
   onRun,
   onSourceChange,
   onScenarioChange,
-  onRefresh,
   onBeginMarkerPlacement,
   onToggleMarkersVisible,
   onPlaceMarker,
@@ -105,13 +96,12 @@ export const ScenarioEditorPage = ({
   onEditStep,
   onDeleteStep,
   onReorderSteps,
-  onStepPanelDrag,
-  onToggleStepPanel,
   onUpdateMarkerDialog,
   onCloseMarkerDialog,
   onCompleteMarkerDialog,
 }: Props) => {
   const [draggedStepId, setDraggedStepId] = useState<string | null>(null);
+  const [device, setDevice] = useState<Device>("desktop");
   const lineNumbersRef = useRef<HTMLOListElement | null>(null);
   const [openPreviewIds, setOpenPreviewIds] = useState<Set<string>>(
     () => new Set(previews[0] ? [previews[0].id] : []),
@@ -318,16 +308,51 @@ export const ScenarioEditorPage = ({
         </div>
       </>
     ) : (
-      <>
-        <header className="marker-mode-header">
-          <button className="marker-back" onClick={onReturnToText}>‹</button>
-          <div><span>SCREEN EXTRACT</span><strong>{scenario.title}</strong></div>
-          <button className="button button-run" onClick={onRun}>▶ 바로 실행</button>
-        </header>
-        <div className="marker-toolbar">
-          <strong>{isAddingMarker ? "⌖ 위치 선택 중" : "✣ 핀 수정 중"}</strong>
+      <div className="extract-shell">
+        <div className="extract-topbar">
+          <div className="extract-navbtns">
+            <button
+              type="button"
+              className="extract-navbtn"
+              title="이전"
+              onClick={() => targetFrameRef.current?.goBack()}
+            >
+              <span className="extract-chevron extract-chevron-back" />
+            </button>
+            <button
+              type="button"
+              className="extract-navbtn"
+              title="앞으로"
+              onClick={() => targetFrameRef.current?.goForward()}
+            >
+              <span className="extract-chevron extract-chevron-forward" />
+            </button>
+          </div>
+          <div className="extract-url">
+            <span className="extract-url-dot" />
+            <input
+              value={scenario.url}
+              onChange={(event) =>
+                onScenarioChange({ ...scenario, url: event.target.value })
+              }
+              aria-label="대상 URL"
+            />
+          </div>
+          <div className="extract-devices">
+            {DEVICES.map((d) => (
+              <button
+                key={d.id}
+                type="button"
+                className={device === d.id ? "active" : ""}
+                title={d.label}
+                onClick={() => setDevice(d.id)}
+              >
+                <span style={{ width: d.w, height: d.h }} />
+              </button>
+            ))}
+          </div>
           {previews.length > 1 && (
-            <label className="marker-scenario-select">
+            <label className="extract-marker-scenario">
               편집 시나리오
               <select
                 value={markerScenarioId}
@@ -341,50 +366,125 @@ export const ScenarioEditorPage = ({
               </select>
             </label>
           )}
-          <button onClick={onBeginMarkerPlacement}>
-            {isAddingMarker ? "다시 선택" : "마커 추가"}
-          </button>
-          <button
-            onClick={onToggleMarkersVisible}
-            aria-pressed={markersVisible}
-          >
-            {markersVisible ? "마커 숨기기" : "마커 보이기"}
-          </button>
-          <button onClick={onDeleteLast}>마지막 삭제</button>
-          <button onClick={onClearSteps}>전체 초기화</button>
           <button className="button button-run" onClick={onRun}>
             ▶ 바로 실행
           </button>
           <button className="button button-secondary" onClick={onReturnToText}>
-            ×&nbsp; 편집기로 돌아가기
+            편집기로 돌아가기
           </button>
         </div>
-        <div className="marker-editor-layout">
-          <section className="browser-canvas marker-canvas">
-            <div className="browser-bar">
-              <span className="browser-dots" aria-hidden="true">
-                ● ● ●
-              </span>
-              <input
-                value={scenario.url}
-                onChange={(event) =>
-                  onScenarioChange({ ...scenario, url: event.target.value })
-                }
-                aria-label="대상 URL"
-              />
-              <button className="browser-refresh" onClick={onRefresh}>
-                ↻&nbsp; 새로고침
-              </button>
+
+        <div className="extract-body">
+          <aside className="extract-markers">
+            <div className="extract-col-label">
+              <span>MARKERS</span>
+              <span className="extract-col-meta">{scenario.steps.length}개</span>
             </div>
-            <div className="mock-page">
+            <div className="extract-markers-list">
+              {scenario.steps.map((step) => (
+                <div
+                  key={step.id}
+                  className={`extract-marker-row${selectedId === step.id ? " selected" : ""}${draggedStepId === step.id ? " dragging" : ""}`}
+                  data-step-id={step.id}
+                >
+                  <button
+                    type="button"
+                    className="extract-marker-drag"
+                    aria-label={`${step.id}번 단계 순서 변경`}
+                    onPointerDown={(event) => {
+                      stepDrag.current = {
+                        id: step.id,
+                        pointerId: event.pointerId,
+                        startX: event.clientX,
+                        startY: event.clientY,
+                        moved: false,
+                      };
+                      event.currentTarget.setPointerCapture(event.pointerId);
+                    }}
+                    onPointerMove={(event) => {
+                      const drag = stepDrag.current;
+                      if (!drag || drag.pointerId !== event.pointerId) return;
+                      if (
+                        !drag.moved &&
+                        Math.hypot(
+                          event.clientX - drag.startX,
+                          event.clientY - drag.startY,
+                        ) > 5
+                      ) {
+                        drag.moved = true;
+                        setDraggedStepId(drag.id);
+                      }
+                    }}
+                    onPointerUp={(event) => {
+                      const drag = stepDrag.current;
+                      if (!drag || drag.pointerId !== event.pointerId) return;
+                      event.currentTarget.releasePointerCapture(event.pointerId);
+                      if (drag.moved) {
+                        const target = document
+                          .elementFromPoint(event.clientX, event.clientY)
+                          ?.closest<HTMLDivElement>("[data-step-id]");
+                        const targetId = target?.dataset.stepId;
+                        if (targetId) onReorderSteps(drag.id, targetId);
+                        event.preventDefault();
+                      }
+                      clearStepDrag();
+                    }}
+                    onPointerCancel={clearStepDrag}
+                  >
+                    ⠿
+                  </button>
+                  <button
+                    type="button"
+                    className="extract-marker-main"
+                    onClick={() => onSelectStep(step.id)}
+                  >
+                    <b>{step.id}</b>
+                    <span className="extract-marker-meta">
+                      <span className="extract-marker-op">{opLabel[step.action]}</span>
+                      <span className="extract-marker-target">{step.target}</span>
+                    </span>
+                  </button>
+                  <span className={`extract-marker-link${step.connected ? "" : " unlinked"}`}>
+                    {step.connected ? "연결됨" : "미연결"}
+                  </span>
+                  <button
+                    type="button"
+                    className="extract-marker-edit"
+                    onClick={() => onEditStep(step)}
+                    aria-label="단계 편집"
+                  >
+                    ✎
+                  </button>
+                  <button
+                    type="button"
+                    className="extract-marker-delete"
+                    onClick={() => onDeleteStep(step.id)}
+                    aria-label="단계 삭제"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+            <button
+              type="button"
+              className="extract-add-marker"
+              onClick={onBeginMarkerPlacement}
+            >
+              + 마커 추가
+            </button>
+          </aside>
+
+          <div className="extract-canvas">
+            <div className="extract-frame" style={{ width: DEVICES.find((d) => d.id === device)?.frame }}>
               <webview
                 ref={targetFrameRef}
-                className="target-frame"
+                className="extract-target"
                 src={scenario.url}
                 aria-label="시나리오 대상 페이지"
               />
-              <div className="page-fallback">
-                <div className="mock-logo">Electron 대상 페이지</div>
+              <div className="extract-fallback">
+                <div className="extract-fallback-title">Electron 대상 페이지</div>
                 <p>
                   데스크톱 웹뷰에서 대상 URL을 열었습니다. 연결 상태는
                   Playwright로 확인합니다.
@@ -392,7 +492,7 @@ export const ScenarioEditorPage = ({
               </div>
               {isAddingMarker && (
                 <div
-                  className="marker-placement-layer"
+                  className="extract-placement-layer"
                   onClick={(event) => void placeMarkerAt(event)}
                   aria-label="마커를 추가할 위치"
                 />
@@ -407,7 +507,7 @@ export const ScenarioEditorPage = ({
                     <button
                       key={step.id}
                       className={
-                        "marker" + (selectedId === step.id ? " selected" : "")
+                        "extract-pin" + (selectedId === step.id ? " selected" : "")
                       }
                       style={{
                         left: `${position.x}%`,
@@ -423,131 +523,28 @@ export const ScenarioEditorPage = ({
                 );
               })}
             </div>
-          </section>
-          {stepPanelCollapsed ? (
-            <button
-              className="step-panel-toggle collapsed"
-              style={stepPanelPosition}
-              onPointerDown={onStepPanelDrag}
-              onClick={() => !stepPanelMoved && onToggleStepPanel(false)}
-              aria-label="실행 단계 열기"
-            >
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="m6 9 6 6 6-6" />
-              </svg>
-            </button>
-          ) : (
-            <aside
-              className="step-panel marker-steps"
-              style={stepPanelPosition}
-            >
-              <div
-                className="panel-heading step-panel-handle"
-                onPointerDown={onStepPanelDrag}
-              >
-                <h2>실행 단계</h2>
-                <span>{scenario.steps.length}개</span>
-                <button
-                  className="step-panel-toggle"
-                  onPointerDown={(event) => event.stopPropagation()}
-                  onClick={() => onToggleStepPanel(true)}
-                  aria-label="실행 단계 접기"
-                >
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="m6 15 6-6 6 6" />
-                  </svg>
-                </button>
-              </div>
-              <ol className="step-list">
-                {scenario.steps.map((step) => (
-                  <li
-                    key={step.id}
-                    className={`${selectedId === step.id ? "selected" : ""}${draggedStepId === step.id ? " dragging" : ""}`}
-                    data-step-id={step.id}
-                  >
-                    <button
-                      type="button"
-                      className="step-drag-handle"
-                      aria-label={`${step.id}번 단계 순서 변경`}
-                      onPointerDown={(event) => {
-                        stepDrag.current = {
-                          id: step.id,
-                          pointerId: event.pointerId,
-                          startX: event.clientX,
-                          startY: event.clientY,
-                          moved: false,
-                        };
-                        event.currentTarget.setPointerCapture(event.pointerId);
-                      }}
-                      onPointerMove={(event) => {
-                        const drag = stepDrag.current;
-                        if (!drag || drag.pointerId !== event.pointerId) return;
-                        if (
-                          !drag.moved &&
-                          Math.hypot(
-                            event.clientX - drag.startX,
-                            event.clientY - drag.startY,
-                          ) > 5
-                        ) {
-                          drag.moved = true;
-                          setDraggedStepId(drag.id);
-                        }
-                      }}
-                      onPointerUp={(event) => {
-                        const drag = stepDrag.current;
-                        if (!drag || drag.pointerId !== event.pointerId) return;
-                        event.currentTarget.releasePointerCapture(event.pointerId);
-                        if (drag.moved) {
-                          const target = document
-                            .elementFromPoint(event.clientX, event.clientY)
-                            ?.closest<HTMLLIElement>("[data-step-id]");
-                          const targetId = target?.dataset.stepId;
-                          if (targetId) onReorderSteps(drag.id, targetId);
-                          event.preventDefault();
-                        }
-                        clearStepDrag();
-                      }}
-                      onPointerCancel={clearStepDrag}
-                    >
-                      ⠿
-                    </button>
-                    <button
-                      className="step-select-button"
-                      onClick={() => onSelectStep(step.id)}
-                    >
-                      <b>{step.id}</b>
-                      <span>
-                        <strong>{actionLabel[step.action]}</strong>
-                        {step.target}
-                        <small>
-                          {step.connected ? "연결됨" : "미연결 단계"}
-                        </small>
-                      </span>
-                    </button>
-                    <button
-                      className="edit-step-button"
-                      onClick={() => onEditStep(step)}
-                      aria-label="단계 편집"
-                    >
-                      ✎
-                    </button>
-                    <button
-                      className="delete-button"
-                      onClick={() => onDeleteStep(step.id)}
-                      aria-label="단계 삭제"
-                    >
-                      ×
-                    </button>
-                  </li>
-                ))}
-              </ol>
-              <button className="add-step" onClick={onBeginMarkerPlacement}>
-                + 새 마커 추가
+            <div className="extract-pinmode">
+              <strong>{isAddingMarker ? "위치 선택 중" : "핀 수정 중"}</strong>
+              <button type="button" onClick={onBeginMarkerPlacement}>
+                {isAddingMarker ? "다시 선택" : "마커 추가"}
               </button>
-            </aside>
-          )}
+              <button
+                type="button"
+                aria-pressed={markersVisible}
+                onClick={onToggleMarkersVisible}
+              >
+                {markersVisible ? "마커 숨기기" : "마커 보이기"}
+              </button>
+              <button type="button" onClick={onDeleteLast}>
+                마지막 삭제
+              </button>
+              <button type="button" onClick={onClearSteps}>
+                전체 초기화
+              </button>
+            </div>
+          </div>
         </div>
-      </>
+      </div>
     )}
     {markerDialog && (
       <div

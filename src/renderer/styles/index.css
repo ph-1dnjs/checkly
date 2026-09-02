@@ -3,10 +3,10 @@
 @import './dashboard.css';
 @import './scenario-picker.css';
 @import './editor-workspace.css';
-@import './marker-browser.css';
 @import './markdown-preview.css';
 @import './reference-theme.css';
 @import './v6.css';
+@import './screen-extract.css';
 
 * { box-sizing:border-box; }
 :root { font-family:"Helvetica Neue",Helvetica,"Apple SD Gothic Neo","Malgun Gothic",sans-serif; font-size:13px; color:#14181c; background:#fff; font-synthesis:none; }

@@ -3,7 +3,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type PointerEvent,
   type CSSProperties,
   type ReactElement,
 } from "react";
@@ -174,16 +173,6 @@ export const App = (): ReactElement => {
   const [pendingMarker, setPendingMarker] = useState<Step | null>(null);
   const [isAddingMarker, setIsAddingMarker] = useState(false);
   const [markersVisible, setMarkersVisible] = useState(true);
-  const [stepPanelCollapsed, setStepPanelCollapsed] = useState(false);
-  const [stepPanelPosition, setStepPanelPosition] = useState({
-    top: 78,
-    left: 24,
-  });
-  const [stepPanelDrag, setStepPanelDrag] = useState<{
-    x: number;
-    y: number;
-  } | null>(null);
-  const [stepPanelMoved, setStepPanelMoved] = useState(false);
   const [saveBeforeReturning, setSaveBeforeReturning] = useState(false);
   const [manual, setManual] = useState<Step | null>(null);
   const [manualControl, setManualControl] = useState<(Step & { timeoutSeconds?: number }) | null>(null);
@@ -360,24 +349,6 @@ export const App = (): ReactElement => {
     const timer = window.setTimeout(() => setToast(""), 3000);
     return () => window.clearTimeout(timer);
   }, [toast]);
-
-  useEffect(() => {
-    if (!stepPanelDrag) return;
-    const move = (event: globalThis.PointerEvent) => {
-      setStepPanelMoved(true);
-      setStepPanelPosition({
-        top: Math.max(16, event.clientY - stepPanelDrag.y),
-        left: Math.max(16, event.clientX - stepPanelDrag.x),
-      });
-    };
-    const stop = () => setStepPanelDrag(null);
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", stop);
-    return () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", stop);
-    };
-  }, [stepPanelDrag]);
 
   useEffect(() => {
     if (route !== "editor" || editorMode !== "marker") return;
@@ -737,16 +708,6 @@ export const App = (): ReactElement => {
     setSelectedId(positioned.steps[0]?.id ?? "");
   };
 
-  const panelDrag = (event: PointerEvent<HTMLElement>) => {
-    const bounds = event.currentTarget.getBoundingClientRect();
-    event.currentTarget.setPointerCapture(event.pointerId);
-    setStepPanelMoved(false);
-    setStepPanelDrag({
-      x: event.clientX - bounds.left,
-      y: event.clientY - bounds.top,
-    });
-  };
-
   const reorderSteps = (draggedId: string, targetId: string) => {
     const fromIndex = scenario.steps.findIndex((step) => step.id === draggedId);
     const targetIndex = scenario.steps.findIndex(
@@ -789,12 +750,8 @@ export const App = (): ReactElement => {
             selectedId={selectedId}
             isAddingMarker={isAddingMarker}
             markersVisible={markersVisible}
-            stepPanelCollapsed={stepPanelCollapsed}
-            stepPanelPosition={stepPanelPosition}
-            stepPanelMoved={stepPanelMoved}
             markerDialog={markerDialog}
             pendingMarker={pendingMarker}
-            webviewKey={0}
             onModeChange={setEditorMode}
             onSelectMarkerScenario={selectMarkerScenario}
             onImport={() => void importScenario()}
@@ -803,7 +760,6 @@ export const App = (): ReactElement => {
             onRun={runEditorContent}
             onSourceChange={updateSource}
             onScenarioChange={setScenario}
-            onRefresh={() => undefined}
             onBeginMarkerPlacement={() => setIsAddingMarker(true)}
             onToggleMarkersVisible={() =>
               setMarkersVisible((visible) => !visible)
@@ -818,8 +774,6 @@ export const App = (): ReactElement => {
               updateSteps(scenario.steps.filter((step) => step.id !== id))
             }
             onReorderSteps={reorderSteps}
-            onStepPanelDrag={panelDrag}
-            onToggleStepPanel={setStepPanelCollapsed}
             onUpdateMarkerDialog={updateMarker}
             onCloseMarkerDialog={() => {
               setPendingMarker(null);
