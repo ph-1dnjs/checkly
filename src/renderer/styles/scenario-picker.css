@@ -1,0 +1,77 @@
+.picker{display:flex;flex-direction:column;height:100vh;overflow:hidden;padding-bottom:92px}
+.picker-header{flex:none;display:flex;align-items:center;gap:18px;flex-wrap:wrap;padding:30px 26px 16px}
+.picker-title{font-size:20px;font-weight:600;letter-spacing:-.02em;color:#14181c}
+.picker-flow{display:flex;align-items:center;gap:14px}
+.picker-flow span{display:flex;align-items:center;gap:7px;font-size:12px;color:#a6aeb5;white-space:nowrap}
+.picker-flow span i{width:16px;height:16px;flex:none;display:grid;place-items:center;border:1px solid #d3d8dd;background:#fff;color:#a6aeb5;font-family:D2Coding,ui-monospace,monospace;font-size:9.5px;font-style:normal}
+.picker-flow span.done{color:#14181c}
+.picker-flow span.done i{border-color:#17607f;background:#17607f;color:#fff}
+.picker-flow-line{width:24px;height:1px;background:#d8dde2}
+.picker-actions{margin-left:auto;display:flex;align-items:center;gap:7px}
+.picker-layout{flex:1 1 auto;display:grid;grid-template-columns:300px 1fr 336px;grid-template-rows:minmax(0,1fr);min-height:0;overflow:hidden;border-top:1px solid #e4e7ea}
+.picker-files{border-right:1px solid #e4e7ea;display:flex;flex-direction:column;min-height:0;overflow:auto;padding-bottom:16px}
+.picker-col-label{position:sticky;top:0;z-index:1;height:26px;flex:none;display:flex;align-items:center;gap:10px;padding:0 18px;border-bottom:1px solid #edf0f2;background:#fafbfc;font-family:D2Coding,ui-monospace,monospace;font-size:10px;letter-spacing:.08em;color:#8a939c}
+.picker-col-label button{margin-left:auto;border:0;background:none;color:#17607f;cursor:pointer;font-family:inherit;font-size:10px;letter-spacing:.08em}
+.picker-files>button{display:flex;align-items:center;gap:11px;width:100%;min-height:50px;padding:8px 18px;border:0;border-bottom:1px solid #f3f5f7;border-left:2px solid transparent;background:transparent;text-align:left;cursor:pointer;transition:background .11s ease}
+.picker-files>button:hover{background:#f5f7f8}
+.picker-files>button.active{background:#f0f3f5;border-left-color:#14181c}
+.picker-files .msi{flex:none;font-size:17px;color:#a6aeb5}
+.picker-files>button.active .msi{color:#17607f}
+.picker-files>button>div{min-width:0;flex:1 1 auto}
+.picker-files strong{display:block;overflow:hidden;font-family:D2Coding,ui-monospace,monospace;font-size:12px;color:#14181c;text-overflow:ellipsis;white-space:nowrap}
+.picker-files>button.active strong{font-weight:700}
+.picker-files small{display:block;overflow:hidden;margin-top:3px;color:#98a0a8;font-size:11px;text-overflow:ellipsis;white-space:nowrap}
+.picker-files em{flex:none;height:17px;display:flex;align-items:center;padding:0 6px;background:#17607f;color:#fff;font-family:D2Coding,ui-monospace,monospace;font-size:10px;font-style:normal}
+.picker-scenarios{display:flex;flex-direction:column;min-width:0;min-height:0;overflow:auto;padding-bottom:24px}
+.picker-panel-heading{position:sticky;top:0;z-index:1;flex:none;display:flex;align-items:center;height:40px;padding:0 20px;border-bottom:1px solid #e4e7ea;background:#fff}
+.picker-panel-heading p{margin:0 0 2px;font-family:D2Coding,ui-monospace,monospace;font-size:10.5px;color:#17607f}
+.picker-panel-heading strong{font-size:12.5px;color:#14181c}
+.picker-empty{padding:40px 20px;color:#8a939c;font-size:13px}
+.picker-scenario{border-bottom:1px solid #edf0f2;border-left:2px solid transparent}
+.picker-scenario.picked{background:#f7fafb;border-left-color:#17607f}
+.picker-scenario-row{display:flex;align-items:center;gap:12px;min-height:46px;padding:6px 20px}
+.picker-scenario-main{display:flex;align-items:center;gap:12px;flex:1 1 auto;min-width:0;border:0;background:none;padding:0;cursor:pointer;text-align:left}
+.picker-check{width:15px;height:15px;flex:none;display:grid;place-items:center;border:1px solid #c2c9cf;background:#fff;color:#fff}
+.picker-check.on{border-color:#17607f;background:#17607f}
+.picker-check .msi{font-size:12px}
+.picker-scenario-name{display:flex;align-items:center;gap:8px}
+.picker-scenario-name span{font-size:13px;font-weight:600;letter-spacing:-.01em;color:#14181c}
+.picker-tag{font-family:D2Coding,ui-monospace,monospace;font-size:9.5px;letter-spacing:.08em;padding:1px 4px;border:1px solid #d3d8dd;color:#5a646e;font-style:normal}
+.picker-scenario-summary{margin-top:3px;font-size:11.5px;color:#98a0a8}
+.picker-expand{flex:none;height:26px;display:flex;align-items:center;gap:6px;padding:0 9px;border:0;background:transparent;font-family:D2Coding,ui-monospace,monospace;font-size:10.5px;color:#5a646e;cursor:pointer;transition:background .12s ease}
+.picker-expand:hover{background:#f0f3f5}
+.picker-run-only{flex:none;width:26px;height:26px;display:grid;place-items:center;border:1px solid #17607f;background:#fff;color:#17607f;cursor:pointer;transition:background .12s ease}
+.picker-run-only:hover{background:#ebf2f5}
+.picker-run-only .msi{font-size:16px}
+.picker-steps{margin:0;padding:2px 0 6px;list-style:none}
+.picker-steps li{display:flex;align-items:center;gap:12px;height:26px;padding:0 20px 0 51px;font-family:D2Coding,ui-monospace,monospace}
+.picker-steps b{width:14px;flex:none;font-size:10.5px;color:#bfc6cc;font-variant-numeric:tabular-nums;font-weight:400}
+.picker-op{width:50px;flex:none;font-size:10.5px;letter-spacing:.06em;color:#7a838d}
+.picker-target{flex:1 1 auto;min-width:0;overflow:hidden;font-size:11.5px;color:#3d4650;text-overflow:ellipsis;white-space:nowrap}
+.picker-steps em{margin-left:auto;flex:none;font-size:10px;color:#98a0a8;font-style:normal}
+.picker-steps em.unlinked{color:#96690c}
+.picker-cart{border-left:1px solid #e4e7ea;display:flex;flex-direction:column;min-height:0;background:#fcfdfd}
+.picker-cart-body{flex:1 1 auto;overflow:auto}
+.picker-cart-empty{margin:0;padding:22px 18px;font-size:12.5px;line-height:1.7;color:#5a646e}
+.picker-cart-group{position:sticky;top:0;z-index:1;display:flex;align-items:center;gap:9px;height:28px;padding:0 18px;background:#f5f7f8;border-bottom:1px solid #edf0f2}
+.picker-cart-group span{font-family:D2Coding,ui-monospace,monospace;font-size:11px;color:#3d4650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.picker-cart-group b{margin-left:auto;font-family:D2Coding,ui-monospace,monospace;font-size:10px;color:#8a939c;font-weight:400}
+.picker-cart-item{display:flex;align-items:center;gap:10px;min-height:36px;padding:0 18px;border-bottom:1px solid #f3f5f7}
+.picker-cart-item b{font-family:D2Coding,ui-monospace,monospace;font-size:10.5px;color:#bfc6cc;width:16px;flex:none;font-weight:400;font-variant-numeric:tabular-nums}
+.picker-cart-item>span{font-size:12.5px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#14181c}
+.picker-cart-item i{margin-left:auto;flex:none;font-family:D2Coding,ui-monospace,monospace;font-size:10.5px;color:#8a939c;font-style:normal}
+.picker-cart-item button{flex:none;width:20px;height:20px;display:grid;place-items:center;border:0;background:none;font-size:11px;color:#98a0a8;cursor:pointer;transition:background .12s ease}
+.picker-cart-item button:hover{background:#edf0f2;color:#14181c}
+.picker-cart footer{flex:none;border-top:1px solid #e4e7ea;padding:14px 18px 18px;background:#fff}
+.picker-cart-stats{display:flex;align-items:flex-end;gap:14px;margin-bottom:12px}
+.picker-cart-stats div{display:flex;flex-direction:column;gap:6px}
+.picker-cart-stats span{font-family:D2Coding,ui-monospace,monospace;font-size:10px;letter-spacing:.1em;color:#8a939c}
+.picker-cart-stats strong{font-size:20px;font-weight:600;letter-spacing:-.03em;font-variant-numeric:tabular-nums;color:#14181c}
+.picker-cart footer .button{width:100%;display:flex;align-items:center;justify-content:center;gap:9px}
+.picker-cart footer .button .msi{font-size:19px}
+.picker-empty-state{max-width:520px;margin:80px auto;text-align:center}
+.picker-empty-title{font-size:18px;font-weight:600;color:#14181c;margin-bottom:10px}
+.picker-empty-body{font-size:13px;color:#5a646e;line-height:1.7;margin-bottom:22px}
+.picker-empty-actions{display:flex;justify-content:center;gap:8px;flex-wrap:wrap}
+@media(max-width:1240px){.picker-layout{grid-template-columns:230px 1fr}.picker-cart{display:none}}
+@media(max-width:900px){.picker-layout{grid-template-columns:1fr}.picker-files{display:none}}

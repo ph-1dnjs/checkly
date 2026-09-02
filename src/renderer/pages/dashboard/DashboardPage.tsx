@@ -1,104 +1,154 @@
 import {
   estimateDurationSeconds,
+  formatClock,
   type RunRecord,
   type RunSummary,
-  type Scenario,
 } from "../../shared/model/scenario";
 
 type Props = {
   history: RunRecord[];
   summary: RunSummary;
-  onQuickStart: (scenarios: Scenario[]) => void;
   onOpenRun: () => void;
-  onOpenLibrary: () => void;
+  onOpenPicker: () => void;
   onOpenReport: (record: RunRecord) => void;
 };
+
+const TAPE_HEIGHTS = [20, 26, 30, 23, 28];
+
+const durationOf = (record: RunRecord) =>
+  record.scenarios.reduce(
+    (total, item) => total + estimateDurationSeconds(item),
+    0,
+  );
 
 export const DashboardPage = ({
   history,
   summary,
-  onQuickStart,
   onOpenRun,
-  onOpenLibrary,
+  onOpenPicker,
   onOpenReport,
-}: Props) => (
-  <>
-    <div className="page-title">
-      <div>
-        <p className="eyebrow">DASHBOARD</p>
-        <h1>안정적으로 운영되고 있습니다</h1>
+}: Props) => {
+  const passRate = summary.total
+    ? Math.round((summary.passed / summary.total) * 100)
+    : 0;
+  const durations = history.map(durationOf).sort((a, b) => a - b);
+  const medianDur = durations.length
+    ? durations[Math.floor(durations.length / 2)]
+    : 0;
+
+  return (
+    <div className="dash">
+      <div className="dash-title">
+        <div className="dash-heading">실행 기록</div>
+        <div className="dash-title-actions">
+          <button className="button button-secondary" onClick={onOpenPicker}>
+            시나리오 선택
+          </button>
+          <button className="button button-primary" onClick={onOpenRun}>
+            전체 실행 <span className="dash-kbd">⌘R</span>
+          </button>
+        </div>
       </div>
-      <div className="dashboard-actions"><button className="button button-secondary" onClick={onOpenLibrary}>시나리오</button><button className="button button-primary" onClick={onOpenRun}>▶ 전체 실행</button></div>
-    </div>
-    <section className="dashboard-overview" aria-label="실행 요약">
-      <div className="dashboard-rate">
-        <strong>{summary.total ? Math.round((summary.passed / summary.total) * 100) : 0}<small>%</small></strong>
-        {summary.total > 0 && <span className="dashboard-change">▲ 최근 실행 기준</span>}
-        <div className="run-history-tape" aria-hidden="true">
-          {Array.from({ length: 18 }, (_, index) => {
-            const record = history[index % Math.max(history.length, 1)];
-            return <i key={index} className={record?.status === "failed" ? "failed" : "passed"} />;
+
+      <div className="dash-stats">
+        <div className="dash-stat">
+          <div className="dash-stat-label">실행률</div>
+          <div className="dash-stat-row">
+            <div className="dash-stat-value">{passRate}%</div>
+            <div className="dash-stat-sub">최근 {summary.total}회 실행</div>
+          </div>
+        </div>
+        <div className="dash-stat-group">
+          <div className="dash-stat">
+            <div className="dash-stat-label">실패</div>
+            <div className="dash-stat-value dash-stat-fail">
+              {summary.failed}
+            </div>
+          </div>
+          <div className="dash-stat">
+            <div className="dash-stat-label">중간 소요</div>
+            <div className="dash-stat-value">{formatClock(medianDur)}</div>
+          </div>
+        </div>
+        <div className="dash-tape">
+          {Array.from({ length: 28 }, (_, index) => {
+            const record = history.length
+              ? history[index % history.length]
+              : undefined;
+            const bad = record?.status === "failed";
+            return (
+              <div
+                key={index}
+                className={`dash-tape-bar${bad ? " failed" : ""}`}
+                style={{ height: `${bad ? 12 : TAPE_HEIGHTS[index % TAPE_HEIGHTS.length]}px` }}
+                title={record ? (bad ? "실패" : "통과") : "기록 없음"}
+              />
+            );
           })}
         </div>
       </div>
-    </section>
-    <section className="recent-runs">
-      <div className="panel-heading">
-        <div>
-          <p className="eyebrow">RECENT RUNS</p>
-        </div>
-        <span className="dashboard-history-link">전체 기록 →</span>
+
+      <div className="dash-table-head">
+        <div />
+        <div>RUN</div>
+        <div className="dash-col-right">PASS RATE</div>
+        <div className="dash-col-right">TIME</div>
+        <div className="dash-col-right">STARTED</div>
       </div>
+
       {history.length ? (
-        <ol className="recent-run-list">
-          {history.map((record) => (
-            <li key={record.id} onClick={() => onOpenReport(record)} role="button" tabIndex={0}>
+        history.map((record) => {
+          const total = record.passed + record.failed;
+          const rate = total ? Math.round((record.passed / total) * 100) : 0;
+          return (
+            <div
+              className="dash-row"
+              key={record.id}
+              role="button"
+              tabIndex={0}
+              onClick={() => onOpenReport(record)}
+            >
+              <div>
+                <div
+                  className={`dash-dot${record.status === "failed" ? " failed" : ""}`}
+                />
+              </div>
+              <div className="dash-row-name">
+                <div className="dash-row-title">
+                  {record.scenarios.length > 1
+                    ? `전체 회귀 · ${record.scenarios.length}개 시나리오`
+                    : (record.scenarios[0]?.title ?? "시나리오 실행")}
+                </div>
+                <div className="dash-row-subtitle">
+                  {record.scenarios.map((scenario) => scenario.title).join(" · ")}
+                </div>
+              </div>
               <div
-                className={
-                  record.status === "passed"
-                    ? "run-result passed"
-                    : "run-result failed"
-                }
+                className={`dash-col-right dash-mono${record.status === "failed" ? " failed" : ""}`}
               >
-                {record.status === "passed" ? "✓" : "!"}
+                {rate}%
               </div>
-              <div className="recent-run-info">
-                <strong>{record.scenarios.length > 1 ? `전체 회귀 · ${record.scenarios.length}개 시나리오` : record.scenarios[0]?.title ?? "시나리오 실행"}</strong>
-                <span>{record.scenarios.map((scenario) => scenario.title).join(" · ")}</span>
+              <div className="dash-col-right dash-mono dash-muted">
+                {formatClock(durationOf(record))}
               </div>
-              <div className="recent-run-meta">
-                <span>{Math.round((record.passed / Math.max(record.passed + record.failed, 1)) * 100)}%</span>
-                <span>{formatSeconds(record.scenarios.reduce((total, item) => total + estimateDurationSeconds(item), 0))}</span>
-                <time dateTime={record.ranAt}>{new Date(record.ranAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}</time>
+              <div className="dash-col-right dash-mono dash-muted">
+                {new Date(record.ranAt).toLocaleTimeString("ko-KR", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
               </div>
-              <div className="recent-run-actions">
-                <button
-                  className="button button-secondary"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onQuickStart(record.scenarios);
-                  }}
-                >
-                  다시 실행
-                </button>
-              </div>
-            </li>
-          ))}
-        </ol>
+            </div>
+          );
+        })
       ) : (
-        <div className="empty-runs">
+        <div className="dash-empty">
           <strong>아직 실행 기록이 없습니다.</strong>
-          <p>
-            실행 탭에서 시나리오를 시작하면 최근 5개의 기록이 여기에 저장됩니다.
-          </p>
-          <button className="button button-secondary" onClick={onOpenRun}>
-            실행 화면으로 이동
+          <p>시나리오를 선택해 실행하면 최근 5개의 기록이 여기에 저장됩니다.</p>
+          <button className="button button-secondary" onClick={onOpenPicker}>
+            시나리오 선택으로 이동
           </button>
         </div>
       )}
-    </section>
-  </>
-);
-
-const formatSeconds = (seconds: number) =>
-  `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+    </div>
+  );
+};

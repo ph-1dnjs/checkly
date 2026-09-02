@@ -14,17 +14,6 @@ import {
   type Step,
 } from "../../shared/model/scenario";
 
-const opTone: Record<Action, string> = {
-  goto: "#6e7fd2",
-  fill: "#3e7fa8",
-  fileUpload: "#3e7fa8",
-  manualFill: "#8fa3b4",
-  manualControl: "#d99b3d",
-  manualResult: "#d99b3d",
-  click: "#2e8c9e",
-  select: "#2e8c9e",
-  expectText: "#46a38b",
-};
 const opLabel: Record<Action, string> = {
   goto: "GOTO",
   fill: "FILL",
@@ -41,6 +30,7 @@ type Props = {
   mode: "text" | "marker";
   scenario: Scenario;
   sourceMarkdown: string;
+  isDirty: boolean;
   scenarioFilePath: string | null;
   previews: Scenario[];
   markerScenarioId: string;
@@ -83,6 +73,7 @@ export const ScenarioEditorPage = ({
   mode,
   scenario,
   sourceMarkdown,
+  isDirty,
   scenarioFilePath,
   previews,
   markerScenarioId,
@@ -197,9 +188,9 @@ export const ScenarioEditorPage = ({
   return (
     <>
     <div className="page-title editor-page-title">
-      <div>
-        <p className="eyebrow">{previews[0]?.title ?? "새 시나리오"}.md</p>
-        <h1>{mode === "text" ? "시나리오 작성" : "화면에서 추출"}</h1>
+      <div className="editor-title-row">
+        <h1>{mode === "text" ? "시나리오 편집" : "화면에서 추출"}</h1>
+        {isDirty && <span className="editor-unsaved-badge">UNSAVED</span>}
       </div>
       <div className="editor-mode-switch">
         <button
@@ -288,7 +279,7 @@ export const ScenarioEditorPage = ({
                             <ol>
                               {preview.steps.map((step) => (
                                 <li key={step.id}>
-                                  <b style={{ color: opTone[step.action] }}>{opLabel[step.action]}</b>
+                                  <b>{opLabel[step.action]}</b>
                                   <span>{actionText(step)}</span>
                                   <i
                                     className={step.connected ? "linked" : ""}

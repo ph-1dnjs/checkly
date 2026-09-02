@@ -1,14 +1,11 @@
 import {
   actionText,
-  estimateDurationSeconds,
-  formatDuration,
   type RunProgress,
   type Scenario,
   type ScenarioRunResult,
   type Step,
 } from "../../shared/model/scenario";
 import {
-  useEffect,
   useRef,
   useState,
   type ClipboardEvent,
@@ -17,13 +14,12 @@ import {
   type WheelEvent,
 } from "react";
 
-const PEND_BG = "linear-gradient(180deg, #FFFFFF, #EEF3F7)";
-const PASS_BG = "linear-gradient(180deg, #FFFFFF, #E9F5F1)";
-const FAIL_BG = "linear-gradient(180deg, #FDF1EE, #F8DED7)";
-const RUN_BG = "linear-gradient(180deg, #FFFFFF, #DDEDF8)";
-const INK = "#16212E";
-const STEP_SHEEN =
-  "linear-gradient(90deg, transparent, rgba(255,255,255,.95), rgba(143,192,222,.5), transparent)";
+const ACCENT = "#17607F";
+const PASS = "#1E7A4A";
+const FAIL = "#B32318";
+const WAIT = "#C08A15";
+const INK = "#14181C";
+const IDLE = "#A6AEB5";
 
 type Props = {
   scenario: Scenario;
@@ -31,6 +27,12 @@ type Props = {
   scenarioResults: ScenarioRunResult[];
   running: boolean;
   manual: Step | null;
+  manualValue: string;
+  manualValueVisible: boolean;
+  onManualValueChange: (value: string) => void;
+  onToggleManualValueVisible: () => void;
+  onSubmitManualInput: () => void;
+  onCancelManual: () => void;
   manualControl: Step | null;
   manualResult: Step | null;
   runLog: string[];
@@ -49,8 +51,7 @@ type Props = {
   }) => void;
   onCompleteManualControl: () => void;
   onFailManualControl: (reason: string) => void;
-  onRun: (scenarios?: Scenario[]) => void;
-  onImport: () => void;
+  onGoToPicker: () => void;
   onCancel: () => void;
   onLivePreviewChange: (value: boolean) => void;
   runVideos: Array<{ scenario: Scenario; path: string }>;
@@ -65,19 +66,22 @@ export const RunPage = ({
   scenarioResults,
   running,
   manual,
+  manualValue,
+  manualValueVisible,
+  onManualValueChange,
+  onToggleManualValueVisible,
+  onSubmitManualInput,
+  onCancelManual,
   manualControl,
   manualResult,
   runLog,
   runProgress,
-  elapsedSeconds,
-  runStartedAt,
   livePreview,
   previewImage,
   onManualBrowserEvent,
   onCompleteManualControl,
   onFailManualControl,
-  onRun,
-  onImport,
+  onGoToPicker,
   onCancel,
   onLivePreviewChange,
   runVideos,
@@ -87,43 +91,10 @@ export const RunPage = ({
 }: Props) => {
   const [manualFailureReason, setManualFailureReason] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [queueOpen, setQueueOpen] = useState(true);
-  const [queue, setQueue] = useState(scenarios);
-  const [selectedScenarioIds, setSelectedScenarioIds] = useState(
-    () => new Set(scenarios.map((item) => item.id)),
-  );
-  const [expandedScenarioId, setExpandedScenarioId] = useState<string | null>(
-    null,
-  );
   const [selStep, setSelStep] = useState<string | null>(null);
+  const [logFilter, setLogFilter] = useState<"ALL" | "ERR">("ALL");
   const manualImageRef = useRef<HTMLImageElement | null>(null);
-  useEffect(() => {
-    setQueue(scenarios);
-    setSelectedScenarioIds(new Set(scenarios.map((item) => item.id)));
-  }, [scenarios]);
 
-  useEffect(() => {
-    setManualFailureReason("");
-  }, [manualControl?.id]);
-
-  const estimatedSeconds = estimateDurationSeconds(scenario);
-  const selectedQueue = queue.filter((item) =>
-    selectedScenarioIds.has(item.id),
-  );
-  const queueStepCount = selectedQueue.reduce(
-    (total, item) => total + item.steps.length,
-    0,
-  );
-  const moveQueueItem = (id: string, direction: -1 | 1) =>
-    setQueue((items) => {
-      const index = items.findIndex((item) => item.id === id);
-      const destination = index + direction;
-      if (index < 0 || destination < 0 || destination >= items.length)
-        return items;
-      const next = [...items];
-      [next[index], next[destination]] = [next[destination], next[index]];
-      return next;
-    });
   const browserPoint = (
     event: MouseEvent<HTMLImageElement> | WheelEvent<HTMLImageElement>,
   ) => {
@@ -151,6 +122,7 @@ export const RunPage = ({
     const modifiers = `${event.metaKey ? "Meta+" : event.ctrlKey ? "Control+" : event.altKey ? "Alt+" : ""}${event.shiftKey ? "Shift+" : ""}`;
     onManualBrowserEvent({ type: "key", key: `${modifiers}${key}` });
   };
+
   const progressPercent = runProgress.total
     ? Math.round((runProgress.current / runProgress.total) * 100)
     : 0;
@@ -158,475 +130,433 @@ export const RunPage = ({
     !running &&
     runProgress.total > 0 &&
     runProgress.current >= runProgress.total;
-  const estimatedCompletion = runStartedAt
-    ? new Date(runStartedAt + estimatedSeconds * 1000).toLocaleTimeString(
-        "ko-KR",
-        { hour: "2-digit", minute: "2-digit" },
-      )
-    : null;
+  const awaiting = Boolean(manual || manualControl || manualResult);
+  const failedAny = scenarioResults.some((result) => result.status === "failed");
+  const stateWord = awaiting
+    ? "WAITING"
+    : running
+      ? "RUNNING"
+      : runComplete
+        ? failedAny
+          ? "FAILED"
+          : "PASSED"
+        : "IDLE";
+  const stateColor =
+    stateWord === "WAITING"
+      ? WAIT
+      : stateWord === "RUNNING"
+        ? ACCENT
+        : stateWord === "FAILED"
+          ? FAIL
+          : stateWord === "PASSED"
+            ? PASS
+            : IDLE;
+  const canStop = running;
+  const canReplay = !running;
+
+  const currentStep = scenario.steps[runProgress.current];
+  const nowAction = currentStep
+    ? actionText(currentStep)
+    : runComplete
+      ? "완료"
+      : "대기 중";
+
+  const groups = scenarios.map((item) => {
+    const finished = scenarioResults.find(
+      (result) => result.scenario.id === item.id,
+    );
+    const isCurrentScenario = item.id === scenario.id;
+    const steps = item.steps.map((step, index) => {
+      const failedAt =
+        finished?.status === "failed" ? (finished.failedStepIndex ?? 0) : null;
+      const passed = finished
+        ? finished.status === "passed" || (failedAt !== null && index < failedAt)
+        : isCurrentScenario && index < runProgress.current;
+      const failed = failedAt !== null && index === failedAt;
+      const isRunning =
+        !finished && running && isCurrentScenario && index === runProgress.current;
+      const isWaiting = isRunning && awaiting;
+      const stepKey = `${item.id}:${step.id}`;
+      const selected = selStep === stepKey;
+      const hasResult = passed || failed;
+      return {
+        step,
+        index,
+        stepKey,
+        dot: failed
+          ? FAIL
+          : passed
+            ? PASS
+            : isWaiting
+              ? WAIT
+              : isRunning
+                ? ACCENT
+                : "#D3D8DD",
+        bar: selected
+          ? INK
+          : failed
+            ? FAIL
+            : isWaiting
+              ? WAIT
+              : isRunning
+                ? ACCENT
+                : "transparent",
+        rowBg: selected
+          ? "#F0F3F5"
+          : isWaiting
+            ? "#FDFBF6"
+            : isRunning
+              ? "#F5F9FB"
+              : failed
+                ? "#FDF6F5"
+                : "transparent",
+        opFg: failed ? "#9A2A20" : "#7A838D",
+        targetFg: hasResult || isRunning ? "#14181C" : "#8A939C",
+        pulsing: isRunning,
+        cursor: hasResult ? "pointer" : "default",
+        onClick: hasResult ? () => setSelStep(stepKey) : undefined,
+      };
+    });
+    const groupState = finished
+      ? finished.status === "failed"
+        ? "fail"
+        : "pass"
+      : isCurrentScenario && running
+        ? "run"
+        : "pend";
+    return {
+      scenario: item,
+      steps,
+      dot:
+        groupState === "fail"
+          ? FAIL
+          : groupState === "run"
+            ? ACCENT
+            : groupState === "pass"
+              ? PASS
+              : "#D3D8DD",
+    };
+  });
+
+  const filteredLog =
+    logFilter === "ALL" ? runLog : runLog.filter((line) => line.includes("실패"));
+
   return (
-    <>
-      <div className="page-title run-page-title">
-        <div>
-          <h1>{runComplete ? "실행 완료" : running ? "실행 중" : "실행"}</h1>
+    <div className="run">
+      <div className="run-top">
+        <div className="run-state-word">
+          <span className="run-state-dot" style={{ background: stateColor }} />
+          <span style={{ color: stateColor }}>{stateWord}</span>
         </div>
-        <div className="run-header-actions">
+        <div className="run-now-scenario">{scenario.title}</div>
+        <div className="run-now-action">{nowAction}</div>
+        <div className="run-top-right">
+          <div className="run-progress-readout">
+            <div className="run-progress-pct" style={{ color: stateColor }}>
+              {progressPercent}%
+            </div>
+            <div className="run-progress-steps">
+              {runProgress.current}/{runProgress.total}
+            </div>
+          </div>
+          {canStop && (
+            <button className="run-stop-btn" onClick={onCancel}>
+              <span className="msi">stop</span>
+              중단
+            </button>
+          )}
+          {canReplay && (
+            <button className="button button-secondary" onClick={onGoToPicker}>
+              시나리오 다시 선택
+            </button>
+          )}
           <div className="run-settings-menu">
             <button
-              className="button button-secondary"
+              className="run-settings-btn"
               onClick={() => setSettingsOpen((open) => !open)}
               aria-expanded={settingsOpen}
             >
-              실행 설정{" "}
-              <span className="run-settings-summary">Chromium · 1w</span>
-              <span>▾</span>
+              Chromium · 1w
             </button>
             {settingsOpen && (
               <div className="run-settings-popover">
-                <p className="eyebrow">BROWSER</p>
-                <div className="setting-choice">
-                  <button className="selected">Chromium</button>
-                  <button>Firefox</button>
+                <div className="run-settings-group">
+                  <p>BROWSER</p>
+                  <div className="setting-choice">
+                    <button className="selected">Chromium</button>
+                    <button>WebKit</button>
+                    <button>Firefox</button>
+                  </div>
                 </div>
-                <p className="eyebrow">WORKERS</p>
-                <div className="setting-choice">
-                  <button className="selected">1</button>
+                <div className="run-settings-group">
+                  <p>WORKERS</p>
+                  <div className="setting-choice">
+                    <button className="selected">1</button>
+                    <button>2</button>
+                    <button>4</button>
+                  </div>
                 </div>
-                <label className="toggle">
+                <label className="run-settings-toggle">
                   <input
                     type="checkbox"
                     checked={livePreview}
-                    onChange={(event) =>
-                      onLivePreviewChange(event.target.checked)
-                    }
+                    onChange={(event) => onLivePreviewChange(event.target.checked)}
                     disabled={running}
-                  />{" "}
-                  실시간 테스트 화면
-                </label>
-                <label className="toggle">
-                  <input type="checkbox" /> 실패 즉시 중단
-                </label>
-              </div>
-            )}
-          </div>
-          {running ? (
-            <button className="button danger" onClick={onCancel}>
-              실행 취소
-            </button>
-          ) : (
-            <>
-              <button
-                className="button button-primary"
-                onClick={() => onRun(selectedQueue)}
-                disabled={!selectedQueue.length}
-              >
-                ▶ {runComplete ? "다시 실행" : "실행 시작"}
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-      <section className="run-queue" aria-label="실행 큐">
-        <div
-          className="run-queue-heading"
-          role="button"
-          tabIndex={0}
-          onClick={() => setQueueOpen((open) => !open)}
-          aria-expanded={queueOpen}
-        >
-          <strong>실행 큐</strong>
-          <span>
-            {selectedQueue.length} / {queue.length} 선택 · {queueStepCount}단계
-          </span>
-          <span className={`run-queue-caret${queueOpen ? " open" : ""}`}>▾</span>
-        </div>
-        {queueOpen && (
-        <ol>
-          {queue.map((item, index) => {
-            const isCurrent = item.id === scenario.id;
-            const expanded =
-              expandedScenarioId === item.id ||
-              (isCurrent && (running || runComplete));
-            return (
-              <li
-                key={item.id}
-                data-queue-scenario={item.id}
-                className={`${isCurrent ? "active" : ""}${expanded ? " expanded" : ""}`}
-              >
-                <div className="run-queue-row">
-                  <button
-                    className={`run-queue-check ${selectedScenarioIds.has(item.id) ? "checked" : ""}`}
-                    onClick={() =>
-                      setSelectedScenarioIds((ids) => {
-                        const next = new Set(ids);
-                        next.has(item.id)
-                          ? next.delete(item.id)
-                          : next.add(item.id);
-                        return next;
-                      })
-                    }
-                    aria-label={`${item.title} ${selectedScenarioIds.has(item.id) ? "실행 제외" : "실행 포함"}`}
-                  >
-                    ✓
-                  </button>
-                  <span>{String(index + 1).padStart(2, "0")}</span>
-                  <button
-                    className="run-queue-name"
-                    onClick={() =>
-                      setExpandedScenarioId((id) =>
-                        id === item.id ? null : item.id,
-                      )
-                    }
-                    aria-expanded={expanded}
-                  >
-                    <strong>{item.title}</strong>
-                    <small>{item.title}.md</small>
-                    <span className={`run-queue-name-caret${expanded ? " open" : ""}`}>▾</span>
-                  </button>
-                  <small>{item.steps.length}단계</small>
-                  <span className="run-queue-controls">
-                    <button
-                      onClick={() => moveQueueItem(item.id, -1)}
-                      disabled={index === 0}
-                      aria-label={`${item.title} 위로`}
-                    >
-                      ⌃
-                    </button>
-                    <button
-                      onClick={() => moveQueueItem(item.id, 1)}
-                      disabled={index === queue.length - 1}
-                      aria-label={`${item.title} 아래로`}
-                    >
-                      ⌄
-                    </button>
-                  </span>
-                </div>
-                {expanded && (
-                  <ol className="run-queue-steps">
-                    {item.steps.map((step, stepIndex) => (
-                      <li
-                        key={step.id}
-                        className={
-                          runComplete || stepIndex < runProgress.current
-                            ? "passed"
-                            : ""
-                        }
-                      >
-                        <span>{step.id}</span>
-                        <b>
-                          {step.action
-                            .toUpperCase()
-                            .replace("EXPECTTEXT", "EXPECT")}
-                        </b>
-                        <em>{actionText(step)}</em>
-                        <i aria-label={step.connected ? "연결됨" : "미연결"} />
-                      </li>
-                    ))}
-                  </ol>
-                )}
-              </li>
-            );
-          })}
-        </ol>
-        )}
-        {queueOpen && (
-        <button className="run-queue-import" onClick={onImport}>
-          ＋ 시나리오 파일 불러오기
-        </button>
-        )}
-      </section>
-      <div className="run-layout">
-        <section className="run-main">
-          <div className="run-state">
-            <span className={running ? "pulse" : "check"}>
-              {running ? "◌" : "✓"}
-            </span>
-            <div>
-              <strong>{progressPercent}%</strong>
-              <p>
-                {manual || manualControl || manualResult
-                  ? manualControl
-                    ? `${manualControl.target} 조작을 기다리고 있습니다. (최대 5분)`
-                    : manualResult
-                      ? `${manualResult.target} 결과를 기다리고 있습니다. (최대 5분)`
-                      : `${manual!.target} 값을 기다리고 있습니다.`
-                  : scenario.title}
-              </p>
-            </div>
-            {fullRunVideoAvailable && !running && (
-              <button
-                className="button button-secondary run-video-download"
-                onClick={onDownloadFullRunVideo}
-              >
-                전체 시나리오 영상 다운로드
-              </button>
-            )}
-          </div>
-          {runVideos.length > 0 && !running && (
-            <section
-              className="run-video-list"
-              aria-label="시나리오별 실행 영상"
-            >
-              <div>
-                <strong>시나리오별 실행 영상</strong>
-                <span>
-                  각 시나리오의 실행 영상을 개별로 다운로드할 수 있습니다.
-                </span>
-              </div>
-              <ol>
-                {runVideos.map(({ scenario: videoScenario, path }, index) => (
-                  <li key={path}>
-                    <span>
-                      {index + 1}. {videoScenario.title}
-                    </span>
-                    <button
-                      className="button button-secondary"
-                      onClick={() => onDownloadRunVideo(path)}
-                    >
-                      영상 다운로드
-                    </button>
-                  </li>
-                ))}
-              </ol>
-            </section>
-          )}
-          <div className="run-timing">
-            <span>
-              진행 {runProgress.current}/{runProgress.total}
-            </span>
-            <span>경과 {formatDuration(elapsedSeconds)}</span>
-            <span>
-              예상 {formatDuration(estimatedSeconds)}
-              {estimatedCompletion ? ` · 완료 ${estimatedCompletion}` : ""}
-            </span>
-          </div>
-          <div
-            className="progress"
-            aria-label={`실행 진행률 ${progressPercent}%`}
-          >
-            <span style={{ width: `${progressPercent}%` }} />
-          </div>
-          <section
-            className="run-step-groups"
-            aria-label="시나리오별 실행 단계"
-          >
-            {scenarios.map((item) => {
-              const finished = scenarioResults.find(
-                (result) => result.scenario.id === item.id,
-              );
-              const isCurrentScenario = item.id === scenario.id;
-              return (
-                <div key={item.id}>
-                  <header>
-                    <strong>{item.title}</strong>
-                    <span>{item.steps.length}단계</span>
-                  </header>
-                  <ol>
-                    {item.steps.map((step, index) => {
-                      const failedAt =
-                        finished?.status === "failed"
-                          ? (finished.failedStepIndex ?? 0)
-                          : null;
-                      const passed = finished
-                        ? finished.status === "passed" ||
-                          (failedAt !== null && index < failedAt)
-                        : isCurrentScenario && index < runProgress.current;
-                      const failed = failedAt !== null && index === failedAt;
-                      const current =
-                        !finished &&
-                        running &&
-                        isCurrentScenario &&
-                        index === runProgress.current;
-                      const stepKey = `${item.id}:${step.id}`;
-                      const selected = selStep === stepKey;
-                      const hasResult = passed || failed;
-                      const bg = selected
-                        ? INK
-                        : failed
-                          ? FAIL_BG
-                          : passed
-                            ? PASS_BG
-                            : current
-                              ? RUN_BG
-                              : PEND_BG;
-                      const fg = selected
-                        ? "#FFFFFF"
-                        : failed
-                          ? "#C1543F"
-                          : passed
-                            ? "#33806C"
-                            : current
-                              ? "#2C6C90"
-                              : "#AFBDC7";
-                      const line = selected
-                        ? INK
-                        : failed
-                          ? "rgba(226,112,92,.4)"
-                          : passed
-                            ? "rgba(70,163,139,.32)"
-                            : current
-                              ? "rgba(143,192,222,.7)"
-                              : "#E3EAF0";
-                      const ring = selected
-                        ? "0 4px 14px -6px rgba(22,33,46,.5)"
-                        : current
-                          ? "0 0 0 3px rgba(143,192,222,.28)"
-                          : failed
-                            ? "0 0 0 3px rgba(226,112,92,.14)"
-                            : "none";
-                      return (
-                        <li
-                          key={step.id}
-                          style={{
-                            background: bg,
-                            color: fg,
-                            borderColor: line,
-                            boxShadow: ring,
-                          }}
-                        >
-                          <button
-                            type="button"
-                            title={actionText(step)}
-                            aria-label={`${item.title} ${index + 1}단계: ${actionText(step)}`}
-                            style={{ cursor: hasResult ? "pointer" : "default" }}
-                            onClick={() => {
-                              if (!hasResult) return;
-                              setSelStep(stepKey);
-                              setExpandedScenarioId(item.id);
-                              document
-                                .querySelector(
-                                  `[data-queue-scenario="${item.id}"]`,
-                                )
-                                ?.scrollIntoView({
-                                  behavior: "smooth",
-                                  block: "center",
-                                });
-                            }}
-                          >
-                            {step.id}
-                          </button>
-                          {current && (
-                            <div
-                              className="step-sheen"
-                              style={{
-                                background: STEP_SHEEN,
-                                animation: "ckLight 1.5s ease-in-out infinite",
-                              }}
-                            />
-                          )}
-                        </li>
-                      );
-                    })}
-                  </ol>
-                </div>
-              );
-            })}
-          </section>
-          {
-            <section className="live-preview" aria-label="실시간 테스트 화면">
-              <div>
-                <strong>
-                  {manualControl ? "브라우저 직접 제어" : "실시간 테스트 화면"}
-                </strong>
-                <span>
-                  {manualControl
-                    ? manualControl.prompt ||
-                      `${manualControl.target}에서 필요한 절차를 완료해 주세요.`
-                    : "단계마다 캡처되어 실행 속도가 다소 느려질 수 있습니다."}
-                </span>
-              </div>
-              {previewImage ? (
-                <img
-                  ref={manualImageRef}
-                  className={manualControl ? "manual-browser-screen" : ""}
-                  src={previewImage}
-                  alt={
-                    manualControl
-                      ? "직접 조작할 브라우저 화면"
-                      : "현재 테스트 실행 화면"
-                  }
-                  tabIndex={manualControl ? 0 : -1}
-                  onClick={
-                    manualControl
-                      ? (event) => {
-                          const point = browserPoint(event);
-                          if (point)
-                            onManualBrowserEvent({ type: "click", ...point });
-                          event.currentTarget.focus();
-                        }
-                      : undefined
-                  }
-                  onWheel={
-                    manualControl
-                      ? (event) => {
-                          event.preventDefault();
-                          const point = browserPoint(event);
-                          if (point)
-                            onManualBrowserEvent({
-                              type: "wheel",
-                              deltaY: event.deltaY,
-                              ...point,
-                            });
-                        }
-                      : undefined
-                  }
-                  onKeyDown={manualControl ? handleManualKey : undefined}
-                  onPaste={
-                    manualControl
-                      ? (event: ClipboardEvent<HTMLImageElement>) => {
-                          event.preventDefault();
-                          const text = event.clipboardData.getData("text");
-                          if (text)
-                            onManualBrowserEvent({ type: "text", text });
-                        }
-                      : undefined
-                  }
-                />
-              ) : (
-                <p>첫 실행 화면을 기다리고 있습니다.</p>
-              )}
-              {manualControl && (
-                <div className="manual-browser-actions">
-                  <input
-                    value={manualFailureReason}
-                    onChange={(event) =>
-                      setManualFailureReason(event.target.value)
-                    }
-                    placeholder="실패 시 사유를 입력하세요"
                   />
-                  <button
-                    className="button danger"
-                    disabled={!manualFailureReason.trim()}
-                    onClick={() =>
-                      onFailManualControl(manualFailureReason.trim())
-                    }
-                  >
-                    실패로 기록
-                  </button>
-                  <button
-                    className="button button-primary"
-                    onClick={onCompleteManualControl}
-                  >
-                    완료 후 계속
-                  </button>
-                </div>
-              )}
-            </section>
-          }
-          <div className="log-box" aria-live="polite">
-            {runLog.length ? (
-              runLog.map((log, index) => (
-                <p key={index}>
-                  <time>{String(index + 9).padStart(2, "0")}:24</time>
-                  {log}
-                </p>
-              ))
-            ) : (
-              <p className="muted">실행 로그가 여기에 표시됩니다.</p>
+                  실행 화면 표시
+                </label>
+              </div>
             )}
           </div>
-        </section>
+        </div>
       </div>
-    </>
+
+      <div className="run-tape">
+        {groups.flatMap((group) => group.steps).map((row) => (
+          <div
+            key={row.stepKey}
+            className="run-tape-bar"
+            style={{ background: row.dot }}
+            title={`step ${row.index + 1}`}
+          />
+        ))}
+      </div>
+
+      {manual && (
+        <div className="run-manual-banner">
+          <div>
+            <div className="run-manual-kicker">
+              MANUAL INPUT REQUIRED · STEP {runProgress.current + 1}
+            </div>
+            <div className="run-manual-label">
+              {manual.prompt || `${manual.target}를 입력해 주세요.`}
+            </div>
+          </div>
+          <div className="run-manual-actions">
+            <input
+              autoFocus
+              type={manualValueVisible ? "text" : "password"}
+              value={manualValue}
+              onChange={(event) => onManualValueChange(event.target.value)}
+              placeholder="입력값"
+            />
+            <label className="run-manual-visible">
+              <input
+                type="checkbox"
+                checked={manualValueVisible}
+                onChange={onToggleManualValueVisible}
+              />
+              표시
+            </label>
+            <button className="button button-primary" onClick={onSubmitManualInput}>
+              입력 완료 · 계속
+            </button>
+            <button className="run-manual-skip" onClick={onCancelManual}>
+              취소
+            </button>
+          </div>
+        </div>
+      )}
+
+      {fullRunVideoAvailable && !running && (
+        <div className="run-video-bar">
+          <button className="button button-secondary" onClick={onDownloadFullRunVideo}>
+            전체 시나리오 영상 다운로드
+          </button>
+          {runVideos.map(({ scenario: videoScenario, path }) => (
+            <button
+              key={path}
+              className="button button-secondary"
+              onClick={() => onDownloadRunVideo(path)}
+            >
+              {videoScenario.title} 영상
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="run-cols">
+        <div className="run-execution">
+          <div className="run-col-head">
+            <span>EXECUTION</span>
+            <span className="run-col-head-meta">
+              {runProgress.current}/{runProgress.total} steps
+            </span>
+            {selStep && (
+              <button className="run-live-return" onClick={() => setSelStep(null)}>
+                LIVE로 복귀
+              </button>
+            )}
+          </div>
+          <div className="run-execution-body">
+            {groups.map((group) => (
+              <div key={group.scenario.id}>
+                <div className="run-group-head">
+                  <span className="run-group-dot" style={{ background: group.dot }} />
+                  <span>{group.scenario.title}</span>
+                  <span className="run-group-count">{group.scenario.steps.length}단계</span>
+                </div>
+                {group.steps.map((row) => (
+                  <button
+                    key={row.stepKey}
+                    type="button"
+                    className="run-step-row"
+                    title={`${group.scenario.title} #${row.index + 1} ${actionText(row.step)}`}
+                    style={{
+                      cursor: row.cursor,
+                      background: row.rowBg,
+                      borderLeftColor: row.bar,
+                    }}
+                    onClick={row.onClick}
+                  >
+                    <span
+                      className={`run-step-dot${row.pulsing ? " pulsing" : ""}`}
+                      style={{ background: row.dot }}
+                    />
+                    <span className="run-step-n">{row.index + 1}</span>
+                    <span className="run-step-op" style={{ color: row.opFg }}>
+                      {row.step.action.toUpperCase().replace("EXPECTTEXT", "EXPECT")}
+                    </span>
+                    <span className="run-step-target" style={{ color: row.targetFg }}>
+                      {actionText(row.step)}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="run-side">
+          {livePreview && (
+            <div className="run-viewport">
+              <div className="run-col-head">
+                <span>VIEWPORT</span>
+                <span
+                  className="run-col-head-meta"
+                  style={{ marginLeft: "auto", color: stateColor }}
+                >
+                  {selStep
+                    ? "REPLAY"
+                    : awaiting
+                      ? "PAUSED"
+                      : running
+                        ? "CAPTURING"
+                        : "IDLE"}
+                </span>
+                <button className="run-live-return" onClick={() => onLivePreviewChange(false)}>
+                  숨기기
+                </button>
+              </div>
+              <div className="run-viewport-body">
+                {previewImage ? (
+                  <img
+                    ref={manualImageRef}
+                    className={manualControl ? "manual-browser-screen" : ""}
+                    src={previewImage}
+                    alt={
+                      manualControl ? "직접 조작할 브라우저 화면" : "현재 테스트 실행 화면"
+                    }
+                    tabIndex={manualControl ? 0 : -1}
+                    onClick={
+                      manualControl
+                        ? (event) => {
+                            const point = browserPoint(event);
+                            if (point) onManualBrowserEvent({ type: "click", ...point });
+                            event.currentTarget.focus();
+                          }
+                        : undefined
+                    }
+                    onWheel={
+                      manualControl
+                        ? (event) => {
+                            event.preventDefault();
+                            const point = browserPoint(event);
+                            if (point)
+                              onManualBrowserEvent({
+                                type: "wheel",
+                                deltaY: event.deltaY,
+                                ...point,
+                              });
+                          }
+                        : undefined
+                    }
+                    onKeyDown={manualControl ? handleManualKey : undefined}
+                    onPaste={
+                      manualControl
+                        ? (event: ClipboardEvent<HTMLImageElement>) => {
+                            event.preventDefault();
+                            const text = event.clipboardData.getData("text");
+                            if (text) onManualBrowserEvent({ type: "text", text });
+                          }
+                        : undefined
+                    }
+                  />
+                ) : (
+                  <div className="run-viewport-caption">NO ACTIVE SESSION</div>
+                )}
+                {manualControl && (
+                  <div className="manual-browser-actions">
+                    <input
+                      value={manualFailureReason}
+                      onChange={(event) => setManualFailureReason(event.target.value)}
+                      placeholder="실패 시 사유를 입력하세요"
+                    />
+                    <button
+                      className="button danger"
+                      disabled={!manualFailureReason.trim()}
+                      onClick={() => onFailManualControl(manualFailureReason.trim())}
+                    >
+                      실패로 기록
+                    </button>
+                    <button className="button button-primary" onClick={onCompleteManualControl}>
+                      완료 후 계속
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+          <div className="run-console">
+            <div className="run-col-head run-console-head">
+              <span>CONSOLE</span>
+              <div className="run-log-filters">
+                {(["ALL", "ERR"] as const).map((f) => (
+                  <button
+                    key={f}
+                    className={logFilter === f ? "active" : ""}
+                    onClick={() => setLogFilter(f)}
+                  >
+                    {f}
+                  </button>
+                ))}
+              </div>
+              {!livePreview && (
+                <button
+                  className="run-live-return run-live-return-dark"
+                  onClick={() => onLivePreviewChange(true)}
+                >
+                  VIEWPORT 표시
+                </button>
+              )}
+            </div>
+            <div className="run-console-body">
+              {filteredLog.length ? (
+                filteredLog.map((log, index) => (
+                  <div className="run-log-line" key={index}>
+                    {log}
+                  </div>
+                ))
+              ) : (
+                <div className="run-log-line run-log-muted">
+                  실행 로그가 여기에 표시됩니다.
+                </div>
+              )}
+              {running && <div className="run-log-cursor">▌</div>}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 };

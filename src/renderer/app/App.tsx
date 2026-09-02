@@ -8,14 +8,15 @@ import {
   type ReactElement,
 } from "react";
 import { DashboardPage } from "../pages/dashboard/DashboardPage";
-import { ScenarioLibraryPage } from "../pages/library/ScenarioLibraryPage";
 import { ScenarioEditorPage } from "../pages/editor/ScenarioEditorPage";
 import { RunPage } from "../pages/run/RunPage";
 import { SettingsPage } from "../pages/settings/SettingsPage";
+import { ScenarioPickerPage } from "../pages/picker/ScenarioPickerPage";
 import { BottomNavigation } from "../widgets/BottomNavigation";
 import { RunReportDrawer } from "../widgets/RunReportDrawer";
 import {
   markerColor,
+  parseMarkdown,
   seedScenario,
   type Action,
   type MarkerPositionStore,
@@ -42,6 +43,15 @@ declare global {
       selectUploadFile: () => Promise<string | null>;
       loadMarkerPositions: () => Promise<string | null>;
       saveMarkerPositions: (value: string) => Promise<void>;
+      listScenarioFolder: () => Promise<{
+        folderPath: string | null;
+        files: Array<{ name: string; path: string; updatedAt: string }>;
+      }>;
+      chooseScenarioFolder: () => Promise<{
+        folderPath: string | null;
+        files: Array<{ name: string; path: string; updatedAt: string }>;
+      }>;
+      readScenarioFile: (filePath: string) => Promise<string | null>;
       inspectScenario: (
         value: Scenario,
       ) => Promise<Array<{ id: string; connected: boolean }>>;
@@ -70,163 +80,6 @@ declare global {
 const initialMarkdown = `# 시나리오: 로그인\nurl: https://example.com/login\n\nGiven \`/login\` 페이지로 이동한다\nAnd \`이메일\`에 \`qa@example.com\` 입력\nAnd \`인증번호\` 수동 입력 [인증번호를 입력해 주세요.]\nAnd \`로그인\` 버튼 클릭\nThen \`대시보드\` 텍스트가 보인다`;
 const positionKey = (scenario: Scenario) =>
   `${scenario.title}\n${scenario.url}`;
-const unquoteMarkdownValue = (value: string) =>
-  value.trim().replace(/^`([\s\S]*)`$/, "$1");
-const parseMarkdown = (markdown: string): Scenario[] =>
-  markdown
-    .split(/(?=^#{1,3}\s*시나리오:|^Scenario:)/im)
-    .filter(Boolean)
-    .map((block, index) => {
-      const lines = block
-        .split("\n")
-        .map((line) => line.trim())
-        .filter(Boolean);
-      const title =
-        lines[0].match(/^#{1,3}\s*시나리오:\s*(.+)$/i)?.[1] ||
-        `시나리오 ${index + 1}`;
-      const url =
-        lines
-          .find((line) => line.startsWith("url:"))
-          ?.slice(4)
-          .trim() || seedScenario.url;
-      const steps = lines
-        .filter((line) => /^(Given|When|Then|And|But|If)\s+/i.test(line))
-        .map((line, stepIndex): Step => {
-          const rawText = line.replace(/^(Given|When|Then|And|But|If)\s+/i, "");
-          const conditional = rawText.match(
-            /^화면에\s*`(.+?)`\s*가\s*있는\s*경우\s+(.+)$/,
-          );
-          const condition = conditional?.[1];
-          const conditionalText = conditional?.[2] ?? rawText;
-          const waitMatch = conditionalText.match(/\[대기\s*(\d+)초\]\s*$/);
-          const waitSeconds = waitMatch ? Number(waitMatch[1]) : undefined;
-          const text = conditionalText.replace(/\s*\[대기\s*\d+초\]\s*$/, "");
-          const occurrenceMatch = text.match(/\[(\d+)번째\]\s*(?:버튼을?|버튼)?\s*클릭/);
-          const occurrence = occurrenceMatch ? Number(occurrenceMatch[1]) : undefined;
-          const result = text
-            .replace(
-              /\s*(텍스트가\s*)?(보인다|포함된다|확인된다|표시된다).*/,
-              "",
-            )
-            .trim();
-          const manual = text.match(/^(.+?)\s+수동 입력(?:\s*\[(.+)\])?$/);
-          const manualControl = text.match(/^(.+?)\s+브라우저 직접 제어(?:\s*\[(.+)\])?$/);
-          const manualResult = text.match(/^(.+?)\s+수동 결과 확인(?:\s*\[(.+)\])?$/);
-          const fileUpload =
-            text.match(/^`(.+?)`(?:에|에서)?\s*`(.*?)`\s*파일\s*업로드/) ??
-            text.match(/^(.+?)(?:에|에서)?\s*['"](.*)['"]\s*파일\s*업로드/);
-          const fill =
-            text.match(
-              /^`(.+?)`(?:에|에서|을|를)?\s*`(.*?)`\s*(?:자동\s*)?(?:입력|작성)/,
-            ) ??
-            text.match(/^(.+?)\s*`(.*?)`\s*(?:자동\s*)?(?:입력|작성)/) ??
-            text.match(
-              /^(.+?)(?:에|을|를)?\s*['"](.*)['"]\s*(?:자동\s*)?(?:입력|작성)/,
-            );
-          const select =
-            text.match(/^`(.+?)`(?:에서|에)?\s*`(.*?)`\s*선택/) ??
-            text.match(/^(.+?)\s*`(.*?)`\s*선택/) ??
-            text.match(/^(.+?)(?:에서|에)\s*['"](.*)['"]\s*선택/);
-          if (manualResult)
-            return {
-              id: String(stepIndex + 1),
-              action: "manualResult",
-              target: unquoteMarkdownValue(manualResult[1]),
-              prompt: manualResult[2],
-              condition,
-              connected: true,
-            };
-          if (manualControl)
-            return {
-              id: String(stepIndex + 1),
-              action: "manualControl",
-              target: unquoteMarkdownValue(manualControl[1]),
-              prompt: manualControl[2],
-              condition,
-              connected: true,
-            };
-          if (/보인다|포함된다|확인된다|표시된다|결과\s*확인/.test(text))
-            return {
-              id: String(stepIndex + 1),
-              action: "expectText",
-              target: unquoteMarkdownValue(result),
-              condition,
-              waitSeconds,
-              connected: false,
-            };
-          if (manual)
-            return {
-              id: String(stepIndex + 1),
-              action: "manualFill",
-              target: unquoteMarkdownValue(manual[1]),
-              prompt: manual[2],
-              required: true,
-              condition,
-              connected: true,
-            };
-          if (fileUpload)
-            return {
-              id: String(stepIndex + 1),
-              action: "fileUpload",
-              target: unquoteMarkdownValue(
-                fileUpload[1].replace(/(에서|에)$/, "").trim(),
-              ),
-              value: fileUpload[2],
-              condition,
-              connected: true,
-            };
-          if (fill)
-            return {
-              id: String(stepIndex + 1),
-              action: "fill",
-              target: unquoteMarkdownValue(
-                fill[1].replace(/(에서|에|을|를)$/, "").trim(),
-              ),
-              value: fill[2],
-              condition,
-              waitSeconds,
-              connected: true,
-            };
-          if (select)
-            return {
-              id: String(stepIndex + 1),
-              action: "select",
-              target: unquoteMarkdownValue(
-                select[1].replace(/(에서|에|을|를)$/, "").trim(),
-              ),
-              value: select[2],
-              condition,
-              waitSeconds,
-              connected: true,
-            };
-          if (/(페이지로?\s*이동|접속|열기)/.test(text))
-            return {
-              id: String(stepIndex + 1),
-              action: "goto",
-              target:
-                unquoteMarkdownValue(
-                  text.replace(/\s*(페이지로?\s*이동|접속|열기).*/, "").trim(),
-                ) || "/",
-              condition,
-              connected: true,
-            };
-          return {
-            id: String(stepIndex + 1),
-            action: "click",
-            target: unquoteMarkdownValue(
-              text
-                .replace(/\s*\[\d+번째\]\s*(?:버튼을?|버튼)?\s*클릭.*/, "")
-                .replace(/\s+(버튼을?|버튼)?\s*클릭.*/, "")
-                .trim(),
-            ),
-            occurrence: occurrence && occurrence > 1 ? occurrence : undefined,
-            condition,
-            waitSeconds,
-            connected: true,
-          };
-        });
-      return { id: `scenario-${index}`, title, url, steps };
-    });
 const applyPositions = (
   scenario: Scenario,
   store: MarkerPositionStore,
@@ -311,6 +164,7 @@ type RunNotification = {
 export const App = (): ReactElement => {
   const [scenario, setScenario] = useState(seedScenario);
   const [sourceMarkdown, setSourceMarkdown] = useState(initialMarkdown);
+  const [savedMarkdown, setSavedMarkdown] = useState(initialMarkdown);
   const [markerScenarioId, setMarkerScenarioId] = useState("");
   const [scenarioFilePath, setScenarioFilePath] = useState<string | null>(null);
   const [route, setRoute] = useState<Route>("dashboard");
@@ -385,6 +239,7 @@ export const App = (): ReactElement => {
         setPositionStore(store);
         if (markdown) {
           setSourceMarkdown(markdown);
+          setSavedMarkdown(markdown);
           const first = parseMarkdown(markdown)[0];
           if (first) {
             setScenario(applyPositions(first, store));
@@ -586,6 +441,7 @@ export const App = (): ReactElement => {
     updateSource(imported.markdown);
     setScenarioFilePath(imported.filePath);
     await window.electronAPI.saveScenarioMarkdown(imported.markdown);
+    setSavedMarkdown(imported.markdown);
     setToast("시나리오를 불러왔습니다.");
   };
 
@@ -597,6 +453,7 @@ export const App = (): ReactElement => {
       if (!filePath) return;
       setScenarioFilePath(filePath);
       await window.electronAPI.saveScenarioMarkdown(sourceMarkdown);
+      setSavedMarkdown(sourceMarkdown);
       setToast("시나리오를 저장했습니다.");
     } catch {
       setToast("시나리오를 저장하지 못했습니다.");
@@ -855,6 +712,7 @@ export const App = (): ReactElement => {
       await window.electronAPI.saveScenarioMarkdown(markdown);
       if (scenarioFilePath)
         await window.electronAPI.saveImportedScenarioFile(markdown);
+      setSavedMarkdown(markdown);
       setToast("시나리오를 저장했습니다.");
     } catch {
       setToast("시나리오를 저장하지 못했습니다.");
@@ -912,18 +770,9 @@ export const App = (): ReactElement => {
           <DashboardPage
             history={runHistory}
             summary={runSummary}
-            onQuickStart={(scenarios) => beginRuns(scenarios)}
             onOpenRun={() => setRoute("run")}
-            onOpenLibrary={() => setRoute("library")}
+            onOpenPicker={() => setRoute("picker")}
             onOpenReport={setOpenRunRecord}
-          />
-        )}
-        {route === "library" && (
-          <ScenarioLibraryPage
-            scenarios={previews}
-            onCreate={() => { setEditorMode("text"); setRoute("editor"); }}
-            onEdit={(item) => { setScenario(applyPositions(item, positionStore)); setMarkerScenarioId(item.id); setEditorMode("text"); setRoute("editor"); }}
-            onRun={(item) => beginRuns([item])}
           />
         )}
         {route === "editor" && (
@@ -931,6 +780,7 @@ export const App = (): ReactElement => {
             mode={editorMode}
             scenario={scenario}
             sourceMarkdown={sourceMarkdown}
+            isDirty={sourceMarkdown !== savedMarkdown}
             scenarioFilePath={scenarioFilePath}
             previews={previews}
             markerScenarioId={markerScenarioId || previews[0]?.id || ""}
@@ -976,6 +826,12 @@ export const App = (): ReactElement => {
             onCompleteMarkerDialog={completeMarker}
           />
         )}
+        {route === "picker" && (
+          <ScenarioPickerPage
+            onOpenEditor={() => setRoute("editor")}
+            onRun={(items) => beginRuns(items)}
+          />
+        )}
         {route === "run" && (
           <RunPage
             scenario={running ? runningScenario : executableScenario}
@@ -983,6 +839,18 @@ export const App = (): ReactElement => {
             scenarioResults={liveResults}
             running={running}
             manual={manual}
+            manualValue={manualValue}
+            manualValueVisible={manualValueVisible}
+            onManualValueChange={setManualValue}
+            onToggleManualValueVisible={() =>
+              setManualValueVisible((visible) => !visible)
+            }
+            onSubmitManualInput={() => {
+              void window.electronAPI.submitManualInput(manualValue);
+              setManual(null);
+              setManualValue("");
+            }}
+            onCancelManual={() => void window.electronAPI.cancelQa()}
             manualControl={manualControl}
             manualResult={manualResult}
             runLog={runLog}
@@ -1000,8 +868,7 @@ export const App = (): ReactElement => {
               void window.electronAPI.submitManualControl({ status: "failed", reason });
               setManualControl(null);
             }}
-            onRun={(items) => beginRuns(items?.length ? items : executableScenarios)}
-            onImport={() => void importScenario()}
+            onGoToPicker={() => setRoute("picker")}
             onCancel={cancelRuns}
             onLivePreviewChange={setLivePreview}
             runVideos={runVideos}
@@ -1040,7 +907,11 @@ export const App = (): ReactElement => {
       />
       {toast && (
         <div className="toast" role="status" aria-live="polite">
-          ✓ {toast}
+          <span
+            className="toast-dot"
+            style={{ background: toast.includes("못") ? "#B32318" : "#1E7A4A" }}
+          />
+          {toast}
         </div>
       )}
       {runNotification && route !== "run" && (
@@ -1158,43 +1029,6 @@ export const App = (): ReactElement => {
                 onClick={() => void saveMarkerEditsAndReturn()}
               >
                 저장 후 돌아가기
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {manual && (
-        <div className="modal-backdrop" role="dialog" aria-modal="true">
-          <div className="manual-modal">
-            <h2>수동 입력이 필요합니다</h2>
-            <p>{manual.prompt || `${manual.target}를 입력해 주세요.`}</p>
-            <input
-              autoFocus
-              type={manualValueVisible ? "text" : "password"}
-              value={manualValue}
-              onChange={(event) => setManualValue(event.target.value)}
-            />
-            <label className="manual-visibility-toggle">
-              <input
-                type="checkbox"
-                checked={manualValueVisible}
-                onChange={(event) =>
-                  setManualValueVisible(event.target.checked)
-                }
-              />{" "}
-              입력값 표시
-            </label>
-            <div className="modal-actions">
-              <button onClick={() => void window.electronAPI.cancelQa()}>
-                취소
-              </button>
-              <button
-                onClick={() => {
-                  void window.electronAPI.submitManualInput(manualValue);
-                  setManual(null);
-                }}
-              >
-                입력 후 계속
               </button>
             </div>
           </div>

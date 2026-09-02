@@ -5,7 +5,7 @@ import { is } from '@electron-toolkit/utils'
 import { autoUpdater } from 'electron-updater'
 import path from 'node:path'
 import { execFile } from 'node:child_process'
-import { copyFile, mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, readdir, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { promisify } from 'node:util'
 import ffmpegPath from 'ffmpeg-static'
 import { chromium, type Browser, type BrowserContext, type Locator, type Page, type Video } from '@playwright/test'
@@ -99,6 +99,41 @@ const loadMarkerPositions = async (): Promise<string | null> => {
 }
 const saveMarkerPositions = async (positions: string): Promise<void> => {
   await writeFile(markerPositionStorePath(), positions, 'utf8')
+}
+type ScenarioFolderListing = { folderPath: string | null; files: Array<{ name: string; path: string; updatedAt: string }> }
+const scenarioFolderStorePath = (): string => path.join(app.getPath('userData'), 'scenario-folder.json')
+const readScenarioFolderPath = async (): Promise<string | null> => {
+  try {
+    const raw = JSON.parse(await readFile(scenarioFolderStorePath(), 'utf8')) as { folderPath?: string | null }
+    return raw.folderPath ?? null
+  } catch { return null }
+}
+const writeScenarioFolderPath = async (folderPath: string): Promise<void> => {
+  await writeFile(scenarioFolderStorePath(), JSON.stringify({ folderPath }), 'utf8')
+}
+const listScenarioFolder = async (): Promise<ScenarioFolderListing> => {
+  const folderPath = await readScenarioFolderPath()
+  if (!folderPath) return { folderPath: null, files: [] }
+  try {
+    const entries = await readdir(folderPath)
+    const mdEntries = entries.filter((name) => /\.(md|markdown)$/i.test(name))
+    const files = await Promise.all(mdEntries.map(async (name) => {
+      const filePath = path.join(folderPath, name)
+      const info = await stat(filePath)
+      return { name, path: filePath, updatedAt: info.mtime.toISOString() }
+    }))
+    files.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    return { folderPath, files }
+  } catch { return { folderPath: null, files: [] } }
+}
+const chooseScenarioFolder = async (): Promise<ScenarioFolderListing> => {
+  const result = await dialog.showOpenDialog({ title: '시나리오 폴더 선택', properties: ['openDirectory'] })
+  if (result.canceled || !result.filePaths[0]) return listScenarioFolder()
+  await writeScenarioFolderPath(result.filePaths[0])
+  return listScenarioFolder()
+}
+const readScenarioFile = async (filePath: string): Promise<string | null> => {
+  try { return await readFile(filePath, 'utf8') } catch { return null }
 }
 const runVideoFileName = (scenario: QaScenario): string => {
   const now = new Date()
@@ -470,6 +505,9 @@ app.whenReady().then(() => {
   ipcMain.handle('scenario:export-file', (_event, markdown: string) => exportScenarioFile(markdown))
   ipcMain.handle('marker-positions:load', () => loadMarkerPositions())
   ipcMain.handle('marker-positions:save', (_event, positions: string) => saveMarkerPositions(positions))
+  ipcMain.handle('scenario:list-folder', () => listScenarioFolder())
+  ipcMain.handle('scenario:choose-folder', () => chooseScenarioFolder())
+  ipcMain.handle('scenario:read-file', (_event, filePath: string) => readScenarioFile(filePath))
   ipcMain.handle('qa:start', async (event, scenario: QaScenario, options: QaRunOptions) => executeScenario(scenario, BrowserWindow.fromWebContents(event.sender)!, options))
   ipcMain.handle('qa:select-upload-file', async (): Promise<string | null> => {
     const result = await dialog.showOpenDialog({ title: '업로드할 파일 선택', properties: ['openFile'] })

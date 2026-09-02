@@ -34,11 +34,6 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .recent-run-info strong { color:#16212e; font-size:13.5px; letter-spacing:-.01em; }.recent-run-info span { color:#8fa3b4; font-size:11.5px; }.recent-run-info small { color:#9aa7b2; font-size:10.5px; }.recent-run-actions .button { min-height:30px; font-size:12px; }
 .empty-runs { border-color:#e3eaf0; }.empty-runs strong { color:#16212e; }.empty-runs p { color:#6b7a88; }
 
-/* Scenario library */
-.library-title { margin-bottom:24px; }.library-filters { border-color:#e3eaf0; }.library-filters button { border-color:#dce4ea; border-radius:6px; color:#6b7a88; }.library-filters button.active { border-color:#16212e; background:#16212e; color:#fff; }.library-filters>span { color:#9aa7b2; font-weight:400; }
-.scenario-library-list article { grid-template-columns:minmax(220px,1fr) 130px 96px 130px auto; gap:clamp(12px,1.6vw,24px); min-height:0; padding:16px 14px; border-color:#e9eef2; }.scenario-library-list article:hover { background:#fff; box-shadow:0 10px 26px -20px rgb(22 33 46 / 50%); }
-.library-name strong { color:#16212e; font-size:13.5px; }.library-name small,.library-steps,.library-updated { color:#9aa7b2; font-size:11.5px; }.library-tape i { border-top:1px solid rgb(255 255 255 / 95%); background:linear-gradient(180deg,#fff,#e9f5f1); }.library-tape i.pending { background:linear-gradient(180deg,#fff,#eef3f7); }.library-actions button { border-color:#dce4ea; color:#16212e; }.library-actions button:hover { border-color:#8fc0de; }
-
 /* Editor */
 .editor-page-title .eyebrow { color:#8fa3b4; }.editor-actions .button-text-import { color:#8fa3b4; }.editor-actions .button-text-import:hover { color:#16212e; }
 .writing-card,.scenario-preview,.browser-canvas,.step-panel,.step-editor { border-color:#e3eaf0; border-radius:10px; }.writing-card-header { border-color:#edf2f5; background:#fafcfd; color:#8fa3b4; }.writing-card-header strong { color:#8fa3b4; }.markdown-editor-body,.scenario-source { background:#fff; }.markdown-line-numbers { color:#c3cfd8; }.scenario-source { color:#253243; }
@@ -63,7 +58,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .workspace .bottom-nav-brand { position:relative; width:42px; height:42px; border-radius:50%; background:linear-gradient(150deg,#1b2836,#101a24); color:#fff; box-shadow:0 1px 0 rgb(255 255 255 / 22%) inset; }.workspace .bottom-nav-divider { background:#e0e8ee; }
 .workspace .bottom-nav-item { color:#8fa3b4; }.workspace .bottom-nav-item.active { background:#fff; color:#16212e; box-shadow:0 0 0 1px rgb(143 192 222 / 55%),0 4px 12px -6px rgb(22 33 46 / 35%); }.workspace .bottom-nav-item.active span { color:#16212e; }.workspace .bottom-nav-run { border-color:#16212e; background:#16212e; color:#fff; }.workspace .bottom-nav-run:hover { border-color:#16212e; background:#16212e; }
 
-@media (max-width:1180px) { .dashboard-overview,.scenario-writing-grid { grid-template-columns:1fr; }.scenario-library-list article { grid-template-columns:1fr auto; }.library-tape,.library-steps,.library-updated { display:none; } }
+@media (max-width:1180px) { .scenario-writing-grid { grid-template-columns:1fr; } }
 @media (max-width:700px) { .page-title { align-items:flex-start; }.dashboard-overview { gap:26px; }.dashboard-stats { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }.dashboard-stats div { display:block; }.dashboard-stats dt { margin-bottom:7px; }.recent-run-actions { display:none; }.run-main { display:block; }.run-main>* { margin-bottom:16px; }.run-state>div { display:block; }.run-state strong { display:block; margin-bottom:8px; font-size:38px; }.run-timing { flex-wrap:wrap; gap:7px 14px; }.run-timing span:first-child { width:100%; }.editor-actions { margin-top:0; }.scenario-writing-grid { grid-template-columns:1fr; }.content { padding-bottom:132px; } }
 
 /* V3 dashboard uses a single metric plane and metadata-aligned activity rows. */
