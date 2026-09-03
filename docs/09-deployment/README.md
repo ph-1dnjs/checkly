@@ -73,6 +73,18 @@ electron-builder의 GitHub publish는 기본적으로 release를 **draft(비공�
 - **신규 사용자**: `https://github.com/ph-1dnjs/checkly/releases/latest`에서 OS에 맞는 설치 파일 — Windows는 `.exe`, macOS는 `.dmg`, Linux는 `.AppImage` — 를 직접 받습니다(macOS의 `.zip`, `latest*.yml`, `.blockmap`은 업데이트용 내부 파일이라 무시해도 됩니다). 앱 안에서는 설정 화면의 "다운로드 페이지 열기"가 같은 주소를 외부 브라우저로 엽니다(주소는 `SettingsPage.tsx`에 고정 문자열로 있어 저장소 이름이 바뀌면 함께 수정해야 합니다). release가 draft 상태면 이 페이지에 실제 설치 파일이 보이지 않으니 "draft와 releaseType" 절을 참고합니다.
 - **이미 설치된 사용자**: 다시 다운로드 페이지를 찾아갈 필요가 없습니다. `electron-updater`가 실행 시·주기 확인 시 새 버전을 백그라운드로 내려받고, 설정 화면에 뜨는 "재시작하여 설치" 버튼으로 그 자리에서 갱신합니다.
 
+### macOS "손상되었기 때문에 열 수 없습니다"
+
+지금은 테스트 배포 단계로, Apple Developer ID 인증서·공증(notarization) 없이 배포하기로 결정했습니다. `codesign --display --verbose=4`로 확인하면 macOS 빌드는 `Signature=adhoc`, `TeamIdentifier=not set`으로 서명됩니다 — Apple Silicon에서 실행 자체는 되지만(코드 서명이 전혀 없으면 arm64에서 실행이 안 됨), Developer ID로 서명·공증되지 않았기 때문에 인터넷에서 받은 dmg를 열면 Gatekeeper가 "Checkly는 손상되었기 때문에 열 수 없습니다"를 띄웁니다. 파일이 실제로 손상된 것은 아닙니다.
+
+사용자 안내(README에도 동일하게 기재):
+
+```bash
+xattr -cr /Applications/Checkly.app
+```
+
+이 명령으로 다운로드 시 붙는 quarantine 속성을 지우면 정상 실행됩니다. 근본적으로 없애려면 "draft와 releaseType" 앞의 WARNING에 있는 `CSC_LINK`/`APPLE_ID` 등 서명·공증 secrets를 등록해야 하며, 등록만 하면 워크플로와 `hardenedRuntime: true` 설정이 이미 이를 자동으로 사용하도록 되어 있어 코드 변경 없이 다음 릴리즈부터 정식 서명됩니다.
+
 ## 릴리즈 전 확인
 
 1. `npm run build`, `npm test`를 통과합니다.

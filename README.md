@@ -30,6 +30,16 @@ Checkly는 Markdown으로 브라우저 QA 시나리오를 작성하고 Playwrigh
 
 소스는 `app`, `pages`, `widgets`, `shared` 경계를 사용합니다. `features`, `entities` 폴더는 현재 자리만 있고 구현 코드는 없습니다.
 
+## 다운로드와 설치
+
+최신 설치 파일은 [GitHub Releases](https://github.com/ph-1dnjs/checkly/releases/latest)에서 받습니다 — Windows는 `.exe`, macOS는 `.dmg`, Linux는 `.AppImage`.
+
+> **WARNING**: 현재는 테스트 배포 단계라 Apple 개발자 인증서로 서명·공증하지 않았습니다. macOS에서 dmg를 열어 앱을 실행하면 "손상되었기 때문에 열 수 없습니다"라는 메시지가 뜰 수 있는데, 파일이 실제로 손상된 게 아니라 서명되지 않은 앱을 인터넷에서 받았을 때 Gatekeeper가 보여주는 메시지입니다. 터미널에서 아래 명령을 실행한 뒤 다시 열면 정상적으로 실행됩니다.
+>
+> ```bash
+> xattr -cr /Applications/Checkly.app
+> ```
+
 ## 시작하기
 
 ```bash

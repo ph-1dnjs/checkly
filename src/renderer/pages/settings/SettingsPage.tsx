@@ -5,6 +5,7 @@ import type { UpdateStatus } from "../../shared/model/update";
 type Props = { scenario: Scenario };
 
 const RELEASES_URL = "https://github.com/ph-1dnjs/checkly/releases/latest";
+const isMac = navigator.userAgent.includes("Mac");
 
 const updateStatusLabel = (status: UpdateStatus): string => {
   switch (status.state) {
@@ -132,7 +133,12 @@ export const SettingsPage = ({ scenario }: Props) => {
         <div className="settings-row">
           <div>
             <div className="settings-row-label">다운로드</div>
-            <div className="settings-row-hint">최신 설치 파일을 GitHub Releases에서 내려받습니다</div>
+            <div className="settings-row-hint">
+              최신 설치 파일을 GitHub Releases에서 내려받습니다
+              {isMac
+                ? " · 아직 서명되지 않아 실행 시 \"손상되었기 때문에 열 수 없습니다\"가 뜨면 터미널에서 xattr -cr /Applications/Checkly.app 실행 후 다시 여세요"
+                : ""}
+            </div>
           </div>
           <div className="settings-row-value">
             <a
