@@ -26,6 +26,8 @@ npm run package
 
 패키지에는 `dist/**`, `dist-electron/**`, `package.json`과 `dependencies`에 선언된 node_modules가 포함됩니다. `ffmpeg-static`, `playwright-core/.local-browsers`의 실행 파일은 asar 밖으로 unpack됩니다. appId는 `dev.ph1dnjs.checkly`, publish 대상은 `ph-1dnjs/checkly`로 `package.json`에 고정되어 있습니다.
 
+사용자가 실제로 받는 설치 파일은 Windows `.exe`(nsis 인스톨러), macOS `.dmg`입니다. macOS의 `zip` 타깃은 사용자가 직접 받는 파일이 아니라 `electron-updater`(Squirrel.Mac)가 자동 업데이트를 적용할 때 내부적으로 사용하는 산출물이라 targets에서 빼면 안 됩니다.
+
 ## CI/CD (`.github/workflows/release.yml`)
 
 `v*.*.*` 형태의 태그를 push하면 macOS/Windows/Linux 3개 러너에서 각각 `npm ci → npm run build → (선택적 서명 secret 설정) → electron-builder --publish always`를 실행해 GitHub Releases에 자동 업로드합니다. `GH_TOKEN`은 워크플로 기본 `secrets.GITHUB_TOKEN`을 사용하며 별도 PAT는 필요 없습니다(같은 저장소에 release를 쓰는 `contents: write` 권한만 있으면 됩니다).
@@ -50,9 +52,15 @@ git push --follow-tags
 5. `--publish always`가 해당 태그로 GitHub Release를 만들고 설치 파일과 업데이트 메타데이터(`latest*.yml`)를 업로드합니다. 3개 잡이 모두 끝나야 릴리즈가 완성됩니다.
 6. 진행 상황은 저장소의 GitHub Actions 탭에서 확인합니다.
 
+### draft와 releaseType
+
+electron-builder의 GitHub publish는 기본적으로 release를 **draft(비공개 초안)**로 만듭니다. draft release는 저장소 소유자로 로그인해야만 보이고, 로그인하지 않은 방문자에게는 GitHub가 모든 태그에 자동으로 붙이는 "Source code (zip)"/"(tar.gz)" 링크만 보입니다 — 실제로 만든 `.exe`/`.dmg`는 만들어졌지만 아무도 못 받는 상태가 됩니다. 이를 막기 위해 `package.json`의 `build.publish`에 `"releaseType": "release"`를 설정해 release가 만들어지자마자 바로 공개되도록 했습니다.
+
+단, 3개 OS 잡이 병렬로 실행되므로 가장 먼저 끝난 잡이 release를 공개하는 순간부터, 아직 안 끝난 다른 OS의 설치 파일은 몇 분간 빠진 채로 공개될 수 있습니다. 모든 잡이 끝난 뒤 한 번에 공개하려면 별도의 "모든 매트릭스 잡 완료 후 draft를 published로 전환하는 마무리 잡"을 추가해야 하며, 현재 워크플로에는 없습니다.
+
 ### 현재 상태
 
-이 저장소는 아직 태그를 한 번도 push한 적이 없어 위 워크플로가 실제로 릴리즈를 만든 이력은 없습니다(문서 작성 시점 기준). 저장소(`ph-1dnjs/checkly`)는 public이라 릴리즈 자산은 로그인 없이 누구나 받을 수 있지만, macOS/Windows 코드 서명 인증서가 아직 secrets에 등록되지 않아 지금 배포하면 서명되지 않은 설치 파일이 나갑니다(macOS "확인되지 않은 개발자" 경고, Windows SmartScreen 경고).
+`v0.1.1`(macOS 서명 버그로 macOS만 실패), `v0.1.2`(3개 OS 모두 빌드 성공, `releaseType` 수정 전이라 여전히 draft)까지 태그가 존재합니다. 저장소(`ph-1dnjs/checkly`)는 public이라 released(비-draft) 상태이기만 하면 로그인 없이 누구나 받을 수 있습니다. `v0.1.2`를 공개하려면 GitHub UI에서 해당 draft release를 열어 수동으로 "Publish release"를 눌러야 합니다(`releaseType` 수정은 그 다음 태그부터 적용됩니다). macOS/Windows 코드 서명 인증서는 아직 secrets에 등록되지 않아, 지금 배포하면 서명되지 않은 설치 파일이 나갑니다(macOS "확인되지 않은 개발자" 경고, Windows SmartScreen 경고).
 
 ## 앱 업데이트
 
@@ -62,7 +70,7 @@ git push --follow-tags
 
 ## 사용자 다운로드
 
-- **신규 사용자**: `https://github.com/ph-1dnjs/checkly/releases/latest`에서 OS에 맞는 설치 파일(dmg/zip, nsis, AppImage)을 직접 받습니다. 앱 안에서는 설정 화면의 "다운로드 페이지 열기"가 같은 주소를 외부 브라우저로 엽니다(주소는 `SettingsPage.tsx`에 고정 문자열로 있어 저장소 이름이 바뀌면 함께 수정해야 합니다).
+- **신규 사용자**: `https://github.com/ph-1dnjs/checkly/releases/latest`에서 OS에 맞는 설치 파일 — Windows는 `.exe`, macOS는 `.dmg`, Linux는 `.AppImage` — 를 직접 받습니다(macOS의 `.zip`, `latest*.yml`, `.blockmap`은 업데이트용 내부 파일이라 무시해도 됩니다). 앱 안에서는 설정 화면의 "다운로드 페이지 열기"가 같은 주소를 외부 브라우저로 엽니다(주소는 `SettingsPage.tsx`에 고정 문자열로 있어 저장소 이름이 바뀌면 함께 수정해야 합니다). release가 draft 상태면 이 페이지에 실제 설치 파일이 보이지 않으니 "draft와 releaseType" 절을 참고합니다.
 - **이미 설치된 사용자**: 다시 다운로드 페이지를 찾아갈 필요가 없습니다. `electron-updater`가 실행 시·주기 확인 시 새 버전을 백그라운드로 내려받고, 설정 화면에 뜨는 "재시작하여 설치" 버튼으로 그 자리에서 갱신합니다.
 
 ## 릴리즈 전 확인

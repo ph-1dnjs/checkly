@@ -56,7 +56,8 @@
       {
         "provider": "github",
         "owner": "ph-1dnjs",
-        "repo": "checkly"
+        "repo": "checkly",
+        "releaseType": "release"
       }
     ]
   },
