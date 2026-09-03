@@ -1,7 +1,26 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
+type UpdateStatus =
+  | { state: 'idle' }
+  | { state: 'checking' }
+  | { state: 'available'; version: string }
+  | { state: 'not-available' }
+  | { state: 'downloading'; percent: number }
+  | { state: 'downloaded'; version: string }
+  | { state: 'error'; message: string }
+
 contextBridge.exposeInMainWorld('electronAPI', {
   getAppVersion: (): Promise<string> => ipcRenderer.invoke('app:version'),
+  checkForUpdates: (): Promise<UpdateStatus> => ipcRenderer.invoke('update:check'),
+  getUpdateStatus: (): Promise<UpdateStatus> => ipcRenderer.invoke('update:get-status'),
+  installUpdate: (): Promise<void> => ipcRenderer.invoke('update:install'),
+  getUpdateSettings: (): Promise<{ autoCheck: boolean }> => ipcRenderer.invoke('update:get-settings'),
+  setUpdateAutoCheck: (autoCheck: boolean): Promise<void> => ipcRenderer.invoke('update:set-auto-check', autoCheck),
+  onUpdateStatus: (callback: (status: UpdateStatus) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, status: UpdateStatus): void => callback(status)
+    ipcRenderer.on('update:status', listener)
+    return () => ipcRenderer.removeListener('update:status', listener)
+  },
   loadScenarioMarkdown: (): Promise<string | null> => ipcRenderer.invoke('scenario:load'),
   saveScenarioMarkdown: (markdown: string): Promise<void> => ipcRenderer.invoke('scenario:save', markdown),
   importScenarioFile: (): Promise<{ markdown: string; filePath: string } | null> => ipcRenderer.invoke('scenario:import-file'),

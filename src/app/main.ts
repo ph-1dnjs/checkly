@@ -1,3 +1,7 @@
+// playwright-core가 사용자 캐시 대신 앱과 함께 번들된 로컬 브라우저를 찾도록,
+// 다른 모듈이 로드되기 전에 설정해야 한다 (require 시점에 한 번만 반영됨).
+process.env.PLAYWRIGHT_BROWSERS_PATH = '0'
+
 import 'dotenv/config'
 
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
@@ -109,6 +113,60 @@ const loadMarkerPositions = async (): Promise<string | null> => {
 const saveMarkerPositions = async (positions: string): Promise<void> => {
   await writeFile(markerPositionStorePath(), positions, 'utf8')
 }
+
+type UpdateSettings = { autoCheck: boolean }
+type UpdateStatus =
+  | { state: 'idle' }
+  | { state: 'checking' }
+  | { state: 'available'; version: string }
+  | { state: 'not-available' }
+  | { state: 'downloading'; percent: number }
+  | { state: 'downloaded'; version: string }
+  | { state: 'error'; message: string }
+
+const UPDATE_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000
+const updateSettingsStorePath = (): string => path.join(app.getPath('userData'), 'update-settings.json')
+const loadUpdateSettings = async (): Promise<UpdateSettings> => {
+  try {
+    const raw = JSON.parse(await readFile(updateSettingsStorePath(), 'utf8')) as Partial<UpdateSettings>
+    return { autoCheck: raw.autoCheck ?? true }
+  } catch { return { autoCheck: true } }
+}
+const saveUpdateSettings = async (settings: UpdateSettings): Promise<void> => {
+  await writeFile(updateSettingsStorePath(), JSON.stringify(settings), 'utf8')
+}
+
+let latestUpdateStatus: UpdateStatus = { state: 'idle' }
+const broadcastUpdateStatus = (status: UpdateStatus): void => {
+  latestUpdateStatus = status
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (!window.webContents.isDestroyed()) window.webContents.send('update:status', status)
+  }
+}
+
+autoUpdater.autoDownload = true
+autoUpdater.autoInstallOnAppQuit = true
+autoUpdater.on('checking-for-update', () => broadcastUpdateStatus({ state: 'checking' }))
+autoUpdater.on('update-available', (info) => broadcastUpdateStatus({ state: 'available', version: info.version }))
+autoUpdater.on('update-not-available', () => broadcastUpdateStatus({ state: 'not-available' }))
+autoUpdater.on('download-progress', (progress) => broadcastUpdateStatus({ state: 'downloading', percent: Math.round(progress.percent) }))
+autoUpdater.on('update-downloaded', (info) => broadcastUpdateStatus({ state: 'downloaded', version: info.version }))
+autoUpdater.on('error', (error) => broadcastUpdateStatus({ state: 'error', message: error.message }))
+
+const checkForUpdates = async (): Promise<UpdateStatus> => {
+  if (!app.isPackaged) return { state: 'not-available' }
+  try {
+    await autoUpdater.checkForUpdates()
+  } catch (error) {
+    broadcastUpdateStatus({ state: 'error', message: error instanceof Error ? error.message : String(error) })
+  }
+  return latestUpdateStatus
+}
+const runPeriodicUpdateCheck = async (): Promise<void> => {
+  const settings = await loadUpdateSettings()
+  if (settings.autoCheck) await checkForUpdates()
+}
+let updateCheckTimer: ReturnType<typeof setInterval> | undefined
 type ScenarioFolderListing = { folderPath: string | null; files: Array<{ name: string; path: string; updatedAt: string }> }
 const scenarioFolderStorePath = (): string => path.join(app.getPath('userData'), 'scenario-folder.json')
 const readScenarioFolderPath = async (): Promise<string | null> => {
@@ -155,6 +213,9 @@ const runVideoFileName = (scenario: QaScenario): string => {
 const runVideoDirectory = (): string => path.join(app.getPath('userData'), 'videos', 'runs')
 const fullRunVideoFileName = (): string => `전체_시나리오_실행${Date.now()}.webm`
 const ffmpegExecutablePath = ffmpegPath?.replace('app.asar', 'app.asar.unpacked')
+// Playwright JS 코드는 asar 안에서도 실행되지만, 번들된 Chromium 실행 파일은 spawn 대상이라
+// asar 밖(app.asar.unpacked)의 실제 경로를 가리켜야 한다. ffmpeg와 동일한 이유다.
+const chromiumExecutablePath = chromium.executablePath().replace('app.asar', 'app.asar.unpacked')
 
 const mergeRunVideos = async (filePaths: string[]): Promise<string | null> => {
   const videos = [...new Set(filePaths)]
@@ -299,7 +360,7 @@ const hasVisibleText = async (page: Page, target: string, timeout = 0): Promise<
 }
 
 const inspectScenario = async (scenario: QaScenario): Promise<Array<{ id: string; connected: boolean }>> => {
-  const browser = await chromium.launch({ headless: true })
+  const browser = await chromium.launch({ headless: true, executablePath: chromiumExecutablePath })
   try {
     const page = await browser.newPage()
     await page.goto(scenario.url, { waitUntil: 'domcontentloaded', timeout: 15_000 })
@@ -335,7 +396,7 @@ const executeScenario = async (scenario: QaScenario, owner: BrowserWindow, optio
     owner.webContents.send('qa:progress', { current: 0, total: scenario.steps.length, step: '브라우저 시작 중' })
     if (scenarioWorker && scenarioWorker.id !== options.workerId) await closeScenarioWorker()
     if (!scenarioWorker) {
-      const workerBrowser = await chromium.launch({ headless: true, timeout: 15_000 })
+      const workerBrowser = await chromium.launch({ headless: true, timeout: 15_000, executablePath: chromiumExecutablePath })
       const videoDirectory = path.join(app.getPath('userData'), 'videos', 'temporary')
       await mkdir(videoDirectory, { recursive: true })
       const workerContext = await workerBrowser.newContext({ viewport: { width: 1280, height: 720 }, recordVideo: { dir: videoDirectory, size: { width: 1280, height: 720 } } })
@@ -536,6 +597,11 @@ const createWindow = (): void => {
 
 app.whenReady().then(() => {
   ipcMain.handle('app:version', () => app.getVersion())
+  ipcMain.handle('update:check', () => checkForUpdates())
+  ipcMain.handle('update:get-status', () => latestUpdateStatus)
+  ipcMain.handle('update:install', () => autoUpdater.quitAndInstall())
+  ipcMain.handle('update:get-settings', () => loadUpdateSettings())
+  ipcMain.handle('update:set-auto-check', (_event, autoCheck: boolean) => saveUpdateSettings({ autoCheck }))
   ipcMain.handle('scenario:load', () => loadScenarioMarkdown())
   ipcMain.handle('scenario:save', (_event, markdown: string) => saveScenarioMarkdown(markdown))
   ipcMain.handle('scenario:import-file', () => importScenarioFile())
@@ -580,7 +646,8 @@ app.whenReady().then(() => {
   createWindow()
 
   if (app.isPackaged) {
-    autoUpdater.checkForUpdatesAndNotify()
+    void runPeriodicUpdateCheck()
+    updateCheckTimer = setInterval(() => { void runPeriodicUpdateCheck() }, UPDATE_CHECK_INTERVAL_MS)
   }
 
   app.on('activate', () => {

@@ -17,7 +17,7 @@ renderer는 Node.js·Playwright·파일 시스템에 직접 접근하지 않습�
 
 | 공개 함수 | IPC | 입력 | 출력·용도 |
 | --- | --- | --- | --- |
-| `getAppVersion` | `app:version` | 없음 | 버전; 현재 UI 미사용 |
+| `getAppVersion` | `app:version` | 없음 | 버전; 설정 화면에 표시 |
 | `loadScenarioMarkdown` | `scenario:load` | 없음 | 원문 또는 null |
 | `saveScenarioMarkdown` | `scenario:save` | Markdown | 기본 원문 저장 |
 | `importScenarioFile` | `scenario:import-file` | 없음 | 원문+경로 또는 null |
@@ -53,6 +53,18 @@ preload에는 `headed?` 옵션 타입이 있지만 main은 사용하지 않으�
 
 수동 입력값은 Page에 fill되며 실행 로그·결과에는 추가하지 않습니다.
 
+### 업데이트
+
+| 공개 함수 | IPC | 입력 | 출력·효과 |
+| --- | --- | --- | --- |
+| `checkForUpdates` | `update:check` | 없음 | `electron-updater`로 즉시 확인, 최신 `UpdateStatus` 반환 |
+| `getUpdateStatus` | `update:get-status` | 없음 | main이 들고 있는 마지막 `UpdateStatus` |
+| `installUpdate` | `update:install` | 없음 | 다운로드 완료 후 `autoUpdater.quitAndInstall()` |
+| `getUpdateSettings` | `update:get-settings` | 없음 | `{ autoCheck }`, userData의 `update-settings.json` |
+| `setUpdateAutoCheck` | `update:set-auto-check` | boolean | 주기 확인 on/off를 파일에 저장 |
+
+패키지되지 않은 개발 빌드(`app.isPackaged === false`)에서 `checkForUpdates`는 항상 `{ state: 'not-available' }`을 반환하고 실제 확인을 시도하지 않습니다.
+
 ## Main → Renderer
 
 | 구독 | 채널 | payload |
@@ -63,6 +75,7 @@ preload에는 `headed?` 옵션 타입이 있지만 main은 사용하지 않으�
 | `onManualResultRequired` | `qa:manual-result-required` | 단계 + 300초 |
 | `onQaPreview` | `qa:preview` | JPEG data URL |
 | `onRunVideo` | `qa:run-video` | path 또는 null |
+| `onUpdateStatus` | `update:status` | `UpdateStatus` (checking/available/not-available/downloading/downloaded/error) |
 
 구독 함수는 React effect cleanup에 사용할 listener 제거 함수를 반환합니다.
 

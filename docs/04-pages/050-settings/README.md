@@ -1,8 +1,8 @@
 # 설정
 
-현재 시나리오의 기본 URL과 실행·알림 관련 표시용 설정을 보여 줍니다.
+현재 시나리오의 기본 URL, 앱 업데이트 확인·설치, 실행·알림 관련 표시용 설정을 보여 줍니다.
 
-> **IMPORTANT**: 현재 설정은 실제 실행 정책, 파일 저장, 알림·Slack 시스템에 연결되지 않습니다.
+> **IMPORTANT**: UPDATE 그룹만 실제 main 프로세스(`electron-updater`, userData 파일)에 연결됩니다. PROJECT·RUN DEFAULTS·NOTIFICATIONS는 여전히 표시용이며 파일 저장이나 알림·Slack 시스템에 연결되지 않습니다.
 
 ## 문서 목록
 

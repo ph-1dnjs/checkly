@@ -27,10 +27,18 @@ import {
   type ScenarioRunResult,
   type Step,
 } from "../shared/model/scenario";
+import type { UpdateStatus } from "../shared/model/update";
 
 declare global {
   interface Window {
     electronAPI: {
+      getAppVersion: () => Promise<string>;
+      checkForUpdates: () => Promise<UpdateStatus>;
+      getUpdateStatus: () => Promise<UpdateStatus>;
+      installUpdate: () => Promise<void>;
+      getUpdateSettings: () => Promise<{ autoCheck: boolean }>;
+      setUpdateAutoCheck: (autoCheck: boolean) => Promise<void>;
+      onUpdateStatus: (callback: (status: UpdateStatus) => void) => () => void;
       loadScenarioMarkdown: () => Promise<string | null>;
       saveScenarioMarkdown: (value: string) => Promise<void>;
       importScenarioFile: () => Promise<{
