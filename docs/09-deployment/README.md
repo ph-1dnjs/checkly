@@ -37,6 +37,21 @@ npm version patch   # package.json 버전을 올리고 태그를 만듭니다
 git push --follow-tags
 ```
 
+`npm version`은 git 워킹 디렉터리가 깨끗해야 실행됩니다. 커밋되지 않은 변경이 있으면 `npm error Git working directory not clean`으로 실패하므로, 먼저 관련 변경을 커밋(또는 stash)한 뒤 실행합니다.
+
+### 릴리즈 1건이 진행되는 순서
+
+1. `npm version patch`(또는 `minor`/`major`)로 `package.json` 버전을 올리고 `vX.Y.Z` 태그를 로컬에 만듭니다.
+2. `git push --follow-tags`로 커밋과 태그를 함께 push합니다.
+3. 태그 push가 `.github/workflows/release.yml`을 트리거해 macOS·Windows·Linux 3개 러너가 동시에 시작됩니다.
+4. 각 러너는 `npm ci`(플랫폼에 맞는 Chromium을 `postinstall`로 함께 설치) → `npm run build` → `electron-builder --publish always`를 실행합니다.
+5. `--publish always`가 해당 태그로 GitHub Release를 만들고 설치 파일과 업데이트 메타데이터(`latest*.yml`)를 업로드합니다. 3개 잡이 모두 끝나야 릴리즈가 완성됩니다.
+6. 진행 상황은 저장소의 GitHub Actions 탭에서 확인합니다.
+
+### 현재 상태
+
+이 저장소는 아직 태그를 한 번도 push한 적이 없어 위 워크플로가 실제로 릴리즈를 만든 이력은 없습니다(문서 작성 시점 기준). 저장소(`ph-1dnjs/checkly`)는 public이라 릴리즈 자산은 로그인 없이 누구나 받을 수 있지만, macOS/Windows 코드 서명 인증서가 아직 secrets에 등록되지 않아 지금 배포하면 서명되지 않은 설치 파일이 나갑니다(macOS "확인되지 않은 개발자" 경고, Windows SmartScreen 경고).
+
 ## 앱 업데이트
 
 `main.ts`는 패키지된 앱이 시작될 때 `electron-updater`로 즉시 한 번 확인하고, 이후 4시간(`UPDATE_CHECK_INTERVAL_MS`)마다 주기적으로 다시 확인합니다. 이 주기 확인은 `userData/update-settings.json`의 `autoCheck` 값이 꺼져 있으면 건너뜁니다. 확인·다운로드·에러 상태는 `update:status` 이벤트로 렌더러에 전달되어 설정 화면에 표시됩니다. 다운로드가 끝나면(`autoDownload`가 기본 켜져 있어 자동으로 받습니다) 설정 화면에 "재시작하여 설치" 버튼이 나타나고, 클릭하면 `autoUpdater.quitAndInstall()`이 실행됩니다. 설정 화면의 "지금 확인"은 `autoCheck` 값과 무관하게 언제든 수동으로 확인을 트리거합니다.
@@ -45,7 +60,8 @@ git push --follow-tags
 
 ## 사용자 다운로드
 
-설정 화면의 "다운로드 페이지 열기"는 `https://github.com/ph-1dnjs/checkly/releases/latest`를 외부 브라우저로 엽니다(주소는 `SettingsPage.tsx`에 고정 문자열로 있습니다 — 저장소 이름이 바뀌면 함께 수정해야 합니다). 신규 사용자는 이 페이지에서 OS에 맞는 설치 파일(dmg/zip, nsis, AppImage)을 직접 받습니다.
+- **신규 사용자**: `https://github.com/ph-1dnjs/checkly/releases/latest`에서 OS에 맞는 설치 파일(dmg/zip, nsis, AppImage)을 직접 받습니다. 앱 안에서는 설정 화면의 "다운로드 페이지 열기"가 같은 주소를 외부 브라우저로 엽니다(주소는 `SettingsPage.tsx`에 고정 문자열로 있어 저장소 이름이 바뀌면 함께 수정해야 합니다).
+- **이미 설치된 사용자**: 다시 다운로드 페이지를 찾아갈 필요가 없습니다. `electron-updater`가 실행 시·주기 확인 시 새 버전을 백그라운드로 내려받고, 설정 화면에 뜨는 "재시작하여 설치" 버튼으로 그 자리에서 갱신합니다.
 
 ## 릴리즈 전 확인
 
