@@ -49,30 +49,11 @@ export type RunSummary = { total: number; passed: number; failed: number };
 export type RunProgress = { current: number; total: number; step: string };
 export type Route = "dashboard" | "editor" | "picker" | "run" | "settings";
 
-export const seedScenario: Scenario = {
-  id: "login-qa",
-  title: "로그인",
-  url: "https://example.com/login",
-  steps: [
-    { id: "1", action: "goto", target: "/login", connected: true },
-    {
-      id: "2",
-      action: "fill",
-      target: "이메일",
-      value: "qa@example.com",
-      connected: true,
-    },
-    {
-      id: "3",
-      action: "manualFill",
-      target: "인증번호",
-      prompt: "인증번호를 입력해 주세요.",
-      required: true,
-      connected: true,
-    },
-    { id: "4", action: "click", target: "로그인 버튼", connected: true },
-    { id: "5", action: "expectText", target: "대시보드", connected: false },
-  ],
+export const emptyScenario: Scenario = {
+  id: "",
+  title: "",
+  url: "",
+  steps: [],
 };
 
 export const actionText = (step: Step): string =>
@@ -141,7 +122,7 @@ export const parseMarkdown = (markdown: string): Scenario[] =>
         lines
           .find((line) => line.startsWith("url:"))
           ?.slice(4)
-          .trim() || seedScenario.url;
+          .trim() || "";
       const tag =
         lines
           .find((line) => line.startsWith("tag:"))

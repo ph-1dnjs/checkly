@@ -16,7 +16,7 @@ import { RunReportDrawer } from "../widgets/RunReportDrawer";
 import {
   markerColor,
   parseMarkdown,
-  seedScenario,
+  emptyScenario,
   type Action,
   type MarkerPositionStore,
   type Route,
@@ -77,7 +77,7 @@ declare global {
   }
 }
 
-const initialMarkdown = `# 시나리오: 로그인\nurl: https://example.com/login\n\nGiven \`/login\` 페이지로 이동한다\nAnd \`이메일\`에 \`qa@example.com\` 입력\nAnd \`인증번호\` 수동 입력 [인증번호를 입력해 주세요.]\nAnd \`로그인\` 버튼 클릭\nThen \`대시보드\` 텍스트가 보인다`;
+const initialMarkdown = "";
 const positionKey = (scenario: Scenario) =>
   `${scenario.title}\n${scenario.url}`;
 const applyPositions = (
@@ -162,7 +162,7 @@ type RunNotification = {
 };
 
 export const App = (): ReactElement => {
-  const [scenario, setScenario] = useState(seedScenario);
+  const [scenario, setScenario] = useState(emptyScenario);
   const [sourceMarkdown, setSourceMarkdown] = useState(initialMarkdown);
   const [savedMarkdown, setSavedMarkdown] = useState(initialMarkdown);
   const [markerScenarioId, setMarkerScenarioId] = useState("");
@@ -182,11 +182,11 @@ export const App = (): ReactElement => {
   const [manualResult, setManualResult] = useState<(Step & { timeoutSeconds?: number }) | null>(null);
   const [manualFailureReason, setManualFailureReason] = useState("");
   const [running, setRunning] = useState(false);
-  const [runningScenario, setRunningScenario] = useState(seedScenario);
+  const [runningScenario, setRunningScenario] = useState(emptyScenario);
   const [runLog, setRunLog] = useState<string[]>([]);
   const [runProgress, setRunProgress] = useState<RunProgress>({
     current: 0,
-    total: seedScenario.steps.length,
+    total: emptyScenario.steps.length,
     step: "",
   });
   const [runStartedAt, setRunStartedAt] = useState<number | null>(null);
@@ -208,6 +208,7 @@ export const App = (): ReactElement => {
   const [liveResults, setLiveResults] = useState<ScenarioRunResult[]>([]);
   const [openRunRecord, setOpenRunRecord] = useState<RunRecord | null>(null);
   const [runQueue, setRunQueue] = useState<Scenario[]>([]);
+  const [runValidationError, setRunValidationError] = useState<string | null>(null);
   const [confirmStop, setConfirmStop] = useState(false);
   const runCancelled = useRef(false);
   const runSequence = useRef(0);
@@ -464,7 +465,11 @@ export const App = (): ReactElement => {
     });
 
   const beginRuns = (scenarios: Scenario[], background = false) => {
-    const toRun = scenarios.length ? scenarios : [scenario];
+    if (!scenarios.length) {
+      setRunValidationError("실행할 시나리오가 없습니다. 편집기에서 시나리오를 작성하거나 시나리오 선택 화면에서 파일을 불러와 주세요.");
+      return;
+    }
+    const toRun = scenarios;
     const includesManualControl = toRun.some((item) =>
       item.steps.some((step) => step.action === "manualControl"),
     );
@@ -979,9 +984,32 @@ export const App = (): ReactElement => {
         running={running}
         confirmStop={confirmStop}
         onNavigate={setRoute}
-        onRun={() => beginRuns(executableScenarios)}
+        onRun={() =>
+          beginRuns(route === "run" ? runQueue : executableScenarios)
+        }
         onCancel={requestStop}
       />
+      {runValidationError && (
+        <div
+          className="modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="run-validation-title"
+        >
+          <div className="manual-modal">
+            <h2 id="run-validation-title">시나리오를 실행할 수 없습니다</h2>
+            <p>{runValidationError}</p>
+            <div className="modal-actions">
+              <button
+                className="button button-primary"
+                onClick={() => setRunValidationError(null)}
+              >
+                확인
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {saveBeforeReturning && (
         <div
           className="modal-backdrop"

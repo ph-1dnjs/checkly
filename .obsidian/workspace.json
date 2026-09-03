@@ -205,18 +205,19 @@
   },
   "active": "107b9e7d30fb6244",
   "lastOpenFiles": [
+    "test-results",
+    "test-results/app-shows-a-validation-modal-when-running-without-a-scenario-chromium/error-context.md",
+    "test-results/app-shows-a-validation-modal-when-running-without-a-scenario-chromium",
     "test-results/app-edits-a-marker-value-a-b1901-ker-until-it-is-reconnected-chromium/error-context.md",
     "test-results/app-edits-a-marker-value-a-b1901-ker-until-it-is-reconnected-chromium",
     "test-results/app-restores-markers-and-r-fee6d--without-exposing-the-value-chromium/error-context.md",
     "test-results/app-restores-markers-and-r-fee6d--without-exposing-the-value-chromium",
-    "test-results",
+    "dist/assets/index-CsYtvX7X.js",
     "dist/assets/index--_1BVh4e.js",
     "dist/assets/index-By3KRbFM.css",
     "dist/assets/index-D8zNVVMW.js",
     "dist/assets/index-CJPjUh4W.js",
     "dist/assets/index-AGxPNZur.css",
-    "dist/assets/index-Ct65G6hr.js",
-    "dist/assets/index-C2xY0TY5.css",
     "docs/09-deployment/README.md",
     "docs/08-development-guide/README.md",
     "docs/07-api/README.md",
@@ -238,8 +239,6 @@
     "docs/04-pages/030-scenario-picker/03-api.md",
     "docs/04-pages/030-scenario-picker/02-userflow.md",
     "docs/04-pages/030-scenario-picker/01-overview.md",
-    "docs/04-pages/020-scenario-editor/README.md",
-    "docs/04-pages/020-scenario-editor/04-edge-cases.md",
-    "docs/04-pages/020-scenario-editor/03-api.md"
+    "docs/04-pages/020-scenario-editor/README.md"
   ]
 }
