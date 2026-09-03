@@ -1,6 +1,6 @@
 {
   "name": "checkly",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Checkly desktop browser QA application built with Electron, React, Playwright, and FSD.",
   "main": "dist-electron/main.js",
@@ -36,14 +36,21 @@
       "node_modules/playwright-core/.local-browsers/**"
     ],
     "mac": {
-      "target": ["dmg", "zip"],
+      "target": [
+        "dmg",
+        "zip"
+      ],
       "hardenedRuntime": true
     },
     "win": {
-      "target": ["nsis"]
+      "target": [
+        "nsis"
+      ]
     },
     "linux": {
-      "target": ["AppImage"]
+      "target": [
+        "AppImage"
+      ]
     },
     "publish": [
       {
