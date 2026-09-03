@@ -1,4 +1,5 @@
 import {
+  actionLabel,
   actionText,
   type RunProgress,
   type Scenario,
@@ -7,6 +8,7 @@ import {
 } from "../../shared/model/scenario";
 import {
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type ClipboardEvent,
@@ -123,6 +125,8 @@ export const RunPage = ({
   const [scaleDraft, setScaleDraft] = useState<string | null>(null);
   const manualImageRef = useRef<HTMLImageElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
+  const consoleBodyRef = useRef<HTMLDivElement | null>(null);
+  const isConsoleAtBottomRef = useRef(true);
   const onSetViewportRef = useRef(onSetViewport);
   onSetViewportRef.current = onSetViewport;
 
@@ -297,7 +301,6 @@ export const RunPage = ({
               : failed
                 ? "#FDF6F5"
                 : "transparent",
-        opFg: failed ? "#9A2A20" : "#7A838D",
         targetFg: hasResult || isRunning ? "#14181C" : "#8A939C",
         pulsing: isRunning,
         cursor: hasResult ? "pointer" : "default",
@@ -327,6 +330,25 @@ export const RunPage = ({
 
   const filteredLog =
     logFilter === "ALL" ? runLog : runLog.filter((line) => line.includes("실패"));
+
+  useLayoutEffect(() => {
+    const consoleBody = consoleBodyRef.current;
+    if (!consoleBody) return;
+    if (
+      isConsoleAtBottomRef.current ||
+      consoleBody.scrollHeight <= consoleBody.clientHeight
+    ) {
+      consoleBody.scrollTop = consoleBody.scrollHeight;
+      isConsoleAtBottomRef.current = true;
+    }
+  }, [runLog, logFilter]);
+
+  const handleConsoleScroll = () => {
+    const consoleBody = consoleBodyRef.current;
+    if (!consoleBody) return;
+    isConsoleAtBottomRef.current =
+      consoleBody.scrollHeight - consoleBody.scrollTop - consoleBody.clientHeight <= 1;
+  };
 
   return (
     <div className="run">
@@ -504,8 +526,8 @@ export const RunPage = ({
                       style={{ background: row.dot }}
                     />
                     <span className="run-step-n">{row.index + 1}</span>
-                    <span className="run-step-op" style={{ color: row.opFg }}>
-                      {row.step.action.toUpperCase().replace("EXPECTTEXT", "EXPECT")}
+                    <span className="run-step-op action-tag" data-action={row.step.action}>
+                      {actionLabel[row.step.action]}
                     </span>
                     <span className="run-step-target" style={{ color: row.targetFg }}>
                       {actionText(row.step)}
@@ -767,7 +789,11 @@ export const RunPage = ({
                 </button>
               )}
             </div>
-            <div className="run-console-body">
+            <div
+              ref={consoleBodyRef}
+              className="run-console-body"
+              onScroll={handleConsoleScroll}
+            >
               {filteredLog.length ? (
                 filteredLog.map((log, index) => (
                   <div className="run-log-line" key={index}>

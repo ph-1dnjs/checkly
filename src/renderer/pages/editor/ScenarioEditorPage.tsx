@@ -17,18 +17,6 @@ const DEVICES: Array<{ id: Device; label: string; w: string; h: string; frame: s
   { id: "desktop", label: "데스크톱", w: "16px", h: "11px", frame: "100%" },
 ];
 
-const opLabel: Record<Action, string> = {
-  goto: "GOTO",
-  fill: "FILL",
-  fileUpload: "UPLOAD",
-  manualFill: "MANUAL",
-  manualControl: "CONTROL",
-  manualResult: "RESULT",
-  click: "CLICK",
-  select: "SELECT",
-  expectText: "EXPECT",
-};
-
 type Props = {
   mode: "text" | "marker";
   scenario: Scenario;
@@ -277,7 +265,7 @@ export const ScenarioEditorPage = ({
                             <ol>
                               {preview.steps.map((step) => (
                                 <li key={step.id}>
-                                  <b>{opLabel[step.action]}</b>
+                                  <b className="action-tag" data-action={step.action}>{actionLabel[step.action]}</b>
                                   <span>{actionText(step)}</span>
                                   <i
                                     className={step.connected ? "linked" : ""}
@@ -443,7 +431,7 @@ export const ScenarioEditorPage = ({
                   >
                     <b>{step.id}</b>
                     <span className="extract-marker-meta">
-                      <span className="extract-marker-op">{opLabel[step.action]}</span>
+                      <span className="extract-marker-op action-tag" data-action={step.action}>{actionLabel[step.action]}</span>
                       <span className="extract-marker-target">{step.target}</span>
                     </span>
                   </button>

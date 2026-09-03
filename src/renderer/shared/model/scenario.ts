@@ -1,13 +1,6 @@
-export type Action =
-  | "goto"
-  | "fill"
-  | "fileUpload"
-  | "manualFill"
-  | "manualControl"
-  | "manualResult"
-  | "click"
-  | "select"
-  | "expectText";
+import { actionLabel, type Action } from "./action";
+
+export { actionLabel, type Action } from "./action";
 
 export type Step = {
   id: string;
@@ -80,18 +73,6 @@ export const seedScenario: Scenario = {
     { id: "4", action: "click", target: "로그인 버튼", connected: true },
     { id: "5", action: "expectText", target: "대시보드", connected: false },
   ],
-};
-
-export const actionLabel: Record<Action, string> = {
-  goto: "페이지 이동",
-  fill: "일반 입력 (자동)",
-  fileUpload: "파일 업로드",
-  manualFill: "수동 입력",
-  manualControl: "브라우저 직접 제어",
-  manualResult: "수동 결과 확인",
-  click: "클릭",
-  select: "선택",
-  expectText: "결과 확인",
 };
 
 export const actionText = (step: Step): string =>

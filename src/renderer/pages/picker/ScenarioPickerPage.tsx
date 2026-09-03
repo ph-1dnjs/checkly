@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { actionText, parseMarkdown, type Scenario } from "../../shared/model/scenario";
+import { actionLabel, actionText, parseMarkdown, type Scenario } from "../../shared/model/scenario";
 
 type FileEntry = { name: string; path: string; updatedAt: string };
 type Picked = { fileName: string; filePath: string; scenario: Scenario };
@@ -277,7 +277,7 @@ export const ScenarioPickerPage = ({ onOpenEditor, onRun }: Props) => {
                         {scenario.steps.map((step, index) => (
                           <li key={step.id}>
                             <b>{String(index + 1).padStart(2, "0")}</b>
-                            <span className="picker-op">{step.action.toUpperCase()}</span>
+                            <span className="picker-op action-tag" data-action={step.action}>{actionLabel[step.action]}</span>
                             <span className="picker-target">{actionText(step)}</span>
                             <em className={step.connected ? "" : "unlinked"}>
                               {step.connected ? "linked" : "unlinked"}

@@ -14,6 +14,14 @@ body { min-width:320px; margin:0; background:#fff; }
 button,input,select,textarea { font:inherit; }
 button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible { outline:2px solid #17607f; outline-offset:2px; }
 .msi { font-family:"Material Symbols Rounded"; font-weight:normal; font-style:normal; line-height:1; -webkit-font-smoothing:antialiased; }
+.action-tag { display:inline-flex; width:86px; align-items:center; justify-content:center; min-height:22px; padding:3px 10px; border-radius:999px; background:#6a7a8b; color:#fff; font-family:"Helvetica Neue",Helvetica,"Apple SD Gothic Neo","Malgun Gothic",sans-serif; font-size:11px; font-weight:500; letter-spacing:-.02em; line-height:1; white-space:nowrap; }
+.action-tag[data-action="goto"] { background:#5f7990; }
+.action-tag[data-action="fill"],.action-tag[data-action="select"] { background:#638477; }
+.action-tag[data-action="fileUpload"] { background:#74856c; }
+.action-tag[data-action="manualFill"],.action-tag[data-action="manualControl"],.action-tag[data-action="manualResult"] { background:#8a7467; }
+.action-tag[data-action="click"] { background:#69758a; }
+.action-tag[data-action="expectText"] { background:#7c7288; }
+.preview-scenario li .action-tag { color:#fff; font-size:11px; font-weight:500; letter-spacing:-.02em; }
 .workspace { min-height:100vh; background:#fff; color:#14181c; }
 .content { width:min(1520px,100%); margin:0 auto; }
 @media(max-width:850px) { .content { padding:0; } } @media(max-width:600px) { .content { padding:0; } }
