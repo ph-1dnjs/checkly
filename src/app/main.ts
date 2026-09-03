@@ -13,7 +13,7 @@ import { chromium, type Browser, type BrowserContext, type Locator, type Page, t
 const executeFile = promisify(execFile)
 
 type QaStep = { id: string; action: 'goto' | 'fill' | 'fileUpload' | 'manualFill' | 'manualControl' | 'manualResult' | 'click' | 'select' | 'expectText'; target: string; value?: string; required?: boolean; prompt?: string; condition?: string; waitSeconds?: number; occurrence?: number }
-type QaScenario = { title: string; url: string; steps: QaStep[] }
+type QaScenario = { id: string; title: string; url: string; steps: QaStep[] }
 type QaRunOptions = { preview?: boolean; workerId?: string }
 type ManualResult = { status: 'passed' | 'failed'; reason?: string }
 type ManualControlResult = { status: 'continue' | 'failed'; reason?: string }
@@ -328,6 +328,7 @@ const executeScenario = async (scenario: QaScenario, owner: BrowserWindow, optio
   let page: Page | undefined
   let video: Video | null = null
   let previewInterval: ReturnType<typeof setInterval> | undefined
+  let activeStep: QaStep | undefined
   const run = { cancelled: false } as NonNullable<typeof activeRun>
   activeRun = run
   try {
@@ -355,6 +356,18 @@ const executeScenario = async (scenario: QaScenario, owner: BrowserWindow, optio
     page.setDefaultNavigationTimeout(15_000)
     owner.webContents.send('qa:progress', { current: 0, total: scenario.steps.length, step: '기본 URL 접속 중' })
     await page.goto(scenario.url, { waitUntil: 'domcontentloaded' })
+    const captureStep = async (step: QaStep): Promise<void> => {
+      const previewPage = run.page ?? page
+      if (!previewPage || previewPage.isClosed() || owner.webContents.isDestroyed()) return
+      try {
+        const screenshot = await previewPage.screenshot({ type: 'jpeg', quality: 80 })
+        owner.webContents.send('qa:step-preview', {
+          scenarioId: scenario.id,
+          stepId: step.id,
+          image: `data:image/jpeg;base64,${screenshot.toString('base64')}`
+        })
+      } catch { /* 화면 전환 또는 종료 중인 캡처는 무시한다. */ }
+    }
     if (options.preview || scenario.steps.some((step) => step.action === 'manualControl')) {
       let capturing = false
       const sendPreview = async (): Promise<void> => {
@@ -371,11 +384,13 @@ const executeScenario = async (scenario: QaScenario, owner: BrowserWindow, optio
       previewInterval = setInterval(() => { void sendPreview() }, 200)
     }
     for (const [index, step] of scenario.steps.entries()) {
+      activeStep = step
       if (run.cancelled) { const finalLog = [...log, '실행이 취소되었습니다.']; return { status: 'cancelled', log: finalLog, reportPath: await writeRunReport(scenario, 'cancelled', finalLog) } }
       // 조건부 단계는 직전 클릭으로 표시되는 모달·토스트의 렌더링 시간을 짧게 허용한다.
       // 필요하면 시나리오의 [대기 N초]로 이 시간을 늘릴 수 있다.
       if (step.condition && !(await hasVisibleText(page, step.condition, (step.waitSeconds ?? 1) * 1000))) {
         log.push(`${readableStep(step)} — 조건 '${step.condition}' 미충족으로 건너뜀`)
+        await captureStep(step)
         owner.webContents.send('qa:progress', { current: index + 1, total: scenario.steps.length, step: readableStep(step) })
         continue
       }
@@ -386,6 +401,7 @@ const executeScenario = async (scenario: QaScenario, owner: BrowserWindow, optio
         await inputFor(page, step.target).setInputFiles(step.value)
       }
       if (step.action === 'manualFill') {
+        await captureStep(step)
         owner.webContents.send('qa:manual-required', { id: step.id, target: step.target, prompt: step.prompt, required: step.required })
         const value = await new Promise<string | null>((resolve) => { run.resolveManual = resolve })
         run.resolveManual = undefined
@@ -394,6 +410,7 @@ const executeScenario = async (scenario: QaScenario, owner: BrowserWindow, optio
         log.push(`${readableStep(step)} — 완료`)
       }
       if (step.action === 'manualControl') {
+        await captureStep(step)
         owner.webContents.send('qa:manual-control-required', { id: step.id, target: step.target, prompt: step.prompt, timeoutSeconds: 300 })
         const result = await new Promise<ManualControlResult>((resolve) => {
           const timeout = setTimeout(() => {
@@ -415,6 +432,7 @@ const executeScenario = async (scenario: QaScenario, owner: BrowserWindow, optio
         log.push(`${readableStep(step)} — 제어 완료`)
       }
       if (step.action === 'manualResult') {
+        await captureStep(step)
         owner.webContents.send('qa:manual-result-required', { id: step.id, target: step.target, prompt: step.prompt, timeoutSeconds: 300 })
         const result = await new Promise<ManualResult>((resolve) => {
           const timeout = setTimeout(() => {
@@ -456,10 +474,21 @@ const executeScenario = async (scenario: QaScenario, owner: BrowserWindow, optio
       }
       if (step.action === 'expectText') await waitForVisibleText(page, resultTargetFor(step.target), (step.waitSeconds ?? 10) * 1000)
       if (step.action !== 'manualFill' && step.action !== 'manualControl' && step.action !== 'manualResult') log.push(`${readableStep(step)} — 완료`)
+      await captureStep(step)
       owner.webContents.send('qa:progress', { current: index + 1, total: scenario.steps.length, step: readableStep(step) })
     }
     return { status: 'passed', log, reportPath: await writeRunReport(scenario, 'passed', log) }
   } catch (error) {
+    if (activeStep && page && !page.isClosed() && !owner.webContents.isDestroyed()) {
+      try {
+        const screenshot = await page.screenshot({ type: 'jpeg', quality: 80 })
+        owner.webContents.send('qa:step-preview', {
+          scenarioId: scenario.id,
+          stepId: activeStep.id,
+          image: `data:image/jpeg;base64,${screenshot.toString('base64')}`
+        })
+      } catch { /* 실패 화면 캡처 자체가 실패한 경우는 무시한다. */ }
+    }
     const finalLog = [...log, `실행 실패: ${error instanceof Error ? error.message : String(error)}`]
     return { status: 'failed', log: finalLog, reportPath: await writeRunReport(scenario, 'failed', finalLog) }
   } finally {

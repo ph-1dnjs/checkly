@@ -12,6 +12,7 @@ test('shows a validation modal when running without a scenario', async ({ page }
         onManualResultRequired: () => () => undefined,
         onQaProgress: () => () => undefined,
         onQaPreview: () => () => undefined,
+        onQaStepPreview: () => () => undefined,
         onRunVideo: () => () => undefined,
       },
     })

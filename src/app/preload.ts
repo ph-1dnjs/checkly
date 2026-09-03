@@ -49,6 +49,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('qa:preview', listener)
     return () => ipcRenderer.removeListener('qa:preview', listener)
   },
+  onQaStepPreview: (callback: (preview: unknown) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, preview: unknown): void => callback(preview)
+    ipcRenderer.on('qa:step-preview', listener)
+    return () => ipcRenderer.removeListener('qa:step-preview', listener)
+  },
   onRunVideo: (callback: (filePath: unknown) => void): (() => void) => {
     const listener = (_event: Electron.IpcRendererEvent, filePath: unknown): void => callback(filePath)
     ipcRenderer.on('qa:run-video', listener)

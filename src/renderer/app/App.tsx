@@ -72,6 +72,7 @@ declare global {
       onManualResultRequired: (callback: (value: Step & { timeoutSeconds?: number }) => void) => () => void;
       onQaProgress: (callback: (value: RunProgress) => void) => () => void;
       onQaPreview: (callback: (value: string) => void) => () => void;
+      onQaStepPreview: (callback: (value: { scenarioId: string; stepId: string; image: string }) => void) => () => void;
       onRunVideo: (callback: (value: string | null) => void) => () => void;
     };
   }
@@ -193,6 +194,7 @@ export const App = (): ReactElement => {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [livePreview, setLivePreview] = useState(true);
   const [previewImage, setPreviewImage] = useState("");
+  const [stepPreviews, setStepPreviews] = useState<Record<string, string>>({});
   const [runVideos, setRunVideos] = useState<Array<{ scenario: Scenario; path: string }>>([]);
   const [fullRunVideoPath, setFullRunVideoPath] = useState<string | null>(null);
   const [toast, setToast] = useState("");
@@ -323,6 +325,14 @@ export const App = (): ReactElement => {
   );
 
   useEffect(() => window.electronAPI.onQaPreview(setPreviewImage), []);
+
+  useEffect(
+    () =>
+      window.electronAPI.onQaStepPreview(({ scenarioId, stepId, image }) => {
+        setStepPreviews((previews) => ({ ...previews, [`${scenarioId}:${stepId}`]: image }));
+      }),
+    [],
+  );
 
   useEffect(
     () =>
@@ -480,6 +490,7 @@ export const App = (): ReactElement => {
     setRunStartedAt(Date.now());
     setElapsedSeconds(0);
     setPreviewImage("");
+    setStepPreviews({});
     setRunVideos([]);
     setFullRunVideoPath(null);
     runVideoPaths.current = [];
@@ -826,6 +837,7 @@ export const App = (): ReactElement => {
             runStartedAt={runStartedAt}
             livePreview={livePreview}
             previewImage={previewImage}
+            stepPreviews={stepPreviews}
             onManualBrowserEvent={(event) => void window.electronAPI.controlManualBrowser(event)}
             onSetViewport={(width, height) => void window.electronAPI.setQaViewport({ width, height })}
             onCompleteManualControl={() => {

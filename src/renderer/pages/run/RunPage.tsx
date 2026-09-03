@@ -58,6 +58,7 @@ type Props = {
   runStartedAt: number | null;
   livePreview: boolean;
   previewImage: string;
+  stepPreviews: Record<string, string>;
   onManualBrowserEvent: (event: {
     type: "click" | "wheel" | "key" | "text";
     x?: number;
@@ -97,6 +98,7 @@ export const RunPage = ({
   runProgress,
   livePreview,
   previewImage,
+  stepPreviews,
   onManualBrowserEvent,
   onCompleteManualControl,
   onFailManualControl,
@@ -223,6 +225,12 @@ export const RunPage = ({
   const canReplay = !running;
 
   const directOn = Boolean(manualControl);
+  const selectedPreview = selStep ? stepPreviews[selStep] : undefined;
+  const viewportImage = directOn ? previewImage : selectedPreview ?? previewImage;
+  const selectedScenario = selStep
+    ? scenarios.find((item) => item.id === selStep.split(":", 1)[0])
+    : undefined;
+  const viewportScenario = selectedScenario ?? scenario;
   const effectiveFit: FitMode = fitMode;
   const vpPreset = VIEWPORT_PRESETS.find((v) => v.key === vpKey) ?? VIEWPORT_PRESETS[0];
   const vpNow = directOn
@@ -313,8 +321,8 @@ export const RunPage = ({
                 : "transparent",
         targetFg: hasResult || isRunning ? "#14181C" : "#8A939C",
         pulsing: isRunning,
-        cursor: hasResult ? "pointer" : "default",
-        onClick: hasResult ? () => setSelStep(stepKey) : undefined,
+        cursor: stepPreviews[stepKey] ? "pointer" : "default",
+        onClick: stepPreviews[stepKey] ? () => setSelStep(stepKey) : undefined,
       };
     });
     const groupState = finished
@@ -673,7 +681,11 @@ export const RunPage = ({
               <div
                 ref={stageRef}
                 className="run-stage"
-                style={{ overflow: needScroll ? "auto" : "hidden" }}
+                style={{
+                  overflow: needScroll ? "auto" : "hidden",
+                  alignItems: needScroll ? "flex-start" : "center",
+                  justifyContent: needScroll ? "flex-start" : "center",
+                }}
               >
                 <div
                   className="run-frame"
@@ -685,16 +697,16 @@ export const RunPage = ({
                       <i />
                       <i />
                     </span>
-                    <div className="run-frame-url">{scenario.url}</div>
+                    <div className="run-frame-url">{viewportScenario.url}</div>
                     <div className="run-frame-size">{vpNow.label}</div>
                   </div>
                   <div className="run-frame-body">
-                    {previewImage ? (
+                    {viewportImage ? (
                       <img
                         ref={manualImageRef}
                         className={manualControl ? "manual-browser-screen" : ""}
-                        src={previewImage}
-                        style={{ width: pageW, height: pageH }}
+                        src={viewportImage}
+                        style={{ width: pageW, height: pageH, objectFit: "contain" }}
                         onLoad={(event) =>
                           setImgSize({
                             w: event.currentTarget.naturalWidth || 1280,
@@ -702,7 +714,7 @@ export const RunPage = ({
                           })
                         }
                         alt={
-                          manualControl ? "직접 조작할 브라우저 화면" : "현재 테스트 실행 화면"
+                          manualControl ? "직접 조작할 브라우저 화면" : selStep ? "선택한 단계의 실행 화면" : "현재 테스트 실행 화면"
                         }
                         tabIndex={manualControl ? 0 : -1}
                         onClick={
@@ -740,14 +752,14 @@ export const RunPage = ({
                         }
                       />
                     ) : (
-                      <div className="run-viewport-caption">NO ACTIVE SESSION</div>
+                      <div className="run-viewport-caption">표시할 단계 화면이 아직 없습니다.</div>
                     )}
                   </div>
                 </div>
               </div>
 
               <div className="run-viewport-status">
-                <span>{vpNow.label}</span>
+                <span>{selStep ? "선택 단계" : vpNow.label}</span>
                 <span className="run-viewport-status-crop" style={{ color: cropFg }}>
                   {cropLabel}
                 </span>
