@@ -28,7 +28,9 @@ npm run package
 
 ## CI/CD (`.github/workflows/release.yml`)
 
-`v*.*.*` 형태의 태그를 push하면 macOS/Windows/Linux 3개 러너에서 각각 `npm ci → npm run build → electron-builder --publish always`를 실행해 GitHub Releases에 자동 업로드합니다. `GH_TOKEN`은 워크플로 기본 `secrets.GITHUB_TOKEN`을 사용하며 별도 PAT는 필요 없습니다(같은 저장소에 release를 쓰는 `contents: write` 권한만 있으면 됩니다). 코드 서명용 `CSC_LINK`/`CSC_KEY_PASSWORD`/`APPLE_ID`/`APPLE_APP_SPECIFIC_PASSWORD`/`APPLE_TEAM_ID`/`WIN_CSC_LINK`/`WIN_CSC_KEY_PASSWORD`는 워크플로에 env로 연결되어 있으나 값을 설정하지 않으면 electron-builder가 서명을 건너뜁니다. `workflow_dispatch`로 수동 실행도 가능합니다.
+`v*.*.*` 형태의 태그를 push하면 macOS/Windows/Linux 3개 러너에서 각각 `npm ci → npm run build → (선택적 서명 secret 설정) → electron-builder --publish always`를 실행해 GitHub Releases에 자동 업로드합니다. `GH_TOKEN`은 워크플로 기본 `secrets.GITHUB_TOKEN`을 사용하며 별도 PAT는 필요 없습니다(같은 저장소에 release를 쓰는 `contents: write` 권한만 있으면 됩니다).
+
+코드 서명용 `CSC_LINK`/`CSC_KEY_PASSWORD`/`APPLE_ID`/`APPLE_APP_SPECIFIC_PASSWORD`/`APPLE_TEAM_ID`/`WIN_CSC_LINK`/`WIN_CSC_KEY_PASSWORD`는 "Configure optional code signing secrets" 스텝이 해당 repo secret이 실제로 값을 가질 때만 `$GITHUB_ENV`에 내보냅니다. GitHub Actions는 등록되지 않은 secret을 참조하면 빈 문자열을 채우는데(변수 자체가 없는 게 아님), electron-builder의 macOS 서명 로직은 `CSC_LINK=''`를 실제 파일 경로로 오인해 `⨯ ... not a file` 에러로 실패합니다 — 이 스텝은 그 문제를 막기 위한 것이므로 `Package and publish` 스텝의 `env`에 서명 관련 값을 직접 나열하지 않습니다. `workflow_dispatch`로 수동 실행도 가능합니다.
 
 새 버전 릴리즈 절차:
 
