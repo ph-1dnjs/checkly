@@ -43,7 +43,6 @@ type Props = {
   scenarios: Scenario[];
   scenarioResults: ScenarioRunResult[];
   running: boolean;
-  confirmStop: boolean;
   manual: Step | null;
   manualValue: string;
   manualValueVisible: boolean;
@@ -85,7 +84,6 @@ export const RunPage = ({
   scenarios,
   scenarioResults,
   running,
-  confirmStop,
   manual,
   manualValue,
   manualValueVisible,
@@ -126,6 +124,7 @@ export const RunPage = ({
   const manualImageRef = useRef<HTMLImageElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const consoleBodyRef = useRef<HTMLDivElement | null>(null);
+  const settingsMenuRef = useRef<HTMLDivElement | null>(null);
   const isConsoleAtBottomRef = useRef(true);
   const onSetViewportRef = useRef(onSetViewport);
   onSetViewportRef.current = onSetViewport;
@@ -140,6 +139,17 @@ export const RunPage = ({
     setStageSize({ w: el.clientWidth, h: el.clientHeight });
     return () => observer.disconnect();
   }, [livePreview, zen]);
+
+  useEffect(() => {
+    if (!settingsOpen) return;
+    const closeOnOutsidePointerDown = (event: PointerEvent) => {
+      if (!settingsMenuRef.current?.contains(event.target as Node)) {
+        setSettingsOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", closeOnOutsidePointerDown);
+    return () => document.removeEventListener("pointerdown", closeOnOutsidePointerDown);
+  }, [settingsOpen]);
 
   useEffect(() => {
     if (!running || manualControl) return;
@@ -370,11 +380,11 @@ export const RunPage = ({
           </div>
           {canStop && (
             <button
-              className={`run-stop-btn${confirmStop ? " confirm" : ""}`}
+              className="run-stop-btn"
               onClick={onCancel}
             >
-              <span className="msi">{confirmStop ? "stop_circle" : "stop"}</span>
-              {confirmStop ? "정말 중단합니다" : "실행 중단"}
+              <span className="msi">stop</span>
+              실행 중단
             </button>
           )}
           {canReplay && (
@@ -382,7 +392,7 @@ export const RunPage = ({
               시나리오 다시 선택
             </button>
           )}
-          <div className="run-settings-menu">
+          <div className="run-settings-menu" ref={settingsMenuRef}>
             <button
               className="run-settings-btn"
               onClick={() => setSettingsOpen((open) => !open)}

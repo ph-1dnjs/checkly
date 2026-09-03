@@ -209,13 +209,11 @@ export const App = (): ReactElement => {
   const [openRunRecord, setOpenRunRecord] = useState<RunRecord | null>(null);
   const [runQueue, setRunQueue] = useState<Scenario[]>([]);
   const [runValidationError, setRunValidationError] = useState<string | null>(null);
-  const [confirmStop, setConfirmStop] = useState(false);
   const runCancelled = useRef(false);
   const runSequence = useRef(0);
   const runVideoPaths = useRef<string[]>([]);
   const runVideoScenario = useRef<Scenario | null>(null);
   const runProgressRef = useRef<RunProgress>(runProgress);
-  const confirmStopTimer = useRef<number | null>(null);
 
   const updateSteps = (steps: Step[]) =>
     setScenario((current) => ({
@@ -476,8 +474,6 @@ export const App = (): ReactElement => {
     const sequence = ++runSequence.current;
     if (!background) setRoute("run");
     setRunning(true);
-    setConfirmStop(false);
-    if (confirmStopTimer.current !== null) window.clearTimeout(confirmStopTimer.current);
     runCancelled.current = false;
     setRunQueue(toRun);
     setRunningScenario(toRun[0]);
@@ -618,8 +614,6 @@ export const App = (): ReactElement => {
   };
 
   const cancelRuns = () => {
-    if (confirmStopTimer.current !== null) window.clearTimeout(confirmStopTimer.current);
-    setConfirmStop(false);
     runCancelled.current = true;
     runSequence.current += 1;
     void window.electronAPI.cancelQa();
@@ -632,14 +626,6 @@ export const App = (): ReactElement => {
         },
     );
   };
-
-  const askStop = () => {
-    if (confirmStopTimer.current !== null) window.clearTimeout(confirmStopTimer.current);
-    setConfirmStop(true);
-    confirmStopTimer.current = window.setTimeout(() => setConfirmStop(false), 3500);
-  };
-
-  const requestStop = () => (confirmStop ? cancelRuns() : askStop());
 
   const popoutViewport = (viewportLabel: string) => {
     setRunLog((logs) => [...logs, `[VIEW] browser window detached · ${viewportLabel} @100%`]);
@@ -851,9 +837,8 @@ export const App = (): ReactElement => {
               setManualControl(null);
             }}
             onGoToPicker={() => setRoute("picker")}
-            onCancel={requestStop}
+            onCancel={cancelRuns}
             onPopout={popoutViewport}
-            confirmStop={confirmStop}
             onLivePreviewChange={setLivePreview}
             runVideos={runVideos}
             fullRunVideoAvailable={Boolean(fullRunVideoPath)}
@@ -982,12 +967,11 @@ export const App = (): ReactElement => {
       <BottomNavigation
         route={route}
         running={running}
-        confirmStop={confirmStop}
         onNavigate={setRoute}
         onRun={() =>
           beginRuns(route === "run" ? runQueue : executableScenarios)
         }
-        onCancel={requestStop}
+        onCancel={cancelRuns}
       />
       {runValidationError && (
         <div
