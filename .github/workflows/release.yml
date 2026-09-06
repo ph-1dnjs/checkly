@@ -28,16 +28,24 @@ jobs:
 
       - run: npm run build
 
+      # electron-builder's own temp-keychain creation (triggered by CSC_LINK) hits a
+      # `SecKeychainUnlock` failure on current macOS runner images. Importing the
+      # certificate into the keychain ourselves via this action avoids that path —
+      # electron-builder then auto-discovers the identity from the default keychain,
+      # so CSC_LINK/CSC_KEY_PASSWORD must NOT be exported to its env below.
+      - name: Import Apple code-signing certificate
+        if: runner.os == 'macOS' && secrets.CSC_LINK != ''
+        uses: apple-actions/import-codesign-certs@v3
+        with:
+          p12-file-base64: ${{ secrets.CSC_LINK }}
+          p12-password: ${{ secrets.CSC_KEY_PASSWORD }}
+
       # GitHub Actions fills an unset secret with an empty string rather than omitting
       # the env var. electron-builder's macOS signer treats CSC_LINK='' as a real path
       # and fails with "not a file", so these are only exported when actually configured.
       - name: Configure optional code signing secrets
         shell: bash
         run: |
-          if [ -n "${{ secrets.CSC_LINK }}" ]; then
-            echo "CSC_LINK=${{ secrets.CSC_LINK }}" >> "$GITHUB_ENV"
-            echo "CSC_KEY_PASSWORD=${{ secrets.CSC_KEY_PASSWORD }}" >> "$GITHUB_ENV"
-          fi
           if [ -n "${{ secrets.APPLE_ID }}" ]; then
             echo "APPLE_ID=${{ secrets.APPLE_ID }}" >> "$GITHUB_ENV"
             echo "APPLE_APP_SPECIFIC_PASSWORD=${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}" >> "$GITHUB_ENV"
