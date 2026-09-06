@@ -28,13 +28,22 @@ jobs:
 
       - run: npm run build
 
+      # `secrets` isn't a recognized named-value inside step `if:` conditions, so the
+      # presence check has to go through an intermediate env var set from a run step.
+      - name: Detect optional Apple signing secret
+        shell: bash
+        run: |
+          if [ -n "${{ secrets.CSC_LINK }}" ]; then
+            echo "HAS_CSC_LINK=true" >> "$GITHUB_ENV"
+          fi
+
       # electron-builder's own temp-keychain creation (triggered by CSC_LINK) hits a
       # `SecKeychainUnlock` failure on current macOS runner images. Importing the
       # certificate into the keychain ourselves via this action avoids that path —
       # electron-builder then auto-discovers the identity from the default keychain,
       # so CSC_LINK/CSC_KEY_PASSWORD must NOT be exported to its env below.
       - name: Import Apple code-signing certificate
-        if: runner.os == 'macOS' && secrets.CSC_LINK != ''
+        if: runner.os == 'macOS' && env.HAS_CSC_LINK == 'true'
         uses: apple-actions/import-codesign-certs@v3
         with:
           p12-file-base64: ${{ secrets.CSC_LINK }}
