@@ -38,15 +38,17 @@
 
 | 위치 | 대상 |
 | --- | --- |
-| `src/app/main.ts` | BrowserWindow, IPC, 파일·Playwright·ffmpeg 서비스 |
+| `src/app/main.ts` | BrowserWindow 생성, `ipcMain.handle` 등록, 앱 lifecycle (조립만, 로직 없음) |
 | `src/app/preload.ts` | 허용할 command와 event 구독 |
-| `src/renderer/app/App.tsx` | 화면 조립, 공유 상태, 다중 실행 |
+| `src/app/ipc/{도메인}.ts` | 파일 저장·QA 실행·영상·업데이트 등 도메인별 서비스 로직 |
+| `src/renderer/app/App.tsx` | 훅 조립과 화면 렌더링 (상태·부수효과는 훅으로 위임) |
+| `src/renderer/app/hooks/{관심사}.ts` | 화면 전환, 시나리오 편집 상태, 실행 오케스트레이션 등 관심사별 상태·부수효과 |
 | `src/renderer/pages/{기능}` | 화면 UI와 화면 전용 상태 |
 | `src/renderer/widgets` | 여러 화면 흐름에서 재사용하는 조합 UI |
-| `src/renderer/shared/model` | 공통 타입, 순수 parser·formatter |
+| `src/renderer/shared/model` | 공통 타입, 순수 parser·formatter, `window.electronAPI` 타입 |
 | `src/renderer/styles` | 전역·화면별 CSS |
 
-`features`, `entities`는 현재 비어 있으므로 단일 변경을 위해 새 레이어를 도입하지 않습니다.
+`features`, `entities`는 현재 비어 있으므로 단일 변경을 위해 새 레이어를 도입하지 않습니다. `src/app/ipc`와 `src/renderer/app/hooks`는 이미 도입된 도메인/관심사 분리이므로, 새 IPC 채널이나 새 App 상태를 추가할 때는 `main.ts`나 `App.tsx`에 직접 붙이지 말고 이 디렉터리 아래에 파일을 추가한 뒤 조립부에서만 연결합니다.
 
 ## 상태와 컴포넌트
 

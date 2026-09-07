@@ -31,15 +31,41 @@ BrowserWindow는 `contextIsolation: true`, `nodeIntegration: false`로 생성됩
 
 | 위치 | 현재 책임 | 주요 파일 |
 | --- | --- | --- |
-| `src/app` | Electron main/preload와 native 서비스 | `main.ts`, `preload.ts` |
-| `src/renderer/app` | 앱 상태, 화면 전환, 실행 오케스트레이션 | `App.tsx` |
+| `src/app` | Electron main 진입점: 창 생성, IPC 핸들러 등록, 앱 lifecycle | `main.ts` |
+| `src/app/preload.ts` | 허용된 command/event 브리지 | `preload.ts` |
+| `src/app/ipc` | main의 도메인별 서비스 구현 (main.ts가 조합만 함) | `fileStorage.ts`, `qaExecution.ts`, `video.ts`, `update.ts`, `reports.ts`, `qaTypes.ts` |
+| `src/renderer/app` | 화면 조립 (App.tsx는 훅을 조합만 함) | `App.tsx` |
+| `src/renderer/app/hooks` | App의 상태·부수효과를 관심사별로 분리한 훅 | `useNavigation.ts`, `useScenarioState.ts`, `useRunOrchestration.ts` |
 | `src/renderer/pages` | 화면 단위 UI | dashboard, editor, picker, run, settings |
 | `src/renderer/widgets` | 여러 화면과 App이 조합하는 UI | `BottomNavigation`, `RunReportDrawer` |
-| `src/renderer/shared/model` | 시나리오 타입, 파서, 표시·시간 함수 | `scenario.ts` |
+| `src/renderer/shared/model` | 시나리오 타입, 파서, 표시·시간 함수, `window.electronAPI` 타입 | `scenario.ts`, `electron-api.ts` |
 | `src/renderer/styles` | 전역·화면별 CSS | `index.css`와 화면별 파일 |
 | `src/renderer/features`, `entities` | 현재 구현 없음 | `.gitkeep`만 존재 |
 
 현재 구조는 Feature-Sliced Design의 이름을 일부 사용하지만 전체 FSD 레이어나 공개 API 규칙을 구현하지는 않습니다. 새 추상화를 만들기보다 인접 코드의 현재 경계를 따릅니다.
+
+### `src/app/ipc` 모듈 경계
+
+| 모듈 | 책임 | 의존 관계 |
+| --- | --- | --- |
+| `qaTypes.ts` | `QaStep`/`QaScenario` 등 QA 실행 관련 공용 타입 | 의존 없음 |
+| `fileStorage.ts` | 시나리오 Markdown·마커 위치·시나리오 폴더 저장, 업로드 파일 선택 dialog | `qaTypes` 없이 독립 |
+| `reports.ts` | 실행 리포트(JSON/HTML) 작성 | `qaTypes` |
+| `video.ts` | 실행 영상 디렉터리 규칙, ffmpeg 병합, 다운로드 | `qaTypes` (순환 없음) |
+| `update.ts` | electron-updater 연동, 자동 업데이트 설정 저장 | 의존 없음 |
+| `qaExecution.ts` | Playwright 대상 탐색·시나리오 실행·수동 단계 제어 | `reports`, `video`, `qaTypes` |
+
+`main.ts`는 이 모듈들의 함수를 가져와 `ipcMain.handle`에 연결하는 조립 역할만 하며, 파일 시스템·Playwright·ffmpeg 로직을 직접 담지 않습니다.
+
+### `src/renderer/app/hooks` 경계
+
+| 훅 | 책임 | 다른 훅과의 관계 |
+| --- | --- | --- |
+| `useNavigation` | `route`, 3초 토스트(`toast`/`showToast`) | 다른 훅에 `showToast`·`setRoute`를 전달 |
+| `useScenarioState` | 시나리오 편집 상태, 마커 위치, Markdown 파싱·직렬화, 편집기 IPC 호출 | `route`, `showToast`를 입력받음. 실행 오케스트레이션을 모른다 |
+| `useRunOrchestration` | 실행 큐·진행률·수동 단계 대화상자·실행 기록·영상, `qa:*` IPC 호출 | `showToast`, `setRoute`를 입력받음. 시나리오 편집 상태를 모른다 |
+
+`App.tsx`는 `useScenarioState().commitEditorRunSnapshot()`으로 만든 시나리오 배열을 `useRunOrchestration().beginRuns()`에 넘겨 편집기 실행을 연결하는 것 외에는 세 훅을 그대로 조립한다. 새 화면·기능을 추가할 때는 이 훅들을 확장하기보다 필요하면 새 훅을 만들어 같은 방식으로 `App.tsx`에서 조립하는 쪽을 우선한다.
 
 ## 앱 시작과 화면 전환
 

@@ -1,0 +1,726 @@
+import { app, type BrowserWindow } from "electron";
+import { mkdir, rename } from "node:fs/promises";
+import path from "node:path";
+import {
+  chromium,
+  type Browser,
+  type BrowserContext,
+  type Locator,
+  type Page,
+  type Video,
+} from "@playwright/test";
+import { writeRunReport } from "./reports";
+import type {
+  ManualBrowserEvent,
+  ManualControlResult,
+  ManualResult,
+  QaRunOptions,
+  QaScenario,
+  QaStep,
+} from "./qaTypes";
+import { runVideoDirectory, runVideoFileName } from "./video";
+
+let activeRun: {
+  browser?: Browser;
+  page?: Page;
+  resolveManual?: (value: string | null) => void;
+  resolveManualControl?: (value: ManualControlResult) => void;
+  resolveManualResult?: (value: ManualResult) => void;
+  cancelled: boolean;
+} | null = null;
+let scenarioWorker: {
+  id: string;
+  browser: Browser;
+  context: BrowserContext;
+} | null = null;
+
+// Playwright JS 코드는 asar 안에서도 실행되지만, 번들된 Chromium 실행 파일은 spawn 대상이라
+// asar 밖(app.asar.unpacked)의 실제 경로를 가리켜야 한다. ffmpeg와 동일한 이유다.
+const chromiumExecutablePath = chromium
+  .executablePath()
+  .replace("app.asar", "app.asar.unpacked");
+
+const closeScenarioWorker = async (workerId?: string): Promise<void> => {
+  if (!scenarioWorker || (workerId && scenarioWorker.id !== workerId)) return;
+  const worker = scenarioWorker;
+  scenarioWorker = null;
+  try {
+    await worker.context.close();
+  } catch {
+    /* 이미 종료된 컨텍스트는 무시한다. */
+  }
+  try {
+    await worker.browser.close();
+  } catch {
+    /* 이미 종료된 브라우저는 무시한다. */
+  }
+};
+export const finishQaWorker = (workerId: string): Promise<void> =>
+  closeScenarioWorker(workerId);
+
+export const controlManualBrowser = async (
+  event: ManualBrowserEvent,
+): Promise<void> => {
+  const page = activeRun?.page;
+  if (!page || activeRun?.cancelled) return;
+  if (
+    event.type === "click" &&
+    Number.isFinite(event.x) &&
+    Number.isFinite(event.y)
+  ) {
+    await page.mouse.click(event.x!, event.y!);
+    return;
+  }
+  if (event.type === "wheel" && Number.isFinite(event.deltaY)) {
+    await page.mouse.wheel(0, event.deltaY!);
+    return;
+  }
+  if (event.type === "text" && event.text) {
+    await page.keyboard.insertText(event.text);
+    return;
+  }
+  if (event.type === "key" && event.key) await page.keyboard.press(event.key);
+};
+
+export const setQaViewport = async (size: {
+  width: number;
+  height: number;
+}): Promise<void> => {
+  const page = activeRun?.page;
+  if (!page || activeRun?.cancelled || page.isClosed()) return;
+  const width = Math.round(size.width);
+  const height = Math.round(size.height);
+  if (
+    !Number.isFinite(width) ||
+    !Number.isFinite(height) ||
+    width < 200 ||
+    height < 200
+  )
+    return;
+  try {
+    await page.setViewportSize({ width, height });
+  } catch {
+    /* 화면 전환 중인 페이지는 무시한다. */
+  }
+};
+
+export const resolveManualInput = (value: string): void => {
+  activeRun?.resolveManual?.(value);
+};
+export const resolveManualControl = (result: ManualControlResult): void => {
+  activeRun?.resolveManualControl?.(result);
+};
+export const resolveManualResult = (result: ManualResult): void => {
+  activeRun?.resolveManualResult?.(result);
+};
+export const cancelActiveRun = async (): Promise<void> => {
+  if (!activeRun) {
+    await closeScenarioWorker();
+    return;
+  }
+  activeRun.cancelled = true;
+  activeRun.resolveManual?.(null);
+  activeRun.resolveManualControl?.({
+    status: "failed",
+    reason: "실행이 취소되었습니다.",
+  });
+  activeRun.resolveManualResult?.({
+    status: "failed",
+    reason: "실행이 취소되었습니다.",
+  });
+  await closeScenarioWorker();
+};
+
+const readableStep = (step: QaStep): string =>
+  `단계 ${step.id}: ${step.target} ${step.action === "manualFill" ? "수동 입력" : step.action === "manualControl" ? "브라우저 직접 제어" : step.action === "manualResult" ? "수동 결과 확인" : step.action === "fileUpload" ? "파일 업로드" : step.action}`;
+const escapeRegex = (value: string): string =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const inputFor = (page: Page, target: string) => {
+  const normalized = target.replace(/\s*(필드|입력란)$/, "").trim();
+  const matcher = new RegExp(escapeRegex(normalized), "i");
+  return page
+    .getByLabel(matcher)
+    .or(page.getByPlaceholder(matcher))
+    .or(
+      page.locator(
+        `input[name*="${normalized}"], textarea[name*="${normalized}"]`,
+      ),
+    )
+    .first();
+};
+const selectFor = (page: Page, target: string) => {
+  const selector = target.match(/^css=(.+)$/i)?.[1]?.trim();
+  if (selector) return page.locator(selector).first();
+  const matcher = new RegExp(escapeRegex(target), "i");
+  return page
+    .getByLabel(matcher)
+    .or(page.locator(`select[name*="${target}"]`))
+    .first();
+};
+const isNativeSelect = async (locator: Locator): Promise<boolean> => {
+  if (!(await locator.count())) return false;
+  return locator.evaluate((element) => element instanceof HTMLSelectElement);
+};
+const actionTargetFor = (target: string): string =>
+  target.replace(/\s+(버튼을?|버튼)?\s*클릭$/, "").trim();
+const clickTargetFor = async (
+  page: Page,
+  target: string,
+  occurrence = 1,
+  timeout = 0,
+): Promise<Locator> => {
+  const name = actionTargetFor(target)
+    .replace(/\s*(아이콘|icon)$/, "")
+    .replace(/\s*버튼$/, "")
+    .trim();
+  const selector = name.match(/^css=(.+)$/i)?.[1]?.trim();
+  const cssTargets = selector ? page.locator(selector) : null;
+  // 체크박스와 라디오는 숨겨진 input 대신 label을 클릭해야 UI 이벤트가 정상적으로 전달된다.
+  // 마커가 줄바꿈을 공백으로 정리하므로, 라벨 비교도 공백을 무시해 일관되게 처리한다.
+  const matcher = selector ? null : new RegExp(escapeRegex(name), "i");
+  const normalizedName = selector ? "" : name.replace(/[\s\u200b]+/g, "");
+  const deadline = Date.now() + timeout;
+  while (true) {
+    if (cssTargets) {
+      const visibleTargets: Locator[] = [];
+      for (let index = 0; index < (await cssTargets.count()); index += 1) {
+        const cssTarget = cssTargets.nth(index);
+        if (await cssTarget.isVisible()) visibleTargets.push(cssTarget);
+      }
+      if (visibleTargets.length >= occurrence)
+        return visibleTargets[occurrence - 1];
+      if (Date.now() >= deadline)
+        throw new Error(
+          `CSS 클릭 대상 '${selector}'의 ${occurrence}번째 보이는 요소를 찾지 못했습니다.`,
+        );
+      await page.waitForTimeout(100);
+      continue;
+    }
+
+    // 접근성 이름이 있는 버튼을 가장 먼저 찾는다. 일반 텍스트보다 버튼을 우선해야
+    // 네비게이션·레이블의 중복 텍스트가 "n번째" 클릭 대상으로 섞이지 않는다.
+    const visibleButtons: Locator[] = [];
+    for (const frame of page.frames()) {
+      const buttons = frame.getByRole("button", { name: matcher! });
+      for (let index = 0; index < (await buttons.count()); index += 1) {
+        const button = buttons.nth(index);
+        if (await button.isVisible()) visibleButtons.push(button);
+      }
+    }
+    if (visibleButtons.length >= occurrence)
+      return visibleButtons[occurrence - 1];
+
+    for (const frame of page.frames()) {
+      const labels = await frame.locator("label").all();
+      const matchingLabels: Locator[] = [];
+      for (const label of labels) {
+        const text = await label.textContent();
+        if (
+          text?.replace(/[\s\u200b]+/g, "").includes(normalizedName) &&
+          (await label.isVisible())
+        )
+          matchingLabels.push(label);
+      }
+      if (matchingLabels.length >= occurrence)
+        return matchingLabels[occurrence - 1];
+
+      // 일부 UI 컴포넌트는 label 역할을 노출하지 않는다. 자식 텍스트 클릭도 부모의 클릭 이벤트로 전달된다.
+      const textTargets = frame.getByText(matcher!);
+      const visibleTextTargets: Locator[] = [];
+      for (let index = 0; index < (await textTargets.count()); index += 1) {
+        const textTarget = textTargets.nth(index);
+        if (await textTarget.isVisible()) visibleTextTargets.push(textTarget);
+      }
+      if (visibleTextTargets.length >= occurrence)
+        return visibleTextTargets[occurrence - 1];
+    }
+    if (Date.now() >= deadline)
+      throw new Error(
+        `클릭 대상 '${name}'의 ${occurrence}번째 보이는 요소를 찾지 못했습니다.`,
+      );
+    await page.waitForTimeout(100);
+  }
+};
+const routeFor = (target: string): string =>
+  /^(https?:\/\/|\/)/.test(target.trim()) ? target.trim() : "/";
+const resultTargetFor = (text: string): string => {
+  let target = text.trim();
+  let previous = "";
+  while (target !== previous) {
+    previous = target;
+    target = target
+      .replace(/\s*결과\s*확인(?:을)?(?:한다)?\s*$/, "")
+      .replace(/\s+(?:버튼(?:을)?\s*)?클릭\s*$/, "")
+      .trim();
+  }
+  return target;
+};
+const waitForVisibleText = async (
+  page: Page,
+  target: string,
+  timeout = 10_000,
+): Promise<void> => {
+  const matcher = new RegExp(escapeRegex(target), "i");
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    const candidates = await page.getByText(matcher).all();
+    for (const candidate of candidates) {
+      try {
+        if (await candidate.isVisible()) return;
+      } catch {
+        /* 화면 전환 중 분리된 요소는 다음 반복에서 다시 찾는다. */
+      }
+    }
+    await page.waitForTimeout(100);
+  }
+  throw new Error(
+    `결과 텍스트 '${target}'가 ${Math.ceil(timeout / 1000)}초 안에 화면에 표시되지 않았습니다.`,
+  );
+};
+const hasVisibleText = async (
+  page: Page,
+  target: string,
+  timeout = 0,
+): Promise<boolean> => {
+  const matcher = new RegExp(escapeRegex(target), "i");
+  const deadline = Date.now() + timeout;
+  while (true) {
+    const candidates = await page.getByText(matcher).all();
+    for (const candidate of candidates) {
+      try {
+        if (await candidate.isVisible()) return true;
+      } catch {
+        /* 화면 전환 중 분리된 요소는 다음 반복에서 다시 찾는다. */
+      }
+    }
+    if (Date.now() >= deadline) return false;
+    await page.waitForTimeout(100);
+  }
+};
+
+export const inspectScenario = async (
+  scenario: QaScenario,
+): Promise<Array<{ id: string; connected: boolean }>> => {
+  const browser = await chromium.launch({
+    headless: true,
+    executablePath: chromiumExecutablePath,
+  });
+  try {
+    const page = await browser.newPage();
+    await page.goto(scenario.url, {
+      waitUntil: "domcontentloaded",
+      timeout: 15_000,
+    });
+    return await Promise.all(
+      scenario.steps.map(async (step) => {
+        if (
+          step.action === "goto" ||
+          step.action === "manualControl" ||
+          step.action === "manualResult"
+        )
+          return { id: step.id, connected: true };
+        const target = new RegExp(escapeRegex(step.target), "i");
+        const resultTarget = resultTargetFor(step.target);
+        const locator =
+          step.action === "fill" ||
+          step.action === "manualFill" ||
+          step.action === "fileUpload"
+            ? page.getByLabel(target).or(inputFor(page, step.target))
+            : step.action === "click" && resultTarget !== step.target
+              ? page.getByText(resultTarget).first()
+              : step.action === "click"
+                ? await clickTargetFor(page, step.target, step.occurrence)
+                : page
+                    .getByRole("heading", { name: target })
+                    .or(page.getByText(target).first());
+        return { id: step.id, connected: (await locator.count()) > 0 };
+      }),
+    );
+  } finally {
+    await browser.close();
+  }
+};
+
+export const executeScenario = async (
+  scenario: QaScenario,
+  owner: BrowserWindow,
+  options: QaRunOptions = {},
+): Promise<{ status: string; log: string[]; reportPath?: string }> => {
+  const log: string[] = [];
+  let browser: Browser | undefined;
+  let context: BrowserContext | undefined;
+  let page: Page | undefined;
+  let video: Video | null = null;
+  let previewInterval: ReturnType<typeof setInterval> | undefined;
+  let activeStep: QaStep | undefined;
+  const run = { cancelled: false } as NonNullable<typeof activeRun>;
+  activeRun = run;
+  try {
+    owner.webContents.send("qa:progress", {
+      current: 0,
+      total: scenario.steps.length,
+      step: "브라우저 시작 중",
+    });
+    if (scenarioWorker && scenarioWorker.id !== options.workerId)
+      await closeScenarioWorker();
+    if (!scenarioWorker) {
+      const workerBrowser = await chromium.launch({
+        headless: true,
+        timeout: 15_000,
+        executablePath: chromiumExecutablePath,
+      });
+      const videoDirectory = path.join(
+        app.getPath("userData"),
+        "videos",
+        "temporary",
+      );
+      await mkdir(videoDirectory, { recursive: true });
+      const workerContext = await workerBrowser.newContext({
+        viewport: { width: 1280, height: 720 },
+        recordVideo: {
+          dir: videoDirectory,
+          size: { width: 1280, height: 720 },
+        },
+      });
+      scenarioWorker = {
+        id: options.workerId ?? `${Date.now()}`,
+        browser: workerBrowser,
+        context: workerContext,
+      };
+    }
+    browser = scenarioWorker.browser;
+    context = scenarioWorker.context;
+    run.browser = browser;
+    if (run.cancelled)
+      return {
+        status: "cancelled",
+        log: ["실행이 취소되었습니다."],
+        reportPath: await writeRunReport(scenario, "cancelled", [
+          "실행이 취소되었습니다.",
+        ]),
+      };
+    page = await context.newPage();
+    run.page = page;
+    context.on("page", (popup) => {
+      run.page = popup;
+      popup.once("close", () => {
+        if (!run.cancelled) run.page = page;
+      });
+    });
+    video = page.video();
+    page.setDefaultTimeout(10_000);
+    page.setDefaultNavigationTimeout(15_000);
+    owner.webContents.send("qa:progress", {
+      current: 0,
+      total: scenario.steps.length,
+      step: "기본 URL 접속 중",
+    });
+    await page.goto(scenario.url, { waitUntil: "domcontentloaded" });
+    const captureStep = async (step: QaStep): Promise<void> => {
+      const previewPage = run.page ?? page;
+      if (
+        !previewPage ||
+        previewPage.isClosed() ||
+        owner.webContents.isDestroyed()
+      )
+        return;
+      try {
+        const screenshot = await previewPage.screenshot({
+          type: "jpeg",
+          quality: 80,
+        });
+        owner.webContents.send("qa:step-preview", {
+          scenarioId: scenario.id,
+          stepId: step.id,
+          image: `data:image/jpeg;base64,${screenshot.toString("base64")}`,
+        });
+      } catch {
+        /* 화면 전환 또는 종료 중인 캡처는 무시한다. */
+      }
+    };
+    if (
+      options.preview ||
+      scenario.steps.some((step) => step.action === "manualControl")
+    ) {
+      let capturing = false;
+      const sendPreview = async (): Promise<void> => {
+        const previewPage = run.page ?? page;
+        if (capturing || !previewPage || owner.webContents.isDestroyed())
+          return;
+        capturing = true;
+        try {
+          const screenshot = await previewPage.screenshot({
+            type: "jpeg",
+            quality: 60,
+          });
+          owner.webContents.send(
+            "qa:preview",
+            `data:image/jpeg;base64,${screenshot.toString("base64")}`,
+          );
+        } catch {
+          /* 화면 전환 또는 종료 중인 캡처는 무시한다. */
+        } finally {
+          capturing = false;
+        }
+      };
+      await sendPreview();
+      previewInterval = setInterval(() => {
+        void sendPreview();
+      }, 200);
+    }
+    for (const [index, step] of scenario.steps.entries()) {
+      activeStep = step;
+      if (run.cancelled) {
+        const finalLog = [...log, "실행이 취소되었습니다."];
+        return {
+          status: "cancelled",
+          log: finalLog,
+          reportPath: await writeRunReport(scenario, "cancelled", finalLog),
+        };
+      }
+      // 조건부 단계는 직전 클릭으로 표시되는 모달·토스트의 렌더링 시간을 짧게 허용한다.
+      // 필요하면 시나리오의 [대기 N초]로 이 시간을 늘릴 수 있다.
+      if (
+        step.condition &&
+        !(await hasVisibleText(
+          page,
+          step.condition,
+          (step.waitSeconds ?? 1) * 1000,
+        ))
+      ) {
+        log.push(
+          `${readableStep(step)} — 조건 '${step.condition}' 미충족으로 건너뜀`,
+        );
+        await captureStep(step);
+        owner.webContents.send("qa:progress", {
+          current: index + 1,
+          total: scenario.steps.length,
+          step: readableStep(step),
+        });
+        continue;
+      }
+      if (step.action === "goto")
+        await page.goto(
+          new URL(routeFor(step.target), scenario.url).toString(),
+          { waitUntil: "domcontentloaded" },
+        );
+      if (step.action === "fill")
+        await inputFor(page, step.target).fill(step.value ?? "");
+      if (step.action === "fileUpload") {
+        if (!step.value?.trim())
+          throw new Error(
+            `파일 업로드 단계 '${step.target}'에 업로드할 파일 경로가 없습니다.`,
+          );
+        await inputFor(page, step.target).setInputFiles(step.value);
+      }
+      if (step.action === "manualFill") {
+        await captureStep(step);
+        owner.webContents.send("qa:manual-required", {
+          id: step.id,
+          target: step.target,
+          prompt: step.prompt,
+          required: step.required,
+        });
+        const value = await new Promise<string | null>((resolve) => {
+          run.resolveManual = resolve;
+        });
+        run.resolveManual = undefined;
+        if (run.cancelled || value === null) {
+          const finalLog = [...log, "실행이 취소되었습니다."];
+          return {
+            status: "cancelled",
+            log: finalLog,
+            reportPath: await writeRunReport(scenario, "cancelled", finalLog),
+          };
+        }
+        await inputFor(page, step.target).fill(value);
+        log.push(`${readableStep(step)} — 완료`);
+      }
+      if (step.action === "manualControl") {
+        await captureStep(step);
+        owner.webContents.send("qa:manual-control-required", {
+          id: step.id,
+          target: step.target,
+          prompt: step.prompt,
+          timeoutSeconds: 300,
+        });
+        const result = await new Promise<ManualControlResult>((resolve) => {
+          const timeout = setTimeout(() => {
+            run.resolveManualControl = undefined;
+            resolve({
+              status: "failed",
+              reason: "브라우저 직접 제어 시간(5분)을 초과했습니다.",
+            });
+          }, 300_000);
+          run.resolveManualControl = (value) => {
+            clearTimeout(timeout);
+            resolve(value);
+          };
+        });
+        run.resolveManualControl = undefined;
+        if (run.cancelled) {
+          const finalLog = [...log, "실행이 취소되었습니다."];
+          return {
+            status: "cancelled",
+            log: finalLog,
+            reportPath: await writeRunReport(scenario, "cancelled", finalLog),
+          };
+        }
+        if (result.status === "failed") {
+          const reason =
+            result.reason?.trim() || "진행자가 실패로 판정했습니다.";
+          const finalLog = [...log, `${readableStep(step)} — 실패: ${reason}`];
+          return {
+            status: "failed",
+            log: finalLog,
+            reportPath: await writeRunReport(scenario, "failed", finalLog),
+          };
+        }
+        log.push(`${readableStep(step)} — 제어 완료`);
+      }
+      if (step.action === "manualResult") {
+        await captureStep(step);
+        owner.webContents.send("qa:manual-result-required", {
+          id: step.id,
+          target: step.target,
+          prompt: step.prompt,
+          timeoutSeconds: 300,
+        });
+        const result = await new Promise<ManualResult>((resolve) => {
+          const timeout = setTimeout(() => {
+            run.resolveManualResult = undefined;
+            resolve({
+              status: "failed",
+              reason: "수동 결과 확인 시간(5분)을 초과했습니다.",
+            });
+          }, 300_000);
+          run.resolveManualResult = (value) => {
+            clearTimeout(timeout);
+            resolve(value);
+          };
+        });
+        run.resolveManualResult = undefined;
+        if (run.cancelled) {
+          const finalLog = [...log, "실행이 취소되었습니다."];
+          return {
+            status: "cancelled",
+            log: finalLog,
+            reportPath: await writeRunReport(scenario, "cancelled", finalLog),
+          };
+        }
+        if (result.status === "failed") {
+          const reason =
+            result.reason?.trim() || "진행자가 실패로 판정했습니다.";
+          const finalLog = [...log, `${readableStep(step)} — 실패: ${reason}`];
+          return {
+            status: "failed",
+            log: finalLog,
+            reportPath: await writeRunReport(scenario, "failed", finalLog),
+          };
+        }
+        log.push(`${readableStep(step)} — 진행자가 성공으로 판정`);
+      }
+      if (step.action === "click") {
+        const resultTarget = resultTargetFor(step.target);
+        if (resultTarget !== step.target)
+          await waitForVisibleText(page, resultTarget);
+        else {
+          const timeout = (step.waitSeconds ?? 10) * 1000;
+          await (
+            await clickTargetFor(page, step.target, step.occurrence, timeout)
+          ).click({ timeout });
+        }
+      }
+      if (step.action === "select") {
+        const select = selectFor(page, step.target);
+        if (await isNativeSelect(select)) {
+          try {
+            await select.selectOption({ label: step.value ?? "" });
+          } catch {
+            await select.selectOption(step.value ?? "");
+          }
+        } else {
+          const timeout = (step.waitSeconds ?? 10) * 1000;
+          await (
+            await clickTargetFor(page, step.target, 1, timeout)
+          ).click({ timeout });
+          await (
+            await clickTargetFor(page, step.value ?? "", 1, timeout)
+          ).click({ timeout });
+        }
+      }
+      if (step.action === "expectText")
+        await waitForVisibleText(
+          page,
+          resultTargetFor(step.target),
+          (step.waitSeconds ?? 10) * 1000,
+        );
+      if (
+        step.action !== "manualFill" &&
+        step.action !== "manualControl" &&
+        step.action !== "manualResult"
+      )
+        log.push(`${readableStep(step)} — 완료`);
+      await captureStep(step);
+      owner.webContents.send("qa:progress", {
+        current: index + 1,
+        total: scenario.steps.length,
+        step: readableStep(step),
+      });
+    }
+    return {
+      status: "passed",
+      log,
+      reportPath: await writeRunReport(scenario, "passed", log),
+    };
+  } catch (error) {
+    if (
+      activeStep &&
+      page &&
+      !page.isClosed() &&
+      !owner.webContents.isDestroyed()
+    ) {
+      try {
+        const screenshot = await page.screenshot({ type: "jpeg", quality: 80 });
+        owner.webContents.send("qa:step-preview", {
+          scenarioId: scenario.id,
+          stepId: activeStep.id,
+          image: `data:image/jpeg;base64,${screenshot.toString("base64")}`,
+        });
+      } catch {
+        /* 실패 화면 캡처 자체가 실패한 경우는 무시한다. */
+      }
+    }
+    const finalLog = [
+      ...log,
+      `실행 실패: ${error instanceof Error ? error.message : String(error)}`,
+    ];
+    return {
+      status: "failed",
+      log: finalLog,
+      reportPath: await writeRunReport(scenario, "failed", finalLog),
+    };
+  } finally {
+    activeRun = null;
+    if (previewInterval) clearInterval(previewInterval);
+    try {
+      await page?.close();
+    } catch {
+      /* 취소로 페이지가 먼저 닫힌 경우는 무시한다. */
+    }
+    if (video) {
+      try {
+        const sourcePath = await video.path();
+        const destination = path.join(
+          runVideoDirectory(),
+          runVideoFileName(scenario),
+        );
+        await mkdir(runVideoDirectory(), { recursive: true });
+        await rename(sourcePath, destination);
+        owner.webContents.send("qa:run-video", destination);
+      } catch {
+        owner.webContents.send("qa:run-video", null);
+      }
+    }
+  }
+};
