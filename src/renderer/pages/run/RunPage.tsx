@@ -129,6 +129,7 @@ export const RunPage = ({
   const settingsMenuRef = useRef<HTMLDivElement | null>(null);
   const isConsoleAtBottomRef = useRef(true);
   const onSetViewportRef = useRef(onSetViewport);
+  const viewportRequestRef = useRef<string | null>(null);
   onSetViewportRef.current = onSetViewport;
 
   useEffect(() => {
@@ -154,16 +155,17 @@ export const RunPage = ({
   }, [settingsOpen]);
 
   useEffect(() => {
-    if (!running || manualControl) return;
+    if (!running) {
+      viewportRequestRef.current = null;
+      return;
+    }
+    if (manualControl || !previewImage) return;
     const preset = VIEWPORT_PRESETS.find((v) => v.key === vpKey) ?? VIEWPORT_PRESETS[0];
-    if (imgSize.w === preset.w && imgSize.h === preset.h) return;
+    const requestKey = `${scenario.id}:${preset.key}`;
+    if (viewportRequestRef.current === requestKey) return;
+    viewportRequestRef.current = requestKey;
     onSetViewportRef.current(preset.w, preset.h);
-    // 새 시나리오 페이지는 항상 기본 크기로 열리고, 실행 시작 직후의 첫 요청은 백엔드에
-    // 페이지가 아직 없어 조용히 무시될 수 있다. imgSize만 의존성으로 두면 그 값이 우연히
-    // 초기값과 같을 때 다시 시도하지 않으므로, 매 프레임 바뀌는 previewImage에 걸어
-    // 실제로 수렴할 때까지 계속 재시도한다.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [running, manualControl, vpKey, previewImage]);
+  }, [running, manualControl, vpKey, previewImage, scenario.id]);
 
   const browserPoint = (
     event: MouseEvent<HTMLImageElement> | WheelEvent<HTMLImageElement>,
