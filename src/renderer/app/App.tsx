@@ -100,7 +100,7 @@ export const App = (): ReactElement => {
     downloadFullRunVideo,
   } = runOrchestration;
 
-  const runEditorContent = () => beginRuns(commitEditorRunSnapshot(), true);
+  const runEditorContent = () => beginRuns(commitEditorRunSnapshot());
 
   return (
     <main

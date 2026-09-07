@@ -107,6 +107,7 @@ export const useScenarioState = ({
   const [markersVisible, setMarkersVisible] = useState(true);
   const [saveBeforeReturning, setSaveBeforeReturning] = useState(false);
   const [positionStore, setPositionStore] = useState<MarkerPositionStore>({});
+  const [positionsLoaded, setPositionsLoaded] = useState(false);
 
   const updateSteps = (steps: Step[]) =>
     setScenario((current) => ({
@@ -132,11 +133,13 @@ export const useScenarioState = ({
           }
         }
       })
-      .catch(() => showToast("저장된 시나리오를 불러오지 못했습니다."));
+      .catch(() => showToast("저장된 시나리오를 불러오지 못했습니다."))
+      .finally(() => setPositionsLoaded(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
+    if (!positionsLoaded) return;
     setPositionStore((store) => ({
       ...store,
       [positionKey(scenario)]: scenario.steps.flatMap((step) =>
@@ -158,14 +161,15 @@ export const useScenarioState = ({
             ],
       ),
     }));
-  }, [scenario]);
+  }, [scenario, positionsLoaded]);
 
   useEffect(() => {
+    if (!positionsLoaded) return;
     void window.electronAPI
       .saveMarkerPositions(JSON.stringify(positionStore))
       .catch(() => showToast("마커 위치를 저장하지 못했습니다."));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [positionStore]);
+  }, [positionStore, positionsLoaded]);
 
   useEffect(() => {
     if (route !== "editor" || editorMode !== "marker") return;
