@@ -1,4 +1,5 @@
 import type { Route } from "../shared/model/scenario";
+import checklyLogo from "../assets/checkly-logo.png";
 
 type Props = {
   route: Route;
@@ -28,9 +29,7 @@ export const BottomNavigation = ({
       onClick={() => onNavigate("dashboard")}
       aria-label="Checkly"
     >
-      <i>
-        <span className="msi" aria-hidden="true">check</span>
-      </i>
+      <img className="bottom-nav-brand-logo" src={checklyLogo} alt="" />
       <strong>Checkly</strong>
     </button>
     <div className="bottom-nav-controls">
