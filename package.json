@@ -36,6 +36,7 @@
       "node_modules/playwright-core/.local-browsers/**"
     ],
     "mac": {
+      "icon": "build/icons/icon.png",
       "target": [
         "dmg",
         "zip"

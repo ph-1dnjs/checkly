@@ -76,6 +76,10 @@ const createWindow = (): void => {
 };
 
 app.whenReady().then(() => {
+  if (process.platform === "darwin" && is.dev) {
+    app.dock?.setIcon(path.join(process.cwd(), "build/icons/icon.png"));
+  }
+
   ipcMain.handle("app:version", () => app.getVersion());
   ipcMain.handle("update:check", () => checkForUpdates());
   ipcMain.handle("update:get-status", () => getLatestUpdateStatus());
