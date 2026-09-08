@@ -9,7 +9,6 @@ type Props = {
   history: RunRecord[];
   summary: RunSummary;
   onOpenRun: () => void;
-  onOpenPicker: () => void;
   onOpenReport: (record: RunRecord) => void;
 };
 
@@ -25,7 +24,6 @@ export const DashboardPage = ({
   history,
   summary,
   onOpenRun,
-  onOpenPicker,
   onOpenReport,
 }: Props) => {
   const passRate = summary.total
@@ -39,13 +37,10 @@ export const DashboardPage = ({
   return (
     <div className="dash">
       <div className="dash-title">
-        <div className="dash-heading">실행 기록</div>
+        <div className="dash-heading">대시보드</div>
         <div className="dash-title-actions">
-          <button className="button button-secondary" onClick={onOpenPicker}>
-            시나리오 선택
-          </button>
           <button className="button button-primary" onClick={onOpenRun}>
-            전체 실행 <span className="dash-kbd">⌘R</span>
+            실행 화면 열기 <span className="dash-kbd">⌘R</span>
           </button>
         </div>
       </div>
@@ -143,9 +138,9 @@ export const DashboardPage = ({
       ) : (
         <div className="dash-empty">
           <strong>아직 실행 기록이 없습니다.</strong>
-          <p>시나리오를 선택해 실행하면 최근 5개의 기록이 여기에 저장됩니다.</p>
-          <button className="button button-secondary" onClick={onOpenPicker}>
-            시나리오 선택으로 이동
+          <p>시나리오를 실행하면 최근 5개의 기록이 여기에 저장됩니다.</p>
+          <button className="button button-secondary" onClick={onOpenRun}>
+            실행 화면으로 이동
           </button>
         </div>
       )}
