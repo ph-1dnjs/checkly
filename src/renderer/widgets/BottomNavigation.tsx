@@ -1,5 +1,4 @@
 import type { Route } from "../shared/model/scenario";
-import checklyLogo from "../assets/checkly-logo.png";
 
 type Props = {
   route: Route;
@@ -9,10 +8,11 @@ type Props = {
   onCancel: () => void;
 };
 
-const NAVS: Array<{ route: Route; label: string; icon: string }> = [
-  { route: "dashboard", label: "실행 기록", icon: "history" },
+const NAVS: Array<{ route?: Route; label: string; icon: string }> = [
+  { route: "dashboard", label: "실행 기록", icon: "play_circle" },
   { route: "editor", label: "편집기", icon: "edit" },
-  { route: "picker", label: "시나리오 선택 · 실행", icon: "playlist_play" },
+  { route: "picker", label: "시나리오 선택 · 실행", icon: "dynamic_form" },
+  { label: "API 테스트 (준비 중)", icon: "data_object" },
   { route: "settings", label: "설정", icon: "settings" },
 ];
 
@@ -29,15 +29,16 @@ export const BottomNavigation = ({
       onClick={() => onNavigate("dashboard")}
       aria-label="Checkly"
     >
-      <img className="bottom-nav-brand-logo" src={checklyLogo} alt="" />
+      <span className="bottom-nav-brand-mark msi" aria-hidden="true">check</span>
       <strong>Checkly</strong>
     </button>
     <div className="bottom-nav-controls">
       {NAVS.map((item) => (
         <button
-          key={item.route}
+          key={item.label}
           className={route === item.route ? "bottom-nav-item active" : "bottom-nav-item"}
-          onClick={() => onNavigate(item.route)}
+          disabled={!item.route}
+          onClick={() => item.route && onNavigate(item.route)}
           aria-label={item.label}
           title={item.label}
         >
