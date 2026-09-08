@@ -112,7 +112,6 @@ export const App = (): ReactElement => {
             history={runHistory}
             summary={runSummary}
             onOpenRun={() => setRoute("run")}
-            onOpenPicker={() => setRoute("picker")}
             onOpenReport={setOpenRunRecord}
           />
         )}

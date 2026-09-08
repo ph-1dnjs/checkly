@@ -75,7 +75,7 @@ BrowserWindow는 `contextIsolation: true`, `nodeIntegration: false`로 생성됩
 Route = dashboard | editor | picker | run | settings
 ```
 
-하단 `BottomNavigation`이 route 변경을 요청하고 `App`이 조건부 렌더링합니다. 실행은 어느 화면에서 시작할 수 있으며, 실행 화면 밖에서는 `runNotification`이 진행률 또는 완료 결과를 표시합니다.
+하단 로고만 대시보드·실행 기록으로 이동합니다. 일반 메뉴는 편집기, 시나리오 선택·실행(`play_circle`), 준비 중인 비활성 메뉴, API 테스트, 설정 순서입니다. `play_circle` 메뉴가 `ScenarioPickerPage`로 이동하고, 하단의 큰 실행 버튼은 현재 시나리오 실행을 시작해 `RunPage`로 이어집니다. 실행 화면 밖에서는 `runNotification`이 진행률 또는 완료 결과를 표시합니다.
 
 ## 상태 관리
 
