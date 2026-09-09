@@ -136,6 +136,16 @@ const readableStep = (step: QaStep): string =>
 const escapeRegex = (value: string): string =>
   value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const inputFor = (page: Page, target: string) => {
+  const selector = target.match(/^css=(.+)$/i)?.[1]?.trim();
+  if (selector) {
+    // 마커가 input의 현재 value까지 CSS에 포함하면, 새 실행 화면의 초기값과
+    // 달라져 요소를 찾을 수 없다. value 조건은 입력 대상 식별에 사용하지 않는다.
+    const stableSelector = selector.replace(
+      /\[value=(?:"(?:\\.|[^"])*"|'(?:\\.|[^'])*'|[^\]]+)\]/gi,
+      "",
+    );
+    return page.locator(stableSelector).first();
+  }
   const normalized = target.replace(/\s*(필드|입력란)$/, "").trim();
   const matcher = new RegExp(escapeRegex(normalized), "i");
   return page
@@ -147,6 +157,13 @@ const inputFor = (page: Page, target: string) => {
       ),
     )
     .first();
+};
+const fillByTyping = async (input: Locator, value: string): Promise<void> => {
+  await input.click();
+  await input.press("ControlOrMeta+A");
+  await input.press("Backspace");
+  await input.type(value);
+  await input.blur();
 };
 const selectFor = (page: Page, target: string) => {
   const selector = target.match(/^css=(.+)$/i)?.[1]?.trim();
@@ -197,43 +214,71 @@ const clickTargetFor = async (
       continue;
     }
 
-    // 접근성 이름이 있는 버튼을 가장 먼저 찾는다. 일반 텍스트보다 버튼을 우선해야
-    // 네비게이션·레이블의 중복 텍스트가 "n번째" 클릭 대상으로 섞이지 않는다.
-    const visibleButtons: Locator[] = [];
-    for (const frame of page.frames()) {
-      const buttons = frame.getByRole("button", { name: matcher! });
-      for (let index = 0; index < (await buttons.count()); index += 1) {
-        const button = buttons.nth(index);
-        if (await button.isVisible()) visibleButtons.push(button);
+    // "n번째"는 역할(버튼·라벨·일반 텍스트)별 순번이 아니라 화면에 나타난 순서다.
+    // 상품 검색 결과처럼 제목은 텍스트이고 상품 카드는 버튼인 경우도 하나의 순서로 센다.
+    const visibleTargets = new Map<
+      string,
+      { locator: Locator; frameIndex: number; order: number; isClickContainer: boolean }
+    >();
+    for (const [frameIndex, frame] of page.frames().entries()) {
+      const candidates = [
+        { locator: frame.getByRole("button", { name: matcher! }), normalizeText: false },
+        { locator: frame.locator("label"), normalizeText: true },
+        { locator: frame.getByText(matcher!), normalizeText: false },
+      ];
+      for (const candidatesByRole of candidates) {
+        for (let index = 0; index < (await candidatesByRole.locator.count()); index += 1) {
+          const candidate = candidatesByRole.locator.nth(index);
+          if (!(await candidate.isVisible())) continue;
+          if (candidatesByRole.normalizeText) {
+            const text = await candidate.textContent();
+            if (!text?.replace(/[\s\u200b]+/g, "").includes(normalizedName)) continue;
+          }
+          const metadata = await candidate.evaluate((element) => {
+            const pathFor = (node: Element) => {
+              const parts: number[] = [];
+              let current: Element | null = node;
+              while (current) {
+                let siblingIndex = 0;
+                let sibling = current.previousElementSibling;
+                while (sibling) {
+                  siblingIndex += 1;
+                  sibling = sibling.previousElementSibling;
+                }
+                parts.push(siblingIndex);
+                current = current.parentElement;
+              }
+              return parts.reverse().join(".");
+            };
+            const clickContainer = element.closest(
+              "button, a, label, [role='button']",
+            );
+            const target = clickContainer ?? element;
+            return {
+              key: pathFor(target),
+              order: Array.from(document.querySelectorAll("*")).indexOf(target),
+              isClickContainer: target === element,
+            };
+          });
+          const key = `${frameIndex}:${metadata.key}`;
+          const existing = visibleTargets.get(key);
+          if (!existing || (!existing.isClickContainer && metadata.isClickContainer)) {
+            visibleTargets.set(key, {
+              locator: candidate,
+              frameIndex,
+              order: metadata.order,
+              isClickContainer: metadata.isClickContainer,
+            });
+          }
+        }
       }
     }
-    if (visibleButtons.length >= occurrence)
-      return visibleButtons[occurrence - 1];
-
-    for (const frame of page.frames()) {
-      const labels = await frame.locator("label").all();
-      const matchingLabels: Locator[] = [];
-      for (const label of labels) {
-        const text = await label.textContent();
-        if (
-          text?.replace(/[\s\u200b]+/g, "").includes(normalizedName) &&
-          (await label.isVisible())
-        )
-          matchingLabels.push(label);
-      }
-      if (matchingLabels.length >= occurrence)
-        return matchingLabels[occurrence - 1];
-
-      // 일부 UI 컴포넌트는 label 역할을 노출하지 않는다. 자식 텍스트 클릭도 부모의 클릭 이벤트로 전달된다.
-      const textTargets = frame.getByText(matcher!);
-      const visibleTextTargets: Locator[] = [];
-      for (let index = 0; index < (await textTargets.count()); index += 1) {
-        const textTarget = textTargets.nth(index);
-        if (await textTarget.isVisible()) visibleTextTargets.push(textTarget);
-      }
-      if (visibleTextTargets.length >= occurrence)
-        return visibleTextTargets[occurrence - 1];
-    }
+    const orderedTargets = [...visibleTargets.values()].sort(
+      (left, right) =>
+        left.frameIndex - right.frameIndex || left.order - right.order,
+    );
+    if (orderedTargets.length >= occurrence)
+      return orderedTargets[occurrence - 1].locator;
     if (Date.now() >= deadline)
       throw new Error(
         `클릭 대상 '${name}'의 ${occurrence}번째 보이는 요소를 찾지 못했습니다.`,
@@ -504,8 +549,11 @@ export const executeScenario = async (
           new URL(routeFor(step.target), scenario.url).toString(),
           { waitUntil: "domcontentloaded" },
         );
-      if (step.action === "fill")
-        await inputFor(page, step.target).fill(step.value ?? "");
+      if (step.action === "fill") {
+        await fillByTyping(inputFor(page, step.target), step.value ?? "");
+        if (step.waitSeconds)
+          await page.waitForTimeout(step.waitSeconds * 1000);
+      }
       if (step.action === "fileUpload") {
         if (!step.value?.trim())
           throw new Error(
@@ -626,9 +674,19 @@ export const executeScenario = async (
           await waitForVisibleText(page, resultTarget);
         else {
           const timeout = (step.waitSeconds ?? 10) * 1000;
-          await (
-            await clickTargetFor(page, step.target, step.occurrence, timeout)
-          ).click({ timeout });
+          const target = await clickTargetFor(
+            page,
+            step.target,
+            step.occurrence,
+            timeout,
+          );
+          try {
+            await target.click({ timeout });
+          } catch {
+            // 텍스트에만 React onClick이 연결된 UI는 포인터 이벤트 대상이 아닌
+            // 자식 요소가 선택될 수 있다. 이벤트를 강제로 전달해 버블링을 보장한다.
+            await target.click({ force: true, timeout });
+          }
         }
       }
       if (step.action === "select") {

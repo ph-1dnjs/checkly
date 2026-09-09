@@ -28,6 +28,7 @@ type FitMode = "fit" | "width" | "actual";
 
 const VIEWPORT_PRESETS: Array<{ key: string; w: number; h: number; label: string; title: string }> = [
   { key: "1920x1080", w: 1920, h: 1080, label: "1920×1080", title: "와이드" },
+  { key: "2560x1440", w: 2560, h: 1440, label: "2560×1440", title: "QHD" },
 ];
 
 const FIT_MODES: Array<{ key: FitMode; label: string; title: string }> = [
