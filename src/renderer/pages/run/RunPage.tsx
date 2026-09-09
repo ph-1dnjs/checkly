@@ -26,14 +26,28 @@ const IDLE = "#A6AEB5";
 
 type FitMode = "fit" | "width" | "actual";
 
-const VIEWPORT_PRESETS: Array<{ key: string; w: number; h: number; label: string; title: string }> = [
-  { key: "1920x1080", w: 1920, h: 1080, label: "1920×1080", title: "와이드" },
+const VIEWPORT_PRESETS: Array<{
+  key: string;
+  w: number;
+  h: number;
+  label: string;
+  title: string;
+}> = [
   { key: "2560x1440", w: 2560, h: 1440, label: "2560×1440", title: "QHD" },
+  { key: "1920x1080", w: 1920, h: 1080, label: "1920×1080", title: "와이드" },
 ];
 
 const FIT_MODES: Array<{ key: FitMode; label: string; title: string }> = [
-  { key: "fit", label: "맞춘", title: "가로·세로 모두 들어가는 배율로 축소 (기본)" },
-  { key: "width", label: "너비", title: "패널 너비에 맞춰 표시 · 세로는 스크롤" },
+  {
+    key: "fit",
+    label: "맞춘",
+    title: "가로·세로 모두 들어가는 배율로 축소 (기본)",
+  },
+  {
+    key: "width",
+    label: "너비",
+    title: "패널 너비에 맞춰 표시 · 세로는 스크롤",
+  },
   { key: "actual", label: "1:1", title: "원본 픽셀 크기 · 직접 제어 시 권장" },
 ];
 
@@ -117,7 +131,7 @@ export const RunPage = ({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [selStep, setSelStep] = useState<string | null>(null);
   const [logFilter, setLogFilter] = useState<"ALL" | "ERR">("ALL");
-  const [vpKey, setVpKey] = useState("1920x1080");
+  const [vpKey, setVpKey] = useState("2560x1440");
   const [fitMode, setFitMode] = useState<FitMode>("fit");
   const [zen, setZen] = useState(false);
   const [stageSize, setStageSize] = useState({ w: 0, h: 0 });
@@ -152,7 +166,8 @@ export const RunPage = ({
       }
     };
     document.addEventListener("pointerdown", closeOnOutsidePointerDown);
-    return () => document.removeEventListener("pointerdown", closeOnOutsidePointerDown);
+    return () =>
+      document.removeEventListener("pointerdown", closeOnOutsidePointerDown);
   }, [settingsOpen]);
 
   useEffect(() => {
@@ -160,13 +175,14 @@ export const RunPage = ({
       viewportRequestRef.current = null;
       return;
     }
-    if (manualControl || !previewImage) return;
-    const preset = VIEWPORT_PRESETS.find((v) => v.key === vpKey) ?? VIEWPORT_PRESETS[0];
+    if (manualControl) return;
+    const preset =
+      VIEWPORT_PRESETS.find((v) => v.key === vpKey) ?? VIEWPORT_PRESETS[0];
     const requestKey = `${scenario.id}:${preset.key}`;
     if (viewportRequestRef.current === requestKey) return;
     viewportRequestRef.current = requestKey;
     onSetViewportRef.current(preset.w, preset.h);
-  }, [running, manualControl, vpKey, previewImage, scenario.id]);
+  }, [running, manualControl, vpKey, scenario.id]);
 
   const browserPoint = (
     event: MouseEvent<HTMLImageElement> | WheelEvent<HTMLImageElement>,
@@ -204,7 +220,9 @@ export const RunPage = ({
     runProgress.total > 0 &&
     runProgress.current >= runProgress.total;
   const awaiting = Boolean(manual || manualControl || manualResult);
-  const failedAny = scenarioResults.some((result) => result.status === "failed");
+  const failedAny = scenarioResults.some(
+    (result) => result.status === "failed",
+  );
   const stateWord = awaiting
     ? "WAITING"
     : running
@@ -229,22 +247,34 @@ export const RunPage = ({
 
   const directOn = Boolean(manualControl);
   const selectedPreview = selStep ? stepPreviews[selStep] : undefined;
-  const viewportImage = directOn ? previewImage : selectedPreview ?? previewImage;
+  const viewportImage = directOn
+    ? previewImage
+    : (selectedPreview ?? previewImage);
   const selectedScenario = selStep
     ? scenarios.find((item) => item.id === selStep.split(":", 1)[0])
     : undefined;
   const viewportScenario = selectedScenario ?? scenario;
   const effectiveFit: FitMode = fitMode;
-  const vpPreset = VIEWPORT_PRESETS.find((v) => v.key === vpKey) ?? VIEWPORT_PRESETS[0];
+  const vpPreset =
+    VIEWPORT_PRESETS.find((v) => v.key === vpKey) ?? VIEWPORT_PRESETS[0];
   const vpNow = directOn
-    ? { key: "capture", w: imgSize.w, h: imgSize.h, label: `${imgSize.w}×${imgSize.h}`, title: "실제 캡처 크기" }
+    ? {
+        key: "capture",
+        w: imgSize.w,
+        h: imgSize.h,
+        label: `${imgSize.w}×${imgSize.h}`,
+        title: "실제 캡처 크기",
+      }
     : vpPreset;
   const stageW = Math.max(0, stageSize.w - 24);
   const stageH = Math.max(0, stageSize.h - 24);
   let scale = 1;
   if (effectiveFit === "width") scale = stageW > 0 ? stageW / vpNow.w : 1;
   else if (effectiveFit === "fit")
-    scale = stageW > 0 && stageH > 0 ? Math.min(stageW / vpNow.w, (stageH - CHROME_H) / vpNow.h, 1) : 1;
+    scale =
+      stageW > 0 && stageH > 0
+        ? Math.min(stageW / vpNow.w, (stageH - CHROME_H) / vpNow.h, 1)
+        : 1;
   scale = Math.max(0.08, Math.min(scale, 2));
   if (customScale !== null) scale = customScale;
   const displayScalePercent = scaleDraft ?? String(Math.round(scale * 100));
@@ -257,7 +287,8 @@ export const RunPage = ({
   };
   const pageW = Math.round(vpNow.w * scale);
   const pageH = Math.round(vpNow.h * scale);
-  const needScroll = stageW > 0 && (pageW > stageW + 1 || pageH + CHROME_H > stageH + 1);
+  const needScroll =
+    stageW > 0 && (pageW > stageW + 1 || pageH + CHROME_H > stageH + 1);
   const cropLabel = needScroll
     ? "스테이지보다 큼 · 스크롤로 이동"
     : scale < 0.999
@@ -282,11 +313,15 @@ export const RunPage = ({
       const failedAt =
         finished?.status === "failed" ? (finished.failedStepIndex ?? 0) : null;
       const passed = finished
-        ? finished.status === "passed" || (failedAt !== null && index < failedAt)
+        ? finished.status === "passed" ||
+          (failedAt !== null && index < failedAt)
         : isCurrentScenario && index < runProgress.current;
       const failed = failedAt !== null && index === failedAt;
       const isRunning =
-        !finished && running && isCurrentScenario && index === runProgress.current;
+        !finished &&
+        running &&
+        isCurrentScenario &&
+        index === runProgress.current;
       const isWaiting = isRunning && awaiting;
       const stepKey = `${item.id}:${step.id}`;
       const selected = selStep === stepKey;
@@ -350,7 +385,9 @@ export const RunPage = ({
   });
 
   const filteredLog =
-    logFilter === "ALL" ? runLog : runLog.filter((line) => line.includes("실패"));
+    logFilter === "ALL"
+      ? runLog
+      : runLog.filter((line) => line.includes("실패"));
 
   useLayoutEffect(() => {
     const consoleBody = consoleBodyRef.current;
@@ -368,7 +405,10 @@ export const RunPage = ({
     const consoleBody = consoleBodyRef.current;
     if (!consoleBody) return;
     isConsoleAtBottomRef.current =
-      consoleBody.scrollHeight - consoleBody.scrollTop - consoleBody.clientHeight <= 1;
+      consoleBody.scrollHeight -
+        consoleBody.scrollTop -
+        consoleBody.clientHeight <=
+      1;
   };
 
   return (
@@ -390,10 +430,7 @@ export const RunPage = ({
             </div>
           </div>
           {canStop && (
-            <button
-              className="run-stop-btn"
-              onClick={onCancel}
-            >
+            <button className="run-stop-btn" onClick={onCancel}>
               <span className="msi">stop</span>
               실행 중단
             </button>
@@ -433,7 +470,9 @@ export const RunPage = ({
                   <input
                     type="checkbox"
                     checked={livePreview}
-                    onChange={(event) => onLivePreviewChange(event.target.checked)}
+                    onChange={(event) =>
+                      onLivePreviewChange(event.target.checked)
+                    }
                     disabled={running}
                   />
                   실행 화면 표시
@@ -445,14 +484,16 @@ export const RunPage = ({
       </div>
 
       <div className="run-tape">
-        {groups.flatMap((group) => group.steps).map((row) => (
-          <div
-            key={row.stepKey}
-            className="run-tape-bar"
-            style={{ background: row.dot }}
-            title={`step ${row.index + 1}`}
-          />
-        ))}
+        {groups
+          .flatMap((group) => group.steps)
+          .map((row) => (
+            <div
+              key={row.stepKey}
+              className="run-tape-bar"
+              style={{ background: row.dot }}
+              title={`step ${row.index + 1}`}
+            />
+          ))}
       </div>
 
       {manual && (
@@ -481,7 +522,10 @@ export const RunPage = ({
               />
               표시
             </label>
-            <button className="button button-primary" onClick={onSubmitManualInput}>
+            <button
+              className="button button-primary"
+              onClick={onSubmitManualInput}
+            >
               입력 완료 · 계속
             </button>
             <button className="run-manual-skip" onClick={onCancelManual}>
@@ -493,7 +537,10 @@ export const RunPage = ({
 
       {fullRunVideoAvailable && !running && (
         <div className="run-video-bar">
-          <button className="button button-secondary" onClick={onDownloadFullRunVideo}>
+          <button
+            className="button button-secondary"
+            onClick={onDownloadFullRunVideo}
+          >
             전체 시나리오 영상 다운로드
           </button>
           {runVideos.map(({ scenario: videoScenario, path }) => (
@@ -516,7 +563,10 @@ export const RunPage = ({
               {runProgress.current}/{runProgress.total} steps
             </span>
             {selStep && (
-              <button className="run-live-return" onClick={() => setSelStep(null)}>
+              <button
+                className="run-live-return"
+                onClick={() => setSelStep(null)}
+              >
                 LIVE로 복귀
               </button>
             )}
@@ -525,9 +575,14 @@ export const RunPage = ({
             {groups.map((group) => (
               <div key={group.scenario.id}>
                 <div className="run-group-head">
-                  <span className="run-group-dot" style={{ background: group.dot }} />
+                  <span
+                    className="run-group-dot"
+                    style={{ background: group.dot }}
+                  />
                   <span>{group.scenario.title}</span>
-                  <span className="run-group-count">{group.scenario.steps.length}단계</span>
+                  <span className="run-group-count">
+                    {group.scenario.steps.length}단계
+                  </span>
                 </div>
                 {group.steps.map((row) => (
                   <button
@@ -547,10 +602,16 @@ export const RunPage = ({
                       style={{ background: row.dot }}
                     />
                     <span className="run-step-n">{row.index + 1}</span>
-                    <span className="run-step-op action-tag" data-action={row.step.action}>
+                    <span
+                      className="run-step-op action-tag"
+                      data-action={row.step.action}
+                    >
                       {actionLabel[row.step.action]}
                     </span>
-                    <span className="run-step-target" style={{ color: row.targetFg }}>
+                    <span
+                      className="run-step-target"
+                      style={{ color: row.targetFg }}
+                    >
                       {actionText(row.step)}
                     </span>
                   </button>
@@ -577,7 +638,10 @@ export const RunPage = ({
                         ? "CAPTURING"
                         : "IDLE"}
                 </span>
-                <button className="run-live-return" onClick={() => onLivePreviewChange(false)}>
+                <button
+                  className="run-live-return"
+                  onClick={() => onLivePreviewChange(false)}
+                >
                   숨기기
                 </button>
               </div>
@@ -590,7 +654,9 @@ export const RunPage = ({
                         key={preset.key}
                         type="button"
                         title={`${preset.title} · ${preset.label}`}
-                        className={!directOn && vpKey === preset.key ? "active" : ""}
+                        className={
+                          !directOn && vpKey === preset.key ? "active" : ""
+                        }
                         disabled={directOn}
                         onClick={() => {
                           setVpKey(preset.key);
@@ -608,7 +674,11 @@ export const RunPage = ({
                         key={mode.key}
                         type="button"
                         title={mode.title}
-                        className={customScale === null && effectiveFit === mode.key ? "active" : ""}
+                        className={
+                          customScale === null && effectiveFit === mode.key
+                            ? "active"
+                            : ""
+                        }
                         onClick={() => {
                           setFitMode(mode.key);
                           setCustomScale(null);
@@ -635,7 +705,9 @@ export const RunPage = ({
                         event.currentTarget.select();
                       }}
                       onChange={(event) => setScaleDraft(event.target.value)}
-                      onBlur={(event) => commitScaleDraft(event.currentTarget.value)}
+                      onBlur={(event) =>
+                        commitScaleDraft(event.currentTarget.value)
+                      }
                       onKeyDown={(event) => {
                         if (event.key === "Enter") event.currentTarget.blur();
                         if (event.key === "Escape") {
@@ -676,8 +748,11 @@ export const RunPage = ({
               {directOn && (
                 <div className="run-viewport-direct-banner">
                   <span className="run-vp-direct-dot" />
-                  직접 제어 중 · 배율을 조정해도 클릭 좌표는 실제 화면 기준으로 자동 보정됩니다
-                  <span className="run-viewport-direct-hint">{vpNow.label} 세션</span>
+                  직접 제어 중 · 배율을 조정해도 클릭 좌표는 실제 화면 기준으로
+                  자동 보정됩니다
+                  <span className="run-viewport-direct-hint">
+                    {vpNow.label} 세션
+                  </span>
                 </div>
               )}
 
@@ -692,9 +767,16 @@ export const RunPage = ({
               >
                 <div
                   className="run-frame"
-                  style={{ width: pageW, height: pageH + CHROME_H, borderColor: directOn ? "#C08A15" : undefined }}
+                  style={{
+                    width: pageW,
+                    height: pageH + CHROME_H,
+                    borderColor: directOn ? "#C08A15" : undefined,
+                  }}
                 >
-                  <div className="run-frame-chrome" style={{ height: CHROME_H }}>
+                  <div
+                    className="run-frame-chrome"
+                    style={{ height: CHROME_H }}
+                  >
                     <span className="run-frame-dots">
                       <i />
                       <i />
@@ -709,7 +791,11 @@ export const RunPage = ({
                         ref={manualImageRef}
                         className={manualControl ? "manual-browser-screen" : ""}
                         src={viewportImage}
-                        style={{ width: pageW, height: pageH, objectFit: "contain" }}
+                        style={{
+                          width: pageW,
+                          height: pageH,
+                          objectFit: "contain",
+                        }}
                         onLoad={(event) =>
                           setImgSize({
                             w: event.currentTarget.naturalWidth || 1280,
@@ -717,14 +803,22 @@ export const RunPage = ({
                           })
                         }
                         alt={
-                          manualControl ? "직접 조작할 브라우저 화면" : selStep ? "선택한 단계의 실행 화면" : "현재 테스트 실행 화면"
+                          manualControl
+                            ? "직접 조작할 브라우저 화면"
+                            : selStep
+                              ? "선택한 단계의 실행 화면"
+                              : "현재 테스트 실행 화면"
                         }
                         tabIndex={manualControl ? 0 : -1}
                         onClick={
                           manualControl
                             ? (event) => {
                                 const point = browserPoint(event);
-                                if (point) onManualBrowserEvent({ type: "click", ...point });
+                                if (point)
+                                  onManualBrowserEvent({
+                                    type: "click",
+                                    ...point,
+                                  });
                                 event.currentTarget.focus();
                               }
                             : undefined
@@ -748,14 +842,18 @@ export const RunPage = ({
                           manualControl
                             ? (event: ClipboardEvent<HTMLImageElement>) => {
                                 event.preventDefault();
-                                const text = event.clipboardData.getData("text");
-                                if (text) onManualBrowserEvent({ type: "text", text });
+                                const text =
+                                  event.clipboardData.getData("text");
+                                if (text)
+                                  onManualBrowserEvent({ type: "text", text });
                               }
                             : undefined
                         }
                       />
                     ) : (
-                      <div className="run-viewport-caption">표시할 단계 화면이 아직 없습니다.</div>
+                      <div className="run-viewport-caption">
+                        표시할 단계 화면이 아직 없습니다.
+                      </div>
                     )}
                   </div>
                 </div>
@@ -763,7 +861,10 @@ export const RunPage = ({
 
               <div className="run-viewport-status">
                 <span>{selStep ? "선택 단계" : vpNow.label}</span>
-                <span className="run-viewport-status-crop" style={{ color: cropFg }}>
+                <span
+                  className="run-viewport-status-crop"
+                  style={{ color: cropFg }}
+                >
                   {cropLabel}
                 </span>
               </div>
@@ -772,17 +873,24 @@ export const RunPage = ({
                 <div className="manual-browser-actions">
                   <input
                     value={manualFailureReason}
-                    onChange={(event) => setManualFailureReason(event.target.value)}
+                    onChange={(event) =>
+                      setManualFailureReason(event.target.value)
+                    }
                     placeholder="실패 시 사유를 입력하세요"
                   />
                   <button
                     className="button danger"
                     disabled={!manualFailureReason.trim()}
-                    onClick={() => onFailManualControl(manualFailureReason.trim())}
+                    onClick={() =>
+                      onFailManualControl(manualFailureReason.trim())
+                    }
                   >
                     실패로 기록
                   </button>
-                  <button className="button button-primary" onClick={onCompleteManualControl}>
+                  <button
+                    className="button button-primary"
+                    onClick={onCompleteManualControl}
+                  >
                     완료 후 계속
                   </button>
                 </div>

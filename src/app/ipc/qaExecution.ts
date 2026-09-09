@@ -33,6 +33,7 @@ let scenarioWorker: {
   browser: Browser;
   context: BrowserContext;
 } | null = null;
+let selectedViewport = { width: 2560, height: 1440 };
 
 // Playwright JS 코드는 asar 안에서도 실행되지만, 번들된 Chromium 실행 파일은 spawn 대상이라
 // asar 밖(app.asar.unpacked)의 실제 경로를 가리켜야 한다. ffmpeg와 동일한 이유다.
@@ -86,8 +87,6 @@ export const setQaViewport = async (size: {
   width: number;
   height: number;
 }): Promise<void> => {
-  const page = activeRun?.page;
-  if (!page || activeRun?.cancelled || page.isClosed()) return;
   const width = Math.round(size.width);
   const height = Math.round(size.height);
   if (
@@ -97,6 +96,11 @@ export const setQaViewport = async (size: {
     height < 200
   )
     return;
+  // 새 시나리오는 같은 Context에서 새 Page를 만들기 때문에 현재 Page만
+  // 변경하면 다음 시나리오가 Context 기본값으로 되돌아간다.
+  selectedViewport = { width, height };
+  const page = activeRun?.page;
+  if (!page || activeRun?.cancelled || page.isClosed()) return;
   try {
     await page.setViewportSize({ width, height });
   } catch {
@@ -218,21 +222,34 @@ const clickTargetFor = async (
     // 상품 검색 결과처럼 제목은 텍스트이고 상품 카드는 버튼인 경우도 하나의 순서로 센다.
     const visibleTargets = new Map<
       string,
-      { locator: Locator; frameIndex: number; order: number; isClickContainer: boolean }
+      {
+        locator: Locator;
+        frameIndex: number;
+        order: number;
+        isClickContainer: boolean;
+      }
     >();
     for (const [frameIndex, frame] of page.frames().entries()) {
       const candidates = [
-        { locator: frame.getByRole("button", { name: matcher! }), normalizeText: false },
+        {
+          locator: frame.getByRole("button", { name: matcher! }),
+          normalizeText: false,
+        },
         { locator: frame.locator("label"), normalizeText: true },
         { locator: frame.getByText(matcher!), normalizeText: false },
       ];
       for (const candidatesByRole of candidates) {
-        for (let index = 0; index < (await candidatesByRole.locator.count()); index += 1) {
+        for (
+          let index = 0;
+          index < (await candidatesByRole.locator.count());
+          index += 1
+        ) {
           const candidate = candidatesByRole.locator.nth(index);
           if (!(await candidate.isVisible())) continue;
           if (candidatesByRole.normalizeText) {
             const text = await candidate.textContent();
-            if (!text?.replace(/[\s\u200b]+/g, "").includes(normalizedName)) continue;
+            if (!text?.replace(/[\s\u200b]+/g, "").includes(normalizedName))
+              continue;
           }
           const metadata = await candidate.evaluate((element) => {
             const pathFor = (node: Element) => {
@@ -262,7 +279,10 @@ const clickTargetFor = async (
           });
           const key = `${frameIndex}:${metadata.key}`;
           const existing = visibleTargets.get(key);
-          if (!existing || (!existing.isClickContainer && metadata.isClickContainer)) {
+          if (
+            !existing ||
+            (!existing.isClickContainer && metadata.isClickContainer)
+          ) {
             visibleTargets.set(key, {
               locator: candidate,
               frameIndex,
@@ -421,7 +441,7 @@ export const executeScenario = async (
       );
       await mkdir(videoDirectory, { recursive: true });
       const workerContext = await workerBrowser.newContext({
-        viewport: { width: 1280, height: 720 },
+        viewport: selectedViewport,
         recordVideo: {
           dir: videoDirectory,
           size: { width: 1280, height: 720 },
@@ -445,9 +465,13 @@ export const executeScenario = async (
         ]),
       };
     page = await context.newPage();
+    await page.setViewportSize(selectedViewport);
     run.page = page;
     context.on("page", (popup) => {
       run.page = popup;
+      void popup.setViewportSize(selectedViewport).catch(() => {
+        /* 팝업이 즉시 닫힌 경우는 무시한다. */
+      });
       popup.once("close", () => {
         if (!run.cancelled) run.page = page;
       });
