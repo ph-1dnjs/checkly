@@ -1,4 +1,5 @@
-@import url("https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0");
+@import url("https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20,400,0,0");
+@import url("https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800&display=swap");
 @import "./bottom-navigation.css";
 @import "./dashboard.css";
 @import "./scenario-picker.css";
@@ -35,7 +36,7 @@ button:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
-  outline: 2px solid #17607f;
+  outline: 2px solid #1f63ae;
   outline-offset: 2px;
 }
 .msi {
@@ -55,48 +56,50 @@ textarea:focus-visible {
   justify-content: center;
   min-height: 22px;
   padding: 3px 10px;
-  border-radius: 999px;
-  background: #6a7a8b;
-  color: #fff;
+  border-radius: 4px;
+  background: #f0f3f5;
+  color: #3d4650;
   font-family:
     "Helvetica Neue", Helvetica, "Apple SD Gothic Neo", "Malgun Gothic",
     sans-serif;
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: -0.02em;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
   line-height: 1;
   white-space: nowrap;
 }
-.action-tag[data-action="goto"] {
-  background: #5f7990;
+.action-tag[data-action="goto"],
+.action-tag[data-action="fill"] {
+  background: #edf4fc;
+  color: #1f63ae;
 }
-.action-tag[data-action="fill"],
-.action-tag[data-action="select"] {
-  background: #638477;
-}
+.action-tag[data-action="select"],
 .action-tag[data-action="fileUpload"] {
-  background: #74856c;
+  background: #f0f3f5;
+  color: #3d4650;
 }
 .action-tag[data-action="manualFill"],
 .action-tag[data-action="manualControl"],
 .action-tag[data-action="manualResult"] {
-  background: #8a7467;
+  background: #fdf7e9;
+  color: #96690c;
 }
 .action-tag[data-action="click"] {
-  background: #69758a;
+  background: #f0f3f5;
+  color: #3d4650;
 }
 .action-tag[data-action="expectText"] {
-  background: #7c7288;
+  background: #e7f0ea;
+  color: #1e7a4a;
 }
 .preview-scenario li .action-tag {
   flex: 0 0 86px;
   width: 86px;
   min-width: 86px;
   max-width: 86px;
-  color: #fff;
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: -0.02em;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 .workspace {
   min-height: 100vh;
