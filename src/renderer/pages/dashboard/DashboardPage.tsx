@@ -1,3 +1,4 @@
+import { Button } from "../../shared/ui/Button";
 import {
   estimateDurationSeconds,
   formatClock,
@@ -39,9 +40,9 @@ export const DashboardPage = ({
       <div className="dash-title">
         <div className="dash-heading">대시보드</div>
         <div className="dash-title-actions">
-          <button className="button button-primary" onClick={onOpenRun}>
+          <Button variant="primary" onClick={onOpenRun}>
             실행 화면 열기 <span className="dash-kbd">⌘R</span>
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -139,9 +140,9 @@ export const DashboardPage = ({
         <div className="dash-empty">
           <strong>아직 실행 기록이 없습니다.</strong>
           <p>시나리오를 실행하면 최근 5개의 기록이 여기에 저장됩니다.</p>
-          <button className="button button-secondary" onClick={onOpenRun}>
+          <Button variant="secondary" onClick={onOpenRun}>
             실행 화면으로 이동
-          </button>
+          </Button>
         </div>
       )}
     </div>
