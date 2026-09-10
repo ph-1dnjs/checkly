@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Button } from "../../shared/ui/Button";
 import type { Scenario } from "../../shared/model/scenario";
 import type { UpdateStatus } from "../../shared/model/update";
 
@@ -42,7 +43,7 @@ const Toggle = ({
       <div className="settings-row-label">{label}</div>
       <div className="settings-row-hint">{hint}</div>
     </div>
-    <button
+    <Button
       className={`settings-toggle${on ? " on" : ""}`}
       onClick={onToggle}
       role="switch"
@@ -50,7 +51,7 @@ const Toggle = ({
       aria-label={label}
     >
       <i />
-    </button>
+    </Button>
   </div>
 );
 
@@ -107,20 +108,20 @@ export const SettingsPage = ({ scenario }: Props) => {
           <div className="settings-row-value">
             v{appVersion || "—"}
             {updateStatus.state === "downloaded" ? (
-              <button
-                className="button button-primary"
+              <Button
+                variant="primary"
                 onClick={() => void window.electronAPI.installUpdate()}
               >
                 재시작하여 설치
-              </button>
+              </Button>
             ) : (
-              <button
-                className="button"
+              <Button
+                variant="default"
                 disabled={updateStatus.state === "checking" || updateStatus.state === "downloading"}
                 onClick={checkNow}
               >
                 {updateStatus.state === "checking" ? "확인 중…" : "지금 확인"}
-              </button>
+              </Button>
             )}
           </div>
         </div>
@@ -186,7 +187,7 @@ export const SettingsPage = ({ scenario }: Props) => {
           </div>
           <div className="settings-row-value">
             Chromium
-            <button className="button">변경</button>
+            <Button variant="default">변경</Button>
           </div>
         </div>
         <Toggle
