@@ -1,3 +1,4 @@
+import { Button } from "../shared/ui/Button";
 import {
   estimateDurationSeconds,
   type RunRecord,
@@ -24,7 +25,7 @@ export const RunReportDrawer = ({ record, onClose, onRerun }: Props) => {
 
   return (
     <div className="run-report-drawer" role="dialog" aria-modal="true">
-      <button
+      <Button
         className="run-report-drawer-backdrop"
         aria-label="리포트 닫기"
         onClick={onClose}
@@ -35,13 +36,13 @@ export const RunReportDrawer = ({ record, onClose, onRerun }: Props) => {
             <p className="eyebrow">RUN REPORT</p>
             <strong>{title}</strong>
           </div>
-          <button
+          <Button
             className="run-report-drawer-close"
             onClick={onClose}
             aria-label="닫기"
           >
             ✕
-          </button>
+          </Button>
         </div>
         <div className="run-report-drawer-body">
           <div className="run-report-drawer-stats">
@@ -100,12 +101,12 @@ export const RunReportDrawer = ({ record, onClose, onRerun }: Props) => {
             </div>
           ))}
           <div className="run-report-drawer-actions">
-            <button
-              className="button button-primary"
+            <Button
+              variant="primary"
               onClick={() => onRerun(record.scenarios)}
             >
               다시 실행
-            </button>
+            </Button>
           </div>
         </div>
       </div>
