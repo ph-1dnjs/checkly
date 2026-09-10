@@ -1,5 +1,6 @@
 import { Button } from "../shared/ui/Button";
 import type { Route } from "../shared/model/scenario";
+import checklyMark from "../assets/checkly-mark.png";
 
 type Props = {
   route: Route;
@@ -30,8 +31,12 @@ export const BottomNavigation = ({
       onClick={() => onNavigate("dashboard")}
       aria-label="Checkly"
     >
-      <span className="bottom-nav-brand-mark msi" aria-hidden="true">check</span>
-      <strong>Checkly</strong>
+      <span className="bottom-nav-brand-mark" aria-hidden="true">
+        <img src={checklyMark} alt="" />
+      </span>
+      <strong>
+        Check<span className="bottom-nav-brand-accent">ly</span>
+      </strong>
     </Button>
     <div className="bottom-nav-controls">
       {NAVS.map((item) => (
