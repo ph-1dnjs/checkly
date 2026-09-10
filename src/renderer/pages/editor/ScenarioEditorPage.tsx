@@ -9,6 +9,7 @@ import {
   type Step,
 } from "../../shared/model/scenario";
 import { ActionTag } from "../../shared/ui/ActionTag";
+import { Button } from "../../shared/ui/Button";
 import { DuplicateScenarioModal } from "./DuplicateScenarioModal";
 
 type Device = "mobile" | "tablet" | "desktop";
@@ -185,33 +186,33 @@ export const ScenarioEditorPage = ({
         {isDirty && <span className="editor-unsaved-badge">UNSAVED</span>}
       </div>
       <div className="editor-mode-switch">
-        <button
+        <Button
           className={mode === "text" ? "active" : ""}
           onClick={() => onModeChange("text")}
         >
           텍스트 편집
-        </button>
-        <button
+        </Button>
+        <Button
           className={mode === "marker" ? "active" : ""}
           onClick={() => onModeChange("marker")}
         >
           화면에서 추출
-        </button>
+        </Button>
       </div>
     </div>
     {mode === "text" ? (
       <>
         <div className="editor-actions">
-          <button className="button button-secondary" onClick={() => onModeChange("marker")}>
-          화면에서 추출
-        </button>
-          <button className="button button-secondary" onClick={onExport}>
+          <Button variant="secondary" onClick={() => onModeChange("marker")}>
+            화면에서 추출
+          </Button>
+          <Button variant="secondary" onClick={onExport}>
             저장
-          </button>
-          <button className="button button-run" onClick={onRun}>
+          </Button>
+          <Button className="button button-run" onClick={onRun}>
             ▶ 바로 실행
-          </button>
-          <button className="button button-text-import" onClick={onImport}>불러오기</button>
+          </Button>
+          <Button variant="text" onClick={onImport}>불러오기</Button>
         </div>
         <div className="scenario-writing-grid">
           <section className="writing-card markdown-card">
@@ -264,8 +265,7 @@ export const ScenarioEditorPage = ({
                           <span className="preview-index">{String(index + 1).padStart(2, "0")}</span>
                           <h2>{preview.title}</h2>
                           <span className="tag">{preview.steps.length}개 단계</span>
-                          <button
-                            type="button"
+                          <Button
                             className="preview-template-btn"
                             title="값을 변경해 새 템플릿으로 복제합니다"
                             onClick={(event) => {
@@ -274,7 +274,7 @@ export const ScenarioEditorPage = ({
                             }}
                           >
                             복제
-                          </button>
+                          </Button>
                           <span className={`preview-caret${isOpen ? " open" : ""}`}>▾</span>
                         </div>
                         {isOpen && (
@@ -323,22 +323,20 @@ export const ScenarioEditorPage = ({
       <div className="extract-shell">
         <div className="extract-topbar">
           <div className="extract-navbtns">
-            <button
-              type="button"
+            <Button
               className="extract-navbtn"
               title="이전"
               onClick={() => targetFrameRef.current?.goBack()}
             >
               <span className="extract-chevron extract-chevron-back" />
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
               className="extract-navbtn"
               title="앞으로"
               onClick={() => targetFrameRef.current?.goForward()}
             >
               <span className="extract-chevron extract-chevron-forward" />
-            </button>
+            </Button>
           </div>
           <div className="extract-url">
             <span className="extract-url-dot" />
@@ -352,15 +350,14 @@ export const ScenarioEditorPage = ({
           </div>
           <div className="extract-devices">
             {DEVICES.map((d) => (
-              <button
+              <Button
                 key={d.id}
-                type="button"
                 className={device === d.id ? "active" : ""}
                 title={d.label}
                 onClick={() => setDevice(d.id)}
               >
                 <span style={{ width: d.w, height: d.h }} />
-              </button>
+              </Button>
             ))}
           </div>
           {previews.length > 1 && (
@@ -378,12 +375,12 @@ export const ScenarioEditorPage = ({
               </select>
             </label>
           )}
-          <button className="button button-run" onClick={onRun}>
+          <Button className="button button-run" onClick={onRun}>
             ▶ 바로 실행
-          </button>
-          <button className="button button-secondary" onClick={onReturnToText}>
+          </Button>
+          <Button variant="secondary" onClick={onReturnToText}>
             편집기로 돌아가기
-          </button>
+          </Button>
         </div>
 
         <div className="extract-body">
@@ -399,8 +396,7 @@ export const ScenarioEditorPage = ({
                   className={`extract-marker-row${selectedId === step.id ? " selected" : ""}${draggedStepId === step.id ? " dragging" : ""}`}
                   data-step-id={step.id}
                 >
-                  <button
-                    type="button"
+                  <Button
                     className="extract-marker-drag"
                     aria-label={`${step.id}번 단계 순서 변경`}
                     onPointerDown={(event) => {
@@ -444,9 +440,8 @@ export const ScenarioEditorPage = ({
                     onPointerCancel={clearStepDrag}
                   >
                     ⠿
-                  </button>
-                  <button
-                    type="button"
+                  </Button>
+                  <Button
                     className="extract-marker-main"
                     onClick={() => onSelectStep(step.id)}
                   >
@@ -455,36 +450,33 @@ export const ScenarioEditorPage = ({
                       <ActionTag action={step.action} className="extract-marker-op" />
                       <span className="extract-marker-target">{step.target}</span>
                     </span>
-                  </button>
+                  </Button>
                   <span className={`extract-marker-link${step.connected ? "" : " unlinked"}`}>
                     {step.connected ? "연결됨" : "미연결"}
                   </span>
-                  <button
-                    type="button"
+                  <Button
                     className="extract-marker-edit"
                     onClick={() => onEditStep(step)}
                     aria-label="단계 편집"
                   >
                     ✎
-                  </button>
-                  <button
-                    type="button"
+                  </Button>
+                  <Button
                     className="extract-marker-delete"
                     onClick={() => onDeleteStep(step.id)}
                     aria-label="단계 삭제"
                   >
                     ×
-                  </button>
+                  </Button>
                 </div>
               ))}
             </div>
-            <button
-              type="button"
+            <Button
               className="extract-add-marker"
               onClick={onBeginMarkerPlacement}
             >
               + 마커 추가
-            </button>
+            </Button>
           </aside>
 
           <div className="extract-canvas">
@@ -516,7 +508,7 @@ export const ScenarioEditorPage = ({
                     : { x: step.x, y: step.y };
                 return (
                   step.connected && (
-                    <button
+                    <Button
                       key={step.id}
                       className={
                         "extract-pin" + (selectedId === step.id ? " selected" : "")
@@ -530,29 +522,28 @@ export const ScenarioEditorPage = ({
                       aria-label={`${step.id}번 ${step.target} 마커`}
                     >
                       {step.id}
-                    </button>
+                    </Button>
                   )
                 );
               })}
             </div>
             <div className="extract-pinmode">
               <strong>{isAddingMarker ? "위치 선택 중" : "핀 수정 중"}</strong>
-              <button type="button" onClick={onBeginMarkerPlacement}>
+              <Button onClick={onBeginMarkerPlacement}>
                 {isAddingMarker ? "다시 선택" : "마커 추가"}
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
                 aria-pressed={markersVisible}
                 onClick={onToggleMarkersVisible}
               >
                 {markersVisible ? "마커 숨기기" : "마커 보이기"}
-              </button>
-              <button type="button" onClick={onDeleteLast}>
+              </Button>
+              <Button onClick={onDeleteLast}>
                 마지막 삭제
-              </button>
-              <button type="button" onClick={onClearSteps}>
+              </Button>
+              <Button onClick={onClearSteps}>
                 전체 초기화
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -704,15 +695,14 @@ export const ScenarioEditorPage = ({
                   placeholder={markerDialog.action === "fileUpload" ? "파일 경로를 입력하거나 선택하세요" : "입력 또는 선택할 값"}
                 />
                 {markerDialog.action === "fileUpload" && (
-                  <button
-                    type="button"
-                    className="button button-secondary"
+                  <Button
+                    variant="secondary"
                     onClick={() => void onSelectUploadFile().then((filePath) => {
                       if (filePath) onUpdateMarkerDialog({ value: filePath });
                     })}
                   >
                     파일 선택
-                  </button>
+                  </Button>
                 )}
               </div>
               {markerDialog.action === "fileUpload" && (
@@ -768,19 +758,19 @@ export const ScenarioEditorPage = ({
             </>
           )}
           <div className="modal-actions">
-            <button
-              className="button button-secondary"
+            <Button
+              variant="secondary"
               onClick={onCloseMarkerDialog}
             >
               취소
-            </button>
-            <button
-              className="button button-primary"
+            </Button>
+            <Button
+              variant="primary"
               onClick={onCompleteMarkerDialog}
               disabled={!markerDialog.target.trim()}
             >
               마커 편집 완료
-            </button>
+            </Button>
           </div>
         </div>
       </div>
