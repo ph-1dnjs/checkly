@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { actionText, parseMarkdown, type Scenario } from "../../shared/model/scenario";
 import { ActionTag } from "../../shared/ui/ActionTag";
+import { Button } from "../../shared/ui/Button";
 
 type FileEntry = { name: string; path: string; updatedAt: string };
 type Picked = { fileName: string; filePath: string; scenario: Scenario };
@@ -140,17 +141,17 @@ export const ScenarioPickerPage = ({ onOpenEditor, onRun }: Props) => {
               : "시나리오 markdown(.md) 파일이 들어있는 폴더를 선택하면 이 화면에서 파일과 시나리오를 확인하고 실행할 수 있습니다."}
           </div>
           <div className="picker-empty-actions">
-            <button className="button button-primary" onClick={() => void chooseFolder()}>
+            <Button variant="primary" onClick={() => void chooseFolder()}>
               폴더 선택
-            </button>
+            </Button>
             {folderPath && (
-              <button className="button button-secondary" onClick={() => void refreshFolder()}>
+              <Button variant="secondary" onClick={() => void refreshFolder()}>
                 다시 불러오기
-              </button>
+              </Button>
             )}
-            <button className="button button-secondary" onClick={onOpenEditor}>
+            <Button variant="secondary" onClick={onOpenEditor}>
               편집기 열기
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -179,15 +180,15 @@ export const ScenarioPickerPage = ({ onOpenEditor, onRun }: Props) => {
           </span>
         </div>
         <div className="picker-actions">
-          <button
-            className="button button-secondary"
+          <Button
+            variant="secondary"
             onClick={() => void refreshFolder()}
           >
             파일 다시 불러오기
-          </button>
-          <button className="button button-secondary" onClick={onOpenEditor}>
+          </Button>
+          <Button variant="secondary" onClick={onOpenEditor}>
             편집기 열기
-          </button>
+          </Button>
         </div>
       </header>
 
@@ -195,14 +196,14 @@ export const ScenarioPickerPage = ({ onOpenEditor, onRun }: Props) => {
         <aside className="picker-files">
           <div className="picker-col-label">
             <span>FILES</span>
-            <button onClick={() => void chooseFolder()}>폴더 변경</button>
+            <Button onClick={() => void chooseFolder()}>폴더 변경</Button>
           </div>
           {files.map((file) => {
             const n = (fileCache[file.path] ?? []).filter((scenario) =>
               pickedKeys.has(keyOf(file.path, scenario)),
             ).length;
             return (
-              <button
+              <Button
                 key={file.path}
                 className={file.path === activeFilePath ? "active" : ""}
                 onClick={() => setActiveFilePath(file.path)}
@@ -218,7 +219,7 @@ export const ScenarioPickerPage = ({ onOpenEditor, onRun }: Props) => {
                   </small>
                 </div>
                 {n > 0 && <em>{n} 선택</em>}
-              </button>
+              </Button>
             );
           })}
         </aside>
@@ -244,7 +245,7 @@ export const ScenarioPickerPage = ({ onOpenEditor, onRun }: Props) => {
                 return (
                   <div className={`picker-scenario${isPicked ? " picked" : ""}`} key={key}>
                     <div className="picker-scenario-row">
-                      <button
+                      <Button
                         className="picker-scenario-main"
                         onClick={() => togglePick(activeFilePath!, scenario)}
                       >
@@ -261,17 +262,17 @@ export const ScenarioPickerPage = ({ onOpenEditor, onRun }: Props) => {
                             {unlinked ? ` · 선택자 미연결 ${unlinked}` : ""}
                           </div>
                         </div>
-                      </button>
-                      <button className="picker-expand" onClick={() => toggleExpand(key)}>
+                      </Button>
+                      <Button className="picker-expand" onClick={() => toggleExpand(key)}>
                         {isOpen ? "▾" : "▸"} 단계
-                      </button>
-                      <button
+                      </Button>
+                      <Button
                         className="picker-run-only"
                         title="이 시나리오만 실행"
                         onClick={() => runOnly(activeFilePath!, scenario)}
                       >
                         <span className="msi">play_arrow</span>
-                      </button>
+                      </Button>
                     </div>
                     {isOpen && (
                       <ol className="picker-steps">
@@ -300,7 +301,7 @@ export const ScenarioPickerPage = ({ onOpenEditor, onRun }: Props) => {
           <div className="picker-col-label">
             <span>SELECTED · 실행 대상</span>
             {picked.length > 0 && (
-              <button onClick={() => setPickedKeys(new Set())}>비우기</button>
+              <Button onClick={() => setPickedKeys(new Set())}>비우기</Button>
             )}
           </div>
           <div className="picker-cart-body">
@@ -321,12 +322,12 @@ export const ScenarioPickerPage = ({ onOpenEditor, onRun }: Props) => {
                       <b>{String(index + 1).padStart(2, "0")}</b>
                       <span>{item.scenario.title}</span>
                       <i>{item.scenario.steps.length} steps</i>
-                      <button
+                      <Button
                         title="선택 해제"
                         onClick={() => togglePick(item.filePath, item.scenario)}
                       >
                         ✕
-                      </button>
+                      </Button>
                     </div>
                   ))}
                 </div>
@@ -344,14 +345,14 @@ export const ScenarioPickerPage = ({ onOpenEditor, onRun }: Props) => {
                 <strong>{totalSteps}</strong>
               </div>
             </div>
-            <button
-              className="button button-primary"
+            <Button
+              variant="primary"
               disabled={!picked.length}
               onClick={runPicked}
             >
               <span className="msi">play_arrow</span>
               {picked.length ? `${picked.length}개 시나리오 실행` : "시나리오를 선택하세요"}
-            </button>
+            </Button>
           </footer>
         </aside>
       </div>
