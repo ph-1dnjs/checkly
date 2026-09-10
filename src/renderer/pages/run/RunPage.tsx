@@ -6,6 +6,7 @@ import {
   type Step,
 } from "../../shared/model/scenario";
 import { ActionTag } from "../../shared/ui/ActionTag";
+import { Button } from "../../shared/ui/Button";
 import {
   useEffect,
   useLayoutEffect,
@@ -430,40 +431,40 @@ export const RunPage = ({
             </div>
           </div>
           {canStop && (
-            <button className="run-stop-btn" onClick={onCancel}>
+            <Button className="run-stop-btn" onClick={onCancel}>
               <span className="msi">stop</span>
               실행 중단
-            </button>
+            </Button>
           )}
           {canReplay && (
-            <button className="button button-secondary" onClick={onGoToPicker}>
+            <Button variant="secondary" onClick={onGoToPicker}>
               시나리오 다시 선택
-            </button>
+            </Button>
           )}
           <div className="run-settings-menu" ref={settingsMenuRef}>
-            <button
+            <Button
               className="run-settings-btn"
               onClick={() => setSettingsOpen((open) => !open)}
               aria-expanded={settingsOpen}
             >
               Chromium · 1w
-            </button>
+            </Button>
             {settingsOpen && (
               <div className="run-settings-popover">
                 <div className="run-settings-group">
                   <p>BROWSER</p>
                   <div className="setting-choice">
-                    <button className="selected">Chromium</button>
-                    <button>WebKit</button>
-                    <button>Firefox</button>
+                    <Button className="selected">Chromium</Button>
+                    <Button>WebKit</Button>
+                    <Button>Firefox</Button>
                   </div>
                 </div>
                 <div className="run-settings-group">
                   <p>WORKERS</p>
                   <div className="setting-choice">
-                    <button className="selected">1</button>
-                    <button>2</button>
-                    <button>4</button>
+                    <Button className="selected">1</Button>
+                    <Button>2</Button>
+                    <Button>4</Button>
                   </div>
                 </div>
                 <label className="run-settings-toggle">
@@ -522,35 +523,35 @@ export const RunPage = ({
               />
               표시
             </label>
-            <button
-              className="button button-primary"
+            <Button
+              variant="primary"
               onClick={onSubmitManualInput}
             >
               입력 완료 · 계속
-            </button>
-            <button className="run-manual-skip" onClick={onCancelManual}>
+            </Button>
+            <Button className="run-manual-skip" onClick={onCancelManual}>
               취소
-            </button>
+            </Button>
           </div>
         </div>
       )}
 
       {fullRunVideoAvailable && !running && (
         <div className="run-video-bar">
-          <button
-            className="button button-secondary"
+          <Button
+            variant="secondary"
             onClick={onDownloadFullRunVideo}
           >
             전체 시나리오 영상 다운로드
-          </button>
+          </Button>
           {runVideos.map(({ scenario: videoScenario, path }) => (
-            <button
+            <Button
               key={path}
-              className="button button-secondary"
+              variant="secondary"
               onClick={() => onDownloadRunVideo(path)}
             >
               {videoScenario.title} 영상
-            </button>
+            </Button>
           ))}
         </div>
       )}
@@ -563,12 +564,12 @@ export const RunPage = ({
               {runProgress.current}/{runProgress.total} steps
             </span>
             {selStep && (
-              <button
+              <Button
                 className="run-live-return"
                 onClick={() => setSelStep(null)}
               >
                 LIVE로 복귀
-              </button>
+              </Button>
             )}
           </div>
           <div className="run-execution-body">
@@ -585,9 +586,8 @@ export const RunPage = ({
                   </span>
                 </div>
                 {group.steps.map((row) => (
-                  <button
+                  <Button
                     key={row.stepKey}
-                    type="button"
                     className="run-step-row"
                     title={`${group.scenario.title} #${row.index + 1} ${actionText(row.step)}`}
                     style={{
@@ -609,7 +609,7 @@ export const RunPage = ({
                     >
                       {actionText(row.step)}
                     </span>
-                  </button>
+                  </Button>
                 ))}
               </div>
             ))}
@@ -633,21 +633,20 @@ export const RunPage = ({
                         ? "CAPTURING"
                         : "IDLE"}
                 </span>
-                <button
+                <Button
                   className="run-live-return"
                   onClick={() => onLivePreviewChange(false)}
                 >
                   숨기기
-                </button>
+                </Button>
               </div>
 
               <div className="run-viewport-toolbar">
                 <div className="run-viewport-toolbar-scroll">
                   <div className="run-vp-group">
                     {VIEWPORT_PRESETS.map((preset) => (
-                      <button
+                      <Button
                         key={preset.key}
-                        type="button"
                         title={`${preset.title} · ${preset.label}`}
                         className={
                           !directOn && vpKey === preset.key ? "active" : ""
@@ -659,15 +658,14 @@ export const RunPage = ({
                         }}
                       >
                         {preset.label}
-                      </button>
+                      </Button>
                     ))}
                   </div>
                   <span className="run-vp-divider" />
                   <div className="run-vp-group">
                     {FIT_MODES.map((mode) => (
-                      <button
+                      <Button
                         key={mode.key}
-                        type="button"
                         title={mode.title}
                         className={
                           customScale === null && effectiveFit === mode.key
@@ -680,7 +678,7 @@ export const RunPage = ({
                         }}
                       >
                         {mode.label}
-                      </button>
+                      </Button>
                     ))}
                   </div>
                 </div>
@@ -723,20 +721,18 @@ export const RunPage = ({
                             : "맞춘"}
                     </span>
                   </div>
-                  <button
-                    type="button"
+                  <Button
                     className={zen ? "active" : ""}
                     onClick={() => setZen((value) => !value)}
                   >
                     {zen ? "패널 복원" : "패널 최대화"}
-                  </button>
-                  <button
-                    type="button"
+                  </Button>
+                  <Button
                     title="실제 브라우저 창을 분리해 원본 크기로 조작"
                     onClick={() => onPopout(vpNow.label)}
                   >
                     창 분리
-                  </button>
+                  </Button>
                 </div>
               </div>
 
@@ -873,21 +869,21 @@ export const RunPage = ({
                     }
                     placeholder="실패 시 사유를 입력하세요"
                   />
-                  <button
-                    className="button danger"
+                  <Button
+                    variant="danger"
                     disabled={!manualFailureReason.trim()}
                     onClick={() =>
                       onFailManualControl(manualFailureReason.trim())
                     }
                   >
                     실패로 기록
-                  </button>
-                  <button
-                    className="button button-primary"
+                  </Button>
+                  <Button
+                    variant="primary"
                     onClick={onCompleteManualControl}
                   >
                     완료 후 계속
-                  </button>
+                  </Button>
                 </div>
               )}
             </div>
@@ -899,22 +895,22 @@ export const RunPage = ({
               <span>CONSOLE</span>
               <div className="run-log-filters">
                 {(["ALL", "ERR"] as const).map((f) => (
-                  <button
+                  <Button
                     key={f}
                     className={logFilter === f ? "active" : ""}
                     onClick={() => setLogFilter(f)}
                   >
                     {f}
-                  </button>
+                  </Button>
                 ))}
               </div>
               {!livePreview && (
-                <button
+                <Button
                   className="run-live-return run-live-return-dark"
                   onClick={() => onLivePreviewChange(true)}
                 >
                   VIEWPORT 표시
-                </button>
+                </Button>
               )}
             </div>
             <div
