@@ -55,7 +55,7 @@
 .extract-marker-edit,.extract-marker-delete { flex:none; border:0; background:none; cursor:pointer; }
 .extract-marker-edit { color:#5a646e; font-size:13px; }
 .extract-marker-delete { color:#b32318; font-size:16px; }
-.extract-add-marker { flex:none; width:100%; padding:10px 16px; border:0; border-top:1px solid #ecf0f1; background:#fff; color:#17607f; cursor:pointer; font-weight:600; font-size:12px; text-align:left; }
+.extract-add-marker { flex:none; width:100%; padding:10px 16px; border:0; border-top:1px solid #ecf0f1; background:#fff; color:#1f63ae; cursor:pointer; font-weight:600; font-size:12px; text-align:left; }
 .extract-add-marker:hover { background:#f6f8f9; }
 
 .extract-canvas { position:relative; min-width:0; display:flex; justify-content:center; overflow:hidden; background:repeating-linear-gradient(135deg,#fafbfc 0 8px,#f4f6f8 8px 16px); }
@@ -67,13 +67,13 @@
 .extract-placement-layer { position:absolute; z-index:2; inset:0; cursor:crosshair; background:rgb(255 255 255 / 4%); }
 
 .extract-pin { position:absolute; z-index:3; display:grid; width:22px; height:22px; place-items:center; padding:0; border:1px solid #fff; color:#fff; cursor:pointer; font-family:D2Coding,ui-monospace,monospace; font-size:11px; font-weight:700; transform:translate(-50%,-50%); }
-.extract-pin.selected { outline:2px solid #17607f; outline-offset:2px; }
+.extract-pin.selected { outline:2px solid #1f63ae; outline-offset:2px; }
 
 .extract-pinmode { position:absolute; top:12px; right:12px; z-index:4; display:flex; align-items:center; gap:2px; padding:4px; border:1px solid #d5dbe0; background:#fff; }
-.extract-pinmode strong { padding:0 8px; color:#17607f; font-size:10px; font-family:D2Coding,ui-monospace,monospace; letter-spacing:.1em; white-space:nowrap; }
+.extract-pinmode strong { padding:0 8px; color:#1f63ae; font-size:10px; font-family:D2Coding,ui-monospace,monospace; letter-spacing:.1em; white-space:nowrap; }
 .extract-pinmode button { height:24px; padding:0 10px; border:0; background:transparent; color:#5a646e; cursor:pointer; font-size:12px; white-space:nowrap; }
 .extract-pinmode button:hover { background:#eef1f3; }
-.extract-pinmode button[aria-pressed="true"] { color:#17607f; }
+.extract-pinmode button[aria-pressed="true"] { color:#1f63ae; }
 
 @media(max-width:850px) {
   .extract-body { grid-template-columns:1fr; }
