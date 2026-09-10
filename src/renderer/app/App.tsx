@@ -46,6 +46,7 @@ export const App = (): ReactElement => {
     saveMarkerEditsAndReturn,
     selectMarkerScenario,
     reorderSteps,
+    duplicateScenario,
     setScenario,
     setSelectedId,
     setEditingMarker,
@@ -154,6 +155,7 @@ export const App = (): ReactElement => {
             onUpdateMarkerDialog={updateMarker}
             onCloseMarkerDialog={closeMarkerDialog}
             onCompleteMarkerDialog={completeMarker}
+            onDuplicateScenario={duplicateScenario}
           />
         )}
         {route === "picker" && (

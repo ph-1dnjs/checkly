@@ -8,8 +8,8 @@ import {
   type Scenario,
   type Step,
 } from "../../shared/model/scenario";
-
 import { ActionTag } from "../../shared/ui/ActionTag";
+import { DuplicateScenarioModal } from "./DuplicateScenarioModal";
 
 type Device = "mobile" | "tablet" | "desktop";
 
@@ -53,6 +53,11 @@ type Props = {
   onUpdateMarkerDialog: (changes: Partial<Step>) => void;
   onCloseMarkerDialog: () => void;
   onCompleteMarkerDialog: () => void;
+  onDuplicateScenario: (
+    scenarioId: string,
+    nameTemplate: string,
+    cases: Array<Record<string, string>>,
+  ) => void;
 };
 
 export const ScenarioEditorPage = ({
@@ -89,6 +94,7 @@ export const ScenarioEditorPage = ({
   onUpdateMarkerDialog,
   onCloseMarkerDialog,
   onCompleteMarkerDialog,
+  onDuplicateScenario,
 }: Props) => {
   const [draggedStepId, setDraggedStepId] = useState<string | null>(null);
   const [device, setDevice] = useState<Device>("desktop");
@@ -102,6 +108,8 @@ export const ScenarioEditorPage = ({
       next.has(id) ? next.delete(id) : next.add(id);
       return next;
     });
+
+  const [dupTarget, setDupTarget] = useState<Scenario | null>(null);
   const stepDrag = useRef<{
     id: string;
     pointerId: number;
@@ -256,6 +264,17 @@ export const ScenarioEditorPage = ({
                           <span className="preview-index">{String(index + 1).padStart(2, "0")}</span>
                           <h2>{preview.title}</h2>
                           <span className="tag">{preview.steps.length}개 단계</span>
+                          <button
+                            type="button"
+                            className="preview-template-btn"
+                            title="값을 변경해 새 템플릿으로 복제합니다"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setDupTarget(preview);
+                            }}
+                          >
+                            복제
+                          </button>
                           <span className={`preview-caret${isOpen ? " open" : ""}`}>▾</span>
                         </div>
                         {isOpen && (
@@ -765,6 +784,13 @@ export const ScenarioEditorPage = ({
           </div>
         </div>
       </div>
+    )}
+    {dupTarget && (
+      <DuplicateScenarioModal
+        scenario={dupTarget}
+        onDuplicate={onDuplicateScenario}
+        onClose={() => setDupTarget(null)}
+      />
     )}
     </>
   );
