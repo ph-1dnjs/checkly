@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { Scenario } from "../../shared/model/scenario";
 import { editableValueDefault, EDITABLE_VALUE_KIND } from "../../shared/model/scenario-duplication";
 import { ActionTag } from "../../shared/ui/ActionTag";
+import { Button } from "../../shared/ui/Button";
 import "./duplicate-scenario.css";
 
 type Props = {
@@ -75,20 +76,18 @@ export const DuplicateScenarioModal = ({ scenario, onDuplicate, onClose }: Props
               <span>케이스별 값</span>
               <p>비워두면 원본 값을 그대로 사용합니다.</p>
             </div>
-            <button
-              type="button"
+            <Button
               className="duplicate-add-case"
               title="케이스를 추가해 한 번에 여러 개를 복제합니다"
               onClick={addDupCase}
             >
               + 케이스 추가
-            </button>
+            </Button>
           </div>
 
           <div className="duplicate-case-tabs" role="tablist" aria-label="복제 케이스 선택">
             {dupCases.map((_, index) => (
-              <button
-                type="button"
+              <Button
                 role="tab"
                 aria-selected={index === dupCaseIndex}
                 key={index}
@@ -96,16 +95,15 @@ export const DuplicateScenarioModal = ({ scenario, onDuplicate, onClose }: Props
                 onClick={() => setDupCaseIndex(index)}
               >
                 케이스 {index + 1}
-              </button>
+              </Button>
             ))}
             {dupCases.length > 1 && (
-              <button
-                type="button"
+              <Button
                 className="duplicate-remove-case"
                 onClick={removeDupCase}
               >
                 현재 케이스 삭제
-              </button>
+              </Button>
             )}
           </div>
 
@@ -133,12 +131,12 @@ export const DuplicateScenarioModal = ({ scenario, onDuplicate, onClose }: Props
 
         <div className="modal-actions duplicate-actions">
           <p className="duplicate-summary">총 <strong>{dupCases.length}개</strong> 시나리오가 생성됩니다</p>
-          <button className="button button-secondary" onClick={onClose}>
+          <Button variant="secondary" onClick={onClose}>
             취소
-          </button>
-          <button className="button button-primary" onClick={submitDuplicate}>
+          </Button>
+          <Button variant="primary" onClick={submitDuplicate}>
             {dupCases.length > 1 ? `${dupCases.length}개 복제` : "복제"}
-          </button>
+          </Button>
         </div>
       </div>
     </div>
