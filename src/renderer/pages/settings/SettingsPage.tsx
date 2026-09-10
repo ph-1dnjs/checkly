@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Button } from "../../shared/ui/Button";
 import type { Scenario } from "../../shared/model/scenario";
 import type { UpdateStatus } from "../../shared/model/update";
+import checklyMark from "../../assets/checkly-mark.png";
 
 type Props = { scenario: Scenario };
 
@@ -215,6 +216,14 @@ export const SettingsPage = ({ scenario }: Props) => {
           on={notifySlack}
           onToggle={() => setNotifySlack((value) => !value)}
         />
+      </div>
+
+      <div className="settings-brand-footer">
+        <img src={checklyMark} alt="Checkly 마크" />
+        <div className="settings-brand-wordmark">
+          Check<span>ly</span>
+        </div>
+        <div className="settings-brand-tagline">반복되는 확인을 대신 맡습니다</div>
       </div>
     </div>
   );
