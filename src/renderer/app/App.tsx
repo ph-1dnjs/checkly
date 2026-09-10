@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactElement } from "react";
+import { Button } from "../shared/ui/Button";
 import { DashboardPage } from "../pages/dashboard/DashboardPage";
 import { ScenarioEditorPage } from "../pages/editor/ScenarioEditorPage";
 import { RunPage } from "../pages/run/RunPage";
@@ -232,13 +233,13 @@ export const App = (): ReactElement => {
           aria-live="polite"
           aria-label="시나리오 실행 알림"
         >
-          <button
+          <Button
             className="run-notification-close"
             onClick={() => setRunNotification(null)}
             aria-label="실행 알림 닫기"
           >
             ×
-          </button>
+          </Button>
           {runNotification.status === "running" ? (
             <>
               <div
@@ -298,12 +299,13 @@ export const App = (): ReactElement => {
               </div>
             </>
           )}
-          <button
-            className="button button-secondary run-notification-link"
+          <Button
+            variant="secondary"
+            className="run-notification-link"
             onClick={() => setRoute("run")}
           >
             바로가기 <span aria-hidden="true">→</span>
-          </button>
+          </Button>
         </section>
       )}
       <BottomNavigation
@@ -326,12 +328,9 @@ export const App = (): ReactElement => {
             <h2 id="run-validation-title">시나리오를 실행할 수 없습니다</h2>
             <p>{runValidationError}</p>
             <div className="modal-actions">
-              <button
-                className="button button-primary"
-                onClick={() => setRunValidationError(null)}
-              >
+              <Button variant="primary" onClick={() => setRunValidationError(null)}>
                 확인
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -347,23 +346,23 @@ export const App = (): ReactElement => {
             <h2 id="save-scenario-title">시나리오를 저장할까요?</h2>
             <p>화면에서 수정한 실행 단계를 Markdown 시나리오에 반영합니다.</p>
             <div className="modal-actions">
-              <button onClick={() => setSaveBeforeReturning(false)}>
+              <Button onClick={() => setSaveBeforeReturning(false)}>
                 취소
-              </button>
-              <button
+              </Button>
+              <Button
                 onClick={() => {
                   setSaveBeforeReturning(false);
                   setEditorMode("text");
                 }}
               >
                 저장하지 않고 돌아가기
-              </button>
-              <button
-                className="button button-primary"
+              </Button>
+              <Button
+                variant="primary"
                 onClick={() => void saveMarkerEditsAndReturn()}
               >
                 저장 후 돌아가기
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -395,19 +394,16 @@ export const App = (): ReactElement => {
               />
             </label>
             <div className="modal-actions">
-              <button
-                className="button danger"
+              <Button
+                variant="danger"
                 disabled={!manualFailureReason.trim()}
                 onClick={failManualResult}
               >
                 실패로 기록
-              </button>
-              <button
-                className="button button-primary"
-                onClick={passManualResult}
-              >
+              </Button>
+              <Button variant="primary" onClick={passManualResult}>
                 성공 후 계속
-              </button>
+              </Button>
             </div>
           </div>
         </div>
