@@ -1,3 +1,4 @@
+import { Button } from "../shared/ui/Button";
 import type { Route } from "../shared/model/scenario";
 
 type Props = {
@@ -24,17 +25,17 @@ export const BottomNavigation = ({
   onCancel,
 }: Props) => (
   <nav className="bottom-navigation" aria-label="주요 메뉴">
-    <button
+    <Button
       className="bottom-nav-brand"
       onClick={() => onNavigate("dashboard")}
       aria-label="Checkly"
     >
       <span className="bottom-nav-brand-mark msi" aria-hidden="true">check</span>
       <strong>Checkly</strong>
-    </button>
+    </Button>
     <div className="bottom-nav-controls">
       {NAVS.map((item) => (
-        <button
+        <Button
           key={item.label}
           className={route === item.route ? "bottom-nav-item active" : "bottom-nav-item"}
           disabled={!item.route}
@@ -43,10 +44,10 @@ export const BottomNavigation = ({
           title={item.label}
         >
           <span className="msi" aria-hidden="true">{item.icon}</span>
-        </button>
+        </Button>
       ))}
     </div>
-    <button
+    <Button
       className={`bottom-nav-run${running ? " danger" : ""}`}
       onClick={running ? onCancel : onRun}
       aria-label={running ? "시나리오 실행 중지" : "시나리오 실행"}
@@ -55,6 +56,6 @@ export const BottomNavigation = ({
         {running ? "stop_circle" : "play_arrow"}
       </span>
       {running ? "중지" : "실행"}
-    </button>
+    </Button>
   </nav>
 );
