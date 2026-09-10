@@ -1,5 +1,7 @@
 # 개발 가이드
 
+병렬 작업과 커밋·병합 절차는 [협업 가이드](./collaboration.md)를 참고합니다.
+
 ## 시나리오 액션 추가
 
 1. `shared/model/scenario.ts`의 타입, label·표시·예상 시간 함수를 갱신합니다.
