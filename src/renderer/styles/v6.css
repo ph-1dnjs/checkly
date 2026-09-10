@@ -84,6 +84,8 @@
 .manual-visibility-toggle input { display:block; width:auto; margin:0; padding:0; }
 
 /* Run page */
+.run-workspace { height:100vh; overflow:hidden; }
+.run-workspace .content { height:100%; padding:0; }
 .run { display:flex; flex-direction:column; height:100vh; overflow:hidden; padding-bottom:92px; }
 .run-top { flex:none; display:flex; align-items:center; gap:14px; flex-wrap:wrap; padding:30px 26px 14px; }
 .run-state-word { display:flex; align-items:center; gap:8px; }
