@@ -1,11 +1,11 @@
 import {
-  actionLabel,
   actionText,
   type RunProgress,
   type Scenario,
   type ScenarioRunResult,
   type Step,
 } from "../../shared/model/scenario";
+import { ActionTag } from "../../shared/ui/ActionTag";
 import {
   useEffect,
   useLayoutEffect,
@@ -602,12 +602,7 @@ export const RunPage = ({
                       style={{ background: row.dot }}
                     />
                     <span className="run-step-n">{row.index + 1}</span>
-                    <span
-                      className="run-step-op action-tag"
-                      data-action={row.step.action}
-                    >
-                      {actionLabel[row.step.action]}
-                    </span>
+                    <ActionTag action={row.step.action} className="run-step-op" />
                     <span
                       className="run-step-target"
                       style={{ color: row.targetFg }}

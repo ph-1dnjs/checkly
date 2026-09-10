@@ -9,6 +9,8 @@ import {
   type Step,
 } from "../../shared/model/scenario";
 
+import { ActionTag } from "../../shared/ui/ActionTag";
+
 type Device = "mobile" | "tablet" | "desktop";
 
 const DEVICES: Array<{ id: Device; label: string; w: string; h: string; frame: string }> = [
@@ -265,7 +267,7 @@ export const ScenarioEditorPage = ({
                             <ol>
                               {preview.steps.map((step) => (
                                 <li key={step.id}>
-                                  <b className="action-tag" data-action={step.action}>{actionLabel[step.action]}</b>
+                                  <ActionTag action={step.action} />
                                   <span>{actionText(step)}</span>
                                   <i
                                     className={step.connected ? "linked" : ""}
@@ -431,7 +433,7 @@ export const ScenarioEditorPage = ({
                   >
                     <b>{step.id}</b>
                     <span className="extract-marker-meta">
-                      <span className="extract-marker-op action-tag" data-action={step.action}>{actionLabel[step.action]}</span>
+                      <ActionTag action={step.action} className="extract-marker-op" />
                       <span className="extract-marker-target">{step.target}</span>
                     </span>
                   </button>
