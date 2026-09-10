@@ -109,7 +109,9 @@ const unquoteMarkdownValue = (value: string) =>
 export const parseMarkdown = (markdown: string): Scenario[] =>
   markdown
     .split(/(?=^#{1,3}\s*시나리오:|^Scenario:)/im)
-    .filter(Boolean)
+    // 편집 중에는 Enter/Delete로 공백 줄만 남는 중간 상태가 생길 수 있다.
+    // 이 상태는 시나리오 블록이 아니므로 파싱 대상에서 제외한다.
+    .filter((block) => block.trim())
     .map((block, index) => {
       const lines = block
         .split("\n")
