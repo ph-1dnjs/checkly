@@ -1,4 +1,6 @@
+import { Button } from "../shared/ui/Button";
 import type { Route } from "../shared/model/scenario";
+import checklyMark from "../assets/checkly-mark.png";
 
 type Props = {
   route: Route;
@@ -27,17 +29,21 @@ export const BottomNavigation = ({
   apiRunAction,
 }: Props) => (
   <nav className="bottom-navigation" aria-label="주요 메뉴">
-    <button
+    <Button
       className="bottom-nav-brand"
       onClick={() => onNavigate("dashboard")}
       aria-label="Checkly"
     >
-      <span className="bottom-nav-brand-mark msi" aria-hidden="true">check</span>
-      <strong>Checkly</strong>
-    </button>
+      <span className="bottom-nav-brand-mark" aria-hidden="true">
+        <img src={checklyMark} alt="" />
+      </span>
+      <strong>
+        Check<span className="bottom-nav-brand-accent">ly</span>
+      </strong>
+    </Button>
     <div className="bottom-nav-controls">
       {NAVS.map((item) => (
-        <button
+        <Button
           key={item.label}
           className={route === item.route ? "bottom-nav-item active" : "bottom-nav-item"}
           disabled={!item.route}
@@ -46,18 +52,30 @@ export const BottomNavigation = ({
           title={item.label}
         >
           <span className="msi" aria-hidden="true">{item.icon}</span>
-        </button>
+        </Button>
       ))}
     </div>
-    {route === "api-testing" ? <button className="bottom-nav-run" disabled={!apiRunAction || apiRunAction.disabled} onClick={() => apiRunAction?.run()} aria-label="선택한 API 테스트 실행"><span className="msi" aria-hidden="true">play_arrow</span>API 실행</button> : <button
-      className={`bottom-nav-run${running ? " danger" : ""}`}
-      onClick={running ? onCancel : onRun}
-      aria-label={running ? "시나리오 실행 중지" : "시나리오 실행"}
-    >
-      <span className="msi" aria-hidden="true">
-        {running ? "stop_circle" : "play_arrow"}
-      </span>
-      {running ? "중지" : "실행"}
-    </button>}
+    {route === "api-testing" ? (
+      <Button
+        className="bottom-nav-run"
+        disabled={!apiRunAction || apiRunAction.disabled}
+        onClick={() => apiRunAction?.run()}
+        aria-label="선택한 API 테스트 실행"
+      >
+        <span className="msi" aria-hidden="true">play_arrow</span>
+        API 실행
+      </Button>
+    ) : (
+      <Button
+        className={`bottom-nav-run${running ? " danger" : ""}`}
+        onClick={running ? onCancel : onRun}
+        aria-label={running ? "시나리오 실행 중지" : "시나리오 실행"}
+      >
+        <span className="msi" aria-hidden="true">
+          {running ? "stop_circle" : "play_arrow"}
+        </span>
+        {running ? "중지" : "실행"}
+      </Button>
+    )}
   </nav>
 );

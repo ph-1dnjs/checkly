@@ -981,7 +981,7 @@ export const FormAutomationPage = (): ReactElement => {
   const startInspectorResize = (event: React.MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
     const workbench = event.currentTarget.parentElement;
-    const resize = (moveEvent: MouseEvent) => {
+    const resize = (moveEvent: globalThis.MouseEvent) => {
       if (!workbench) return;
       const bounds = workbench.getBoundingClientRect();
       setInspectorWidth(Math.round(Math.min(620, Math.max(340, bounds.right - moveEvent.clientX))));

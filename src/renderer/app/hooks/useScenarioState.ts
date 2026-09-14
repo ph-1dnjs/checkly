@@ -10,6 +10,13 @@ import {
   type Step,
 } from "../../shared/model/scenario";
 
+import {
+  applyEditableValue,
+  editableValueDefault,
+  uniqueScenarioTitle,
+  EDITABLE_VALUE_KIND,
+} from "../../shared/model/scenario-duplication";
+
 const initialMarkdown = "";
 const positionKey = (scenario: Scenario) =>
   `${scenario.title}\n${scenario.url}`;
@@ -43,6 +50,7 @@ const scenarioToMarkdown = (scenario: Scenario): string =>
   [
     `# 시나리오: ${scenario.title}`,
     `url: ${scenario.url}`,
+    ...(scenario.tag ? [`tag: ${scenario.tag}`] : []),
     "",
     ...scenario.steps.map((step, index) => {
       const prefix =
@@ -354,6 +362,43 @@ export const useScenarioState = ({
       setSelectedId(String(reordered.indexOf(selectedStep) + 1));
   };
 
+  // 원본의 입력값·확인값을 바로 바꿔 새 시나리오(들)를 복제한다.
+  const duplicateScenario = (
+    scenarioId: string,
+    nameTemplate: string,
+    cases: Array<Record<string, string>>,
+  ) => {
+    const target = previews.find((item) => item.id === scenarioId);
+    if (!target || !cases.length) return;
+    const defaults: Record<string, string> = {};
+    target.steps.forEach((step) => {
+      const kind = EDITABLE_VALUE_KIND[step.action];
+      if (kind) defaults[step.id] = editableValueDefault(step, kind);
+    });
+    const usedTitles = previews.map((item) => item.title);
+    const blocks = cases.map((values) => {
+      const title = uniqueScenarioTitle(
+        nameTemplate.trim() || `${target.title} 복제`,
+        usedTitles,
+      );
+      usedTitles.push(title);
+      const steps = target.steps.map((step) => {
+        const kind = EDITABLE_VALUE_KIND[step.action];
+        if (!kind) return step;
+        const value = values[step.id]?.trim() || defaults[step.id] || "";
+        return applyEditableValue(step, kind, value);
+      });
+      return scenarioToMarkdown({
+        ...target,
+        id: "",
+        title,
+        steps,
+      });
+    });
+    updateSource([sourceMarkdown.trim(), ...blocks].filter(Boolean).join("\n\n"));
+    showToast(`시나리오 ${blocks.length}개를 템플릿으로 복제했습니다.`);
+  };
+
   return {
     scenario,
     setScenario,
@@ -390,6 +435,7 @@ export const useScenarioState = ({
     saveMarkerEditsAndReturn,
     selectMarkerScenario,
     reorderSteps,
+    duplicateScenario,
   };
 };
 

@@ -1,3 +1,4 @@
+import { Button } from "../../shared/ui/Button";
 import {
   estimateDurationSeconds,
   formatClock,
@@ -33,15 +34,20 @@ export const DashboardPage = ({
   const medianDur = durations.length
     ? durations[Math.floor(durations.length / 2)]
     : 0;
+  const tape = Array.from({ length: 28 }, (_, index) => {
+    const record = history.length ? history[index % history.length] : undefined;
+    return { record, bad: record?.status === "failed" };
+  });
+  const tapeFailCount = tape.filter((t) => t.bad).length;
 
   return (
     <div className="dash">
       <div className="dash-title">
         <div className="dash-heading">대시보드</div>
         <div className="dash-title-actions">
-          <button className="button button-primary" onClick={onOpenRun}>
+          <Button variant="primary" onClick={onOpenRun}>
             실행 화면 열기 <span className="dash-kbd">⌘R</span>
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -51,6 +57,9 @@ export const DashboardPage = ({
           <div className="dash-stat-row">
             <div className="dash-stat-value">{passRate}%</div>
             <div className="dash-stat-sub">최근 {summary.total}회 실행</div>
+          </div>
+          <div className="dash-stat-progress">
+            <i style={{ width: `${passRate}%` }} />
           </div>
         </div>
         <div className="dash-stat-group">
@@ -65,21 +74,23 @@ export const DashboardPage = ({
             <div className="dash-stat-value">{formatClock(medianDur)}</div>
           </div>
         </div>
-        <div className="dash-tape">
-          {Array.from({ length: 28 }, (_, index) => {
-            const record = history.length
-              ? history[index % history.length]
-              : undefined;
-            const bad = record?.status === "failed";
-            return (
+        <div className="dash-tape-cell">
+          <div className="dash-tape-head">
+            <span>최근 28회</span>
+            <span className="dash-mono dash-muted">
+              pass {tape.length - tapeFailCount} · fail {tapeFailCount}
+            </span>
+          </div>
+          <div className="dash-tape">
+            {tape.map(({ record, bad }, index) => (
               <div
                 key={index}
                 className={`dash-tape-bar${bad ? " failed" : ""}`}
                 style={{ height: `${bad ? 12 : TAPE_HEIGHTS[index % TAPE_HEIGHTS.length]}px` }}
                 title={record ? (bad ? "실패" : "통과") : "기록 없음"}
               />
-            );
-          })}
+            ))}
+          </div>
         </div>
       </div>
 
@@ -139,9 +150,9 @@ export const DashboardPage = ({
         <div className="dash-empty">
           <strong>아직 실행 기록이 없습니다.</strong>
           <p>시나리오를 실행하면 최근 5개의 기록이 여기에 저장됩니다.</p>
-          <button className="button button-secondary" onClick={onOpenRun}>
+          <Button variant="secondary" onClick={onOpenRun}>
             실행 화면으로 이동
-          </button>
+          </Button>
         </div>
       )}
     </div>
