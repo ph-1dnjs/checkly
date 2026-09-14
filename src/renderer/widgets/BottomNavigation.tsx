@@ -12,6 +12,7 @@ type Props = {
 const NAVS: Array<{ route?: Route; label: string; icon: string }> = [
   { route: "editor", label: "편집기", icon: "edit" },
   { route: "picker", label: "시나리오 선택 · 실행", icon: "play_circle" },
+  { route: "form-automation", label: "폼 자동 완성", icon: "auto_fix_high" },
   { label: "준비 중", icon: "dynamic_form" },
   { route: "api-testing", label: "API 테스트", icon: "data_object" },
   { route: "settings", label: "설정", icon: "settings" },

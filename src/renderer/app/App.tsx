@@ -6,6 +6,7 @@ import { ScenarioEditorPage } from "../pages/editor/ScenarioEditorPage";
 import { RunPage } from "../pages/run/RunPage";
 import { SettingsPage } from "../pages/settings/SettingsPage";
 import { ScenarioPickerPage } from "../pages/picker/ScenarioPickerPage";
+import { FormAutomationPage } from "../pages/form-automation/FormAutomationPage";
 import { BottomNavigation } from "../widgets/BottomNavigation";
 import { RunReportDrawer } from "../widgets/RunReportDrawer";
 import "../shared/model/electron-api";
@@ -210,6 +211,7 @@ export const App = (): ReactElement => {
           />
         )}
         {route === "settings" && <SettingsPage scenario={scenario} />}
+        {route === "form-automation" && <FormAutomationPage />}
       </section>
       <RunReportDrawer
         record={openRunRecord}
