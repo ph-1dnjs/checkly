@@ -13,6 +13,7 @@
 .workspace .bottom-nav-item .msi { font-size:21px; }
 .workspace .bottom-nav-run { display:flex; align-items:center; gap:9px; height:46px; padding:0 20px 0 16px; border:0; border-radius:999px; background:#1f63ae; color:#fff; cursor:pointer; font-size:14px; font-weight:600; letter-spacing:-.01em; white-space:nowrap; transition:background .13s ease; }
 .workspace .bottom-nav-run:hover { background:#17538f; }
+.workspace .bottom-nav-run:disabled { opacity:.45; cursor:not-allowed; }
 .workspace .bottom-nav-run .msi { font-size:21px; }
 .workspace .bottom-nav-run.danger,.workspace .bottom-nav-run.danger:hover { background:#b32318; color:#fff; }
 .workspace .bottom-nav-run.danger.confirm { background:#97180f; }

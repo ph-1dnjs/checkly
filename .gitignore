@@ -10,3 +10,5 @@ test-results/
 *.log
 .DS_Store
 .obsidian/
+/.local/api-testing/
+/.local/api-testing-web/

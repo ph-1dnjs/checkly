@@ -8,6 +8,7 @@
 @import "./reference-theme.css";
 @import "./v6.css";
 @import "./screen-extract.css";
+@import "./form-automation.css";
 
 * {
   box-sizing: border-box;

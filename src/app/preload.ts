@@ -1,4 +1,35 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import type { ApiTestingBridge } from './api-testing/shared/workspace'
+
+const apiTesting: ApiTestingBridge = {
+  getSpecSync: (scope) => ipcRenderer.invoke('api-testing:spec-sync', scope),
+  deleteSpecAccount: (scope) => ipcRenderer.invoke('api-testing:delete-spec-account', scope),
+  getRequestAuth: (scope) => ipcRenderer.invoke('api-testing:get-request-auth', scope),
+  setRequestAuth: (scope, variable) => ipcRenderer.invoke('api-testing:set-request-auth', scope, variable),
+  buildAiContext: (request) => ipcRenderer.invoke('api-testing:ai-context', request),
+  copyAiContext: (request) => ipcRenderer.invoke('api-testing:copy-ai-context', request),
+  listProjects: () => ipcRenderer.invoke('api-testing:list-projects'),
+  saveProject: (project) => ipcRenderer.invoke('api-testing:save-project', project),
+  deleteProject: (id) => ipcRenderer.invoke('api-testing:delete-project', id),
+  deleteCatalog: (scope) => ipcRenderer.invoke('api-testing:delete-catalog', scope),
+  deleteScenario: (projectId, id, revision) => ipcRenderer.invoke('api-testing:delete-scenario', projectId, id, revision),
+  getCatalog: (scope) => ipcRenderer.invoke('api-testing:catalog', scope),
+  importSpec: (scope, source) => ipcRenderer.invoke('api-testing:import', scope, source),
+  execute: (scope, key, request) => ipcRenderer.invoke('api-testing:execute', scope, key, request),
+  executeLive: (scope, key, request) => ipcRenderer.invoke('api-testing:execute-live', scope, key, request),
+  cancel: (scope) => ipcRenderer.invoke('api-testing:cancel', scope),
+  listGlobals: (scope) => ipcRenderer.invoke('api-testing:list-globals', scope),
+  setGlobal: (scope, name, value) => ipcRenderer.invoke('api-testing:set-global', scope, name, value),
+  deleteGlobal: (scope, name) => ipcRenderer.invoke('api-testing:delete-global', scope, name),
+  listScenarios: (projectId) => ipcRenderer.invoke('api-testing:list-scenarios', projectId),
+  readScenarioFile: () => ipcRenderer.invoke('api-testing:read-scenario-file'),
+  previewScenario: (scope, source, bindings) => ipcRenderer.invoke('api-testing:preview-scenario', scope, source, bindings),
+  saveScenario: (scope, source, bindings, revision) => ipcRenderer.invoke('api-testing:save-scenario', scope, source, bindings, revision),
+  saveScenarioDraft: (scope, source, bindings, revision) => ipcRenderer.invoke('api-testing:save-scenario-draft', scope, source, bindings, revision),
+  runScenario: (scope, source, bindings, inputs) => ipcRenderer.invoke('api-testing:run-scenario', scope, source, bindings, inputs),
+  getPendingScenarioInput: (scope) => ipcRenderer.invoke('api-testing:get-pending-input', scope),
+  submitScenarioInput: (scope, submission) => ipcRenderer.invoke('api-testing:submit-input', scope, submission),
+}
 
 type UpdateStatus =
   | { state: 'idle' }
@@ -10,6 +41,7 @@ type UpdateStatus =
   | { state: 'error'; message: string }
 
 contextBridge.exposeInMainWorld('electronAPI', {
+  apiTesting,
   getAppVersion: (): Promise<string> => ipcRenderer.invoke('app:version'),
   checkForUpdates: (): Promise<UpdateStatus> => ipcRenderer.invoke('update:check'),
   getUpdateStatus: (): Promise<UpdateStatus> => ipcRenderer.invoke('update:get-status'),
@@ -43,6 +75,39 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setQaViewport: (size: { width: number; height: number }): Promise<void> => ipcRenderer.invoke('qa:set-viewport', size),
   submitManualResult: (result: { status: 'passed' | 'failed'; reason?: string }): Promise<void> => ipcRenderer.invoke('qa:manual-result', result),
   cancelQa: (): Promise<void> => ipcRenderer.invoke('qa:cancel'),
+  insertFormAutomationText: (input: { webContentsId: number; text: string }): Promise<void> =>
+    ipcRenderer.invoke('form-automation:insert-text', input),
+  attachFormAutomationFixture: (input: {
+    webContentsId: number
+    token: string
+    valid: boolean
+    accept: string
+    multiple: boolean
+  }): Promise<void> => ipcRenderer.invoke('form-automation:attach-fixture', input),
+  captureFormAutomationPage: (): Promise<{ dataUrl: string; size: { width: number; height: number } }> =>
+    ipcRenderer.invoke('form-automation:capture-page'),
+  copyFormAutomationImage: (dataUrl: string): Promise<boolean> =>
+    ipcRenderer.invoke('form-automation:copy-image', dataUrl),
+  copyFormAutomationText: (text: string): Promise<boolean> =>
+    ipcRenderer.invoke('form-automation:copy-text', text),
+  saveFormAutomationSessionEvent: (payload: unknown): Promise<boolean> =>
+    ipcRenderer.invoke('form-automation:save-session-event', payload),
+  readFormAutomationSessionEvents: (limit = 1000): Promise<unknown[]> =>
+    ipcRenderer.invoke('form-automation:read-session-events', limit),
+  clearFormAutomationSessionEvents: (): Promise<boolean> =>
+    ipcRenderer.invoke('form-automation:clear-session-events'),
+  exportFormAutomationSessionEvents: (): Promise<{ filePath: string; count: number; errorCount: number; format: 'xlsx' } | null> =>
+    ipcRenderer.invoke('form-automation:export-session-events'),
+  requestFormAutomationUrl: (input: {
+    url: string
+    method?: string
+    headers?: Record<string, string>
+    body?: string
+    timeout?: number
+  }): Promise<{ ok: boolean; status: number; statusText: string; text: string; elapsed: number; url: string }> =>
+    ipcRenderer.invoke('form-automation:http-request', input),
+  pickFormAutomationOpenApi: (): Promise<{ filePath: string; text: string } | null> =>
+    ipcRenderer.invoke('form-automation:pick-openapi'),
   onManualInputRequired: (callback: (step: unknown) => void): (() => void) => {
     const listener = (_event: Electron.IpcRendererEvent, step: unknown): void => callback(step)
     ipcRenderer.on('qa:manual-required', listener)

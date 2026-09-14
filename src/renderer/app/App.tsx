@@ -1,18 +1,23 @@
 import type { CSSProperties, ReactElement } from "react";
 import { Button } from "../shared/ui/Button";
+import { useState } from "react";
+import type { ApiRunAction } from "../pages/api-testing/useRunAction";
 import { DashboardPage } from "../pages/dashboard/DashboardPage";
 import { ScenarioEditorPage } from "../pages/editor/ScenarioEditorPage";
 import { RunPage } from "../pages/run/RunPage";
 import { SettingsPage } from "../pages/settings/SettingsPage";
 import { ScenarioPickerPage } from "../pages/picker/ScenarioPickerPage";
+import { FormAutomationPage } from "../pages/form-automation/FormAutomationPage";
 import { BottomNavigation } from "../widgets/BottomNavigation";
 import { RunReportDrawer } from "../widgets/RunReportDrawer";
 import "../shared/model/electron-api";
 import { useNavigation } from "./hooks/useNavigation";
 import { useScenarioState } from "./hooks/useScenarioState";
 import { useRunOrchestration } from "./hooks/useRunOrchestration";
+import { ApiTestingPage } from "../pages/api-testing/ApiTestingPage";
 
 export const App = (): ReactElement => {
+  const [apiRunAction, setApiRunAction] = useState<ApiRunAction | null>(null);
   const { route, setRoute, toast, showToast } = useNavigation();
   const scenarioState = useScenarioState({ route, showToast });
   const runOrchestration = useRunOrchestration({ showToast, setRoute });
@@ -109,6 +114,7 @@ export const App = (): ReactElement => {
       className={`workspace${route === "editor" && editorMode === "marker" ? " screen-extract-workspace" : ""}${route === "run" ? " run-workspace" : ""}`}
     >
       <section className="content">
+        {route === "api-testing" && <ApiTestingPage onRunAction={setApiRunAction} />}
         {route === "dashboard" && (
           <DashboardPage
             history={runHistory}
@@ -208,6 +214,7 @@ export const App = (): ReactElement => {
           />
         )}
         {route === "settings" && <SettingsPage scenario={scenario} />}
+        {route === "form-automation" && <FormAutomationPage />}
       </section>
       <RunReportDrawer
         record={openRunRecord}
@@ -309,6 +316,7 @@ export const App = (): ReactElement => {
         </section>
       )}
       <BottomNavigation
+        apiRunAction={apiRunAction}
         route={route}
         running={running}
         onNavigate={setRoute}

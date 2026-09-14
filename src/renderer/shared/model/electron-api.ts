@@ -1,11 +1,13 @@
 import type { RunProgress, Scenario, Step } from "./scenario";
 import type { UpdateStatus } from "./update";
+import type { ApiTestingBridge } from "../../../app/api-testing/shared/workspace";
 
 export {};
 
 declare global {
   interface Window {
     electronAPI: {
+      apiTesting: ApiTestingBridge;
       getAppVersion: () => Promise<string>;
       checkForUpdates: () => Promise<UpdateStatus>;
       getUpdateStatus: () => Promise<UpdateStatus>;
@@ -62,6 +64,50 @@ declare global {
         reason?: string;
       }) => Promise<void>;
       cancelQa: () => Promise<void>;
+      insertFormAutomationText: (input: {
+        webContentsId: number;
+        text: string;
+      }) => Promise<void>;
+      attachFormAutomationFixture: (input: {
+        webContentsId: number;
+        token: string;
+        valid: boolean;
+        accept: string;
+        multiple: boolean;
+      }) => Promise<void>;
+      captureFormAutomationPage: () => Promise<{
+        dataUrl: string;
+        size: { width: number; height: number };
+      }>;
+      copyFormAutomationImage: (dataUrl: string) => Promise<boolean>;
+      copyFormAutomationText: (text: string) => Promise<boolean>;
+      saveFormAutomationSessionEvent: (payload: unknown) => Promise<boolean>;
+      readFormAutomationSessionEvents: (limit?: number) => Promise<unknown[]>;
+      clearFormAutomationSessionEvents: () => Promise<boolean>;
+      exportFormAutomationSessionEvents: () => Promise<{
+        filePath: string;
+        count: number;
+        errorCount: number;
+        format: "xlsx";
+      } | null>;
+      requestFormAutomationUrl: (input: {
+        url: string;
+        method?: string;
+        headers?: Record<string, string>;
+        body?: string;
+        timeout?: number;
+      }) => Promise<{
+        ok: boolean;
+        status: number;
+        statusText: string;
+        text: string;
+        elapsed: number;
+        url: string;
+      }>;
+      pickFormAutomationOpenApi: () => Promise<{
+        filePath: string;
+        text: string;
+      } | null>;
       onManualInputRequired: (callback: (value: Step) => void) => () => void;
       onManualControlRequired: (
         callback: (value: Step & { timeoutSeconds?: number }) => void,
