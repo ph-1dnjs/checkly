@@ -1,0 +1,52 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { randomUUID } from "node:crypto";
+import { ApiWorkspace } from "../../src/app/api-testing/main/workspace";
+
+test("deletion protects references, revisions and sync; cleans only the selected project", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "checkly-delete-"));
+  try {
+    const workspace = new ApiWorkspace(dir);
+    const serverId = randomUUID(), extraServer = randomUUID(), environmentId = randomUUID(), extraEnv = randomUUID();
+    const baseUrls = { [serverId]: "http://localhost:1234", [extraServer]: "http://localhost:1235" };
+    const project = { id: randomUUID(), name: "삭제 검증", servers: [{ id: serverId, name: "main" }, { id: extraServer, name: "extra" }], environments: [{ id: environmentId, name: "dev", baseUrls }, { id: extraEnv, name: "test", baseUrls }] };
+    const other = { ...project, id: randomUUID(), name: "유지" };
+    const scope = { projectId: project.id, serverId, environmentId };
+    const spec = JSON.stringify({ openapi: "3.0.3", info: { title: "Test", version: "1" }, paths: { "/health": { get: { responses: { "200": { description: "OK" } } } } } });
+    await workspace.saveProject(project); await workspace.saveProject(other);
+    await workspace.importSpec(scope, spec);
+    await workspace.importSpec({ ...scope, projectId: other.id }, spec);
+    await workspace.setGlobal(scope, "token", "test-token"); await workspace.setRequestAuth(scope, "token");
+    const source = `version: 1\nid: test/read\nname: 조회\nsteps:\n  - id: read\n    name: 조회\n    server: main\n    api: { method: GET, path: /health }\n`;
+    const item = await workspace.saveScenario(scope, source, { main: serverId });
+    await assert.rejects(workspace.deleteScenario(project.id, item.id, "stale"), /변경/);
+    await assert.rejects(workspace.saveProject({ ...project, environments: [project.environments[0]] }), /참조/);
+    await assert.rejects(workspace.saveProject({ ...project, servers: [project.servers[1]], environments: project.environments.map(e => ({ ...e, baseUrls: { [extraServer]: baseUrls[extraServer] } })) }), /참조/);
+    await assert.rejects(workspace.saveProject({ ...project, servers: [] }));
+    const release = workspace.beginSpecSync(scope);
+    await assert.rejects(workspace.deleteProject(project.id), /동기화/);
+    await assert.rejects(workspace.deleteCatalog(scope), /동기화/);
+    release();
+    const accountFile = `spec-source-${project.id}-${environmentId}-${serverId}.json`;
+    await writeFile(path.join(dir, accountFile), JSON.stringify({ encrypted: "test-only" }));
+    await workspace.deleteCatalog(scope);
+    assert.equal(await workspace.getCatalog(scope), null);
+    assert.equal(await workspace.getRequestAuth(scope), null);
+    assert.equal((await readdir(dir)).includes(accountFile), false);
+    assert.equal((await workspace.listScenarios(project.id)).length, 1);
+    assert.equal((await workspace.listGlobals(scope)).length, 1);
+    await workspace.deleteScenario(project.id, item.id, item.updatedAt);
+    assert.deepEqual(await workspace.listScenarios(project.id), []);
+    await workspace.saveProject({ ...project, environments: [project.environments[0]] });
+    await workspace.deleteProject(project.id);
+    assert.deepEqual((await workspace.listProjects()).map(p => p.id), [other.id]);
+    assert.ok(await workspace.getCatalog({ ...scope, projectId: other.id }));
+    assert.ok((await readdir(dir)).every(file => !file.includes(project.id)));
+    await assert.rejects(workspace.deleteProject("../projects.json"));
+    await workspace.saveProject(project);
+    assert.deepEqual(await workspace.listGlobals(scope), []);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});

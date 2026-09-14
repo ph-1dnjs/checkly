@@ -7,6 +7,7 @@ import "dotenv/config";
 import { app, BrowserWindow, ipcMain, shell } from "electron";
 import { is } from "@electron-toolkit/utils";
 import path from "node:path";
+import { registerApiTesting } from "./api-testing/main/register";
 import {
   chooseScenarioFolder,
   exportScenarioFile,
@@ -76,6 +77,7 @@ const createWindow = (): void => {
 };
 
 app.whenReady().then(() => {
+  registerApiTesting();
   if (process.platform === "darwin" && is.dev) {
     app.dock?.setIcon(path.join(process.cwd(), "build/icons/icon.png"));
   }

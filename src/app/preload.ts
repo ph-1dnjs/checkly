@@ -1,4 +1,35 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import type { ApiTestingBridge } from './api-testing/shared/workspace'
+
+const apiTesting: ApiTestingBridge = {
+  getSpecSync: (scope) => ipcRenderer.invoke('api-testing:spec-sync', scope),
+  deleteSpecAccount: (scope) => ipcRenderer.invoke('api-testing:delete-spec-account', scope),
+  getRequestAuth: (scope) => ipcRenderer.invoke('api-testing:get-request-auth', scope),
+  setRequestAuth: (scope, variable) => ipcRenderer.invoke('api-testing:set-request-auth', scope, variable),
+  buildAiContext: (request) => ipcRenderer.invoke('api-testing:ai-context', request),
+  copyAiContext: (request) => ipcRenderer.invoke('api-testing:copy-ai-context', request),
+  listProjects: () => ipcRenderer.invoke('api-testing:list-projects'),
+  saveProject: (project) => ipcRenderer.invoke('api-testing:save-project', project),
+  deleteProject: (id) => ipcRenderer.invoke('api-testing:delete-project', id),
+  deleteCatalog: (scope) => ipcRenderer.invoke('api-testing:delete-catalog', scope),
+  deleteScenario: (projectId, id, revision) => ipcRenderer.invoke('api-testing:delete-scenario', projectId, id, revision),
+  getCatalog: (scope) => ipcRenderer.invoke('api-testing:catalog', scope),
+  importSpec: (scope, source) => ipcRenderer.invoke('api-testing:import', scope, source),
+  execute: (scope, key, request) => ipcRenderer.invoke('api-testing:execute', scope, key, request),
+  executeLive: (scope, key, request) => ipcRenderer.invoke('api-testing:execute-live', scope, key, request),
+  cancel: (scope) => ipcRenderer.invoke('api-testing:cancel', scope),
+  listGlobals: (scope) => ipcRenderer.invoke('api-testing:list-globals', scope),
+  setGlobal: (scope, name, value) => ipcRenderer.invoke('api-testing:set-global', scope, name, value),
+  deleteGlobal: (scope, name) => ipcRenderer.invoke('api-testing:delete-global', scope, name),
+  listScenarios: (projectId) => ipcRenderer.invoke('api-testing:list-scenarios', projectId),
+  readScenarioFile: () => ipcRenderer.invoke('api-testing:read-scenario-file'),
+  previewScenario: (scope, source, bindings) => ipcRenderer.invoke('api-testing:preview-scenario', scope, source, bindings),
+  saveScenario: (scope, source, bindings, revision) => ipcRenderer.invoke('api-testing:save-scenario', scope, source, bindings, revision),
+  saveScenarioDraft: (scope, source, bindings, revision) => ipcRenderer.invoke('api-testing:save-scenario-draft', scope, source, bindings, revision),
+  runScenario: (scope, source, bindings, inputs) => ipcRenderer.invoke('api-testing:run-scenario', scope, source, bindings, inputs),
+  getPendingScenarioInput: (scope) => ipcRenderer.invoke('api-testing:get-pending-input', scope),
+  submitScenarioInput: (scope, submission) => ipcRenderer.invoke('api-testing:submit-input', scope, submission),
+}
 
 type UpdateStatus =
   | { state: 'idle' }
@@ -10,6 +41,7 @@ type UpdateStatus =
   | { state: 'error'; message: string }
 
 contextBridge.exposeInMainWorld('electronAPI', {
+  apiTesting,
   getAppVersion: (): Promise<string> => ipcRenderer.invoke('app:version'),
   checkForUpdates: (): Promise<UpdateStatus> => ipcRenderer.invoke('update:check'),
   getUpdateStatus: (): Promise<UpdateStatus> => ipcRenderer.invoke('update:get-status'),
