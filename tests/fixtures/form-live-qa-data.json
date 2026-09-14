@@ -1,0 +1,6 @@
+{
+  "message": "original response",
+  "items": [
+    { "id": 1, "active": true }
+  ]
+}

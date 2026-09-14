@@ -1,0 +1,42 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Checkly Form QA Fixture API",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/form-live-qa-data.json": {
+      "get": {
+        "operationId": "getFormFixtureData",
+        "summary": "폼 검증용 데이터 조회",
+        "responses": {
+          "200": {
+            "description": "성공",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["message", "items"],
+                  "properties": {
+                    "message": { "type": "string" },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": ["id", "active"],
+                        "properties": {
+                          "id": { "type": "integer" },
+                          "active": { "type": "boolean" }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

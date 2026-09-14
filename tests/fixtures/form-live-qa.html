@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Checkly Form Live QA Fixture</title>
+    <style>
+      body { margin: 0; padding: 30px; color: #26323a; font: 14px -apple-system, BlinkMacSystemFont, sans-serif; }
+      main { max-width: 640px; margin: auto; }
+      label { display: block; margin: 12px 0; }
+      input { display: block; width: 100%; height: 34px; margin-top: 5px; box-sizing: border-box; }
+      button { min-height: 34px; margin-right: 6px; }
+      pre { min-height: 80px; padding: 12px; background: #f2f4f6; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>폼 자동 완성 통합 확인</h1>
+      <form>
+        <label>이름 *<input name="name" required placeholder="이름 입력" /></label>
+        <label>이메일 *<input name="email" type="email" required placeholder="qa@example.com" /></label>
+      </form>
+      <button id="fetch">Fetch API 호출</button>
+      <button id="xhr">XHR API 호출</button>
+      <pre id="result">아직 호출하지 않음</pre>
+    </main>
+    <script>
+      localStorage.setItem("accessToken", "checkly-local-token");
+      localStorage.setItem("profile", JSON.stringify({ role: "qa", enabled: true }));
+      sessionStorage.setItem("sessionToken", "checkly-session-token");
+      document.cookie = "fixtureCookie=checkly-cookie; SameSite=Lax";
+      const output = document.querySelector("#result");
+      document.querySelector("#fetch").addEventListener("click", async () => {
+        const response = await fetch("/form-live-qa-data.json");
+        output.textContent = JSON.stringify(await response.json(), null, 2);
+      });
+      document.querySelector("#xhr").addEventListener("click", () => {
+        const request = new XMLHttpRequest();
+        request.open("GET", "/form-live-qa-data.json");
+        request.onload = () => { output.textContent = request.responseText; };
+        request.send();
+      });
+      window.setTimeout(() => document.querySelector("#fetch").click(), 120);
+    </script>
+  </body>
+</html>

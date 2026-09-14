@@ -47,7 +47,13 @@ export type RunRecord = {
 };
 export type RunSummary = { total: number; passed: number; failed: number };
 export type RunProgress = { current: number; total: number; step: string };
-export type Route = "dashboard" | "editor" | "picker" | "run" | "settings";
+export type Route =
+  | "dashboard"
+  | "editor"
+  | "picker"
+  | "run"
+  | "form-automation"
+  | "settings";
 
 export const emptyScenario: Scenario = {
   id: "",
