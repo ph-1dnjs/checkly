@@ -9,8 +9,8 @@
 | 030 | [시나리오 선택](030-scenario-picker/README.md) | 하단 `play_circle` 메뉴 | 폴더 파일 탐색과 다중 선택 |
 | 040 | [시나리오 실행](040-scenario-run/README.md) | 선택 화면·하단 실행 버튼 | Playwright 실행·수동 단계·영상 |
 | 050 | [설정](050-settings/README.md) | 하단 설정 | 현재 URL과 표시용 토글 |
-| 060 | [API 테스트](060-api-testing/README.md) | 하단 `{ }` | OpenAPI·개별 요청·프로젝트별 API 시나리오 |
 | 060 | [폼 자동 완성](060-form-automation/README.md) | 하단 폼 자동 완성 | 폼 입력·네트워크·저장소·오버라이드·화면 캡처 |
+| 070 | [API 테스트](070-api-testing/README.md) | 하단 `{ }` | OpenAPI·개별 요청·프로젝트별 API 시나리오 |
 
 ## 화면 전환
 

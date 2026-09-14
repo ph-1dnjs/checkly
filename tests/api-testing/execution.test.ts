@@ -46,7 +46,7 @@ test("two servers, step 2 to step 6, global reuse and project/environment isolat
   await Promise.all([member, admin].map(s => new Promise<void>(r => s.listen(0, "127.0.0.1", r))));
   const address = (s: typeof member) => `http://127.0.0.1:${(s.address() as { port: number }).port}`;
   try {
-    const source = readFileSync("docs/04-pages/060-api-testing/02-userflow.md", "utf8");
+    const source = readFileSync("docs/04-pages/070-api-testing/02-userflow.md", "utf8");
     const blocks = [...source.matchAll(/```yaml\n([\s\S]*?)```/g)];
     const scenario = parseScenario(blocks.find(b => b[1].includes("id: inquiry/create-and-answer"))![1]);
     const runner = new ApiRunner();
