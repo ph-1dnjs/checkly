@@ -1,11 +1,13 @@
 import type { RunProgress, Scenario, Step } from "./scenario";
 import type { UpdateStatus } from "./update";
+import type { ApiTestingBridge } from "../../../app/api-testing/shared/workspace";
 
 export {};
 
 declare global {
   interface Window {
     electronAPI: {
+      apiTesting: ApiTestingBridge;
       getAppVersion: () => Promise<string>;
       checkForUpdates: () => Promise<UpdateStatus>;
       getUpdateStatus: () => Promise<UpdateStatus>;

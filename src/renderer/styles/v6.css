@@ -17,6 +17,19 @@
 .danger:hover { background:#fdf6f5; }
 .button:disabled { opacity:.5; cursor:default; }
 
+/* Loading: a spinner is for a short indeterminate read; a progress bar is for execution. */
+.loading-spinner-label { display:inline-flex; align-items:center; gap:8px; margin:12px 0; color:#5a646e; font-size:12px; }
+.loading-spinner { display:inline-block; width:14px; height:14px; flex:none; border:2px solid #d8dde2; border-top-color:#17607f; border-radius:50%; animation:ckSpin 1s linear infinite; }
+@keyframes ckSpin { to { transform:rotate(360deg); } }
+.loading-progress { display:grid; gap:7px; }
+.loading-progress-head { display:flex; align-items:baseline; gap:10px; min-width:0; }
+.loading-progress-head strong { color:#14181c; font-size:12px; font-weight:600; }
+.loading-progress-head span { min-width:0; overflow:hidden; color:#8a939c; font-family:D2Coding,ui-monospace,monospace; font-size:10.5px; text-overflow:ellipsis; white-space:nowrap; }
+.loading-progress-track { position:relative; height:3px; overflow:hidden; background:#e4e7ea; }
+.loading-progress-track>span { display:block; height:100%; min-width:0; background:#17607f; transition:width 120ms ease; }
+.loading-progress-track.indeterminate>span { width:28%; background:#17607f; animation:ckBar 1s ease-in-out infinite; }
+@keyframes ckBar { from { transform:translateX(-120%); } to { transform:translateX(380%); } }
+@media(prefers-reduced-motion:reduce) { .loading-spinner,.loading-progress-track.indeterminate>span { animation:none; } .loading-progress-track>span { transition:none; } }
 /* Editor: text mode */
 .editor-page-title { padding:34px 26px 18px; }
 .editor-title-row { display:flex; align-items:center; gap:10px; }

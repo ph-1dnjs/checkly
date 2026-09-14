@@ -53,6 +53,7 @@ export type Route =
   | "picker"
   | "run"
   | "form-automation"
+  | "api-testing"
   | "settings";
 
 export const emptyScenario: Scenario = {

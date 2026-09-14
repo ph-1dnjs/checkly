@@ -1,0 +1,5 @@
+.shared-popover { position:relative; margin-left:auto; }
+.shared-popover-panel { position:absolute; z-index:75; top:calc(100% + 6px); right:0; width:min(440px,calc(100vw - 64px)); max-height:min(650px,calc(100dvh - 220px)); overflow:auto; padding:12px; border:1px solid #d8dde2; border-radius:3px; background:#fff; box-shadow:0 12px 28px -16px rgba(20,24,28,.4); }
+.shared-popover-panel:focus { outline:none; }
+.shared-popover-panel .shared-popover-close { position:absolute; right:10px; top:8px; border:0; padding:4px 8px; background:transparent; font-size:20px; }
+@media(max-width:600px) { .shared-popover-panel { position:fixed; top:100px; left:16px; right:16px; width:auto; max-height:calc(100dvh - 200px); } }
