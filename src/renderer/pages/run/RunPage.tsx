@@ -7,6 +7,7 @@ import {
 } from "../../shared/model/scenario";
 import { ActionTag } from "../../shared/ui/ActionTag";
 import { Button } from "../../shared/ui/Button";
+import { Popover } from "../../shared/ui/Popover";
 import {
   useEffect,
   useLayoutEffect,
@@ -129,7 +130,6 @@ export const RunPage = ({
   onDownloadFullRunVideo,
 }: Props) => {
   const [manualFailureReason, setManualFailureReason] = useState("");
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [selStep, setSelStep] = useState<string | null>(null);
   const [logFilter, setLogFilter] = useState<"ALL" | "ERR">("ALL");
   const [vpKey, setVpKey] = useState("2560x1440");
@@ -142,7 +142,6 @@ export const RunPage = ({
   const manualImageRef = useRef<HTMLImageElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const consoleBodyRef = useRef<HTMLDivElement | null>(null);
-  const settingsMenuRef = useRef<HTMLDivElement | null>(null);
   const isConsoleAtBottomRef = useRef(true);
   const onSetViewportRef = useRef(onSetViewport);
   const viewportRequestRef = useRef<string | null>(null);
@@ -158,18 +157,6 @@ export const RunPage = ({
     setStageSize({ w: el.clientWidth, h: el.clientHeight });
     return () => observer.disconnect();
   }, [livePreview, zen]);
-
-  useEffect(() => {
-    if (!settingsOpen) return;
-    const closeOnOutsidePointerDown = (event: PointerEvent) => {
-      if (!settingsMenuRef.current?.contains(event.target as Node)) {
-        setSettingsOpen(false);
-      }
-    };
-    document.addEventListener("pointerdown", closeOnOutsidePointerDown);
-    return () =>
-      document.removeEventListener("pointerdown", closeOnOutsidePointerDown);
-  }, [settingsOpen]);
 
   useEffect(() => {
     if (!running) {
@@ -441,46 +428,40 @@ export const RunPage = ({
               시나리오 다시 선택
             </Button>
           )}
-          <div className="run-settings-menu" ref={settingsMenuRef}>
-            <Button
-              className="run-settings-btn"
-              onClick={() => setSettingsOpen((open) => !open)}
-              aria-expanded={settingsOpen}
-            >
-              Chromium · 1w
-            </Button>
-            {settingsOpen && (
-              <div className="run-settings-popover">
-                <div className="run-settings-group">
-                  <p>BROWSER</p>
-                  <div className="setting-choice">
-                    <Button className="selected">Chromium</Button>
-                    <Button>WebKit</Button>
-                    <Button>Firefox</Button>
-                  </div>
-                </div>
-                <div className="run-settings-group">
-                  <p>WORKERS</p>
-                  <div className="setting-choice">
-                    <Button className="selected">1</Button>
-                    <Button>2</Button>
-                    <Button>4</Button>
-                  </div>
-                </div>
-                <label className="run-settings-toggle">
-                  <input
-                    type="checkbox"
-                    checked={livePreview}
-                    onChange={(event) =>
-                      onLivePreviewChange(event.target.checked)
-                    }
-                    disabled={running}
-                  />
-                  실행 화면 표시
-                </label>
+          <Popover
+            label="Chromium · 1w"
+            className="run-settings-menu"
+            triggerClassName="run-settings-btn"
+            panelClassName="run-settings-popover"
+          >
+            <div className="run-settings-group">
+              <p>BROWSER</p>
+              <div className="setting-choice">
+                <Button className="selected">Chromium</Button>
+                <Button>WebKit</Button>
+                <Button>Firefox</Button>
               </div>
-            )}
-          </div>
+            </div>
+            <div className="run-settings-group">
+              <p>WORKERS</p>
+              <div className="setting-choice">
+                <Button className="selected">1</Button>
+                <Button>2</Button>
+                <Button>4</Button>
+              </div>
+            </div>
+            <label className="run-settings-toggle">
+              <input
+                type="checkbox"
+                checked={livePreview}
+                onChange={(event) =>
+                  onLivePreviewChange(event.target.checked)
+                }
+                disabled={running}
+              />
+              실행 화면 표시
+            </label>
+          </Popover>
         </div>
       </div>
 
