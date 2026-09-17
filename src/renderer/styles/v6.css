@@ -80,7 +80,7 @@
 .file-upload-value { display:flex; gap:8px; }
 .file-upload-value input { min-width:0; flex:1; }
 
-.modal-backdrop { position:fixed; inset:0; z-index:10; display:grid; place-items:center; padding:24px; background:rgb(20 24 28 / 40%); }
+.modal-backdrop { position:fixed; inset:0; z-index:80; display:grid; place-items:center; padding:24px; background:rgb(20 24 28 / 40%); }
 .manual-modal { width:min(460px,100%); padding:26px; background:#fff; }
 .manual-modal h2 { margin:0 0 8px; color:#14181c; font-size:18px; }
 .manual-modal>p { color:#3d4650; line-height:1.6; font-size:13px; }
