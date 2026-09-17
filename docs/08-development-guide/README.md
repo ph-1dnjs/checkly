@@ -4,19 +4,19 @@
 
 ## 시나리오 액션 추가
 
-1. `shared/model/scenario.ts`의 타입, label·표시·예상 시간 함수를 갱신합니다.
-2. `parseMarkdown`과 `App.scenarioToMarkdown`을 함께 구현해 round-trip을 맞춥니다.
+1. `src/renderer/shared/model/action.ts`의 Action·label과 `scenario.ts`의 표시·예상 시간 함수를 갱신합니다.
+2. `parseMarkdown`과 `useScenarioState.ts`의 `scenarioToMarkdown`을 함께 구현해 round-trip을 맞춥니다.
 3. `ScenarioEditorPage`의 마커 입력을 추가합니다.
-4. main의 `QaStep`, `inspectScenario`, `executeScenario`를 갱신합니다.
+4. `src/app/ipc/qaTypes.ts`의 QaStep과 `qaExecution.ts`의 inspectScenario/executeScenario를 갱신합니다.
 5. picker·run·report 표시와 테스트·문서를 확인합니다.
 
-성공 기준은 Markdown → Scenario → Markdown에서 의미가 유지되고 inspect와 실제 실행의 target 규칙이 일치하는 것입니다.
+새 액션의 성공 기준은 Markdown → Scenario → Markdown에서 지원 필드가 유지되고 inspect와 실행의 target 규칙 차이가 명시되는 것입니다. 기존 구현의 fill/select 대기 직렬화와 select 연결 검사에는 차이가 있으므로 [편집 제한](../04-pages/020-scenario-editor/04-edge-cases.md)을 기준으로 회귀를 확인합니다.
 
 ## 새 IPC 추가
 
-1. 권한이 필요한 동작을 `main.ts`에 구현하고 `도메인:동작` 채널을 등록합니다.
+1. 권한이 필요한 동작을 해당 `src/app/ipc` 서비스에 구현하고 `main.ts`에 `도메인:동작` 채널을 등록합니다.
 2. `preload.ts`에 필요한 API만 노출합니다.
-3. `App.tsx`의 `Window.electronAPI` 타입을 맞춥니다.
+3. `src/renderer/shared/model/electron-api.ts`의 `Window.electronAPI` 타입을 맞춥니다.
 4. 호출부에서 성공·취소·실패를 구분합니다.
 5. 경로·외부 입력은 main에서 검증합니다.
 6. [IPC 문서](../07-api/README.md)를 갱신합니다.
@@ -42,7 +42,7 @@
 
 ## 테스트
 
-현재 E2E 파일은 단계 삭제 후 번호 재정렬, Markdown 저장, 수동 입력 재개와 값 미노출, marker 값 수정·미연결 재연결을 검증하도록 작성되어 있습니다. 다만 테스트가 기대하는 localStorage fallback과 브라우저용 Electron API mock은 renderer 코드에서 확인되지 않으므로 실제 통과 여부를 확인해야 합니다.
+`tests/editor-empty-markdown.spec.ts`와 `tests/scenario-duplication.spec.ts`는 테스트 내부의 electronAPI mock으로 빈 원문·복제를 검사합니다. 기존 `tests/app.spec.ts`에는 localStorage fallback을 기대하는 시나리오가 있으므로 전체 E2E가 현재 구현을 모두 검증한다고 가정하지 않습니다. native 실행·파일 저장은 mock 테스트 범위 밖입니다.
 
 ```bash
 npm run build
