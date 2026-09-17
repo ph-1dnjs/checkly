@@ -50,11 +50,13 @@
       "hardenedRuntime": true
     },
     "win": {
+      "icon": "build/icons/icon.png",
       "target": [
         "nsis"
       ]
     },
     "linux": {
+      "icon": "build/icons/icon.png",
       "target": [
         "AppImage"
       ]
