@@ -72,6 +72,25 @@ export const ScenarioPickerPage = ({ onOpenEditor, onRun }: Props) => {
 
   const activeFile = files.find((file) => file.path === activeFilePath) ?? null;
   const activeScenarios = activeFilePath ? (fileCache[activeFilePath] ?? []) : [];
+  const allActivePicked = activeScenarios.length > 0 && activeScenarios.every(
+    (scenario) => pickedKeys.has(keyOf(activeFilePath!, scenario)),
+  );
+  const someActivePicked = activeScenarios.some(
+    (scenario) => pickedKeys.has(keyOf(activeFilePath!, scenario)),
+  );
+
+  const togglePickAll = () => {
+    if (!activeFilePath) return;
+    setPickedKeys((keys) => {
+      const next = new Set(keys);
+      const allPicked = activeScenarios.every((scenario) => keys.has(keyOf(activeFilePath, scenario)));
+      for (const scenario of activeScenarios) {
+        const key = keyOf(activeFilePath, scenario);
+        allPicked ? next.delete(key) : next.add(key);
+      }
+      return next;
+    });
+  };
 
   const togglePick = (filePath: string, scenario: Scenario) => {
     const key = keyOf(filePath, scenario);
@@ -161,7 +180,7 @@ export const ScenarioPickerPage = ({ onOpenEditor, onRun }: Props) => {
   return (
     <div className="picker">
       <header className="picker-header">
-        <div className="picker-title">시나리오 실행</div>
+        <div className="picker-title">시나리오 선택</div>
         <div className="picker-flow" aria-label="실행 단계">
           <span className={flowDone1 ? "done" : ""}>
             <i>1</i>파일 불러오기
@@ -228,14 +247,26 @@ export const ScenarioPickerPage = ({ onOpenEditor, onRun }: Props) => {
           {activeFile ? (
             <>
               <div className="picker-panel-heading">
-                <div>
-                  <p>{activeFile.name}</p>
-                  <strong>
-                    {activeScenarios.length} scenario
-                    {activeScenarios.length === 1 ? "" : "s"} ·{" "}
-                    {activeScenarios.reduce((total, s) => total + s.steps.length, 0)} steps
-                  </strong>
-                </div>
+                <Button
+                  className="picker-scenario-main"
+                  role="checkbox"
+                  aria-label="전체 선택"
+                  aria-checked={allActivePicked ? true : someActivePicked ? "mixed" : false}
+                  disabled={!activeScenarios.length}
+                  onClick={togglePickAll}
+                >
+                  <span className={`picker-check${someActivePicked ? " on" : ""}`} aria-hidden="true">
+                    {someActivePicked && <span className="msi">{allActivePicked ? "check" : "remove"}</span>}
+                  </span>
+                  <div>
+                    <p>{activeFile.name}</p>
+                    <strong>
+                      {activeScenarios.length} scenario
+                      {activeScenarios.length === 1 ? "" : "s"} ·{" "}
+                      {activeScenarios.reduce((total, s) => total + s.steps.length, 0)} steps
+                    </strong>
+                  </div>
+                </Button>
               </div>
               {activeScenarios.map((scenario) => {
                 const key = keyOf(activeFilePath!, scenario);
@@ -247,6 +278,7 @@ export const ScenarioPickerPage = ({ onOpenEditor, onRun }: Props) => {
                     <div className="picker-scenario-row">
                       <Button
                         className="picker-scenario-main"
+                        aria-pressed={isPicked}
                         onClick={() => togglePick(activeFilePath!, scenario)}
                       >
                         <span className={`picker-check${isPicked ? " on" : ""}`}>
