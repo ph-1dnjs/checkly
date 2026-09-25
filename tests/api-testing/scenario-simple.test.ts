@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { bindingUseLocations, pruneUnusedBrokenBindings, parseScenario, resetStepConnections, stringifyScenario } from "../../src/app/api-testing/shared/scenario";
+import { bindingUseLocations, pruneUnusedBrokenBindings, parseScenario, stringifyScenario } from "../../src/app/api-testing/shared/scenario";
 
 const source = `name: 로그인
 server: backend
@@ -54,9 +54,9 @@ test("simple YAML expands defaults, duplicate endpoints and extraction", () => {
   assert.equal(scenario.steps[0].extract[0].target, "vars.challengeToken");
   assert.equal(scenario.steps[0].extract[0].pointer, "/data/challengeToken");
   assert.deepEqual(parseScenario(stringifyScenario(scenario, true)), scenario);
-  const ids = scenario.steps.map(s => s.id);
-  scenario.steps.reverse();
-  assert.deepEqual(parseScenario(stringifyScenario(scenario, true)).steps.map(s => s.id), ids.reverse());
+  // Saved files keep the scenario id but never step ids; they are regenerated on read.
+  assert.match(stringifyScenario(scenario, true), /^id: /m);
+  assert.doesNotMatch(stringifyScenario(scenario, true), /^\s+-?\s*id:/m);
 });
 
 test("simple YAML preserves scenario bearer authentication and step exceptions", () => {
@@ -86,11 +86,29 @@ test("numbered references round trip without ids and reject future sources", () 
   assert.doesNotMatch(exported, /valueBindings:|\s+id:/);
   assert.equal(parseScenario(exported).valueBindings[0].pointer, "/data/challengeToken");
   assert.throws(() => parseScenario(yaml.replace("steps.1.", "steps.2.")), /앞선 단계/);
-  const cleared = resetStepConnections(scenario);
-  assert.equal(cleared.valueBindings.length, 0);
-  assert.deepEqual(cleared.steps[1].request.body, { token: "" });
-  assert.deepEqual(cleared.steps[0].request.body, { loginId: "{{globals.loginId}}" });
-  assert.deepEqual(cleared.steps[0].extract, scenario.steps[0].extract);
+  // Readable internal name, never written to the file.
+  assert.equal(scenario.valueBindings[0].name, "challengeToken_2");
+});
+
+test("reordering keeps links and renumbers {{steps.N}} when saved", () => {
+  const scenario = parseScenario(`name: 순서\nserver: backend\nsteps:\n  - api: POST /login\n  - api: GET /a\n  - api: GET /b\n    query: { token: "{{steps.1.response.body./token}}" }\n`);
+  const [login, a, b] = scenario.steps;
+  scenario.steps = [a, login, b];
+  assert.match(stringifyScenario(scenario), /token: "\{\{steps\.2\.response\.body\.\/token\}\}"/);
+});
+
+test("step inputs are written and read as {{inputs.name}}", () => {
+  const yaml = `name: 인증\nserver: backend\nsteps:\n  - name: 인증번호 확인\n    api: POST /verify\n    inputs:\n      - name: code\n        label: 인증번호\n    body:\n      code: "{{inputs.code}}"\n`;
+  const scenario = parseScenario(yaml);
+  // The runner keeps step input values in vars.
+  assert.deepEqual(scenario.steps[0].request.body, { code: "{{vars.code}}" });
+  const exported = stringifyScenario(scenario);
+  assert.match(exported, /code: "\{\{inputs\.code\}\}"/);
+  assert.doesNotMatch(exported, /vars\./);
+  assert.deepEqual(parseScenario(exported), scenario);
+  // A scenario-level input with the same name stays a scenario-level input.
+  const topLevel = parseScenario(`name: x\nserver: backend\ninputs: { code: { type: string } }\nsteps:\n  - api: POST /verify\n    body: { code: "{{inputs.code}}" }\n`);
+  assert.deepEqual(topLevel.steps[0].request.body, { code: "{{inputs.code}}" });
 });
 
 test("ambiguous, invalid and unknown simple settings are rejected", () => {

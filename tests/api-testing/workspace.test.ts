@@ -70,26 +70,21 @@ steps:
     assert.equal(futureIssues.some(issue => issue.includes("vars.laterId는")), false);
     const item = await workspace.saveScenario(scope, yaml, bindings);
     await assert.rejects(workspace.saveScenario(scope, yaml, bindings), /같은 ID/);
-    // Saved YAML is normalized to the simple format with the current server name.
+    // Saved YAML is the one authoring format: no step ids, defaults omitted, current server name.
     assert.equal((await new ApiWorkspace(dir).listScenarios(project.id))[0].source, `id: login/read
 name: 로그인 후 조회
 description: 응답 ID와 토큰을 재사용합니다.
 server: 회원
 steps:
-  - id: login
-    name: 로그인
+  - name: 로그인
     api: POST /login
     extract:
-      - source: body
-        pointer: /accessToken
+      - pointer: /accessToken
         target: globals.accessToken
         sensitive: true
-      - source: body
-        pointer: /id
+      - pointer: /id
         target: vars.itemId
-        sensitive: false
-  - id: read
-    name: 상품 조회
+  - name: 상품 조회
     api: GET /items/{id}
     pathParams:
       id: "{{vars.itemId}}"

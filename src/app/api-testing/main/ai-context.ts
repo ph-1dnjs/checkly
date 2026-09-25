@@ -112,17 +112,19 @@ function catalogIndex(servers: AiAuthorServer[]): string {
   return servers.map(({ serverName, operations }) => [`### 서버: ${serverName}`, ...operations.map(operation => `- ${operation.method.toUpperCase()} ${operation.path} — ${operation.summary || "(요약 없음)"} [${operation.tag}]`)].join("\n")).join("\n\n");
 }
 
+// One syntax only; it is exactly what Checkly shows and saves, so there is nothing to translate.
 const authorRules = [
   "- 결과는 JSON 하나입니다: scenarios(각 항목은 시나리오 YAML 문자열), suite(요청하지 않았으면 null), notes(가정·확인 필요 사항을 한국어로 짧게).",
-  "- 시나리오 YAML 최상위: id(영문 소문자·숫자·-·/, 기존 ID와 겹치지 않게), name·description(한국어), server(모든 단계가 같은 서버면 한 번만), steps.",
-  "- 단계: name(한국어), api: 'POST /path'(목록의 메서드·경로 그대로), 필요하면 server, 그리고 body·query·headers·cookies·pathParams를 단계 바로 아래 작성합니다.",
-  "- 앞 단계 값 사용은 {{steps.1.response.body./data/id}}처럼 1부터 시작하는 단계 번호와 JSON Pointer로만 작성합니다. 응답 헤더는 {{steps.1.response.header.X-Request-Id}}, 앞 단계 요청값은 {{steps.1.request.body./loginId}}입니다. 항상 앞선 단계만 참조합니다.",
-  "- 다른 시나리오에서도 쓸 값(토큰 등)은 extract로 전역변수에 저장합니다: extract: [{source: body, pointer: /data/accessToken, target: globals.accessToken, sensitive: true}]. 저장된 전역변수는 {{globals.accessToken}}으로 씁니다.",
-  "- Bearer 인증은 시나리오 최상위 auth: globals.accessToken 또는 단계별 auth로 지정합니다. auth를 쓰면 Authorization 헤더를 직접 넣지 않습니다. 로그인 단계처럼 인증이 없어야 하는 단계는 auth: none입니다.",
-  "- 비밀번호·인증번호·계정처럼 실행할 때 사람이 넣어야 하는 값은 단계에 inputs: [{name: password, label: 비밀번호, type: string, required: true, sensitive: true}]를 두고 {{vars.password}}로 씁니다. 전역변수 목록에 있는 값이면 {{globals.이름}}을 씁니다. 실제 값을 YAML에 쓰지 않습니다.",
-  "- 검증은 expect: [{source: status, operator: equals, value: 200}] 또는 body pointer·header에 equals/exists/contains를 씁니다. 생략하면 HTTP 2xx만 확인합니다. 업무 목표에 필요한 검증만 넣습니다.",
-  "- 실패 시 계속 진행이 필요하면 onFailure: continue, 기본은 stop입니다. JavaScript·반복문·함수·외부 파일 참조는 지원하지 않습니다.",
-  "- 목록에 없는 API나 스키마에 없는 필드를 만들지 않습니다. 확신이 없으면 가장 단순한 형태로 작성하고 notes에 적습니다.",
+  "- 아래 문법만 사용합니다. 단계 id나 별도의 변수 선언은 쓰지 않습니다.",
+  "- 시나리오: id(영문 소문자·숫자·-·/, 기존 id와 겹치지 않게), name·description(한국어), server(모든 단계가 같은 서버면 한 번), auth(선택), steps.",
+  "- 단계: name(한국어), api: 'POST /bos/login'(목록의 메서드·경로 그대로, 따옴표로 감쌈), 서버가 다르면 server, 그리고 body·query·pathParams·headers·cookies를 단계 바로 아래에 씁니다.",
+  "- 앞 단계 값: {{steps.1.response.body./data/challengeToken}} (1부터 시작하는 단계 번호 + JSON Pointer). 응답 헤더는 {{steps.1.response.header.X-Request-Id}}, 앞 단계 요청값은 {{steps.1.request.body./loginId}}. 항상 앞선 단계만 참조합니다.",
+  "- 다른 시나리오와 공유할 값(토큰 등): 저장은 extract: [{pointer: /data/accessToken, target: globals.accessToken, sensitive: true}], 사용은 {{globals.accessToken}}. 전역변수 목록에 이미 있는 값은 {{globals.이름}}으로 씁니다.",
+  "- 실행 중 사람이 넣어야 하는 값(비밀번호·인증번호·계정): 그 단계에 inputs: [{name: code, label: 인증번호, sensitive: true}]를 두고 {{inputs.code}}로 씁니다. 실제 값은 YAML에 쓰지 않습니다.",
+  "- Bearer 인증: 시나리오 또는 단계에 auth: globals.accessToken. auth를 쓰면 Authorization 헤더를 직접 넣지 않고, 로그인처럼 인증이 없어야 하는 단계는 auth: none.",
+  "- 검증: expect: [{source: status, operator: equals, value: 200}], 본문은 {source: body, pointer: /data/id, operator: exists}. 연산자는 equals·exists·contains. 생략하면 HTTP 2xx만 확인하며, 업무 목표에 필요한 검증만 넣습니다.",
+  "- 실패해도 다음 단계를 계속하려면 시나리오에 onFailure: continue(기본 stop). JavaScript·반복문·함수·외부 파일 참조는 지원하지 않습니다.",
+  "- 목록에 없는 API나 스키마에 없는 필드를 만들지 않습니다. 확신이 없으면 가장 단순한 형태로 쓰고 notes에 적습니다.",
 ];
 
 export function createAuthorPrompt(input: AiAuthorPromptInput): string {

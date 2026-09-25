@@ -48,7 +48,7 @@ API 선택 중에는 선택한 단계 목록에서 순서 변경·선택 취소�
 
 ### 실행 중 사용자 입력
 
-API 단계의 실행 입력 설정에서 이름·라벨·타입·필수 여부·민감 여부를 지정할 수 있습니다. 요청 본문·경로·쿼리·헤더 등에는 `{{vars.입력 이름}}`을 사용합니다. 실행기가 해당 단계에 도달했을 때 같은 이름의 `vars`, 최상위 `inputs`, `globals` 값이 없으면 실행을 멈추고 입력 모달을 표시합니다. 사용자가 입력을 제출하면 값은 해당 실행의 `vars`에 들어가 같은 요청과 이후 단계에서 사용할 수 있습니다.
+API 단계의 실행 입력 설정에서 이름·라벨·타입·필수 여부·민감 여부를 지정할 수 있습니다. 요청 본문·경로·쿼리·헤더 등에는 `{{inputs.입력 이름}}`을 사용합니다. 실행기가 해당 단계에 도달했을 때 값이 없으면 실행을 멈추고 입력 모달을 표시합니다. 제출한 값은 같은 요청과 이후 단계에서 사용할 수 있습니다.
 
 입력 모달의 실제 값은 시나리오 YAML에 저장하지 않습니다. 실행 결과와 변수는 원문으로 반환됩니다. `sensitive: true`인 입력값은 **민감값 숨기기** 토글이 켜져 있으면 입력칸과 실행 결과의 모든 위치에서 가립니다. 실행 취소·창 종료·5분 만료 시 대기를 해제합니다. 필수값이 만료되거나 비대화형 실행에 입력 공급자가 없으면 해당 단계는 차단됩니다.
 
@@ -59,97 +59,45 @@ API 단계의 실행 입력 설정에서 이름·라벨·타입·필수 여부·
 5. 저장 후 **새 시나리오**로 다음 작성을 시작합니다. 미저장 변경사항이 있으면 먼저 저장해야 합니다. 여러 서버를 사용하는 경우 왼쪽 Swagger의 서버 선택에서 같은 프로젝트·환경의 다른 서버 명세를 열고 체인 아이콘으로 단계를 추가합니다. 오른쪽은 선택된 단계의 순서와 값 설정만 담당합니다.
 6. 시나리오는 프로젝트 단위로 한 번만 저장하며, 상단에서 선택한 환경은 전체 API 호출에 사용할 base URL로 적용됩니다. 환경 이름 제한을 YAML에 지정하지 않으면 local·dev 등 모든 프로젝트 환경에서 재사용할 수 있습니다. 작성 중 프로젝트·서버·문서 전환은 비활성화하지만 환경 전환은 허용하고, 전환해도 작성 중인 초안은 유지합니다. 미저장 상태에서 닫기를 누르면 **계속 작성** 또는 **변경사항 버리고 닫기**를 선택합니다. 잘못된 JSON 입력도 변경사항으로 취급하며, 계속 작성하면 입력을 유지합니다. 영구 보관하려면 저장해야 합니다. 우클릭 메뉴는 아직 제공하지 않습니다.
 
-## YAML 계약과 예제
+## YAML 문법
 
-`version: 1`, 시나리오의 `id`·`name`과 단계의 `id`·시나리오용 `name`을 사용합니다. 최상위 `description`은 시나리오 설명으로 저장합니다. 단계의 엔드포인트 summary·description은 OpenAPI에서 읽으므로 YAML에 작성하지 않습니다. 기존 YAML의 단계 `description`은 호환을 위해 읽을 수 있지만 시각 편집기로 다시 저장할 때 제거합니다. `operationId`가 있으면 `api: { operationId: ... }`로 매핑하고, 없으면 method/path를 사용합니다.
+사람이 보는 YAML, AI 작성 규칙, 저장 파일이 모두 아래 한 가지 문법을 씁니다. 화면에서 값을 연결해도 저장하면 이 형태가 됩니다.
+
+| 하려는 것 | 문법 |
+| --- | --- |
+| API | `api: POST /bos/login` (명세의 메서드·경로) |
+| 요청 값 | 단계 바로 아래 `body` · `query` · `pathParams` · `headers` · `cookies` |
+| 앞 단계 값 | `{{steps.1.response.body./data/challengeToken}}`, 응답 헤더 `{{steps.1.response.header.X-Request-Id}}`, 앞 단계 요청값 `{{steps.1.request.body./loginId}}` (1부터 시작하는 단계 번호 + JSON Pointer, 앞선 단계만) |
+| 다른 시나리오와 공유 | 저장 `extract: [{ pointer: /data/accessToken, target: globals.accessToken, sensitive: true }]`, 사용 `{{globals.accessToken}}` |
+| 실행 중 입력 | 단계에 `inputs: [{ name: code, label: 인증번호, sensitive: true }]`, 사용 `{{inputs.code}}` |
+| 인증 | 시나리오 또는 단계에 `auth: globals.accessToken`, 인증 없는 단계는 `auth: none` |
+| 검증 | `expect: [{ source: status, operator: equals, value: 200 }]`, 본문 `{ source: body, pointer: /data/id, operator: exists }` |
+
+- 시나리오 최상위: `id`(저장 식별자), `name`, `description`, `server`(모든 단계 공통일 때), `auth`, `onFailure`(`stop` 기본·`continue`), `steps`.
+- 단계 번호는 저장 시점의 순서입니다. 편집기에서 순서를 바꿔도 연결은 유지되고, 저장하면 번호가 새 순서로 다시 매겨집니다. 출처 단계가 사용 단계보다 뒤로 가거나 삭제되면 시나리오 검사에서 알려 줍니다.
+- 단계 id·내부 변수 이름은 파일에 쓰지 않습니다. 단계의 엔드포인트 설명은 명세에서 읽으므로 쓰지 않습니다.
+- `extract`의 `source: body`와 `sensitive: false`는 기본값이라 생략합니다.
 
 ```yaml
-version: 1
 id: items/read-again
 name: 상품 목록에서 선택한 상품 재조회
-description: 첫 응답에서 저장한 상품 ID를 후속 요청에 사용합니다.
-onFailure: stop
-inputs:
-  token: { type: string, required: true, sensitive: true }
+description: 첫 응답의 상품 ID로 상세를 다시 조회합니다.
+server: backend
+auth: globals.accessToken
 steps:
-  - id: list
-    name: 상품 목록 조회
-    server: backend
-    api: { method: GET, path: /items }
-    request:
-      headers:
-        Authorization: "Bearer {{inputs.token}}"
-    extract:
-      - { source: body, pointer: /items/0/id, target: vars.itemId }
-  - id: read
-    name: 선택 상품 조회
-    server: backend
-    api: { method: GET, path: "/items/{id}" }
-    request:
-      pathParams: { id: "{{vars.itemId}}" }
-      headers:
-        Authorization: "Bearer {{inputs.token}}"
+  - name: 상품 목록 조회
+    api: GET /items
+  - name: 선택 상품 조회
+    api: 'GET /items/{id}'
+    pathParams:
+      id: "{{steps.1.response.body./items/0/id}}"
     expect:
       - { source: status, operator: equals, value: 200 }
 ```
 
-API 단계에서 인증번호처럼 실행 중 받아야 하는 값을 요청에 사용하는 예시는 다음과 같습니다. `input`은 별도 호출 단계가 아니라 해당 API 단계에 붙는 입력 요청 설정입니다.
+값 전체가 참조이면 JSON 타입을 유지합니다. 문자열 안의 참조는 문자열로 조합하며 객체·배열을 문자열에 넣으면 오류입니다. 검증 연산자는 equals, exists, contains이며 암묵적 타입 변환이 없습니다. `expect`를 생략하면 HTTP 2xx만 확인하고 중간 업무 검증을 자동으로 넣지 않습니다.
 
-```yaml
-steps:
-  - id: verify
-    name: SMS 인증번호 확인
-    server: backend
-    api: { method: POST, path: /phone/verify }
-    input:
-      name: phoneCode
-      label: SMS 인증번호
-      type: string
-      required: true
-      sensitive: true
-    request:
-      body: { code: "{{vars.phoneCode}}" }
-```
-
-예제는 가상 API 계약입니다. backend를 실제 서버에 연결하고 응답 구조를 확인해야 합니다. 2단계에서 추출한 변수도 이후 덮어쓰지 않으면 6단계에서 참조할 수 있습니다.
-
-응답뿐 아니라 앞 단계에서 실제로 사용한 요청값도 연결할 수 있습니다. 출처 단계가 먼저 실행된 뒤 `vars`로 전달되며, 아래처럼 요청 본문·응답 본문·응답 헤더를 각각 지정합니다.
-
-```yaml
-version: 1
-id: request-response-reuse
-name: 요청·응답 값 재사용
-valueBindings:
-  - { name: loginId, step: login, source: request, area: body, pointer: /loginId }
-  - { name: accessToken, step: login, source: response, area: body, pointer: /accessToken, sensitive: true }
-  - { name: traceId, step: login, source: response, area: header, header: X-Request-Id }
-steps:
-  - id: login
-    name: 로그인
-    server: backend
-    api: { method: POST, path: /login }
-    request:
-      body: { loginId: "demo" }
-  - id: audit
-    name: 감사 로그 조회
-    server: backend
-    api: { method: GET, path: /audit }
-    request:
-      query: { loginId: "{{vars.loginId}}" }
-      headers:
-        Authorization: "Bearer {{vars.accessToken}}"
-        X-Request-Id: "{{vars.traceId}}"
-```
-
-| 참조 | 범위·수명 |
-| --- | --- |
-| `inputs.name` | 이번 실행의 입력 |
-| `vars.name` | 시나리오 초기값·응답 추출·값 출처 연결값, 실행마다 초기화 |
-| `valueBindings` | 현재 시나리오의 요청·응답 출처를 `vars.name`으로 연결. 출처 단계가 사용 단계보다 먼저 실행되어야 함 |
-| `globals.name` | 프로젝트 전체에서 공유하는 세션 값, `local`·`dev` URL 전환에도 유지되며 재시작 시 초기화 |
-| `step.input.name` | 해당 단계에서 값이 없을 때 표시할 실행 중 입력 설정. 제출값은 실행 중 `vars.name`으로만 사용 |
-
-값 전체가 변수 참조이면 JSON 타입을 유지합니다. 문자열 내부 참조는 문자열로 조합하며 객체·배열 삽입은 오류입니다. 추출과 값 출처는 JSON Pointer 또는 헤더 이름을 사용합니다. 검증 연산자는 equals, exists, contains이며 암묵적 타입 변환이 없습니다. expect 생략은 HTTP 2xx 성공이며 중간 업무 검증을 자동 추가하지 않습니다. 기존 openapi-k6 문법의 자동 호환·변환 기능은 없습니다.
+**이전 형식(읽기 호환):** `version`, 단계 `id`, `api: { method, path }`·`operationId`, `request:` 감싸기, `valueBindings`, `vars`, `extract … target: vars.x`, 단계 `input`(단수), 최상위 `inputs`는 그대로 읽고 실행합니다. 편집기에서 다시 저장하면 가능한 부분은 위 문법으로 바뀝니다.
 
 ## AI 작성 도우미
 
@@ -169,100 +117,70 @@ AI 전달 범위: 업무 목표, 작성 규칙, 전체 API 목록(메서드·경
 회원 문의 생성 후 관리자가 답변하고 회원이 조회합니다. 2단계의 inquiryId를 5·6단계에서 재사용합니다. 아래 가상 API 예제는 실행 코어 테스트에서도 읽어 검증합니다.
 
 ```yaml
-version: 1
 id: inquiry/create-and-answer
 name: 회원 문의 등록부터 관리자 답변 확인
 description: |
   회원이 문의를 등록하고 관리자가 답변한 뒤,
   회원이 조회한 문의에 작성한 답변이 표시되는지 검증합니다.
-onFailure: stop
-inputs:
-  memberLoginId: { type: string, required: true }
-  memberPassword: { type: string, required: true, sensitive: true }
-  adminLoginId: { type: string, required: true }
-  adminPassword: { type: string, required: true, sensitive: true }
-vars:
-  answerText: 테스트 답변입니다
 steps:
-  - id: memberLogin
-    name: 회원 로그인
+  - name: 회원 로그인
     server: member
-    api: { method: POST, path: /auth/login }
-    request:
-      body:
-        loginId: "{{inputs.memberLoginId}}"
-        password: "{{inputs.memberPassword}}"
+    api: POST /auth/login
+    inputs:
+      - { name: memberLoginId, label: 회원 아이디, sensitive: false }
+      - { name: memberPassword, label: 회원 비밀번호 }
+    body:
+      loginId: "{{inputs.memberLoginId}}"
+      password: "{{inputs.memberPassword}}"
     expect:
       - { source: status, operator: equals, value: 200 }
     extract:
-      - source: body
-        pointer: /accessToken
-        target: globals.memberAccessToken
-        sensitive: true
+      - { pointer: /accessToken, target: globals.memberAccessToken, sensitive: true }
 
-  - id: createInquiry
-    name: 회원 문의 등록
+  - name: 회원 문의 등록
     server: member
-    api: { method: POST, path: /inquiries }
-    request:
-      headers:
-        Authorization: "Bearer {{globals.memberAccessToken}}"
-      body: { title: 테스트 문의, content: 배송 일정 문의 }
-    expect:
-      - { source: status, operator: equals, value: 201 }
-    extract:
-      - { source: body, pointer: /id, target: vars.inquiryId }
-
-  - id: adminLogin
-    name: 관리자 로그인
-    server: admin
-    api: { method: POST, path: /auth/login }
-    request:
-      body:
-        loginId: "{{inputs.adminLoginId}}"
-        password: "{{inputs.adminPassword}}"
-    expect:
-      - { source: status, operator: equals, value: 200 }
-    extract:
-      - source: body
-        pointer: /accessToken
-        target: globals.adminAccessToken
-        sensitive: true
-
-  - id: listInquiries
-    name: 관리자 문의 목록 조회
-    server: admin
-    api: { method: GET, path: /inquiries }
-    request:
-      headers:
-        Authorization: "Bearer {{globals.adminAccessToken}}"
-    expect:
-      - { source: status, operator: equals, value: 200 }
-
-  - id: answerInquiry
-    name: 관리자 답변 등록
-    server: admin
-    api: { method: POST, path: '/inquiries/{id}/answers' }
-    request:
-      pathParams: { id: "{{vars.inquiryId}}" }
-      headers:
-        Authorization: "Bearer {{globals.adminAccessToken}}"
-      body: { content: "{{vars.answerText}}" }
+    api: POST /inquiries
+    auth: globals.memberAccessToken
+    body: { title: 테스트 문의, content: 배송 일정 문의 }
     expect:
       - { source: status, operator: equals, value: 201 }
 
-  - id: verifyInquiry
-    name: 회원 문의 답변 확인
-    server: member
-    api: { method: GET, path: '/inquiries/{id}' }
-    request:
-      pathParams: { id: "{{vars.inquiryId}}" }
-      headers:
-        Authorization: "Bearer {{globals.memberAccessToken}}"
+  - name: 관리자 로그인
+    server: admin
+    api: POST /auth/login
+    inputs:
+      - { name: adminLoginId, label: 관리자 아이디, sensitive: false }
+      - { name: adminPassword, label: 관리자 비밀번호 }
+    body:
+      loginId: "{{inputs.adminLoginId}}"
+      password: "{{inputs.adminPassword}}"
     expect:
       - { source: status, operator: equals, value: 200 }
-      - source: body
-        pointer: /answer/content
-        operator: equals
-        value: "{{vars.answerText}}"
+    extract:
+      - { pointer: /accessToken, target: globals.adminAccessToken, sensitive: true }
+
+  - name: 관리자 문의 목록 조회
+    server: admin
+    api: GET /inquiries
+    auth: globals.adminAccessToken
+    expect:
+      - { source: status, operator: equals, value: 200 }
+
+  - name: 관리자 답변 등록
+    server: admin
+    api: 'POST /inquiries/{id}/answers'
+    auth: globals.adminAccessToken
+    pathParams: { id: "{{steps.2.response.body./id}}" }
+    body: { content: 테스트 답변입니다 }
+    expect:
+      - { source: status, operator: equals, value: 201 }
+
+  - name: 회원 문의 답변 확인
+    server: member
+    api: 'GET /inquiries/{id}'
+    auth: globals.memberAccessToken
+    pathParams: { id: "{{steps.2.response.body./id}}" }
+    expect:
+      - { source: status, operator: equals, value: 200 }
+      - { source: body, pointer: /answer/content, operator: equals, value: 테스트 답변입니다 }
 ```

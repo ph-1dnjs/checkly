@@ -1,4 +1,6 @@
-import { scenarioStepInputs, type Json, type Scenario, type ValueBinding } from "../../../app/api-testing/shared/scenario";
+import { linkVariableName, scenarioStepInputs, type Json, type Scenario, type ValueBinding } from "../../../app/api-testing/shared/scenario";
+
+export { linkVariableName };
 import type { ApiOperation } from "../../../app/api-testing/shared/workspace";
 
 export type Step = Scenario["steps"][number];
@@ -38,13 +40,6 @@ export function connectResponse(scenario: Scenario, from: number, to: number, po
   return { ...scenario, steps };
 }
 
-/** Variable name for a linked value: the last pointer segment or header name, made identifier-safe. */
-export function linkVariableName(source: string): string {
-  const last = source.split("/").pop()!.replace(/~1/g, "/").replace(/~0/g, "~");
-  const name = last.replace(/[^A-Za-z0-9_]+/g, "_").replace(/^_+|_+$/g, "");
-  if (!name || /^\d+$/.test(name)) return "linkedValue";
-  return /^[A-Za-z]/.test(name) ? name : `v_${name}`;
-}
 
 /** Connects any captured request/response value to a later request template. */
 export function connectValue(scenario: Scenario, from: number, to: number, source: ValueBinding["source"], area: BindingArea, pointer: string | undefined, header: string | undefined, variable: string, targetArea: RequestArea, field: string, prefix = ""): Scenario {

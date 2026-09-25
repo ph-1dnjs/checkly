@@ -45,7 +45,7 @@ const expectation = z.object({
     ctx.addIssue({ code: "custom", message: "검증할 value가 필요합니다" });
 });
 const extraction = z.object({
-  source: z.enum(["body", "header"]),
+  source: z.enum(["body", "header"]).default("body"),
   pointer: pointer.optional(), header: z.string().optional(),
   target: z.string().regex(/^(vars|globals)\.[A-Za-z][A-Za-z0-9_]*$/),
   sensitive: z.boolean().default(false),
@@ -173,7 +173,28 @@ export function normalizeScenarioForStorage(scenario: Scenario): Scenario {
 export function parseScenario(source: string): Scenario {
   const doc = parseDocument(source, { uniqueKeys: true });
   if (doc.errors.length) throw new Error(doc.errors.map(e => e.message).join("\n"));
-  return expandStepReferences(scenarioSchema.parse(expandScenario(doc.toJS({ maxAliasCount: 50 }))));
+  return expandStepReferences(stepInputReferencesToVars(scenarioSchema.parse(expandScenario(doc.toJS({ maxAliasCount: 50 })))));
+}
+
+/** Names of run-time step inputs that are not also scenario-level inputs. */
+function stepInputNames(scenario: Scenario): Set<string> {
+  return new Set(scenario.steps.flatMap(step => scenarioStepInputs(step).map(input => input.name)).filter(name => !Object.hasOwn(scenario.inputs, name)));
+}
+
+/** Authoring writes {{inputs.code}} for a step input; the runner keeps step input values in vars. */
+function stepInputReferencesToVars(scenario: Scenario): Scenario {
+  const names = stepInputNames(scenario);
+  if (!names.size) return scenario;
+  const convert = (text: string) => text.replace(/\{\{inputs\.([A-Za-z][A-Za-z0-9_]*)\}\}/g, (match, name) => names.has(name) ? `{{vars.${name}}}` : match);
+  return { ...scenario, steps: scenario.steps.map(step => ({ ...step, request: mapStrings(step.request, convert), ...(step.expect ? { expect: mapStrings(step.expect, convert) } : {}) })) };
+}
+
+/** Variable name for a linked value: the last pointer segment or header name, made identifier-safe. */
+export function linkVariableName(source: string): string {
+  const last = source.split("/").pop()!.replace(/~1/g, "/").replace(/~0/g, "~");
+  const name = last.replace(/[^A-Za-z0-9_]+/g, "_").replace(/^_+|_+$/g, "");
+  if (!name || /^\d+$/.test(name)) return "linkedValue";
+  return /^[A-Za-z]/.test(name) ? name : `v_${name}`;
 }
 
 function mapStrings(value: any, change: (text: string) => string): any {
@@ -192,8 +213,9 @@ function expandStepReferences(scenario: Scenario): Scenario {
       if (from < 0 || from >= index) throw new Error(`${index + 1}단계 연결은 앞선 단계만 참조할 수 있습니다 (${number}단계)`);
       let binding = bindings.find(b => b.step === scenario.steps[from].id && b.source === source && b.area === area && (area === "header" ? b.header === path : b.pointer === path));
       if (!binding) {
-        let name = `step${number}_${source}_${area}_${path.replace(/[^A-Za-z0-9_]/g, "_")}`;
-        while (occupied.has(name)) name += "_";
+        const base = linkVariableName(path);
+        let name = base;
+        for (let suffix = 2; occupied.has(name); suffix++) name = `${base}_${suffix}`;
         occupied.add(name);
         binding = { name, step: scenario.steps[from].id, source, area, ...(area === "header" ? { header: path } : { pointer: path }), sensitive: true };
         bindings.push(binding!);
@@ -205,12 +227,6 @@ function expandStepReferences(scenario: Scenario): Scenario {
   return scenarioSchema.parse({ ...scenario, steps, valueBindings: bindings });
 }
 
-/** Reset only binding-backed references; manual extractions and other settings remain. */
-export function resetStepConnections(scenario: Scenario): Scenario {
-  const names = new Set(scenario.valueBindings.map(b => b.name));
-  const clear = (text: string) => /\{\{steps\./.test(text) || [...names].some(name => text.includes(`{{vars.${name}}}`)) ? "" : text;
-  return { ...scenario, valueBindings: [], steps: scenario.steps.map(step => ({ ...step, request: mapStrings(step.request, clear), ...(step.expect ? { expect: mapStrings(step.expect, clear) } : {}) })) };
-}
 
 function expandScenario(raw: unknown): unknown {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return raw;
@@ -252,39 +268,55 @@ function expandScenario(raw: unknown): unknown {
 }
 
 /** Compact authoring format. Keep identities when saving an existing editor document. */
+/**
+ * The one authoring format used by people, the AI and saved files:
+ * earlier-step values as {{steps.N.…}}, step inputs as {{inputs.name}}, no step ids.
+ * preserveIds keeps the scenario id (saved files); internal link names never appear.
+ */
 export function stringifyScenario(scenario: Scenario, preserveIds = false, resolveApi?: (step: Scenario["steps"][number]) => { method: string; path: string } | undefined, serverNames: Record<string, string> = {}): string {
   const normalized = normalizeScenarioForStorage(pruneUnusedBrokenBindings(scenario));
-  if (!preserveIds) {
-    const replacements = new Map(normalized.valueBindings.flatMap(binding => {
-      const index = normalized.steps.findIndex(step => step.id === binding.step);
-      return index < 0 ? [] : [[`{{vars.${binding.name}}}`, `{{steps.${index + 1}.${binding.source}.${binding.area}.${binding.header ?? binding.pointer ?? ""}}}`] as const];
-    }));
-    normalized.steps = mapStrings(normalized.steps, text => {
-      for (const [from, to] of replacements) text = text.split(from).join(to);
-      return text;
-    });
-    normalized.valueBindings = normalized.valueBindings.filter(binding => !replacements.has(`{{vars.${binding.name}}}`));
-  }
-  const { version: _version, id, steps, valueBindings, inputs, vars, onFailure, ...rest } = normalized;
+  const replacements = new Map<string, string>(normalized.valueBindings.flatMap(binding => {
+    const index = normalized.steps.findIndex(step => step.id === binding.step);
+    return index < 0 ? [] : [[`{{vars.${binding.name}}}`, `{{steps.${index + 1}.${binding.source}.${binding.area}.${binding.header ?? binding.pointer ?? ""}}}`] as const];
+  }));
+  for (const name of stepInputNames(normalized)) replacements.set(`{{vars.${name}}}`, `{{inputs.${name}}}`);
+  normalized.steps = mapStrings(normalized.steps, text => {
+    for (const [from, to] of replacements) text = text.split(from).join(to);
+    return text;
+  });
+  normalized.valueBindings = normalized.valueBindings.filter(binding => !replacements.has(`{{vars.${binding.name}}}`));
+  const { version: _version, id, steps, valueBindings, inputs, vars, onFailure, auth, ...rest } = normalized;
   const commonServer = steps.every(step => step.server === steps[0].server) ? steps[0].server : undefined;
+  // Step ids are only written when an unconvertible legacy binding still points at them.
   const referenced = new Set(valueBindings.map(binding => binding.step));
+  const extractFor = (extract: Scenario["steps"][number]["extract"]) => extract.every(e => e.source === "body" && e.target.startsWith("vars.") && !e.sensitive)
+    ? Object.fromEntries(extract.map(e => [e.target.slice(5), e.pointer]))
+    : extract.map(({ source, sensitive, ...e }) => ({ ...(source !== "body" ? { source } : {}), ...e, ...(sensitive ? { sensitive } : {}) }));
   return stringify({
     ...(preserveIds ? { id } : {}), ...rest,
     ...(commonServer ? { server: serverNames[commonServer] ?? commonServer } : {}),
+    ...(auth ? { auth } : {}),
     ...(onFailure !== "stop" ? { onFailure } : {}),
     ...(Object.keys(inputs).length ? { inputs } : {}),
     ...(Object.keys(vars).length ? { vars } : {}),
-    steps: steps.map((original) => {
-      const { id, server, api, request, extract, ...step } = original;
+    steps: steps.map(original => {
+      const { id: stepId, name, server, api, auth: stepAuth, input, inputs: stepInputs, request, expect, extract, ...step } = original;
       const resolved = "method" in api ? api : resolveApi?.(original);
-      return ({
-      ...(preserveIds || referenced.has(id) ? { id } : {}), ...step,
-      ...(!commonServer ? { server: serverNames[server] ?? server } : {}),
-      api: resolved ? `${resolved.method.toUpperCase()} ${resolved.path}` : api,
-      ...request,
-      ...(extract.length ? { extract: extract.every(e => e.source === "body" && e.target.startsWith("vars.") && !e.sensitive)
-        ? Object.fromEntries(extract.map(e => [e.target.slice(5), e.pointer])) : extract } : {}),
-    }); }),
+      const allInputs = scenarioStepInputs({ input, inputs: stepInputs } as Scenario["steps"][number]);
+      return {
+        ...(referenced.has(stepId) ? { id: stepId } : {}),
+        ...(name ? { name } : {}),
+        ...(!commonServer ? { server: serverNames[server] ?? server } : {}),
+        api: resolved ? `${resolved.method.toUpperCase()} ${resolved.path}` : api,
+        ...(stepAuth ? { auth: stepAuth } : {}),
+        // Defaults (string, required, sensitive) are omitted.
+        ...(allInputs.length ? { inputs: allInputs.map(({ type, required, sensitive, ...input }) => ({ ...input, ...(type !== "string" ? { type } : {}), ...(!required ? { required } : {}), ...(!sensitive ? { sensitive } : {}) })) } : {}),
+        ...request,
+        ...(expect?.length ? { expect } : {}),
+        ...(extract.length ? { extract: extractFor(extract) } : {}),
+        ...step,
+      };
+    }),
     ...(valueBindings.length ? { valueBindings } : {}),
   });
 }

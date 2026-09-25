@@ -1,7 +1,7 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import SwaggerUI from "swagger-ui-react";
 import "swagger-ui-react/swagger-ui.css";
-import { resetStepConnections, scenarioStepLabel, type Json, type Scenario } from "../../../app/api-testing/shared/scenario";
+import { scenarioStepLabel, type Json, type Scenario } from "../../../app/api-testing/shared/scenario";
 import type { ApiCatalog, ApiScope, ApiTestingBridge, ApiSidebarMetadata } from "../../../app/api-testing/shared/workspace";
 import { SelectedApiList } from "./SelectedApiList";
 import { useRunAction, type OnRunAction } from "./useRunAction";
@@ -110,13 +110,10 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
     setSaved(null); setDirty(false); setIssues([]); setNotice(""); setConfirmClose(false);
     setEditorVersion(version => version + 1);
   };
+  // Links point at step ids, so reordering keeps them; saved YAML renumbers {{steps.N}}.
+  // A source moved after its use or deleted is reported by the scenario check.
   const changeDraft = (next: Scenario) => {
-    const changed = draft.steps.map(step => step.id).join("|") !== next.steps.map(step => step.id).join("|");
-    if (changed && draft.valueBindings.length) {
-      if (!window.confirm("단계 구성이 변경되어 이전 단계의 값을 사용하는 연결이 초기화됩니다. 직접 입력·전역변수·사용자 입력 설정은 유지됩니다. 계속할까요?")) return;
-      next = resetStepConnections(next);
-    }
-    setDraft(next); setDirty(true); setNotice(changed && draft.valueBindings.length ? "단계 간 연결을 초기화했습니다. 순서 확정 후 값을 다시 연결하세요." : ""); setIssues([]);
+    setDraft(next); setDirty(true); setNotice(""); setIssues([]);
   };
   // Opening the composer is an editing state, not an in-flight operation. Keep
   // the shared busy flag for work that actually blocks the UI so the scenario
