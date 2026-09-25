@@ -3,6 +3,8 @@ import type { ApiAiAuthorRequest, ApiAiAuthorResult, ApiAiCli, ApiAiProgress, Ap
 
 const errorText = (error: unknown) => (error as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, "");
 const cliNames: Record<ApiAiCli, string> = { claude: "Claude Code", codex: "Codex" };
+// Claude Code aliases always point at the latest model of each tier; Codex takes any model name.
+const modelSuggestions: Record<ApiAiCli, string[]> = { claude: ["sonnet", "opus", "haiku"], codex: [] };
 const phaseText = (progress: ApiAiProgress | null) => !progress ? "AI 작성 준비 중…"
   : progress.phase === "writing" ? "AI가 명세와 소스를 읽고 시나리오를 작성하는 중…"
   : progress.phase === "checking" ? `Checkly가 작성 결과를 검사하는 중… (${progress.attempt}/${progress.maxAttempts})`
@@ -17,6 +19,7 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
 }) {
   const [clis, setClis] = useState<ApiAiCli[] | null>(null);
   const [cli, setCli] = useState<ApiAiCli>("claude");
+  const [models, setModels] = useState<Record<ApiAiCli, string>>({ claude: "", codex: "" });
   const [goal, setGoal] = useState("");
   const [includeSuite, setIncludeSuite] = useState(false);
   const [tags, setTags] = useState<string[]>([]);
@@ -41,7 +44,7 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
     const timer = setInterval(() => { void bridge.getAiProgress({ projectId: scope.projectId }).then(next => { if (live.current && next) setProgress(next); }).catch(() => undefined); }, 700);
     return () => clearInterval(timer);
   }, [running]);
-  const request = (): ApiAiAuthorRequest => ({ scope, cli, goal, includeSuite, ...(selectedTags.length ? { tags: selectedTags } : {}) });
+  const request = (): ApiAiAuthorRequest => ({ scope, cli, ...(models[cli].trim() ? { model: models[cli].trim() } : {}), goal, includeSuite, ...(selectedTags.length ? { tags: selectedTags } : {}) });
   const busy = running || saving;
 
   const generate = async () => {
@@ -93,6 +96,7 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
       <label>만들고 싶은 시나리오<textarea aria-label="AI 시나리오 업무 목표" rows={4} maxLength={10000} value={goal} placeholder="예: 회원 로그인 후 상품을 장바구니에 담고 주문까지 확인. 재고가 없을 때 실패도 확인해줘" onChange={e => setGoal(e.target.value)} /></label>
       <div className="api-ai-author-options">
         {hasCli && <label>사용할 AI<select aria-label="AI 사용 도구" value={cli} onChange={e => setCli(e.target.value as ApiAiCli)}>{clis!.map(item => <option key={item} value={item}>{cliNames[item]}</option>)}</select></label>}
+        {hasCli && <label>모델<input aria-label="AI 모델" list={`api-ai-models-${cli}`} value={models[cli]} placeholder="CLI 기본 모델" onChange={e => setModels({ ...models, [cli]: e.target.value })} /><datalist id={`api-ai-models-${cli}`}>{modelSuggestions[cli].map(model => <option key={model} value={model} />)}</datalist></label>}
         <label className="api-check-row"><input type="checkbox" checked={includeSuite} onChange={e => setIncludeSuite(e.target.checked)} />스위트도 함께 만들기</label>
       </div>
       {tags.length > 0 && <details className="api-ai-author-tags"><summary>API 범위 · {selectedTags.length ? `${selectedTags.length}개 태그` : "전체"}</summary>

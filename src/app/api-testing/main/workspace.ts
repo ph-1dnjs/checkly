@@ -33,7 +33,9 @@ function migrateSidebarMetadata<T extends Record<string, unknown>>(item: T): T &
   return { ...rest, ...metadata } as T & Partial<ApiSidebarMetadata>;
 }
 const aiAuthorRequestSchema = z.object({
-  scope: environmentScopeSchema, cli: z.enum(["claude", "codex"]), goal: z.string().trim().min(1, "만들 시나리오를 입력하세요").max(10_000),
+  scope: environmentScopeSchema, cli: z.enum(["claude", "codex"]),
+  // Passed to the CLI as-is; empty uses the CLI's own default model.
+  model: z.string().trim().regex(/^[A-Za-z0-9._:\/\[\]-]{1,100}$/, "모델 이름을 확인하세요").optional(), goal: z.string().trim().min(1, "만들 시나리오를 입력하세요").max(10_000),
   includeSuite: z.boolean(), tags: z.array(z.string().max(200)).max(100).optional(),
 }).strict();
 const aiAnswerSchema = z.object({
@@ -219,7 +221,7 @@ export class ApiWorkspace {
       let result: ApiAiAuthorResult | undefined;
       for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         state.progress = { phase: attempt === 1 ? "writing" : "repairing", attempt, maxAttempts };
-        const answer = aiAnswerSchema.parse(await run({ cli: request.cli, prompt, cwd: backendDir ?? work, readDirs: [work], schema: aiAnswerJsonSchema, signal: controller.signal }));
+        const answer = aiAnswerSchema.parse(await run({ cli: request.cli, ...(request.model ? { model: request.model } : {}), prompt, cwd: backendDir ?? work, readDirs: [work], schema: aiAnswerJsonSchema, signal: controller.signal }));
         if (controller.signal.aborted) throw new Error("AI 작성을 취소했습니다");
         state.progress = { phase: "checking", attempt, maxAttempts };
         result = await this.checkAiAnswer(scope, answer, new Set(existing.map(item => item.id)), attempt);

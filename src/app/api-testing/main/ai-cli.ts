@@ -1,4 +1,4 @@
-import { execFile, spawn } from "node:child_process";
+import { execFile, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { constants } from "node:fs";
 import { homedir, tmpdir } from "node:os";
@@ -11,7 +11,7 @@ import type { ApiAiCli } from "../shared/workspace";
  * shell PATH and common install directories are searched as well.
  * CHECKLY_AI_CLI_PATH replaces the executable (tests use a fake CLI).
  */
-export type AiCliRun = { cli: ApiAiCli; prompt: string; cwd: string; readDirs: string[]; schema: object; signal?: AbortSignal; timeoutMs?: number };
+export type AiCliRun = { cli: ApiAiCli; model?: string; prompt: string; cwd: string; readDirs: string[]; schema: object; signal?: AbortSignal; timeoutMs?: number };
 
 const maxOutputBytes = 10_000_000;
 let searchPath: Promise<string> | undefined;
@@ -31,10 +31,31 @@ async function combinedPath(): Promise<string> {
   return searchPath;
 }
 
-async function findExecutable(name: string): Promise<string | undefined> {
-  for (const dir of (await combinedPath()).split(path.delimiter)) {
-    const candidate = path.join(dir, name);
-    try { await access(candidate, constants.X_OK); return candidate; } catch { /* next */ }
+function runsVersion(command: string, env: NodeJS.ProcessEnv): Promise<boolean> {
+  return new Promise(resolve => {
+    // A non-executable file (ENOEXEC) throws synchronously instead of calling back.
+    try { execFile(command, ["--version"], { timeout: 15_000, env }, error => resolve(!error)); }
+    catch { resolve(false); }
+  });
+}
+
+const working = new Map<ApiAiCli, string>();
+
+/**
+ * First install that actually runs: a PATH entry can be a broken install
+ * (e.g. an npm global package whose native binary is missing), so each
+ * candidate is probed with --version. Only successes are cached.
+ */
+async function findExecutable(cli: ApiAiCli): Promise<string | undefined> {
+  const cached = working.get(cli);
+  if (cached) return cached;
+  const searchDirs = (await combinedPath()).split(path.delimiter);
+  const env: NodeJS.ProcessEnv = { ...process.env, PATH: searchDirs.join(path.delimiter) };
+  delete env.ELECTRON_RUN_AS_NODE;
+  for (const dir of searchDirs) {
+    const candidate = path.join(dir, cli);
+    try { await access(candidate, constants.X_OK); } catch { continue; }
+    if (await runsVersion(candidate, env)) { working.set(cli, candidate); return candidate; }
   }
   return undefined;
 }
@@ -59,7 +80,9 @@ function cliErrorDetail(stdout: string, stderr: string): string {
 
 function runProcess(command: string, args: string[], input: string, cwd: string, signal: AbortSignal | undefined, timeoutMs: number, env: NodeJS.ProcessEnv): Promise<string> {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { cwd, env, stdio: ["pipe", "pipe", "pipe"] });
+    let child: ChildProcessWithoutNullStreams;
+    try { child = spawn(command, args, { cwd, env, stdio: ["pipe", "pipe", "pipe"] }); }
+    catch (error) { reject(new Error(`AI CLI를 실행하지 못했습니다: ${(error as Error).message}`)); return; }
     let stdout = "", stderr = "", size = 0, settled = false;
     const finish = (error?: Error) => {
       if (settled) return;
@@ -114,6 +137,7 @@ export async function runAiCli(run: AiCliRun): Promise<unknown> {
   if (run.cli === "claude") {
     const args = [
       "-p", "--output-format", "json", "--json-schema", JSON.stringify(run.schema),
+      ...(run.model ? ["--model", run.model] : []),
       // Read-only: the backend project must never be modified or executed.
       "--allowedTools", "Read", "Grep", "Glob",
       "--disallowedTools", "Bash", "Edit", "Write", "NotebookEdit", "WebFetch", "WebSearch",
@@ -125,7 +149,7 @@ export async function runAiCli(run: AiCliRun): Promise<unknown> {
   try {
     const schemaFile = path.join(work, "schema.json"), answerFile = path.join(work, "answer.json");
     await writeFile(schemaFile, JSON.stringify(run.schema));
-    const args = ["exec", "--sandbox", "read-only", "--skip-git-repo-check", "--cd", run.cwd, "--output-schema", schemaFile, "--output-last-message", answerFile, "-"];
+    const args = ["exec", ...(run.model ? ["--model", run.model] : []), "--sandbox", "read-only", "--skip-git-repo-check", "--cd", run.cwd, "--output-schema", schemaFile, "--output-last-message", answerFile, "-"];
     await runProcess(command, args, run.prompt, run.cwd, run.signal, timeoutMs, env);
     return parseCliAnswer("codex", await readFile(answerFile, "utf8"));
   } finally {

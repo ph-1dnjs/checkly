@@ -123,13 +123,15 @@ let input = ""; process.stdin.on("data", c => input += c); process.stdin.on("end
     assert.deepEqual(await availableAiClis(), ["claude", "codex"]);
     const base = { prompt: "작성해줘", cwd: dir, readDirs: [dir], schema: aiAnswerJsonSchema };
     assert.deepEqual(await runAiCli({ ...base, cli: "claude" }), { scenarios: [{ yaml: "name: x" }], suite: null, notes: "ok" });
-    assert.deepEqual(await runAiCli({ ...base, cli: "codex" }), { scenarios: [{ yaml: "name: x" }], suite: null, notes: "ok" });
+    assert.deepEqual(await runAiCli({ ...base, cli: "codex", model: "gpt-test" }), { scenarios: [{ yaml: "name: x" }], suite: null, notes: "ok" });
     const [claude, codex] = (await readFile(path.join(dir, "calls.jsonl"), "utf8")).trim().split("\n").map(line => JSON.parse(line));
     assert.equal(claude.input, "작성해줘");
     assert.ok(claude.args.includes("--json-schema") && claude.args.includes("--add-dir"));
     assert.deepEqual(claude.args.slice(claude.args.indexOf("--allowedTools") + 1, claude.args.indexOf("--allowedTools") + 4), ["Read", "Grep", "Glob"]);
     assert.ok(claude.args.includes("Bash") && claude.args.includes("Write"));
     assert.equal(codex.args[codex.args.indexOf("--sandbox") + 1], "read-only");
+    assert.equal(codex.args[codex.args.indexOf("--model") + 1], "gpt-test");
+    assert.equal(claude.args.includes("--model"), false);
     assert.equal(codex.input, "작성해줘");
     // Claude reports failures as a JSON result on stdout with exit code 1.
     await assert.rejects(runAiCli({ ...base, prompt: "fail", cli: "claude" }), /종료 코드 1\)\. Not logged in/);

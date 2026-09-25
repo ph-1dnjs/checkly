@@ -68,7 +68,7 @@ export type ApiScenarioInputSubmission = {
   value: Json;
 };
 export type ApiAiCli = "claude" | "codex";
-export type ApiAiAuthorRequest = { scope: ApiEnvironmentScope; cli: ApiAiCli; goal: string; includeSuite: boolean; tags?: string[] };
+export type ApiAiAuthorRequest = { scope: ApiEnvironmentScope; cli: ApiAiCli; model?: string; goal: string; includeSuite: boolean; tags?: string[] };
 /** One AI-written scenario after Checkly's own checks; issues block saving it as a runnable scenario. */
 export type ApiAiDraft = { id: string; name: string; yaml: string; stepCount: number; issues: string[]; executionIssues: string[] };
 export type ApiAiAuthorResult = { drafts: ApiAiDraft[]; suite: { name: string; scenarioIds: string[]; problems: string[] } | null; notes: string; attempts: number };
