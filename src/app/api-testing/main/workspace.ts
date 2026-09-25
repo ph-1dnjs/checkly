@@ -7,7 +7,7 @@ import { ApiRunner } from "./execution";
 import { bindingUseLocations, pruneUnusedBrokenBindings, stringifyScenario, parseScenario, ScenarioFormatError, scenarioSchema, scenarioStepInputs, scenarioStepLabel, type Json, type Scenario, type ScenarioInputRequest } from "../shared/scenario";
 import { readOpenApi } from "./openapi";
 import { CookieJar } from "./cookies";
-import { aiCatalogDetails, createAuthorPrompt, splitAiBundle, type AiBundle } from "./ai-context";
+import { aiCatalogDetails, aiResultFile, createAuthorPrompt, splitAiBundle, type AiBundle } from "./ai-context";
 
 export const scopeSchema = z.object({ projectId: z.string().uuid(), serverId: z.string().uuid(), environmentId: z.string().uuid() }).strict();
 const projectScopeSchema = z.object({ projectId: z.string().uuid() }).strict();
@@ -183,6 +183,17 @@ export class ApiWorkspace {
     const request = aiGuideRequestSchema.pick({ scope: true, tags: true }).parse(raw);
     const { scope, project } = await this.environment(request.scope);
     return this.aiRedact(scope.projectId)(JSON.stringify(aiCatalogDetails(await this.aiServers(scope, project, request.tags)), null, 1));
+  }
+
+  /** The result file the user's AI wrote in the backend project; null when there is none yet. */
+  async readAiResult(rawScope: unknown): Promise<{ path: string; text: string } | null> {
+    const { project } = await this.environment(environmentScopeSchema.parse(rawScope));
+    if (!project.backendPath) throw new Error("백엔드 코드 폴더를 먼저 저장하세요");
+    const file = aiResultFile(project.backendPath);
+    const info = await stat(file).catch(() => null);
+    if (!info?.isFile()) return null;
+    if (info.size > 2_000_000) throw new Error("AI 결과 파일은 2MB 이하만 불러올 수 있습니다");
+    return { path: file, text: await readFile(file, "utf8") };
   }
 
   /**

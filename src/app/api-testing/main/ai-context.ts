@@ -1,3 +1,4 @@
+import path from "node:path";
 import { parseAllDocuments } from "yaml";
 import type { Json } from "../shared/scenario";
 import type { ApiGlobal, ApiOperation } from "../shared/workspace";
@@ -114,10 +115,15 @@ const authorRules = [
   "- 목록에 없는 API나 스키마에 없는 필드를 만들지 않습니다. 확신이 없으면 가장 단순한 형태로 쓰고, 가정·확인이 필요한 점은 YAML 밖에 짧게 적습니다.",
 ];
 
-const outputRules = [
-  "- 결과는 ```yaml 코드 블록 하나로 출력합니다. 시나리오마다 YAML 문서 하나이고 문서 사이는 --- 줄로 구분합니다.",
+/** Where the user's AI writes its result inside the backend project; Checkly reads it back. */
+export const aiResultFile = (backendPath: string) => path.join(backendPath, ".checkly", "scenarios.yaml");
+
+const outputRules = (resultFile?: string) => [
+  resultFile
+    ? `- 결과를 파일 ${resultFile} 에 저장합니다(폴더가 없으면 만들고, 있으면 덮어씁니다). 이 파일 말고는 만들거나 수정하지 않습니다. 시나리오마다 YAML 문서 하나이고 문서 사이는 --- 줄로 구분합니다.`
+    : "- 결과는 ```yaml 코드 블록 하나로 출력합니다. 시나리오마다 YAML 문서 하나이고 문서 사이는 --- 줄로 구분합니다.",
   "- 시나리오가 2개 이상이면 마지막 문서로 스위트를 씁니다: suite: {name: 한국어 이름, scenarios: [실행 순서대로 시나리오 id]}. 하나면 스위트는 쓰지 않습니다.",
-  "- 사용자가 Checkly 검사 결과(문제 목록)를 붙여넣으면, 문제를 고친 전체 결과(모든 시나리오와 스위트)를 같은 형식으로 다시 출력합니다.",
+  "- 사용자가 Checkly 검사 결과(문제 목록)를 붙여넣으면, 문제를 고친 전체 결과(모든 시나리오와 스위트)를 같은 방식으로 다시 씁니다.",
 ];
 
 export function createAuthorPrompt(input: AiAuthorPromptInput): string {
@@ -133,7 +139,7 @@ export function createAuthorPrompt(input: AiAuthorPromptInput): string {
     input.catalogFile
       ? `API별 파라미터·요청/응답 스키마는 JSON 파일 ${input.catalogFile} 에 있습니다. 목록에서 필요한 API를 고른 뒤 이 파일에서 해당 API만 찾아 읽으세요.`
       : "API별 상세 스키마는 아래 '상세 명세'에 있습니다.",
-    "## 출력 형식", ...outputRules,
+    "## 출력 형식", ...outputRules(input.backendPath && aiResultFile(input.backendPath)),
     "## 작성 규칙", ...authorRules,
     "## 전역변수 이름·타입 (값 제외)", JSON.stringify(input.globals.map(({ name, type }) => ({ name, type }))),
     "## 기존 시나리오 (id가 겹치지 않게)", JSON.stringify(input.existing),

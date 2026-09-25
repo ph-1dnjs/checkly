@@ -80,6 +80,8 @@ export type ApiTestingBridge = {
   copyAiPrompt(request: ApiAiGuideRequest): Promise<void>;
   /** Saves the detailed API schemas as JSON; returns the saved path, null when cancelled. */
   saveAiCatalog(request: Omit<ApiAiGuideRequest, "catalogFile">): Promise<string | null>;
+  /** Reads <backend>/.checkly/scenarios.yaml written by the user's AI; null when it does not exist yet. */
+  readAiResult(scope: ApiEnvironmentScope): Promise<{ path: string; text: string } | null>;
   /** Checks pasted AI output (scenarios separated by ---, optional suite); nothing is saved. */
   checkAiScenarios(scope: ApiEnvironmentScope, text: string): Promise<ApiAiImportResult>;
   /** Native folder picker for the project's backend source; null when cancelled. */

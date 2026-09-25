@@ -28,7 +28,7 @@ test("copyable AI prompt lists every API with schemas but no values, URLs or exa
     assert.ok(text.includes("POST /login — 로그인") && text.includes("POST /admin-login — 로그인") && text.includes("GET /not-selected"));
     assert.ok(text.includes("### 서버: 회원") && text.includes("### 서버: 관리자"));
     assert.ok(text.includes('"accessToken"') && text.includes('"type":"string"'));
-    assert.ok(text.includes("suite: {name") && text.includes("## 상세 명세") && text.includes("{{steps.1.response.body./data/challengeToken}}"));
+    assert.ok(text.includes("```yaml 코드 블록") && text.includes("suite: {name") && text.includes("## 상세 명세") && text.includes("{{steps.1.response.body./data/challengeToken}}"));
     // One syntax: step inputs as {{inputs.x}}, no vars/valueBindings/step ids taught.
     assert.ok(text.includes("{{inputs.code}}") && text.includes("target: globals.accessToken"));
     for (const legacy of ["valueBindings", "{{vars.", "operationId", "request:"]) assert.equal(text.includes(legacy), false, legacy);

@@ -8,6 +8,7 @@ const apiTesting: ApiTestingBridge = {
   setRequestAuth: (scope, variable) => ipcRenderer.invoke('api-testing:set-request-auth', scope, variable),
   copyAiPrompt: (request) => ipcRenderer.invoke('api-testing:copy-ai-prompt', request),
   saveAiCatalog: (request) => ipcRenderer.invoke('api-testing:save-ai-catalog', request),
+  readAiResult: (scope) => ipcRenderer.invoke('api-testing:read-ai-result', scope),
   checkAiScenarios: (scope, text) => ipcRenderer.invoke('api-testing:check-ai-scenarios', scope, text),
   chooseDirectory: () => ipcRenderer.invoke('api-testing:choose-directory'),
   listProjects: () => ipcRenderer.invoke('api-testing:list-projects'),

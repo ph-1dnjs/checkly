@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { ApiWorkspace } from "../../src/app/api-testing/main/workspace";
@@ -51,6 +51,7 @@ test("checking pasted scenarios reports problems per draft and for the suite wit
     assert.deepEqual(result.suite, { name: "상점 흐름", scenarioIds: ["shop/login", "ghost"], problems: ["스위트의 'ghost'가 생성한 시나리오 id에 없습니다"] });
     assert.deepEqual((await workspace.listScenarios(project.id)).map(item => item.id), ["taken"]);
     await assert.rejects(workspace.checkAiScenarios(scope, "AI가 아무것도 만들지 않았습니다"), /시나리오 YAML을 찾지 못했습니다/);
+    await assert.rejects(workspace.readAiResult(scope), /백엔드 코드 폴더를 먼저 저장하세요/);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
@@ -61,7 +62,13 @@ test("prompt names the backend folder; the schema file follows the tags and hide
     const prompt = await workspace.buildAiPrompt({ scope, goal: "상품", tags: ["item"] });
     assert.ok(prompt.includes(`백엔드 소스는 ${backend} 에 있습니다`));
     assert.ok(prompt.includes("GET /items/{id}") && !prompt.includes("POST /login"));
-    assert.ok(prompt.includes("```yaml") && prompt.includes("Checkly 검사 결과"));
+    // With a backend folder the AI writes a fixed file there and Checkly reads it back.
+    const resultPath = path.join(backend, ".checkly", "scenarios.yaml");
+    assert.ok(prompt.includes(`결과를 파일 ${resultPath} 에 저장합니다`) && prompt.includes("Checkly 검사 결과"));
+    assert.equal(await workspace.readAiResult(scope), null);
+    await mkdir(path.dirname(resultPath), { recursive: true });
+    await writeFile(resultPath, read);
+    assert.deepEqual(await workspace.readAiResult(scope), { path: resultPath, text: read });
     const catalog = await workspace.buildAiCatalog({ scope, tags: ["auth"] });
     assert.ok(catalog.includes('"loginId"') && !catalog.includes("/items/{id}"));
     for (const secret of ["global-secret-value", "private-base.example.com", "example-secret"]) {

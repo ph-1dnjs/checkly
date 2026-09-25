@@ -65,6 +65,7 @@ export function registerApiTesting() {
     await writeFile(selected.filePath, json, "utf8");
     return selected.filePath;
   });
+  ipcMain.handle("api-testing:read-ai-result", (_event, scope) => workspace.readAiResult(scope));
   ipcMain.handle("api-testing:check-ai-scenarios", (_event, scope, text) => workspace.checkAiScenarios(scope, text));
   ipcMain.handle("api-testing:choose-directory", async () => {
     const selected = await dialog.showOpenDialog({ title: "백엔드 프로젝트 폴더 선택", properties: ["openDirectory"] });

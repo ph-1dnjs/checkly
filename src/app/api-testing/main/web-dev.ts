@@ -12,7 +12,7 @@ import { SpecSync } from "./spec-sync";
 const methods = [
   "listProjects", "saveProject", "getCatalog", "execute", "cancel",
   "listGlobals", "setGlobal", "deleteGlobal", "listCookies", "clearCookies", "listScenarios", "listSuites", "saveSuite", "deleteSuite", "previewScenario",
-  "saveScenario", "saveScenarioDraft", "runScenario", "buildAiPrompt", "buildAiCatalog", "checkAiScenarios",
+  "saveScenario", "saveScenarioDraft", "runScenario", "buildAiPrompt", "buildAiCatalog", "checkAiScenarios", "readAiResult",
   "getRequestAuth", "setRequestAuth",
   "deleteProject", "deleteCatalog", "deleteScenario",
 ] as const;

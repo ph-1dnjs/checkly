@@ -1,6 +1,6 @@
 import { _electron as electron, expect } from "@playwright/test";
 import { createServer } from "node:http";
-import { mkdtemp, rm, readdir, readFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { tmpdir } from "node:os";
 
@@ -131,8 +131,11 @@ async function main() {
     const aiResult = page.getByRole("region", { name: "AI 작성 결과" });
     await expect(aiResult).toContainText("수정 필요");
     await expect(aiResult.getByRole("button", { name: "문제 복사", exact: true })).toBeVisible();
-    await answer.fill(aiOutput("GET /items/{id}"));
-    await page.getByRole("button", { name: "검사", exact: true }).click();
+    // The fixed result comes from the file the AI writes in the backend folder.
+    if (!prompt.includes(path.join(backendDir, ".checkly", "scenarios.yaml"))) throw new Error("AI prompt does not name the result file");
+    await mkdir(path.join(backendDir, ".checkly"));
+    await writeFile(path.join(backendDir, ".checkly", "scenarios.yaml"), aiOutput("GET /items/{id}"));
+    await page.getByRole("button", { name: "AI 결과 파일 불러오기", exact: true }).click();
     await expect(aiResult).toContainText("AI 로그인");
     await expect(aiResult).toContainText("AI 상품 조회");
     await expect(aiResult.getByText("바로 실행 가능")).toHaveCount(2);

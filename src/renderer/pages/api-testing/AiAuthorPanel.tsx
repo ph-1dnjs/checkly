@@ -53,10 +53,11 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved, onProje
     finally { setBackendSaving(false); }
   };
 
-  const check = async () => {
+  const check = async (text = answer, fromFile?: () => Promise<string | null>) => {
     setChecking(true); setResult(null);
     await act(async () => {
-      const next = await bridge.checkAiScenarios(scope, answer);
+      if (fromFile) { const loaded = await fromFile(); if (loaded === null || !live.current) return; text = loaded; setAnswer(loaded); }
+      const next = await bridge.checkAiScenarios(scope, text);
       if (!live.current) return;
       setResult(next);
       setChosen(next.drafts.map(draft => draft.id));
@@ -123,9 +124,18 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved, onProje
     </div>
 
     <h3 className="api-ai-author-step">2. AI가 만든 YAML 검사</h3>
+    {project.backendPath && <div className="api-ai-author-file">
+      <p className="api-field-help">AI는 결과를 <code>{resultFile(project.backendPath)}</code> 에 저장합니다. 저장했으면 불러오세요. 이 파일은 백엔드 저장소의 .gitignore에 추가해 두세요.</p>
+      <div className="api-actions"><button type="button" className="api-primary" disabled={busy} onClick={() => void check(answer, async () => {
+        const file = await bridge.readAiResult(scope);
+        if (!file) { setError(`아직 결과 파일이 없습니다: ${resultFile(project.backendPath!)}`); return null; }
+        setMessage(`불러왔습니다: ${file.path}`);
+        return file.text;
+      })}>AI 결과 파일 불러오기</button></div>
+    </div>}
     <label>AI 결과<textarea aria-label="AI가 만든 YAML" rows={10} value={answer} disabled={busy} placeholder={"AI가 출력한 YAML을 그대로 붙여넣으세요.\n시나리오는 --- 로 구분하고, 스위트는 마지막에 suite: { name, scenarios } 로 씁니다."} onChange={e => { setAnswer(e.target.value); setResult(null); }} /></label>
     <div className="api-actions">
-      <button type="button" className="api-primary" disabled={busy || !answer.trim()} onClick={() => void check()}>{checking ? "검사 중…" : "검사"}</button>
+      <button type="button" className={project.backendPath ? undefined : "api-primary"} disabled={busy || !answer.trim()} onClick={() => void check()}>{checking ? "검사 중…" : "검사"}</button>
       <button type="button" disabled={busy} onClick={() => void act(async () => { const text = await bridge.readScenarioFile(); if (text !== null && live.current) { setAnswer(text); setResult(null); } })}>YAML 파일 가져오기</button>
     </div>
     {error && <p className="api-warning" role="alert">{error}</p>}
@@ -150,6 +160,9 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved, onProje
     </section>}
   </section>;
 }
+
+// Mirrors aiResultFile in the main process (display only; the main process decides the path).
+const resultFile = (backendPath: string) => `${backendPath.replace(/[\\/]+$/, "")}/.checkly/scenarios.yaml`;
 
 /** Text to paste back into the user's AI; empty when everything passed. */
 function problemReport(result: ApiAiImportResult): string {
