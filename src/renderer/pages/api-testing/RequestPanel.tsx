@@ -67,12 +67,12 @@ export function RequestPanel({ operation, scope, bridge, onBusy, onRunAction }: 
       <details><summary>추가 요청 헤더</summary><label>추가 헤더 · JSON<textarea aria-label="추가 헤더 JSON" spellCheck={false} value={headers} onChange={e => setHeaders(e.target.value)} rows={3} /></label></details>
     </fieldset>
     {(operation.bodySchema !== undefined || operation.bodyExample !== undefined || operation.bodyRequired) && <fieldset disabled={busy}><legend>Request body {operation.bodyRequired ? "· required" : ""}</legend><p>application/json</p><label>Example Value · 요청 본문<textarea aria-label="요청 본문 JSON" spellCheck={false} value={body} onChange={e => setBody(e.target.value)} rows={8} /></label><details><summary>Schema</summary><pre>{JSON.stringify(operation.bodySchema, null, 2)}</pre></details></fieldset>}
-    <div className="api-actions"><button className="api-primary" disabled={busy || operation.warnings.length > 0} onClick={() => void run()}>{busy ? "호출 중…" : "API 호출"}</button>{busy && <button onClick={() => void bridge.cancel(scope)}>취소</button>}<small>민감값 마스킹 적용 · 최대 30초</small></div>
+    <div className="api-actions"><button className="api-primary" disabled={busy || operation.warnings.length > 0} onClick={() => void run()}>{busy ? "호출 중…" : "API 호출"}</button>{busy && <button onClick={() => void bridge.cancel(scope)}>취소</button>}<small>상단 토글로 값 숨기기 · 최대 30초</small></div>
     {error && <p className="api-warning" role="alert">{error}</p>}
     <ResponseDefinitions responses={operation.responses} />
     <section aria-label="API 응답" aria-live="polite" className="api-response">
       <h3>응답 {result?.httpStatus !== undefined && <span>HTTP {result.httpStatus} · {result.durationMs}ms</span>}</h3>
-      {!result ? <p>요청을 실행하면 응답이 여기에 표시됩니다.</p> : <><p>{result.status}{result.error && ` · ${result.error}`}</p><details><summary>응답 헤더</summary><pre>{JSON.stringify(result.headers, null, 2)}</pre></details><pre>{JSON.stringify(result.body, null, 2)}</pre></>}
+      {!result ? <p>요청을 실행하면 실제 요청과 응답이 여기에 표시됩니다.</p> : <><p>{result.status}{result.error && ` · ${result.error}`}</p>{result.request && <details open><summary>실제 요청</summary><pre>{JSON.stringify(result.request, null, 2)}</pre></details>}<details><summary>응답 헤더</summary><pre>{JSON.stringify(result.headers, null, 2)}</pre></details><pre>{JSON.stringify(result.body, null, 2)}</pre></>}
     </section>
   </article>;
 }

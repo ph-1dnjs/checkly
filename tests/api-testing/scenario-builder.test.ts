@@ -18,6 +18,29 @@ steps:
   - { id: last, name: 마지막 요청, server: order, api: { method: POST, path: /orders }, request: { body: { count: 3 } } }
 `);
 
+test("automatic links reuse source identity and survive duplicate endpoints and reordering", () => {
+  const source = sample();
+  source.steps[1].api = source.steps[0].api;
+  const first = connectValue(source, 0, 2, "response", "body", "/data/id", undefined, "", "query", "id");
+  const name = first.valueBindings[0].name;
+  const reused = connectValue(first, 0, 1, "response", "body", "/data/id", undefined, "", "query", "id");
+  assert.equal(reused.valueBindings.length, 1);
+  assert.equal(reused.steps[1].request.query?.id, `{{vars.${name}}}`);
+  const second = connectValue(reused, 1, 2, "response", "body", "/data/id", undefined, "", "query", "id");
+  assert.equal(second.valueBindings.length, 2);
+  assert.notEqual(second.valueBindings[1].name, name);
+  assert.equal(second.steps[1].request.query?.id, `{{vars.${name}}}`);
+  const moved = moveStep(second, 0, 2);
+  assert.deepEqual(moved.valueBindings, second.valueBindings);
+  assert.deepEqual(moved.steps.find(step => step.id === "last")?.request, second.steps[2].request);
+  assert.throws(() => connectValue(reused, 1, 2, "response", "body", "/other", undefined, name, "query", "id"), /이미/);
+  const occupied = sample();
+  occupied.vars[name] = 1;
+  const unique = connectValue(occupied, 0, 2, "response", "body", "/data/id", undefined, "", "query", "id");
+  assert.notEqual(unique.valueBindings[0].name, name);
+  assert.deepEqual(parseScenario(stringify(unique)), unique);
+});
+
 test("visual response binding generates non-adjacent typed reference and preserves AI fields", () => {
   const source = sample(), before = stringify(source);
   const linked = connectResponse(source, 0, 2, "/data/id", "itemId", "body", "id");

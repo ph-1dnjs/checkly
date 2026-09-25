@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { stringify } from "yaml";
 import { parseScenario } from "../../src/app/api-testing/shared/scenario";
-import { globalOptions } from "../../src/renderer/pages/api-testing/global-options";
+import { globalOptions, globalProducerScenarios } from "../../src/renderer/pages/api-testing/global-options";
 
 test("global options separate values, prior extraction, future extraction and unresolved references", () => {
   const scenario = parseScenario(stringify({ version: 1, id: "current", name: "현재", steps: [
@@ -21,4 +21,16 @@ test("global options separate values, prior extraction, future extraction and un
   const external = { ...saved, id: "external", source: stringify({ ...scenario, id: "external", environments: ["prod"] }) };
   assert.ok(!globalOptions(changed, 1, [], [external], "dev").some(o => o.name === "token"));
   assert.equal(globalOptions(changed, 1, [], [external], "prod").find(o => o.name === "token")?.status, "값 없음 · 선행 실행 필요");
+});
+
+test("missing global lists every runnable producer but excludes current, draft and other environments", () => {
+  const item = (id: string, name: string, environment?: string, draft = false) => ({
+    id, name, draft, bindings: {}, updatedAt: "now",
+    source: stringify({ version: 1, id, name, ...(environment ? { environments: [environment] } : {}), steps: [
+      { id: "login", server: "backend", api: { method: "GET", path: "/login" }, extract: [{ source: "body", pointer: "/token", target: "globals.token" }] },
+    ] }),
+  });
+  const saved = [item("a", "관리자 로그인"), item("b", "사용자 로그인"), item("current", "현재"), item("draft", "초안", undefined, true), item("prod", "운영 로그인", "prod")];
+  assert.deepEqual(globalProducerScenarios("token", saved, "current", "dev"), ["관리자 로그인", "사용자 로그인"]);
+  assert.deepEqual(globalProducerScenarios("other", saved, "current", "dev"), []);
 });

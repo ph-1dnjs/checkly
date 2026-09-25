@@ -3,12 +3,13 @@ import type { ReactNode } from "react";
 import "../../styles/popover.css";
 
 /** Non-modal disclosure: outside click, focus leaving, and Escape dismiss it. */
-export function Popover({ label, children, disabled = false }: { label: string; children: ReactNode; disabled?: boolean }) {
+export function Popover({ label, children, disabled = false, openRequest = 0 }: { label: string; children: ReactNode; disabled?: boolean; openRequest?: number }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);
   const id = useId();
+  useEffect(() => { if (openRequest && !disabled) setOpen(true); }, [openRequest]);
   useEffect(() => {
     if (!open) return;
     panel.current?.focus();

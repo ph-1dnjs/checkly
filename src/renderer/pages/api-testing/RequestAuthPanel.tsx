@@ -9,11 +9,11 @@ export function RequestAuthPanel({ scope, bridge }: { scope: ApiScope; bridge: A
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState("");
   const refresh = async () => {
-    const [values, reference] = await Promise.all([bridge.listGlobals(scope), bridge.getRequestAuth(scope)]);
+    const [values, reference] = await Promise.all([bridge.listGlobals({ projectId: scope.projectId }), bridge.getRequestAuth(scope)]);
     setVariables(values); setActive(reference); setSelected(reference ?? "");
   };
   useEffect(() => { let live = true;
-    void Promise.all([bridge.listGlobals(scope), bridge.getRequestAuth(scope)]).then(([values, reference]) => {
+    void Promise.all([bridge.listGlobals({ projectId: scope.projectId }), bridge.getRequestAuth(scope)]).then(([values, reference]) => {
       if (live) { setVariables(values); setActive(reference); setSelected(reference ?? ""); }
     }).catch(() => { if (live) setError("인증 정보를 읽지 못했습니다. 앱 재실행 후 확인하세요."); }).finally(() => { if (live) setBusy(false); });
     return () => { live = false; };
@@ -34,10 +34,10 @@ export function RequestAuthPanel({ scope, bridge }: { scope: ApiScope; bridge: A
     <form onSubmit={e => { e.preventDefault(); void perform(async () => {
       if (!token.trim() || /\s/.test(token) || /^Bearer\b/i.test(token)) throw new Error("Bearer 접두사·공백 없이 토큰만 입력하세요");
       const name = `apiToken_${crypto.randomUUID().replaceAll("-", "_")}`;
-      await bridge.setGlobal(scope, name, token);
+      await bridge.setGlobal({ projectId: scope.projectId }, name, token);
       await bridge.setRequestAuth(scope, name);
     }); }}><fieldset disabled={busy}><legend>새 토큰 직접 입력</legend>
-      <label>Bearer 토큰<input aria-label="새 API 인증 토큰" type="password" autoComplete="off" required value={token} onChange={e => setToken(e.target.value)} /></label><button className="api-primary">세션 변수로 등록 · 연결</button>
+      <label>Bearer 토큰<input aria-label="새 API 인증 토큰" type="text" autoComplete="off" required value={token} onChange={e => setToken(e.target.value)} /></label><button className="api-primary">세션 변수로 등록 · 연결</button>
     </fieldset></form>
     <p>토큰과 연결은 앱 종료 시 초기화됩니다. 토큰 값은 호출 시점에 읽으므로 재로그인 후 갱신된 값이 적용됩니다. 개별 Authorization 헤더와 중복되면 호출을 차단합니다.</p>
     {error && <p role="alert" className="api-warning">{error}</p>}

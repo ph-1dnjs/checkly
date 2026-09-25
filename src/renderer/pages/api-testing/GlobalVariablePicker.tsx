@@ -19,7 +19,7 @@ export function GlobalVariablePicker({ scenario, index, scope, bridge, onChange 
     if (!open) return;
     let live = true;
     setGlobals([]); setSaved([]);
-    void Promise.all([bridge.listGlobals(scope), bridge.listScenarios(scope.projectId)])
+    void Promise.all([bridge.listGlobals({ projectId: scope.projectId }), bridge.listScenarios(scope.projectId)])
       .then(([g, s]) => { if (live) { setGlobals(g); setSaved(s); setError(""); } })
       .catch(() => { if (live) setError("전역변수 목록을 읽지 못했습니다. 닫았다 다시 열어 갱신하세요."); });
     return () => { live = false; };

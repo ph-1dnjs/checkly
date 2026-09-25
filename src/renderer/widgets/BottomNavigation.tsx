@@ -1,4 +1,5 @@
 import { Button } from "../shared/ui/Button";
+import { Icon, type IconName } from "../shared/ui/Icon";
 import type { Route } from "../shared/model/scenario";
 import checklyMark from "../assets/checkly-mark.png";
 
@@ -8,10 +9,10 @@ type Props = {
   onNavigate: (route: Route) => void;
   onRun: () => void;
   onCancel: () => void;
-  apiRunAction?: { run: () => void; disabled: boolean } | null;
+  apiRunAction?: { run: () => void; disabled: boolean; label?: string } | null;
 };
 
-const NAVS: Array<{ route?: Route; label: string; icon: string }> = [
+const NAVS: Array<{ route?: Route; label: string; icon: IconName }> = [
   { route: "editor", label: "편집기", icon: "edit" },
   { route: "picker", label: "시나리오 선택 · 실행", icon: "play_circle" },
   { route: "form-automation", label: "폼 자동 완성", icon: "auto_fix_high" },
@@ -51,7 +52,7 @@ export const BottomNavigation = ({
           aria-label={item.label}
           title={item.label}
         >
-          <span className="msi" aria-hidden="true">{item.icon}</span>
+          <Icon name={item.icon} size={21} />
         </Button>
       ))}
     </div>
@@ -62,8 +63,8 @@ export const BottomNavigation = ({
         onClick={() => apiRunAction?.run()}
         aria-label="선택한 API 테스트 실행"
       >
-        <span className="msi" aria-hidden="true">play_arrow</span>
-        API 실행
+        <Icon name="play_arrow" size={21} />
+        {apiRunAction?.label ?? "API 실행"}
       </Button>
     ) : (
       <Button
@@ -71,9 +72,7 @@ export const BottomNavigation = ({
         onClick={running ? onCancel : onRun}
         aria-label={running ? "시나리오 실행 중지" : "시나리오 실행"}
       >
-        <span className="msi" aria-hidden="true">
-          {running ? "stop_circle" : "play_arrow"}
-        </span>
+        <Icon name={running ? "stop_circle" : "play_arrow"} size={21} />
         {running ? "중지" : "실행"}
       </Button>
     )}

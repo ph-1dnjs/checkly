@@ -47,6 +47,11 @@ textarea:focus-visible {
   line-height: 1;
   -webkit-font-smoothing: antialiased;
 }
+.app-icon {
+  display: inline-block;
+  flex: none;
+  vertical-align: middle;
+}
 .action-tag {
   display: inline-flex;
   flex: 0 0 86px;
