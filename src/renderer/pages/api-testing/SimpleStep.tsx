@@ -7,6 +7,8 @@ import { responseGlobalNameSuggestions, type ResponseGlobalNameSuggestion } from
 import { ScenarioValueLink } from "./ScenarioValueLink";
 import { GlobalVariableSetupLink, useGlobalVariableAccess } from "./global-variable-access";
 import { JsonCode } from "./JsonCode";
+import { isSensitiveKey } from "../../../app/api-testing/shared/sensitive";
+
 function DraftInput({ value, onChange, ...props }: ComponentProps<"input">) {
   const [text, setText] = useState(value);
   useEffect(() => { setText(value); }, [value]);
@@ -371,7 +373,7 @@ function GlobalVariableCreateForm({ index, field, scope, bridge, onCreated, onCl
   return <div className="api-global-variable-form">
     <label>변수 이름<input data-value-visibility="public" aria-label={`${index + 1}단계 ${field.name} 새 전역변수 이름`} value={name} disabled={saving} onChange={event => setName(event.target.value)} /></label>
     <label>값 형식<select aria-label={`${index + 1}단계 ${field.name} 새 전역변수 형식`} value={type} disabled={saving} onChange={event => setType(event.target.value as "string" | "json")}><option value="string">문자열</option><option value="json">JSON · 숫자, 불리언, 객체, 배열</option></select></label>
-    <label>값<input aria-label={`${index + 1}단계 ${field.name} 새 전역변수 값`} type="text" autoComplete="off" spellCheck={false} value={value} disabled={saving} placeholder={type === "string" ? "값 입력" : '{"key":"value"}'} onChange={event => setValue(event.target.value)} /></label>
+    <label>값<input aria-label={`${index + 1}단계 ${field.name} 새 전역변수 값`} data-value-visibility={isSensitiveKey(name) || isSensitiveKey(field.name) ? "sensitive" : undefined} type="text" autoComplete="off" spellCheck={false} value={value} disabled={saving} placeholder={type === "string" ? "값 입력" : '{"key":"value"}'} onChange={event => setValue(event.target.value)} /></label>
     {error && <p className="api-field-menu-error" role="alert">{error}</p>}
     <div className="api-actions"><button type="button" className="api-primary" disabled={saving} onClick={() => void save()}>{saving ? "저장 중…" : "추가 후 이 키에 연결"}</button><button type="button" disabled={saving} onClick={() => { onClose(); setError(""); }}>취소</button></div>
   </div>;
@@ -426,8 +428,8 @@ function ValueActionModal({ index, field, current, state, globalNames, hasUserIn
       <section className="api-value-direct-editor" aria-label={`${index + 1}단계 ${field.name} 직접 입력`}>
         <header><strong>직접 입력</strong><small>입력한 값을 요청에 사용</small></header>
         <div>{structured
-          ? <DraftTextarea aria-label={`${index + 1}단계 ${field.name} 직접 입력 JSON`} rows={4} spellCheck={false} value={directText} placeholder={directPlaceholder} onChange={event => { setDirectText(event.target.value); setDirectError(""); }} />
-          : <DraftInput aria-label={`${index + 1}단계 ${field.name} 직접 입력값`} value={directText} placeholder={directPlaceholder} onChange={event => { setDirectText(event.target.value); setDirectError(""); }} />}
+          ? <DraftTextarea aria-label={`${index + 1}단계 ${field.name} 직접 입력 JSON`} data-value-visibility={isSensitiveKey(field.name) ? "sensitive" : undefined} rows={4} spellCheck={false} value={directText} placeholder={directPlaceholder} onChange={event => { setDirectText(event.target.value); setDirectError(""); }} />
+          : <DraftInput aria-label={`${index + 1}단계 ${field.name} 직접 입력값`} data-value-visibility={isSensitiveKey(field.name) ? "sensitive" : undefined} value={directText} placeholder={directPlaceholder} onChange={event => { setDirectText(event.target.value); setDirectError(""); }} />}
           <button type="button" className="api-primary" onClick={applyDirectValue}>입력값 적용</button></div>
         {directError && <p className="api-field-menu-error" role="alert">{directError}</p>}
       </section>
@@ -660,8 +662,8 @@ export function SimpleStep({ scenario, index, catalogs, bindings, scope, bridge,
       } catch { event.target.setCustomValidity("필드 타입에 맞는 JSON 값을 입력하세요."); }
     };
     const input = structured
-      ? <DraftTextarea id={fieldId} aria-label={`${index + 1}단계 ${field.name} JSON`} rows={4} spellCheck={false} placeholder={placeholder} value={typeof current === "string" ? current : jsonText(current)} onChange={onInputChange} />
-      : <DraftInput id={fieldId} aria-label={`${index + 1}단계 ${field.name}`} placeholder={placeholder} value={typeof current === "object" ? JSON.stringify(current) : current ?? ""} onChange={onInputChange} />;
+      ? <DraftTextarea id={fieldId} aria-label={`${index + 1}단계 ${field.name} JSON`} data-value-visibility={isSensitiveKey(field.name) ? "sensitive" : undefined} rows={4} spellCheck={false} placeholder={placeholder} value={typeof current === "string" ? current : jsonText(current)} onChange={onInputChange} />
+      : <DraftInput id={fieldId} aria-label={`${index + 1}단계 ${field.name}`} data-value-visibility={isSensitiveKey(field.name) ? "sensitive" : undefined} placeholder={placeholder} value={typeof current === "object" ? JSON.stringify(current) : current ?? ""} onChange={onInputChange} />;
     return <div key={fieldKey} data-summary-field={fieldKey} className={compact ? "api-json-field-row" : "api-request-field"}>
       <label className="api-request-field-label" htmlFor={fieldId}><span>{field.name}{field.required && field.area !== "cookies" ? " *" : ""} <small>{field.area} · {field.type}{field.area === "cookies" ? " · 자동 쿠키" : ""}</small></span>
         {field.description && <small className="api-request-field-description">{field.description}</small>}

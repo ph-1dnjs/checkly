@@ -30,12 +30,11 @@ test("request auth resolves latest variable and isolates server/environment/proj
     assert.equal(await workspace.getRequestAuth(scope),"accessToken");
     const response=await workspace.execute(scope,"GET /check",{headers:{authorization:""}});
     assert.equal(received.at(-1),"Bearer first-token");
-    assert.ok(!JSON.stringify(response).includes("first-token"));
+    // Responses carry raw values; the renderer's hide-values toggle controls display.
+    assert.deepEqual(response.body, { echo: "Bearer first-token" });
     const live = await workspace.executeLive(scope, "GET /check", {});
     assert.deepEqual(live.body, { echo: "Bearer first-token" });
     assert.equal(live.httpStatus, 200);
-    // Live viewing must not change the protected response contract.
-    assert.ok(!JSON.stringify(await workspace.execute(scope, "GET /check", {})).includes("first-token"));
     await workspace.setGlobal({ projectId },"accessToken","next-token");
     await workspace.execute(scope,"GET /check",{});
     assert.equal(received.at(-1),"Bearer next-token");

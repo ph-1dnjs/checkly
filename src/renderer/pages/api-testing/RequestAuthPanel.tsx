@@ -37,7 +37,7 @@ export function RequestAuthPanel({ scope, bridge }: { scope: ApiScope; bridge: A
       await bridge.setGlobal({ projectId: scope.projectId }, name, token);
       await bridge.setRequestAuth(scope, name);
     }); }}><fieldset disabled={busy}><legend>새 토큰 직접 입력</legend>
-      <label>Bearer 토큰<input aria-label="새 API 인증 토큰" type="text" autoComplete="off" required value={token} onChange={e => setToken(e.target.value)} /></label><button className="api-primary">세션 변수로 등록 · 연결</button>
+      <label>Bearer 토큰<input aria-label="새 API 인증 토큰" data-value-visibility="sensitive" type="text" autoComplete="off" required value={token} onChange={e => setToken(e.target.value)} /></label><button className="api-primary">세션 변수로 등록 · 연결</button>
     </fieldset></form>
     <p>토큰과 연결은 앱 종료 시 초기화됩니다. 토큰 값은 호출 시점에 읽으므로 재로그인 후 갱신된 값이 적용됩니다. 개별 Authorization 헤더와 중복되면 호출을 차단합니다.</p>
     {error && <p role="alert" className="api-warning">{error}</p>}

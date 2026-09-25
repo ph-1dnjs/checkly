@@ -6,10 +6,12 @@ html:has(.api-diagram-dialog[open]) { overflow:hidden; }
 .api-value-visibility[aria-checked="true"] .api-value-switch-track { background:#17607f; }
 .api-value-visibility[aria-checked="true"] .api-value-switch-track::after { transform:translateX(12px); }
 .api-value-visibility:focus-visible { outline:2px solid #17607f; outline-offset:4px; border-radius:3px; }
-/* Presentation-only: retain the original values for editing and transmission. */
-.api-hide-values :is(input:not([type=checkbox]):not([type=radio]):not([type=button]):not([type=submit]), textarea, pre, .api-json-value-token, .api-global-value, .api-json-code):not([data-value-visibility="public"]) { -webkit-text-security:disc; }
-.api-hide-values :is(pre, .api-json-code) * { -webkit-text-security:disc; }
-.api-hide-values :is(input, textarea)[data-value-visibility="public"] { -webkit-text-security:none; }
+/* Presentation-only: retain the original values for editing and transmission.
+   Only values marked sensitive (see shared/sensitive.ts) are hidden. */
+.api-hide-values :is(.api-sensitive-value, [data-value-visibility="sensitive"]) { -webkit-text-security:disc; }
+/* Swagger UI renders live responses itself, so mask those blocks and secret-looking parameter inputs as a whole. */
+.api-hide-values .swagger-ui :is(.live-responses-table, .request-url, .curl-command) :is(pre, pre *, textarea) { -webkit-text-security:disc; }
+.api-hide-values .swagger-ui tr:is([data-param-name*="token" i], [data-param-name*="passw" i], [data-param-name*="secret" i], [data-param-name*="authorization" i], [data-param-name*="cookie" i], [data-param-name*="key" i], [data-param-name*="otp" i], [data-param-name*="session" i], [data-param-name*="credential" i]) :is(input, textarea) { -webkit-text-security:disc; }
 .api-accordion-editor .api-step-accordion { --method-color:#8a939c; padding:0; margin:10px 0; border:1px solid var(--method-color); border-radius:2px; }
 .api-accordion-editor .api-selected-get { --method-color:#61affe; } .api-accordion-editor .api-selected-post { --method-color:#49cc90; } .api-accordion-editor .api-selected-put { --method-color:#fca130; } .api-accordion-editor .api-selected-patch { --method-color:#50e3c2; } .api-accordion-editor .api-selected-delete { --method-color:#f93e3e; }
 .api-accordion-editor .api-step-summary { display:grid; grid-template-columns:auto auto minmax(0,1fr) auto auto; align-items:center; gap:4px 10px; padding:10px; margin:0; cursor:pointer; background:color-mix(in srgb,var(--method-color) 10%,white); }
@@ -199,7 +201,6 @@ html:has(.api-diagram-dialog[open]) { overflow:hidden; }
 .api-json-copy[data-state="failed"]::before { content:'!'; color:#fca5a5; }
 .api-testing-page button.api-json-copy:hover,.api-testing-page button.api-json-copy:focus-visible { border-color:#93c5fd; color:#fff; background:#1e293b; }
 .api-hide-values .api-json-view .api-json-copy { display:none; }
-.api-hide-values .api-highlighted-json [class^="api-json-syntax-"] { color:inherit; }
 .api-testing-page summary { cursor:pointer; padding:8px 0; }
 .api-response { margin-top:32px; border-top:1px solid var(--api-border); padding-top:24px; }
 .api-response h3 span { font-size:13px; font-weight:400; }

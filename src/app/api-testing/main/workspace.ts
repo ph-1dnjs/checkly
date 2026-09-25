@@ -6,7 +6,6 @@ import { z } from "zod";
 import { ApiRunner } from "./execution";
 import { bindingUseLocations, pruneUnusedBrokenBindings, stringifyScenario, parseScenario, scenarioSchema, scenarioStepInputs, scenarioStepLabel, type Json, type Scenario, type ScenarioInputRequest } from "../shared/scenario";
 import { readOpenApi } from "./openapi";
-import { atPointer } from "./variables";
 import { ApiRedactor } from "./redaction";
 import { createAiContext } from "./ai-context";
 
@@ -503,21 +502,13 @@ export class ApiWorkspace {
     if (this.active.has(runKey)) throw new Error("이 환경에서 이미 실행 중입니다");
     const controller = new AbortController();
     this.active.set(runKey, controller);
-    const redactor = new ApiRedactor();
-    redactor.add(this.runner.globals.snapshot(scope.projectId));
-    redactor.discover(scenario); redactor.discover(inputs);
-    Object.entries(scenario.inputs).filter(([, v]) => v.sensitive).forEach(([key]) => redactor.add(inputs[key]));
-    scenario.steps.flatMap(scenarioStepInputs).filter(input => input.sensitive).forEach(input => redactor.add(inputs[input.name]));
+    // Results carry raw values; the renderer's "민감값 숨기기" toggle decides visibility.
     const details = new Map<string, { request?: ApiRequestTrace; response?: { headers: Record<string, string>; body: Json } }>();
     let variables: Record<string, Json> = {};
     try {
       const result = await this.runner.run(scenario, {
         projectId: scope.projectId, environment: scope.environmentId, inputs, servers, signal: controller.signal, runId: options.runId ?? randomUUID(),
-        requestInput: async request => {
-          const value = await options.requestInput?.(request);
-          if (request.sensitive) redactor.add(value);
-          return value;
-        },
+        requestInput: async request => options.requestInput?.(request),
         resolveOperation: (server, operationId) => {
           const operation = catalogs.get(server)?.operations.find(o => o.operationId === operationId);
           if (!operation) throw new Error("API 명세가 변경되었습니다");
@@ -527,18 +518,12 @@ export class ApiWorkspace {
           const detail = details.get(id) ?? {};
           detail.request = request;
           details.set(id, detail);
-          redactor.discover(request);
         },
         onResponse: (response, id) => {
           const detail = details.get(id) ?? {};
           detail.response = response;
           details.set(id, detail);
-          redactor.discover(response);
-          scenario.steps.find(s => s.id === id)!.extract.filter(e => e.sensitive || e.target.startsWith("globals.")).forEach(e => {
-            redactor.add(e.source === "body" ? atPointer(response.body, e.pointer!) : response.headers[e.header!.toLowerCase()]);
-          });
         },
-        onValue: (value, sensitive) => { if (sensitive) redactor.add(value); else redactor.discover(value); },
         onVariables: value => { variables = value; },
       });
       return { status: result.status, variables, steps: result.steps.map(step => {
@@ -559,12 +544,13 @@ export class ApiWorkspace {
     this.active.get(`${s.projectId}:${s.environmentId}`)?.abort();
   }
   async execute(input: ApiScope, key: string, request: unknown): Promise<ApiResponse> {
-    return this.executeRequest(input, key, request, false);
+    return this.executeRequest(input, key, request);
   }
+  /** Same raw contract as execute; kept as the Swagger "Try it out" entry point. */
   async executeLive(input: ApiScope, key: string, request: unknown): Promise<ApiResponse> {
-    return this.executeRequest(input, key, request, true);
+    return this.executeRequest(input, key, request);
   }
-  private async executeRequest(input: ApiScope, key: string, request: unknown, live: boolean): Promise<ApiResponse> {
+  private async executeRequest(input: ApiScope, key: string, request: unknown): Promise<ApiResponse> {
     const { scope, baseUrl } = await this.scope(input);
     // Scope is already validated; do not read and validate projects.json twice per request.
     const catalog = await this.readCatalog(scope);

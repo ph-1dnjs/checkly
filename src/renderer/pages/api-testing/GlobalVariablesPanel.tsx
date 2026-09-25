@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { ApiGlobal, ApiProjectScope, ApiTestingBridge } from "../../../app/api-testing/shared/workspace";
 import type { Json } from "../../../app/api-testing/shared/scenario";
+import { isSensitiveKey } from "../../../app/api-testing/shared/sensitive";
+
 export function GlobalVariablesPanel({ scope, bridge, targetName = "", targetRequest = 0, onSaved }: { scope: ApiProjectScope; bridge: ApiTestingBridge; targetName?: string; targetRequest?: number; onSaved?: () => void }) {
   const formRef = useRef<HTMLFormElement>(null);
   const [variables, setVariables] = useState<ApiGlobal[]>([]);
@@ -46,7 +48,7 @@ export function GlobalVariablesPanel({ scope, bridge, targetName = "", targetReq
       {variables.length > 0 && visibleVariables.length === 0 && <p>검색 결과가 없습니다.</p>}
       {visibleVariables.map(v => <div className="api-global-row" key={v.name}>
         <div className="api-global-meta"><code title={v.name}>{v.name}</code><small>{({ string: "문자열", number: "숫자", boolean: "불리언", object: "객체", array: "배열", null: "null" } as Record<string, string>)[v.type] ?? v.type}</small></div>
-        <span className="api-global-value">{v.displayValue}</span>
+        <span className={`api-global-value${isSensitiveKey(v.name) ? " api-sensitive-value" : ""}`}>{v.displayValue}</span>
         <div className="api-global-actions">
           <button disabled={busy} onClick={() => { setError(""); setName(v.name); setValue(v.displayValue); setType(v.type === "string" ? "string" : "json"); focusForm(); }}>수정</button>
           <button disabled={busy} onClick={async () => { setBusy(true); try { await bridge.deleteGlobal(scope, v.name); await refresh(); } catch { setError("변수를 삭제하지 못했습니다"); } finally { setBusy(false); } }}>삭제</button>
@@ -63,7 +65,7 @@ export function GlobalVariablesPanel({ scope, bridge, targetName = "", targetReq
       } catch { setError("변수 이름(영문 시작, 영문·숫자·밑줄)과 값의 형식을 확인하세요. 실행 중에는 변경할 수 없습니다."); }
       finally { setBusy(false); }
     }}>
-      <fieldset disabled={busy}><div className="api-global-form-grid"><label>변수 이름<input data-value-visibility="public" aria-label="전역변수 이름" required pattern="[A-Za-z][A-Za-z0-9_]*" value={name} onChange={e => setName(e.target.value)} placeholder="accessToken" /></label><label>값 형식<select aria-label="전역변수 형식" value={type} onChange={e => setType(e.target.value)}><option value="string">문자열</option><option value="json">JSON · 숫자, 불리언, 객체, 배열</option></select></label><label className="api-global-form-value">값<input aria-label="전역변수 값" type="text" autoComplete="off" value={value} onChange={e => setValue(e.target.value)} /></label><div className="api-global-form-actions"><button className="api-primary">전역변수 저장</button><button type="button" onClick={() => setFormOpen(false)}>취소</button></div></div></fieldset>
+      <fieldset disabled={busy}><div className="api-global-form-grid"><label>변수 이름<input data-value-visibility="public" aria-label="전역변수 이름" required pattern="[A-Za-z][A-Za-z0-9_]*" value={name} onChange={e => setName(e.target.value)} placeholder="accessToken" /></label><label>값 형식<select aria-label="전역변수 형식" value={type} onChange={e => setType(e.target.value)}><option value="string">문자열</option><option value="json">JSON · 숫자, 불리언, 객체, 배열</option></select></label><label className="api-global-form-value">값<input aria-label="전역변수 값" data-value-visibility={isSensitiveKey(name) ? "sensitive" : undefined} type="text" autoComplete="off" value={value} onChange={e => setValue(e.target.value)} /></label><div className="api-global-form-actions"><button className="api-primary">전역변수 저장</button><button type="button" onClick={() => setFormOpen(false)}>취소</button></div></div></fieldset>
     </form>
     </details>
     {error && <p role="alert" className="api-warning">{error}</p>}

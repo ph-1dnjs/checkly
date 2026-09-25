@@ -1,6 +1,5 @@
 import type { Json } from "../shared/scenario";
-
-const sensitiveKey = /authorization|cookie|password|token|secret|api.?key|otp/i;
+import { sensitiveKeyPattern as sensitiveKey } from "../shared/sensitive";
 
 /** Keeps secrets in main only. Apply after all steps so later discoveries mask earlier traces too. */
 export class ApiRedactor {

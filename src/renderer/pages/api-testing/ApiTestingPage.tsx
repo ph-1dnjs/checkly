@@ -6,6 +6,7 @@ import { ApiDocumentation } from "./ApiDocumentation";
 import { Popover } from "../../shared/ui/Popover";
 import { LoadingSpinner } from "../../shared/ui/LoadingSpinner";
 import { GlobalVariableAccessProvider, GlobalVariableMenu } from "./global-variable-access";
+import { SensitiveValuesProvider } from "./sensitive-values";
 import { ScenarioPanel } from "./ScenarioPanel";
 import { ScenarioEditorPanel } from "./ScenarioEditorPanel";
 import { AiContextPanel } from "./AiContextPanel";
@@ -15,7 +16,7 @@ import { readWorkspaceUrl, workspaceUrl, type ApiTab } from "./workspace-url";
 
 export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTesting }: { onRunAction: OnRunAction; bridge?: ApiTestingBridge }) {
   const [projects, setProjects] = useState<ApiProject[]>([]);
-  const [hideValues, setHideValues] = useState(false);
+  const [hideValues, setHideValues] = useState(true);
   const [runSaved, setRunSaved] = useState<SavedApiScenario | null>(null);
   const executeSaved = (item: SavedApiScenario) => {
     setRunSaved(item);
@@ -152,7 +153,7 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
   };
   if (!bridge) return <section className="api-testing-page api-swagger-shell"><h1>API 테스트</h1><p>프로젝트 저장과 실제 API 호출은 Checkly 데스크톱 앱에서 사용할 수 있습니다.</p></section>;
   const locked = busy || scenarioComposerOpen;
-  return <GlobalVariableAccessProvider key={projectId}><section className={`api-testing-page api-swagger-shell${hideValues ? " api-hide-values" : ""}`}>
+  return <GlobalVariableAccessProvider key={projectId}><SensitiveValuesProvider projectId={projectId} bridge={bridge}><section className={`api-testing-page api-swagger-shell${hideValues ? " api-hide-values" : ""}`}>
     <header className="api-toolbar"><h1>API 테스트</h1><div className="api-actions"><select aria-label="API 프로젝트" disabled={locked || loading} value={projectId} onChange={e => selectProject(projects.find(p => p.id === e.target.value)!)}><option value="" disabled>프로젝트 선택</option>{projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select><button disabled={locked || loading} onClick={() => setForm("new")}>+ 프로젝트</button>{project && <button disabled={locked || loading} onClick={() => setForm("edit")}>설정</button>}</div></header>
     {form ? <ProjectForm key={`${form}:${projectId}`} initial={form === "edit" ? project : undefined} onCancel={() => setForm(null)} onDelete={async () => {
       setBusy(true);
@@ -164,7 +165,7 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
       } finally { setBusy(false); }
     }} onSave={async p => { const saved = await bridge.saveProject(p); setProjects(await bridge.listProjects()); selectProject(saved); setForm(null); }} /> : <>
       {!project ? <div className="api-empty"><h2>API 테스트를 시작하세요</h2><p>프로젝트를 만든 뒤 Swagger 파일이나 URL을 가져오세요.</p><button className="api-primary" onClick={() => setForm("new")}>프로젝트 만들기</button></div> : <>
-        <div className="api-context"><select aria-label="API 서버" value={serverId} disabled={locked || loading} onChange={e => { setServerId(e.target.value); setUrl(""); }}>{project.servers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select><div className="api-environments" role="group" aria-label={tab === "scenario-editor" ? "시나리오 전체 호출 환경" : "API 환경"}>{project.environments.map(e => <button key={e.id} aria-pressed={environmentId === e.id} disabled={busy || loading} title={tab === "scenario-editor" ? "이 시나리오의 전체 API 호출 환경" : undefined} onClick={() => { setEnvironmentId(e.id); setUrl(""); }}>{e.name}</button>)}</div><code>{project.environments.find(e => e.id === environmentId)?.baseUrls[serverId]}</code><div className="api-context-value-actions"><button type="button" role="switch" aria-checked={hideValues} aria-label="민감값 숨기기" className="api-value-visibility" title="입력값·전역변수·요청 및 응답 결과를 화면에서 숨깁니다" onClick={() => setHideValues(value => !value)}><span className="api-value-switch-track" aria-hidden="true" /><span>민감값 숨기기</span></button><GlobalVariableMenu projectId={projectId} bridge={bridge} disabled={busy} /></div></div>
+        <div className="api-context"><select aria-label="API 서버" value={serverId} disabled={locked || loading} onChange={e => { setServerId(e.target.value); setUrl(""); }}>{project.servers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select><div className="api-environments" role="group" aria-label={tab === "scenario-editor" ? "시나리오 전체 호출 환경" : "API 환경"}>{project.environments.map(e => <button key={e.id} aria-pressed={environmentId === e.id} disabled={busy || loading} title={tab === "scenario-editor" ? "이 시나리오의 전체 API 호출 환경" : undefined} onClick={() => { setEnvironmentId(e.id); setUrl(""); }}>{e.name}</button>)}</div><code>{project.environments.find(e => e.id === environmentId)?.baseUrls[serverId]}</code><div className="api-context-value-actions"><button type="button" role="switch" aria-checked={hideValues} aria-label="민감값 숨기기" className="api-value-visibility" title="토큰·비밀번호·인증 헤더 등 민감한 값만 화면에서 숨깁니다" onClick={() => setHideValues(value => !value)}><span className="api-value-switch-track" aria-hidden="true" /><span>민감값 숨기기</span></button><GlobalVariableMenu projectId={projectId} bridge={bridge} disabled={busy} /></div></div>
         <div className="api-tabs" role="tablist" aria-label="API 작업 영역">
           <button role="tab" aria-selected={tab === "scenarios" || tab === "scenario-editor"} disabled={busy} onClick={() => { if (tab !== "scenario-editor") changeTab("scenarios"); }}>시나리오</button>
           <button role="tab" aria-selected={tab === "api"} disabled={locked} onClick={() => changeTab("api")}>API 문서 {catalog?.operations.length ?? 0}</button>
@@ -182,7 +183,7 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
         }} />}
         <div className="api-import"><input aria-label="OpenAPI URL" type="url" placeholder="OpenAPI JSON/YAML URL" value={url} disabled={busy || loading} onChange={e => { setUrl(e.target.value); setDocsPassword(""); setDocsUsername(""); setRemember(false); setAuthKind("none"); }} /><button disabled={busy || loading || !url.trim()} onClick={() => void importSpec("url")}>URL 가져오기</button><button disabled={busy || loading} onClick={() => void importSpec("file")}>파일 가져오기</button><button disabled={busy || loading || !sync?.url || url !== sync.url} onClick={() => void importSpec("url")}>명세 새로고침</button></div>
         </div>
-        <div className="api-context"><label>문서 인증<select aria-label="Swagger 인증 방식" value={authKind} disabled={busy || loading} onChange={e => { setAuthKind(e.target.value); setDocsPassword(""); }}><option value="none">인증 없음</option><option value="basic">Basic 인증</option></select></label>{authKind === "basic" && <><label>문서 아이디<input aria-label="Swagger 아이디" autoComplete="off" value={docsUsername} disabled={busy || loading} onChange={e => setDocsUsername(e.target.value)} /></label><label>문서 비밀번호<input aria-label="Swagger 비밀번호" type="text" autoComplete="off" value={docsPassword} disabled={busy || loading} onChange={e => setDocsPassword(e.target.value)} /></label><label className="api-remember"><input type="checkbox" aria-label="이 기기에 계정 기억" disabled={busy || loading || !sync?.secureStorageAvailable} checked={remember} onChange={e => setRemember(e.target.checked)} />이 기기에 계정 기억</label><small>{sync?.secureStorageAvailable ? "기억을 선택하면 비밀번호를 OS 보안 기능으로 암호화해 저장합니다." : "OS 보안 저장소를 사용할 수 없어 계정 저장이 비활성화되었습니다."} HTTPS 사용을 권장합니다.</small></>}</div>
+        <div className="api-context"><label>문서 인증<select aria-label="Swagger 인증 방식" value={authKind} disabled={busy || loading} onChange={e => { setAuthKind(e.target.value); setDocsPassword(""); }}><option value="none">인증 없음</option><option value="basic">Basic 인증</option></select></label>{authKind === "basic" && <><label>문서 아이디<input aria-label="Swagger 아이디" autoComplete="off" value={docsUsername} disabled={busy || loading} onChange={e => setDocsUsername(e.target.value)} /></label><label>문서 비밀번호<input aria-label="Swagger 비밀번호" data-value-visibility="sensitive" type="text" autoComplete="off" value={docsPassword} disabled={busy || loading} onChange={e => setDocsPassword(e.target.value)} /></label><label className="api-remember"><input type="checkbox" aria-label="이 기기에 계정 기억" disabled={busy || loading || !sync?.secureStorageAvailable} checked={remember} onChange={e => setRemember(e.target.checked)} />이 기기에 계정 기억</label><small>{sync?.secureStorageAvailable ? "기억을 선택하면 비밀번호를 OS 보안 기능으로 암호화해 저장합니다." : "OS 보안 저장소를 사용할 수 없어 계정 저장이 비활성화되었습니다."} HTTPS 사용을 권장합니다.</small></>}</div>
         {sync?.hasSavedAccount && <div className="api-actions"><small>{sync.url === url && sync.username === docsUsername && remember ? "비밀번호를 비워두면 저장된 계정을 사용합니다." : "저장된 계정은 기존 명세 주소에만 연결되어 있습니다."}</small><button disabled={busy || loading} onClick={async () => { setLoading(true); try { await bridge.deleteSpecAccount(scope); setSync(await bridge.getSpecSync(scope)); setRemember(false); setDocsPassword(""); setDocsUsername(""); } catch { setError("저장된 계정을 삭제하지 못했습니다."); } finally { setLoading(false); } }}>저장된 계정 삭제</button></div>}
         {sync?.lastAttemptAt && <p role="status">최근 동기화 {sync.status === "success" ? "성공" : "실패 · 기존 문서 유지"} · {new Date(sync.lastAttemptAt).toLocaleString()}</p>}
         {loading && <LoadingSpinner label="명세를 불러오는 중…" />}
@@ -201,5 +202,5 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
         </div>
       </section>
     </div>}
-  </section></GlobalVariableAccessProvider>;
+  </section></SensitiveValuesProvider></GlobalVariableAccessProvider>;
 }

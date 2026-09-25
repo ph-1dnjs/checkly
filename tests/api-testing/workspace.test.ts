@@ -70,7 +70,32 @@ steps:
     assert.equal(futureIssues.some(issue => issue.includes("vars.laterId는")), false);
     const item = await workspace.saveScenario(scope, yaml, bindings);
     await assert.rejects(workspace.saveScenario(scope, yaml, bindings), /같은 ID/);
-    assert.equal((await new ApiWorkspace(dir).listScenarios(project.id))[0].source, yaml);
+    // Saved YAML is normalized to the simple format with the current server name.
+    assert.equal((await new ApiWorkspace(dir).listScenarios(project.id))[0].source, `id: login/read
+name: 로그인 후 조회
+description: 응답 ID와 토큰을 재사용합니다.
+server: 회원
+steps:
+  - id: login
+    name: 로그인
+    api: POST /login
+    extract:
+      - source: body
+        pointer: /accessToken
+        target: globals.accessToken
+        sensitive: true
+      - source: body
+        pointer: /id
+        target: vars.itemId
+        sensitive: false
+  - id: read
+    name: 상품 조회
+    api: GET /items/{id}
+    pathParams:
+      id: "{{vars.itemId}}"
+    headers:
+      Authorization: Bearer {{globals.accessToken}}
+`);
     await workspace.saveScenario(scope, yaml, bindings, item.updatedAt);
     const result = await workspace.runScenario(scope, yaml, bindings, {});
     assert.equal(result.status, "passed");

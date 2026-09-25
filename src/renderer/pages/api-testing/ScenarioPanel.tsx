@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { ApiCatalog, ApiProject, ApiScope, ApiTestingBridge, ApiScenarioInputRequest, ApiScenarioPreview, ApiScenarioResult, SavedApiScenario, SavedApiSuite } from "../../../app/api-testing/shared/workspace";
-import { parseScenario, type Json, type Scenario } from "../../../app/api-testing/shared/scenario";
+import { parseScenario, scenarioStepInputs, type Json, type Scenario } from "../../../app/api-testing/shared/scenario";
+import { useSensitiveValues } from "./sensitive-values";
 import { useRunAction } from "./useRunAction";
 import type { OnRunAction } from "./useRunAction";
 import { ScenarioBuilder } from "./ScenarioBuilder";
@@ -106,6 +107,12 @@ const shouldExpandResult = (step: ApiScenarioResult["steps"][number]) => Boolean
 
 function ScenarioRunResult({ result, preview, catalogs, bindings, focusRequest }: { result: ApiScenarioResult; preview: ApiScenarioPreview | null; catalogs: Record<string, ApiCatalog | null>; bindings: Record<string, string>; focusRequest: { stepId: string; request: number } | null }) {
   const stepsElement = useRef<HTMLDivElement>(null);
+  // Values typed into sensitive inputs are masked wherever they appear in the trace.
+  const sensitiveInputs = preview ? [
+    ...Object.entries(preview.scenario.inputs).filter(([, definition]) => definition.sensitive).map(([name]) => name),
+    ...preview.scenario.steps.flatMap(scenarioStepInputs).filter(input => input.sensitive).map(input => input.name),
+  ] : [];
+  const knownSecrets = sensitiveInputs.map(name => result.variables[name]).filter((value): value is string => typeof value === "string");
   const setAllOpen = (open: boolean) => {
     stepsElement.current?.querySelectorAll<HTMLDetailsElement>(".api-run-result-step").forEach(element => { element.open = open; });
   };
@@ -137,8 +144,8 @@ function ScenarioRunResult({ result, preview, catalogs, bindings, focusRequest }
           <summary><span className="api-run-result-chevron" aria-hidden="true">▸</span><span className="api-run-result-index">{index + 1}.</span><span className="api-method" data-method={method}>{method}</span><code>{pathParts.join(" ")}</code><small>{runStep.name}</small><strong className="api-run-result-step-status">{runStep.httpStatus ? `HTTP ${runStep.httpStatus}` : runStep.status.toUpperCase()}</strong><span className="api-run-result-duration">{runStep.durationMs}ms</span></summary>
           <div className="api-run-result-step-body">
             {runStep.error && <p className="api-warning">{runStep.error}</p>}
-            <details className="api-run-payload" open><summary>요청</summary>{runStep.request ? <JsonCode value={runStep.request} /> : <p className="api-run-payload-empty">이 단계는 요청을 전송하지 않았습니다.</p>}</details>
-            <details className="api-run-payload" open><summary>응답 {runStep.inputs ? `· 입력 ${runStep.inputs.filter(input => input.provided).length}/${runStep.inputs.length}` : runStep.input ? `· 입력 ${runStep.input.provided ? "완료" : "없음"}` : ""}</summary>{runStep.headers !== undefined || runStep.body !== undefined ? <JsonCode value={{ headers: runStep.headers, body: runStep.body }} /> : <p className="api-run-payload-empty">응답이 없습니다.</p>}</details>
+            <details className="api-run-payload" open><summary>요청</summary>{runStep.request ? <JsonCode value={runStep.request} known={knownSecrets} /> : <p className="api-run-payload-empty">이 단계는 요청을 전송하지 않았습니다.</p>}</details>
+            <details className="api-run-payload" open><summary>응답 {runStep.inputs ? `· 입력 ${runStep.inputs.filter(input => input.provided).length}/${runStep.inputs.length}` : runStep.input ? `· 입력 ${runStep.input.provided ? "완료" : "없음"}` : ""}</summary>{runStep.headers !== undefined || runStep.body !== undefined ? <JsonCode value={{ headers: runStep.headers, body: runStep.body }} known={knownSecrets} /> : <p className="api-run-payload-empty">응답이 없습니다.</p>}</details>
           </div>
         </details>;
       })}
@@ -168,7 +175,9 @@ export type ScenarioPanelProps = {
 
 export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mode = "run", startCreateRequest = 0, editScenarioId, onCreateConsumed, onComposerOpenChange, onUnsavedChange, onCreateScenario, onEditScenario, onExecuteSaved, runSaved, onRunSavedConsumed, onBackToScenarios }: ScenarioPanelProps) {
   const editorMode = mode === "editor";
-  const globalAccess = useGlobalVariableAccess();  const checkedGlobalRevision = useRef(globalAccess.revision);
+  const globalAccess = useGlobalVariableAccess();
+  const sensitiveValues = useSensitiveValues();
+  const checkedGlobalRevision = useRef(globalAccess.revision);
   const [editing, setEditing] = useState(editorMode);
   const [visual, setVisual] = useState(false);
   const [query, setQuery] = useState("");
@@ -347,7 +356,10 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
     if (!preview) return;
     const snapshot = { result: response, preview, bindings, completedAt: new Date().toISOString() };
     writeLastRun(scope.projectId, scope.environmentId, current?.id ?? preview.scenario.id, snapshot);
-    if (live.current) { setResult(response); setLastRun(snapshot); setRunView("result"); setResultFocusRequest(null); }  };
+    if (live.current) { setResult(response); setLastRun(snapshot); setRunView("result"); setResultFocusRequest(null); }
+    // Runs can extract new globals (e.g. accessToken); reload them for masking.
+    sensitiveValues.refresh();
+  };
   const autoRunStarted = useRef(false);
   useEffect(() => {
     if (!editorMode && runSaved) void load(runSaved);
@@ -454,7 +466,7 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
       </>}
       </section>}
       {preview && editorMode && <>
-        {Object.keys(preview.scenario.inputs).length > 0 && <fieldset disabled={busy}><legend>이번 실행의 입력값</legend>{Object.entries(preview.scenario.inputs).map(([key, definition]) => <label key={key}>{key}{definition.required ? " *" : ""} · {definition.type}<input aria-label={`시나리오 입력 ${key}`} autoComplete="off" type="text" value={inputs[key] ?? ""} onChange={e => setInputs({ ...inputs, [key]: e.target.value })} /></label>)}</fieldset>}
+        {Object.keys(preview.scenario.inputs).length > 0 && <fieldset disabled={busy}><legend>이번 실행의 입력값</legend>{Object.entries(preview.scenario.inputs).map(([key, definition]) => <label key={key}>{key}{definition.required ? " *" : ""} · {definition.type}<input aria-label={`시나리오 입력 ${key}`} data-value-visibility={definition.sensitive ? "sensitive" : undefined} autoComplete="off" type="text" value={inputs[key] ?? ""} onChange={e => setInputs({ ...inputs, [key]: e.target.value })} /></label>)}</fieldset>}
         <div className="api-actions">{editorMode && <button disabled={busy || checkedSource !== source} onClick={async () => {
           working(true); setError(""); setNotice("");
           try { const item = await (canSave ? bridge.saveScenario : bridge.saveScenarioDraft)(scope, source, bindings, current?.id === preview.scenario.id ? current.updatedAt : undefined, { groupPath: scenarioGroupPath }); setCurrent(item); setScenarioGroupPath(item.groupPath ?? []); setDirty(false); setEditing(false); setSaved(await bridge.listScenarios(project.id)); setNotice(canSave ? "시나리오를 저장했습니다." : "초안으로 저장했습니다. 아래 항목을 보완하세요."); } catch (e) { setError(errorText(e)); } finally { working(false); }
@@ -500,7 +512,7 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
           {current?.draft && <p className="api-run-notice">초안은 아직 실행할 수 없습니다. <strong>수정</strong>에서 요청값과 검증을 보완한 뒤 <strong>저장</strong>을 누르세요.</p>}
           {preview.issues.length > 0 && <details className="api-run-issues" open={Boolean(current?.draft)}><summary>보완이 필요한 항목 {preview.issues.length}개</summary><ul>{preview.issues.map(issue => <li key={issue}>{issue}</li>)}</ul></details>}
           {current?.draft && preview.issues.length === 0 && <p className="api-run-notice">현재 검사는 통과했지만 아직 초안으로 저장되어 있습니다. <strong>수정</strong>에서 <strong>저장</strong>을 누르면 실행할 수 있습니다.</p>}
-          {Object.keys(preview.scenario.inputs).length > 0 && <fieldset disabled={busy}><legend>실행 입력</legend><p className="api-field-help">실행할 때만 사용하는 값입니다. 저장된 시나리오에는 원문이 남지 않습니다.</p>{Object.entries(preview.scenario.inputs).map(([key, definition]) => <label key={key}>{key}{definition.required ? " *" : ""} · {definition.type}<input aria-label={`시나리오 입력 ${key}`} autoComplete="off" type="text" value={inputs[key] ?? ""} onChange={e => setInputs({ ...inputs, [key]: e.target.value })} /></label>)}</fieldset>}
+          {Object.keys(preview.scenario.inputs).length > 0 && <fieldset disabled={busy}><legend>실행 입력</legend><p className="api-field-help">실행할 때만 사용하는 값입니다. 저장된 시나리오에는 원문이 남지 않습니다.</p>{Object.entries(preview.scenario.inputs).map(([key, definition]) => <label key={key}>{key}{definition.required ? " *" : ""} · {definition.type}<input aria-label={`시나리오 입력 ${key}`} data-value-visibility={definition.sensitive ? "sensitive" : undefined} autoComplete="off" type="text" value={inputs[key] ?? ""} onChange={e => setInputs({ ...inputs, [key]: e.target.value })} /></label>)}</fieldset>}
         </section>
         <div className="api-run-view-switch" role="group" aria-label="시나리오 보기"><button type="button" aria-pressed={runView === "preview" || !result} onClick={() => setRunView("preview")}>설정 미리보기</button><button type="button" aria-pressed={runView === "result" && Boolean(result)} disabled={!result || running} onClick={() => setRunView("result")}>최근 실행</button></div>
         <div hidden={runView === "result" && Boolean(result)}><ScenarioRunFlow key={current?.id} preview={preview} catalogs={catalogs} bindings={bindings} focusRequest={focusRequest} /></div>
@@ -514,7 +526,7 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
       <header><div><p className="api-input-kicker">실행 중 입력 · {pendingInput.index + 1}/{pendingInput.totalSteps}단계</p><h2 id="api-input-title">{pendingInput.label ?? pendingInput.name}</h2></div><span>{pendingInput.stepId}</span></header>
       <p>앞 단계 실행이 완료되었습니다. 다음 API를 호출하기 전에 값을 입력하세요.</p>
       <p className="api-input-note">입력값은 이번 실행의 <code>vars.{pendingInput.name}</code>으로만 전달되며 YAML이나 실행 결과에 원문으로 저장되지 않습니다.</p>
-      <label>{pendingInput.name}{pendingInput.required ? " *" : ""}<input autoFocus type={pendingInput.type === "number" ? "number" : "text"} value={inputValue} disabled={inputSubmitting} placeholder={pendingInput.type === "string" ? "값 입력" : `${pendingInput.type} JSON 입력`} onChange={event => setInputValue(event.target.value)} /></label>
+      <label>{pendingInput.name}{pendingInput.required ? " *" : ""}<input autoFocus data-value-visibility={pendingInput.sensitive ? "sensitive" : undefined} type={pendingInput.type === "number" ? "number" : "text"} value={inputValue} disabled={inputSubmitting} placeholder={pendingInput.type === "string" ? "값 입력" : `${pendingInput.type} JSON 입력`} onChange={event => setInputValue(event.target.value)} /></label>
       {inputError && <p className="api-warning" role="alert">{inputError}</p>}
       <footer className="api-actions"><button type="button" disabled={inputSubmitting} onClick={() => { setPendingInput(null); void bridge.cancel(scope); }}>실행 취소</button><button type="submit" className="api-primary" disabled={inputSubmitting}>{inputSubmitting ? "전달 중…" : "입력 완료 · 계속"}</button></footer>
     </form></div>}</>}
