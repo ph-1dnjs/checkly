@@ -464,11 +464,12 @@ export class ApiWorkspace {
   }
 
   private async persistScenario(input: ApiEnvironmentScope, source: string, bindings: Record<string, string>, expectedUpdatedAt: string | undefined, draft: boolean, rawMetadata?: ApiSidebarMetadata): Promise<SavedApiScenario> {
-    const preview = await this.previewScenario(input, source, bindings);
-    if (!draft && preview.issues.length) throw new Error(preview.issues.join("\n"));
-    if (parseScenario(source).valueBindings.length !== preview.scenario.valueBindings.length) source = stringifyScenario(preview.scenario, true);
     const metadata = rawMetadata === undefined ? undefined : sidebarMetadataSchema.parse(rawMetadata);
     const action = this.queue.then(async () => {
+      // Validate inside the queue so project/server changes queued earlier are already applied
+      // and ones queued later see this scenario when checking references.
+      const preview = await this.previewScenario(input, source, bindings);
+      if (!draft && preview.issues.length) throw new Error(preview.issues.join("\n"));
       const { project } = await this.environment(input);
       const saved = await this.listScenarios(input.projectId);
       const index = saved.findIndex(s => s.id === preview.scenario.id);
