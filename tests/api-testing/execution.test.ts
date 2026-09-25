@@ -226,8 +226,10 @@ test("cancellation, timeout and stop/continue do not dispatch dependent requests
     assert.equal(calls, 1);
     assert.equal((await runner.run(scenario, { ...options, signal: AbortSignal.abort() })).status, "cancelled");
     assert.equal(calls, 1);
-    const release = runner.globals.acquire("p", "dev");
+    const release = runner.globals.acquire("p");
     await assert.rejects(runner.run(scenario, options), /이미 실행/);
+    // Globals are project-wide, so another environment of the same project is blocked too.
+    await assert.rejects(runner.run(scenario, { ...options, environment: "stg" }), /이미 실행/);
     release();
     scenario.onFailure = "continue";
     scenario.steps[1].request.query = { id: "{{vars.absent}}" };

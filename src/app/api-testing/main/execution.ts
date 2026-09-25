@@ -196,7 +196,7 @@ export class ApiRunner {
 
   async run(input: Scenario, options: RunOptions): Promise<RunResult> {
     const scenario = scenarioSchema.parse(input);
-    const release = this.globals.acquire(options.projectId, options.environment);
+    const release = this.globals.acquire(options.projectId);
     try {
       const context: Context = { inputs: structuredClone(options.inputs ?? {}), vars: structuredClone(scenario.vars), globals: this.globals.snapshot(options.projectId) };
       for (const [key, definition] of Object.entries(scenario.inputs)) {

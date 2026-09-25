@@ -114,7 +114,7 @@ export class ApiWorkspace {
   }
   async setRequestAuth(input: ApiScope, rawVariable: string | null): Promise<void> {
     const { scope, baseUrl } = await this.scope(input);
-    if (this.active.has(`${scope.projectId}:${scope.environmentId}`)) throw new Error("실행 중에는 인증 설정을 변경할 수 없습니다");
+    if (this.projectIsActive(scope.projectId)) throw new Error("실행 중에는 인증 설정을 변경할 수 없습니다");
     if (rawVariable === null) { this.requestAuth.delete(this.authKey(scope)); return; }
     const variable = variableName.parse(rawVariable);
     this.authToken(scope, variable);
@@ -499,7 +499,7 @@ export class ApiWorkspace {
     for (const key of Object.keys(servers)) catalogs.set(key, await this.getCatalog({ ...scope, serverId: bindings[key] ?? key }));
     const runKey = `${scope.projectId}:${scope.environmentId}`;
     this.assertAvailable(scope.projectId);
-    if (this.active.has(runKey)) throw new Error("이 환경에서 이미 실행 중입니다");
+    if (this.projectIsActive(scope.projectId)) throw new Error("이 프로젝트에서 이미 실행 중입니다");
     const controller = new AbortController();
     this.active.set(runKey, controller);
     // Results carry raw values; the renderer's "민감값 숨기기" toggle decides visibility.
@@ -573,7 +573,7 @@ export class ApiWorkspace {
     if (operation.bodyRequired && req.body === undefined) throw new Error("요청 본문이 필요합니다");
     this.assertAvailable(scope.projectId);
     const runKey = `${scope.projectId}:${scope.environmentId}`;
-    if (this.active.has(runKey)) throw new Error("이 환경에서 이미 요청을 실행 중입니다");
+    if (this.projectIsActive(scope.projectId)) throw new Error("이 프로젝트에서 이미 요청을 실행 중입니다");
     const controller = new AbortController();
     this.active.set(runKey, controller);
     let detail: { request?: ApiRequestTrace; response?: { headers: Record<string, string>; body: Json } } | undefined;

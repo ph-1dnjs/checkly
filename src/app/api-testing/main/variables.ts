@@ -56,9 +56,10 @@ export class GlobalStore {
     delete values[name];
     this.values.set(key, values);
   }
-  acquire(project: string, environment: string): () => void {
-    const key = `${project}:${environment}`;
-    if (this.active.has(key)) throw new Error("같은 프로젝트·환경에서 이미 실행 중입니다");
+  /** Globals are shared across environments, so only one run per project may write them. */
+  acquire(project: string): () => void {
+    const key = this.key(project);
+    if (this.active.has(key)) throw new Error("같은 프로젝트에서 이미 실행 중입니다");
     this.active.add(key);
     return () => { this.active.delete(key); };
   }
