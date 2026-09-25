@@ -1,15 +1,13 @@
-import { mkdir, mkdtemp, readFile, rename, rm, stat, writeFile, unlink } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, readFile, rename, rm, stat, writeFile, unlink } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { projectSchema, type ApiCatalog, type ApiCookie, type ApiProject, type ApiScope, type ApiResponse, type ApiProjectScope, type ApiEnvironmentScope, type ApiGlobal, type SavedApiScenario, type SavedApiSuite, type ApiSidebarMetadata, type ApiScenarioPreview, type ApiScenarioResult, type ApiRequestTrace, type ApiAiAuthorResult, type ApiAiDraft, type ApiAiProgress, type ApiAiCliStatus, type ApiAiSettings } from "../shared/workspace";
+import { projectSchema, type ApiCatalog, type ApiCookie, type ApiProject, type ApiScope, type ApiResponse, type ApiProjectScope, type ApiEnvironmentScope, type ApiGlobal, type SavedApiScenario, type SavedApiSuite, type ApiSidebarMetadata, type ApiScenarioPreview, type ApiScenarioResult, type ApiRequestTrace, type ApiAiImportResult, type ApiAiDraft } from "../shared/workspace";
 import { z } from "zod";
 import { ApiRunner } from "./execution";
 import { bindingUseLocations, pruneUnusedBrokenBindings, stringifyScenario, parseScenario, ScenarioFormatError, scenarioSchema, scenarioStepInputs, scenarioStepLabel, type Json, type Scenario, type ScenarioInputRequest } from "../shared/scenario";
 import { readOpenApi } from "./openapi";
 import { CookieJar } from "./cookies";
-import { aiAnswerJsonSchema, aiCatalogDetails, createAuthorPrompt, createRepairPrompt } from "./ai-context";
-import { describeAiClis, resetAiCliCache, runAiCli, setAiCliPaths, type AiCliRun } from "./ai-cli";
+import { aiCatalogDetails, createAuthorPrompt, splitAiBundle, type AiBundle } from "./ai-context";
 
 export const scopeSchema = z.object({ projectId: z.string().uuid(), serverId: z.string().uuid(), environmentId: z.string().uuid() }).strict();
 const projectScopeSchema = z.object({ projectId: z.string().uuid() }).strict();
@@ -32,20 +30,11 @@ function migrateSidebarMetadata<T extends Record<string, unknown>>(item: T): T &
   });
   return { ...rest, ...metadata } as T & Partial<ApiSidebarMetadata>;
 }
-const aiAuthorRequestSchema = z.object({
-  scope: environmentScopeSchema, cli: z.enum(["claude", "codex"]),
-  // Passed to the CLI as-is; empty uses the CLI's own default model.
-  model: z.string().trim().regex(/^[A-Za-z0-9._:\/\[\]-]{1,100}$/, "모델 이름을 확인하세요").optional(), goal: z.string().trim().min(1, "만들 시나리오를 입력하세요").max(10_000),
+const aiGuideRequestSchema = z.object({
+  scope: environmentScopeSchema, goal: z.string().trim().min(1, "만들 시나리오를 입력하세요").max(10_000),
   tags: z.array(z.string().max(200)).max(100).optional(),
+  catalogFile: z.string().trim().min(1).max(4096).optional(),
 }).strict();
-const cliPath = z.string().trim().max(4096).refine(value => !value || path.isAbsolute(value), "CLI 경로는 절대 경로로 입력하세요");
-const aiSettingsSchema = z.object({ paths: z.object({ claude: cliPath.optional(), codex: cliPath.optional() }).strict() }).strict()
-  .transform(({ paths }) => ({ paths: Object.fromEntries(Object.entries(paths).filter(([, value]) => value)) as ApiAiSettings["paths"] }));
-const aiAnswerSchema = z.object({
-  scenarios: z.array(z.object({ yaml: z.string().max(200_000) })).min(1).max(30),
-  suite: z.object({ name: z.string().max(100), scenarioIds: z.array(z.string().max(1000)).max(100) }).nullable(),
-  notes: z.string().max(10_000),
-});
 export type ApiScenarioRunOptions = {
   runId?: string;
   requestInput?: (request: ScenarioInputRequest) => Promise<Json | undefined>;
@@ -171,108 +160,48 @@ export class ApiWorkspace {
     return text => secrets.reduce((masked, secret) => masked.split(secret).join("***"), text);
   }
 
-  /** Same prompt with the schemas inlined, for pasting into an external AI when no CLI is available. */
+  /**
+   * Prompt the user pastes into their own AI (Claude Code, Codex…) inside the backend
+   * project. Detailed schemas are inlined unless they were saved to catalogFile.
+   */
   async buildAiPrompt(raw: unknown): Promise<string> {
-    const request = aiAuthorRequestSchema.parse(raw);
+    const request = aiGuideRequestSchema.parse(raw);
     const { scope, project } = await this.environment(request.scope);
     const prompt = this.aiRedact(scope.projectId)(createAuthorPrompt({
       goal: request.goal, servers: await this.aiServers(scope, project, request.tags),
       globals: await this.listGlobals({ projectId: scope.projectId }),
-      existing: (await this.listScenarios(scope.projectId)).map(({ id, name }) => ({ id, name })), backendAvailable: false,
+      existing: (await this.listScenarios(scope.projectId)).map(({ id, name }) => ({ id, name })),
+      ...(request.catalogFile ? { catalogFile: request.catalogFile } : {}),
+      ...(project.backendPath ? { backendPath: project.backendPath } : {}),
     }));
-    if (Buffer.byteLength(prompt) > 1_000_000) throw new Error("API가 너무 많습니다. 태그로 범위를 좁히세요");
+    if (Buffer.byteLength(prompt) > 1_000_000) throw new Error("API가 너무 많습니다. 태그로 범위를 좁히거나 상세 명세를 파일로 저장하세요");
     return prompt;
   }
 
-  private aiSettingsApplied?: Promise<void>;
-  private applyAiSettings(): Promise<void> {
-    this.aiSettingsApplied ??= this.getAiSettings().then(settings => setAiCliPaths(settings.paths), () => undefined);
-    return this.aiSettingsApplied;
-  }
-
-  async getAiSettings(): Promise<ApiAiSettings> {
-    const parsed = aiSettingsSchema.safeParse(await this.read("ai-settings.json"));
-    return parsed.success ? parsed.data : { paths: {} };
-  }
-
-  async saveAiSettings(raw: unknown): Promise<ApiAiCliStatus[]> {
-    const settings = aiSettingsSchema.parse(raw);
-    await this.save("ai-settings.json", settings);
-    setAiCliPaths(settings.paths);
-    this.aiSettingsApplied = Promise.resolve();
-    return describeAiClis();
-  }
-
-  async listAiClis(refresh = false): Promise<ApiAiCliStatus[]> {
-    await this.applyAiSettings();
-    if (refresh) resetAiCliCache();
-    return describeAiClis();
-  }
-
-  private aiRuns = new Map<string, { controller: AbortController; progress: ApiAiProgress }>();
-
-  getAiProgress(input: ApiProjectScope): ApiAiProgress | null {
-    return this.aiRuns.get(projectScopeSchema.parse(input).projectId)?.progress ?? null;
-  }
-
-  cancelAiAuthor(input: ApiProjectScope): void {
-    this.aiRuns.get(projectScopeSchema.parse(input).projectId)?.controller.abort();
+  /** Detailed schemas as JSON, for saving next to the backend source instead of pasting. */
+  async buildAiCatalog(raw: unknown): Promise<string> {
+    const request = aiGuideRequestSchema.pick({ scope: true, tags: true }).parse(raw);
+    const { scope, project } = await this.environment(request.scope);
+    return this.aiRedact(scope.projectId)(JSON.stringify(aiCatalogDetails(await this.aiServers(scope, project, request.tags)), null, 1));
   }
 
   /**
-   * Asks Claude Code or Codex (read-only, in the project's backend folder when set)
-   * to write scenarios, checks every YAML with Checkly's own validation and asks the
-   * AI to fix reported problems. Nothing is saved here; the user reviews the drafts.
+   * Checks what the user's AI wrote (scenarios separated by ---, optional suite
+   * document, markdown fences allowed) with Checkly's own validation. Nothing is saved.
    */
-  async authorWithAi(raw: unknown, options: { run?: (run: AiCliRun) => Promise<unknown>; maxAttempts?: number } = {}): Promise<ApiAiAuthorResult> {
-    const request = aiAuthorRequestSchema.parse(raw);
-    const { scope, project } = await this.environment(request.scope);
-    await this.applyAiSettings();
-    if (this.aiRuns.has(scope.projectId)) throw new Error("이 프로젝트에서 이미 AI 작성이 진행 중입니다");
-    const servers = await this.aiServers(scope, project, request.tags);
-    let backendDir: string | undefined;
-    if (project.backendPath) {
-      if (!(await stat(project.backendPath).then(info => info.isDirectory(), () => false))) throw new Error("프로젝트 설정의 백엔드 폴더를 찾을 수 없습니다");
-      backendDir = project.backendPath;
-    }
-    const maxAttempts = options.maxAttempts ?? 3;
-    const run = options.run ?? runAiCli;
-    const controller = new AbortController();
-    const state = { controller, progress: { phase: "writing", attempt: 1, maxAttempts } as ApiAiProgress };
-    this.aiRuns.set(scope.projectId, state);
-    const work = await mkdtemp(path.join(tmpdir(), "checkly-ai-"));
-    try {
-      const catalogFile = path.join(work, "checkly-api-catalog.json");
-      const redact = this.aiRedact(scope.projectId);
-      await writeFile(catalogFile, redact(JSON.stringify(aiCatalogDetails(servers), null, 1)));
-      const existing = (await this.listScenarios(scope.projectId)).map(({ id, name }) => ({ id, name }));
-      const base = redact(createAuthorPrompt({ goal: request.goal, servers, globals: await this.listGlobals({ projectId: scope.projectId }), existing, catalogFile, backendAvailable: Boolean(backendDir) }));
-      let prompt = base;
-      let result: ApiAiAuthorResult | undefined;
-      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-        state.progress = { phase: attempt === 1 ? "writing" : "repairing", attempt, maxAttempts };
-        const answer = aiAnswerSchema.parse(await run({ cli: request.cli, ...(request.model ? { model: request.model } : {}), prompt, cwd: backendDir ?? work, readDirs: [work], schema: aiAnswerJsonSchema, signal: controller.signal }));
-        if (controller.signal.aborted) throw new Error("AI 작성을 취소했습니다");
-        state.progress = { phase: "checking", attempt, maxAttempts };
-        result = await this.checkAiAnswer(scope, answer, new Set(existing.map(item => item.id)), attempt);
-        const clean = result.drafts.every(draft => !draft.issues.length) && !result.suite?.problems.length;
-        if (clean || attempt === maxAttempts) break;
-        prompt = createRepairPrompt(base, result.drafts.map(draft => ({ yaml: draft.yaml, problems: draft.issues })), result.suite?.problems ?? []);
-      }
-      return result!;
-    } catch (error) {
-      if (error instanceof z.ZodError) throw new Error("AI 응답 형식이 올바르지 않습니다. 다시 시도하세요");
-      throw error;
-    } finally {
-      this.aiRuns.delete(scope.projectId);
-      await rm(work, { recursive: true, force: true });
-    }
+  async checkAiScenarios(rawScope: unknown, rawText: unknown): Promise<ApiAiImportResult> {
+    const { scope } = await this.environment(environmentScopeSchema.parse(rawScope));
+    const bundle = splitAiBundle(z.string().max(2_000_000).parse(rawText));
+    if (!bundle.scenarios.length) throw new Error("시나리오 YAML을 찾지 못했습니다. AI가 출력한 YAML을 그대로 붙여넣으세요");
+    if (bundle.scenarios.length > 30) throw new Error("시나리오는 한 번에 30개까지 가져올 수 있습니다");
+    const existing = new Set((await this.listScenarios(scope.projectId)).map(item => item.id));
+    return this.checkAiAnswer(scope, bundle, existing);
   }
 
-  private async checkAiAnswer(scope: ApiEnvironmentScope, answer: z.infer<typeof aiAnswerSchema>, existingIds: Set<string>, attempts: number): Promise<ApiAiAuthorResult> {
+  private async checkAiAnswer(scope: ApiEnvironmentScope, answer: AiBundle, existingIds: Set<string>): Promise<ApiAiImportResult> {
     const seen = new Set<string>();
     const drafts: ApiAiDraft[] = [];
-    for (const [index, { yaml }] of answer.scenarios.entries()) {
+    for (const [index, yaml] of answer.scenarios.entries()) {
       let id = `ai-draft-${index + 1}`, name = `AI 시나리오 ${index + 1}`, stepCount = 0;
       const issues: string[] = [];
       let executionIssues: string[] = [];
@@ -298,7 +227,7 @@ export class ApiWorkspace {
         ...(answer.suite.scenarioIds.length ? [] : ["스위트에 시나리오가 없습니다"]),
       ],
     } : null;
-    return { drafts, suite, notes: answer.notes, attempts };
+    return { drafts, suite };
   }
 
   private async save(file: string, value: unknown) {

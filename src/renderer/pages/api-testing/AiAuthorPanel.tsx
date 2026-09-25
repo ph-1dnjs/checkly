@@ -1,18 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import type { ApiAiAuthorRequest, ApiAiAuthorResult, ApiAiCli, ApiAiCliStatus, ApiAiProgress, ApiCatalog, ApiEnvironmentScope, ApiProject, ApiTestingBridge } from "../../../app/api-testing/shared/workspace";
+import type { ApiAiGuideRequest, ApiAiImportResult, ApiCatalog, ApiEnvironmentScope, ApiProject, ApiTestingBridge } from "../../../app/api-testing/shared/workspace";
 
 const errorText = (error: unknown) => (error as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, "");
-const cliNames: Record<ApiAiCli, string> = { claude: "Claude Code", codex: "Codex" };
-// Claude Code aliases always point at the latest model of each tier; Codex takes any model name.
-const modelSuggestions: Record<ApiAiCli, string[]> = { claude: ["sonnet", "opus", "haiku"], codex: [] };
-const phaseText = (progress: ApiAiProgress | null) => !progress ? "준비 중…"
-  : progress.phase === "writing" ? "AI가 시나리오를 만드는 중… (몇 분 걸릴 수 있어요)"
-  : progress.phase === "checking" ? "만든 시나리오를 검사하는 중…"
-  : `검사에서 나온 문제를 AI가 고치는 중… (${progress.attempt - 1}번째)`;
 
 /**
- * Runs a local AI CLI (Claude Code / Codex) to write scenarios (and a suite when it splits the flow),
- * then lets the user review Checkly's check results and save the chosen drafts.
+ * The user writes scenarios with their own AI (Claude Code, Codex…) in the backend
+ * project: Checkly hands over the authoring prompt, then checks the pasted result
+ * and saves the chosen scenarios and suite.
  */
 export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved, onProjectChange }: {
   project: ApiProject; scope: ApiEnvironmentScope; bridge: ApiTestingBridge; onBusy: (busy: boolean) => void; onSaved: () => void;
@@ -22,19 +16,15 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved, onProje
   const [backendDraft, setBackendDraft] = useState(project.backendPath ?? "");
   const [backendSaving, setBackendSaving] = useState(false);
   const [backendNotice, setBackendNotice] = useState("");
-  const [statuses, setStatuses] = useState<ApiAiCliStatus[] | null>(null);
-  const [pathDraft, setPathDraft] = useState<Record<ApiAiCli, string>>({ claude: "", codex: "" });
-  const [checking, setChecking] = useState(false);
-  const clis = statuses?.filter(status => !status.error).map(status => status.cli) ?? null;
-  const [cli, setCli] = useState<ApiAiCli>("claude");
-  const [models, setModels] = useState<Record<ApiAiCli, string>>({ claude: "", codex: "" });
   const [goal, setGoal] = useState("");
   const [tags, setTags] = useState<string[]>([]);
   const [specWarnings, setSpecWarnings] = useState<string[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [running, setRunning] = useState(false);
-  const [progress, setProgress] = useState<ApiAiProgress | null>(null);
-  const [result, setResult] = useState<ApiAiAuthorResult | null>(null);
+  // The saved schema file covers the tags chosen at save time.
+  const [catalogFile, setCatalogFile] = useState<{ path: string; tags: string } | null>(null);
+  const [answer, setAnswer] = useState("");
+  const [checking, setChecking] = useState(false);
+  const [result, setResult] = useState<ApiAiImportResult | null>(null);
   const [chosen, setChosen] = useState<string[]>([]);
   const [saveSuite, setSaveSuite] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -44,50 +34,35 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved, onProje
   // Set on mount too: StrictMode (dev) runs the cleanup once before the real mount.
   useEffect(() => { live.current = true; return () => { live.current = false; }; }, []);
   useEffect(() => {
-    void applyStatuses(bridge.listAiClis());
-    void bridge.getAiSettings().then(settings => { if (live.current) setPathDraft({ claude: settings.paths.claude ?? "", codex: settings.paths.codex ?? "" }); }).catch(() => undefined);
     void Promise.all(project.servers.map(server => bridge.getCatalog({ ...scope, serverId: server.id }).catch(() => null)))
       .then(catalogs => { if (live.current) { setSpecWarnings(specWarningsFor(project, catalogs)); setTags([...new Set(catalogs.flatMap(catalog => catalog?.operations.flatMap(operation => [operation.tag, ...(operation.tags ?? [])]) ?? []))].filter(Boolean).sort()); } });
   }, []);
-  useEffect(() => {
-    if (!running) return;
-    const timer = setInterval(() => { void bridge.getAiProgress({ projectId: scope.projectId }).then(next => { if (live.current && next) setProgress(next); }).catch(() => undefined); }, 700);
-    return () => clearInterval(timer);
-  }, [running]);
-  async function applyStatuses(pending: Promise<ApiAiCliStatus[]>) {
-    setChecking(true);
-    try {
-      const next = await pending;
-      if (!live.current) return;
-      setStatuses(next);
-      const usable = next.filter(status => !status.error).map(status => status.cli);
-      if (usable.length && !usable.includes(cli)) setCli(usable[0]);
-    } catch (e) { if (live.current) { setStatuses([]); setError(errorText(e)); } }
-    finally { if (live.current) setChecking(false); }
-  }
-  const request = (): ApiAiAuthorRequest => ({ scope, cli, ...(models[cli].trim() ? { model: models[cli].trim() } : {}), goal, ...(selectedTags.length ? { tags: selectedTags } : {}) });
-  const busy = running || saving || backendSaving;
+  const tagKey = [...selectedTags].sort().join("\n");
+  const savedCatalog = catalogFile?.tags === tagKey ? catalogFile.path : undefined;
+  const request = (): ApiAiGuideRequest => ({ scope, goal, ...(selectedTags.length ? { tags: selectedTags } : {}), ...(savedCatalog ? { catalogFile: savedCatalog } : {}) });
+  const busy = checking || saving || backendSaving;
+  const act = async (task: () => Promise<void>) => { setError(""); setMessage(""); try { await task(); } catch (e) { if (live.current) setError(errorText(e)); } };
   const saveBackendPath = async (next: string) => {
     setBackendSaving(true); setError(""); setBackendNotice("");
     try {
       const { backendPath: _previous, ...rest } = project;
       await onProjectChange(next.trim() ? { ...rest, backendPath: next.trim() } : rest);
       setBackendDraft(next.trim());
-      setBackendNotice(next.trim() ? "저장했습니다." : "지웠습니다. 이제 API 문서만 봅니다.");
+      setBackendNotice(next.trim() ? "저장했습니다." : "지웠습니다.");
     } catch (e) { setError(errorText(e)); }
     finally { setBackendSaving(false); }
   };
 
-  const generate = async () => {
-    setRunning(true); onBusy(true); setProgress(null); setResult(null); setMessage(""); setError("");
-    try {
-      const next = await bridge.authorWithAi(request());
+  const check = async () => {
+    setChecking(true); setResult(null);
+    await act(async () => {
+      const next = await bridge.checkAiScenarios(scope, answer);
       if (!live.current) return;
       setResult(next);
       setChosen(next.drafts.map(draft => draft.id));
       setSaveSuite(Boolean(next.suite));
-    } catch (e) { if (live.current) setError(errorText(e)); }
-    finally { if (live.current) { setRunning(false); setProgress(null); } onBusy(false); }
+    });
+    if (live.current) setChecking(false);
   };
 
   const save = async () => {
@@ -118,55 +93,48 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved, onProje
     } finally { if (live.current) setSaving(false); onBusy(false); }
   };
 
-  const hasCli = Boolean(clis?.length);
+  const problems = result ? problemReport(result) : "";
   const nameOf = (id: string) => result?.drafts.find(draft => draft.id === id)?.name ?? id;
   return <section className="api-ai-author" aria-label="AI 시나리오 작성">
     <h2>AI 작성 도우미</h2>
-    <p>AI가 API 문서{project.backendPath ? "와 백엔드 코드" : ""}를 보고 테스트 시나리오를 만듭니다. 만든 결과는 확인한 뒤 저장합니다.</p>
+    <p>백엔드 프로젝트에서 쓰는 AI(Claude Code, Codex 등)로 시나리오를 만듭니다. 프롬프트를 복사해 AI에 붙여넣고, AI가 만든 YAML을 아래에 붙여넣으면 검사한 뒤 저장합니다.</p>
+    {specWarnings.length > 0 && <div className="api-warning" role="note"><strong>명세를 다시 가져오세요</strong><ul>{specWarnings.map(warning => <li key={warning}>{warning}</li>)}</ul>AI는 명세에 있는 API와 필드만 사용합니다. API 문서 탭에서 ‘명세 새로고침’이나 가져오기를 다시 하세요.</div>}
+
+    <h3 className="api-ai-author-step">1. 프롬프트 만들기</h3>
     <section className="api-ai-backend" aria-label="백엔드 코드 폴더">
-      <label>백엔드 코드 폴더 (선택)<input aria-label="AI 백엔드 폴더 경로" value={backendDraft} disabled={busy} placeholder="비워 두면 API 문서만 봅니다" onChange={e => { setBackendDraft(e.target.value); setBackendNotice(""); }} /></label>
+      <label>백엔드 코드 폴더 (선택)<input aria-label="AI 백엔드 폴더 경로" value={backendDraft} disabled={busy} placeholder="프롬프트에 코드 위치로 적습니다" onChange={e => { setBackendDraft(e.target.value); setBackendNotice(""); }} /></label>
       <div className="api-actions">
-        <button type="button" disabled={busy} onClick={async () => { try { const chosen = await bridge.chooseDirectory(); if (chosen) { setBackendDraft(chosen); setBackendNotice(""); } } catch (e) { setError(errorText(e)); } }}>폴더 선택</button>
+        <button type="button" disabled={busy} onClick={() => void act(async () => { const next = await bridge.chooseDirectory(); if (next) { setBackendDraft(next); setBackendNotice(""); } })}>폴더 선택</button>
         <button type="button" className="api-primary" disabled={busy || backendDraft.trim() === (project.backendPath ?? "")} onClick={() => void saveBackendPath(backendDraft)}>저장</button>
         {project.backendPath && <button type="button" disabled={busy} onClick={() => void saveBackendPath("")}>지우기</button>}
       </div>
       {backendNotice && <p role="status" className="api-field-help">{backendNotice}</p>}
     </section>
-    {statuses && <ul className="api-ai-cli-status" aria-label="AI 프로그램 상태">{statuses.map(status => <li key={status.cli} className={status.error ? "is-missing" : ""}>
-      <strong>{cliNames[status.cli]}</strong>
-      <span title={status.path}>{status.error ? status.error : `사용 가능 · ${status.version}${status.custom ? " · 직접 지정한 위치" : ""}`}</span>
-    </li>)}</ul>}
-    {specWarnings.length > 0 && <div className="api-warning" role="note"><strong>명세를 다시 가져오세요</strong><ul>{specWarnings.map(warning => <li key={warning}>{warning}</li>)}</ul>AI는 명세에 있는 API와 필드만 사용합니다. API 문서 탭에서 ‘명세 새로고침’이나 가져오기를 다시 하세요.</div>}
-    {clis !== null && !hasCli && <p className="api-warning">Claude Code나 Codex가 설치되어 있지 않습니다. 설치 후 ‘다시 찾기’를 누르거나, ‘프롬프트 복사’로 다른 AI에 붙여넣으세요.</p>}
-    <details className="api-ai-cli-paths"><summary>AI 프로그램 위치 바꾸기</summary>
-      <p className="api-field-help">자동으로 찾지 못할 때만 실행 파일 위치를 입력하세요. 비워 두면 자동으로 찾습니다.</p>
-      {(["claude", "codex"] as const).map(item => <label key={item}>{cliNames[item]} 위치<input value={pathDraft[item]} placeholder={statuses?.find(status => status.cli === item)?.path ?? "자동으로 찾기"} onChange={e => setPathDraft({ ...pathDraft, [item]: e.target.value })} /></label>)}
-      <div className="api-actions">
-        <button type="button" disabled={busy || checking} onClick={() => { setError(""); void applyStatuses(bridge.saveAiSettings({ paths: pathDraft })); }}>저장</button>
-        <button type="button" disabled={busy || checking} onClick={() => void applyStatuses(bridge.listAiClis(true))}>{checking ? "찾는 중…" : "다시 찾기"}</button>
-      </div>
-    </details>
     <fieldset disabled={busy}>
       <label>무엇을 테스트할까요?<textarea aria-label="AI 시나리오 업무 목표" rows={4} maxLength={10000} value={goal} placeholder="예: 로그인 후 상품을 장바구니에 담고 주문까지 확인. 재고가 없으면 실패하는지도 확인" onChange={e => setGoal(e.target.value)} /></label>
-      <div className="api-ai-author-options">
-        {hasCli && <label>AI<select aria-label="AI 사용 도구" value={cli} onChange={e => setCli(e.target.value as ApiAiCli)}>{clis!.map(item => <option key={item} value={item}>{cliNames[item]}</option>)}</select></label>}
-        {hasCli && <label>모델<input aria-label="AI 모델" list={`api-ai-models-${cli}`} value={models[cli]} placeholder="기본값" onChange={e => setModels({ ...models, [cli]: e.target.value })} /><datalist id={`api-ai-models-${cli}`}>{modelSuggestions[cli].map(model => <option key={model} value={model} />)}</datalist></label>}
-      </div>
       {tags.length > 0 && <details className="api-ai-author-tags"><summary>대상 API · {selectedTags.length ? `태그 ${selectedTags.length}개` : "전체"}</summary>
         <div>{tags.map(tag => <label key={tag} className="api-check-row"><input type="checkbox" checked={selectedTags.includes(tag)} onChange={e => setSelectedTags(e.target.checked ? [...selectedTags, tag] : selectedTags.filter(item => item !== tag))} />{tag}</label>)}</div>
       </details>}
     </fieldset>
+    <p className="api-field-help" role="status" aria-label="상세 명세 위치">{savedCatalog ? `상세 명세: ${savedCatalog} (프롬프트에는 파일 위치만 넣습니다)` : "상세 명세는 프롬프트에 함께 넣습니다. 길면 파일로 저장하세요."}</p>
     <div className="api-actions">
-      <button className="api-primary" disabled={busy || !hasCli || !goal.trim()} title={!hasCli ? (clis === null ? "AI 프로그램을 찾는 중입니다." : "Claude Code나 Codex가 필요합니다.") : !goal.trim() ? "무엇을 테스트할지 먼저 적으세요." : undefined} onClick={() => void generate()}>{clis === null ? "AI 프로그램 찾는 중…" : "AI로 시나리오 만들기"}</button>
-      {running && <button type="button" onClick={() => void bridge.cancelAiAuthor({ projectId: scope.projectId })}>취소</button>}
-      <button type="button" disabled={busy || !goal.trim()} onClick={async () => { setError(""); try { await bridge.copyAiPrompt(request()); setMessage("복사했습니다. 다른 AI에 붙여넣으세요."); } catch (e) { setError(errorText(e)); } }}>프롬프트 복사</button>
+      <button type="button" className="api-primary" disabled={busy || !goal.trim()} onClick={() => void act(async () => { await bridge.copyAiPrompt(request()); setMessage("복사했습니다. 백엔드 프로젝트에서 AI에 붙여넣으세요."); })}>프롬프트 복사</button>
+      <button type="button" disabled={busy} onClick={() => void act(async () => { const saved = await bridge.saveAiCatalog({ scope, goal, ...(selectedTags.length ? { tags: selectedTags } : {}) }); if (saved && live.current) setCatalogFile({ path: saved, tags: tagKey }); })}>상세 명세 파일로 저장…</button>
     </div>
-    {running && <p role="status" className="api-ai-author-progress">{phaseText(progress)}</p>}
+
+    <h3 className="api-ai-author-step">2. AI가 만든 YAML 검사</h3>
+    <label>AI 결과<textarea aria-label="AI가 만든 YAML" rows={10} value={answer} disabled={busy} placeholder={"AI가 출력한 YAML을 그대로 붙여넣으세요.\n시나리오는 --- 로 구분하고, 스위트는 마지막에 suite: { name, scenarios } 로 씁니다."} onChange={e => { setAnswer(e.target.value); setResult(null); }} /></label>
+    <div className="api-actions">
+      <button type="button" className="api-primary" disabled={busy || !answer.trim()} onClick={() => void check()}>{checking ? "검사 중…" : "검사"}</button>
+      <button type="button" disabled={busy} onClick={() => void act(async () => { const text = await bridge.readScenarioFile(); if (text !== null && live.current) { setAnswer(text); setResult(null); } })}>YAML 파일 가져오기</button>
+    </div>
     {error && <p className="api-warning" role="alert">{error}</p>}
     {message && <p role="status">{message}</p>}
     {result && <section className="api-ai-author-result" aria-label="AI 작성 결과">
-      <h3>만든 시나리오 {result.drafts.length}개</h3>
-      {result.notes && <p className="api-ai-author-notes"><strong>AI 메모</strong> {result.notes}</p>}
+      <h3>시나리오 {result.drafts.length}개</h3>
+      {problems && <div className="api-ai-author-notes">검사에서 문제가 나왔습니다. 문제를 복사해 AI에 붙여넣고 고친 결과를 다시 받아 오세요. 그대로 저장하면 초안이 됩니다.
+        <div className="api-actions"><button type="button" onClick={() => void act(async () => { await navigator.clipboard.writeText(problems); setMessage("문제를 복사했습니다. AI에 붙여넣으세요."); })}>문제 복사</button></div>
+      </div>}
       <ul>{result.drafts.map(draft => <li key={draft.id} className={draft.issues.length ? "has-issues" : ""}>
         <label className="api-check-row"><input type="checkbox" aria-label={`${draft.name} 저장`} checked={chosen.includes(draft.id)} disabled={saving} onChange={e => setChosen(e.target.checked ? [...chosen, draft.id] : chosen.filter(id => id !== draft.id))} /><strong>{draft.name}</strong><small>{draft.stepCount}단계 · {draft.issues.length ? "수정 필요 (초안으로 저장)" : "바로 실행 가능"}</small></label>
         {draft.issues.length > 0 && <ul className="api-ai-author-issues">{draft.issues.map(issue => <li key={issue}>{issue}</li>)}</ul>}
@@ -181,6 +149,14 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved, onProje
       <div className="api-actions"><button className="api-primary" disabled={saving || !chosen.length} onClick={() => void save()}>{saving ? "저장 중…" : "선택한 것 저장"}</button></div>
     </section>}
   </section>;
+}
+
+/** Text to paste back into the user's AI; empty when everything passed. */
+function problemReport(result: ApiAiImportResult): string {
+  const scenarios = result.drafts.filter(draft => draft.issues.length).map(draft => [`### ${draft.name} (${draft.id})`, ...draft.issues.map(issue => `- ${issue}`)].join("\n"));
+  const suite = result.suite?.problems.length ? [["### 스위트", ...result.suite.problems.map(problem => `- ${problem}`)].join("\n")] : [];
+  if (!scenarios.length && !suite.length) return "";
+  return ["Checkly 검사에서 아래 문제가 나왔습니다. 문제를 고친 전체 결과(모든 시나리오와 스위트)를 같은 형식으로 다시 출력하세요.", ...scenarios, ...suite].join("\n\n");
 }
 
 const staleDays = 30;

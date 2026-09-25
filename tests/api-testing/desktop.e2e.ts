@@ -1,6 +1,6 @@
 import { _electron as electron, expect } from "@playwright/test";
 import { createServer } from "node:http";
-import { chmod, mkdtemp, rm, readdir, readFile, realpath, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { tmpdir } from "node:os";
 
@@ -24,23 +24,14 @@ async function main() {
   });
   await new Promise<void>(r => server.listen(0, "127.0.0.1", r));
   const url = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
-  // A fake AI CLI answering in Claude Code's JSON format; it records how it was called.
-  const fakeCliDir = await mkdtemp(path.join(tmpdir(), "checkly-fake-ai-"));
   const backendDir = await mkdtemp(path.join(tmpdir(), "checkly-backend-"));
-  const fakeCli = path.join(fakeCliDir, "fake-ai.mjs");
-  const aiAnswer = { notes: "가짜 AI", suite: { name: "AI 상점 흐름", scenarioIds: ["ai/login", "ai/item"] }, scenarios: [
-    { yaml: "id: ai/login\nname: AI 로그인\nserver: 기본 API\nsteps:\n  - name: 로그인\n    api: POST /login\n    body: { loginId: tester }\n    extract: [{ source: body, pointer: /accessToken, target: globals.accessToken, sensitive: true }]\n" },
-    { yaml: "id: ai/item\nname: AI 상품 조회\nserver: 기본 API\nsteps:\n  - name: 상품 조회\n    api: 'GET /items/{id}'\n    pathParams: { id: 7 }\n" },
-  ] };
-  await writeFile(fakeCli, `#!/usr/bin/env node
-import { writeFileSync } from "node:fs";
-let input = ""; process.stdin.on("data", chunk => input += chunk); process.stdin.on("end", () => {
-  writeFileSync(${JSON.stringify(path.join(fakeCliDir, "call.json"))}, JSON.stringify({ args: process.argv.slice(2), cwd: process.cwd(), input }));
-  process.stdout.write(JSON.stringify({ type: "result", is_error: false, result: "", structured_output: ${JSON.stringify(aiAnswer)} }));
-});
-`);
-  await chmod(fakeCli, 0o755);
-  const env = { ...process.env, CHECKLY_AI_CLI_PATH: fakeCli };
+  // What the user's own AI would print in chat: prose around one fenced YAML block.
+  const aiOutput = (itemApi: string) => "시나리오입니다.\n```yaml\n" + [
+    "id: ai/login\nname: AI 로그인\nserver: 기본 API\nsteps:\n  - name: 로그인\n    api: POST /login\n    body: { loginId: tester }\n    extract: [{ pointer: /accessToken, target: globals.accessToken, sensitive: true }]\n",
+    `id: ai/item\nname: AI 상품 조회\nserver: 기본 API\nsteps:\n  - name: 상품 조회\n    api: '${itemApi}'\n    pathParams: { id: 7 }\n`,
+    "suite: { name: AI 상점 흐름, scenarios: [ai/login, ai/item] }\n",
+  ].join("---\n") + "```\n";
+  const env = { ...process.env };
   delete env.ELECTRON_RUN_AS_NODE;
   let app: Awaited<ReturnType<typeof electron.launch>> | undefined;
   try {
@@ -123,26 +114,29 @@ let input = ""; process.stdin.on("data", chunk => input += chunk); process.stdin
     await expect(globals.getByRole("region", { name: "세션 쿠키" })).toContainText("저장된 쿠키가 없습니다.");
     await page.keyboard.press("Escape");
 
-    // AI authoring with a fake CLI: generate, review Checkly's checks, save scenarios and suite.
+    // AI authoring: copy the prompt for the user's own AI, check what it wrote, save scenarios and suite.
     await page.getByRole("tab", { name: "AI 작성 도우미", exact: true }).click();
-    await expect(page.getByLabel("AI 사용 도구", { exact: true })).toHaveValue("claude");
     await expect(page.getByText("명세를 다시 가져오세요")).toHaveCount(0);
-    await expect(page.getByRole("list", { name: "AI 프로그램 상태" })).toContainText("Claude Code");
-    await expect(page.getByRole("list", { name: "AI 프로그램 상태" })).toContainText("직접 지정한 위치");
-    // The backend folder is set right in the AI tab and saved on the project.
     await page.getByLabel("AI 백엔드 폴더 경로", { exact: true }).fill(backendDir);
     await page.getByRole("region", { name: "백엔드 코드 폴더" }).getByRole("button", { name: "저장", exact: true }).click();
     await expect(page.getByRole("region", { name: "백엔드 코드 폴더" })).toContainText("저장했습니다.");
-    await expect(page.getByRole("region", { name: "AI 시나리오 작성" })).toContainText("API 문서와 백엔드 코드를 보고");
     await page.getByLabel("AI 시나리오 업무 목표", { exact: true }).fill("로그인 후 상품 상세 조회");
-    await page.getByRole("button", { name: "AI로 시나리오 만들기", exact: true }).click();
+    await page.getByRole("button", { name: "프롬프트 복사", exact: true }).click();
+    await expect(page.getByRole("region", { name: "AI 시나리오 작성" })).toContainText("복사했습니다.");
+    const prompt = await app.evaluate(({ clipboard }) => clipboard.readText());
+    if (!prompt.includes(backendDir) || !prompt.includes("POST /login") || !prompt.includes("## 상세 명세") || prompt.includes(url)) throw new Error("AI prompt misses the backend folder or schemas, or leaks the base URL");
+    const answer = page.getByLabel("AI가 만든 YAML", { exact: true });
+    await answer.fill(aiOutput("GET /missing"));
+    await page.getByRole("button", { name: "검사", exact: true }).click();
     const aiResult = page.getByRole("region", { name: "AI 작성 결과" });
+    await expect(aiResult).toContainText("수정 필요");
+    await expect(aiResult.getByRole("button", { name: "문제 복사", exact: true })).toBeVisible();
+    await answer.fill(aiOutput("GET /items/{id}"));
+    await page.getByRole("button", { name: "검사", exact: true }).click();
     await expect(aiResult).toContainText("AI 로그인");
     await expect(aiResult).toContainText("AI 상품 조회");
-    await expect(aiResult).toContainText("바로 실행 가능");
-    const aiCall = JSON.parse((await readFile(path.join(fakeCliDir, "call.json"), "utf8")));
-    if (aiCall.cwd !== await realpath(backendDir)) throw new Error(`AI CLI did not run in the backend folder: ${aiCall.cwd}`);
-    if (!aiCall.args.includes("--allowedTools") || aiCall.input.includes(url)) throw new Error("AI CLI call is not read-only or leaks the base URL");
+    await expect(aiResult.getByText("바로 실행 가능")).toHaveCount(2);
+    await expect(aiResult.getByRole("button", { name: "문제 복사", exact: true })).toHaveCount(0);
     await shot("ai-result");
     await page.getByRole("button", { name: "선택한 것 저장", exact: true }).click();
     await expect(page.getByRole("tab", { name: "시나리오", exact: true })).toHaveAttribute("aria-selected", "true");
@@ -231,7 +225,6 @@ let input = ""; process.stdin.on("data", chunk => input += chunk); process.stdin
     server.closeAllConnections();
     await new Promise<void>(r => server.close(() => r()));
     await rm(dir, { recursive: true, force: true });
-    await rm(fakeCliDir, { recursive: true, force: true });
     await rm(backendDir, { recursive: true, force: true });
   }
 }

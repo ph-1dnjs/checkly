@@ -1,3 +1,4 @@
+import { parseAllDocuments } from "yaml";
 import type { Json } from "../shared/scenario";
 import type { ApiGlobal, ApiOperation } from "../shared/workspace";
 
@@ -67,7 +68,7 @@ function responseForAi(value: Json, resolve?: RefResolver) {
   }));
 }
 
-// ---- CLI authoring (Claude Code / Codex) ----
+// ---- Authoring with the user's own AI (Claude Code, Codex… in the backend project) ----
 
 export type AiAuthorServer = { serverName: string; operations: ApiOperation[]; /** Original spec, for resolving $refs. */ spec?: Json };
 export type AiAuthorPromptInput = {
@@ -75,22 +76,10 @@ export type AiAuthorPromptInput = {
   servers: AiAuthorServer[];
   globals: ApiGlobal[];
   existing: Array<{ id: string; name: string }>;
-  /** Detailed schemas live in this file; the prompt only carries the index. */
+  /** Detailed schemas were saved to this file; the prompt only carries the index. */
   catalogFile?: string;
-  backendAvailable: boolean;
+  backendPath?: string;
 };
-
-/** Final answer shape, strict enough for both Claude --json-schema and Codex --output-schema. */
-export const aiAnswerJsonSchema = {
-  type: "object",
-  additionalProperties: false,
-  required: ["scenarios", "suite", "notes"],
-  properties: {
-    scenarios: { type: "array", items: { type: "object", additionalProperties: false, required: ["yaml"], properties: { yaml: { type: "string" } } } },
-    suite: { anyOf: [{ type: "null" }, { type: "object", additionalProperties: false, required: ["name", "scenarioIds"], properties: { name: { type: "string" }, scenarioIds: { type: "array", items: { type: "string" } } } }] },
-    notes: { type: "string" },
-  },
-} as const;
 
 export function aiCatalogDetails(servers: AiAuthorServer[]) {
   return servers.map(({ serverName, operations, spec }) => {
@@ -113,7 +102,6 @@ function catalogIndex(servers: AiAuthorServer[]): string {
 
 // One syntax only; it is exactly what Checkly shows and saves, so there is nothing to translate.
 const authorRules = [
-  "- 결과는 JSON 하나입니다: scenarios(각 항목은 시나리오 YAML 문자열), suite(요청하지 않았으면 null), notes(가정·확인 필요 사항을 한국어로 짧게).",
   "- 아래 문법만 사용합니다. 단계 id나 별도의 변수 선언은 쓰지 않습니다.",
   "- 시나리오: id(영문 소문자·숫자·-·/, 기존 id와 겹치지 않게), name·description(한국어), server(모든 단계가 같은 서버면 한 번), auth(선택), steps.",
   "- 단계: name(한국어), api: 'POST /bos/login'(목록의 메서드·경로 그대로, 따옴표로 감쌈), 서버가 다르면 server, 그리고 body·query·pathParams·headers·cookies를 단계 바로 아래에 씁니다.",
@@ -123,22 +111,29 @@ const authorRules = [
   "- Bearer 인증: 시나리오 또는 단계에 auth: globals.accessToken. auth를 쓰면 Authorization 헤더를 직접 넣지 않고, 로그인처럼 인증이 없어야 하는 단계는 auth: none.",
   "- 검증: expect: [{source: status, operator: equals, value: 200}], 본문은 {source: body, pointer: /data/id, operator: exists}. 연산자는 equals·exists·contains. 생략하면 HTTP 2xx만 확인하며, 업무 목표에 필요한 검증만 넣습니다.",
   "- 실패해도 다음 단계를 계속하려면 시나리오에 onFailure: continue(기본 stop). JavaScript·반복문·함수·외부 파일 참조는 지원하지 않습니다.",
-  "- 목록에 없는 API나 스키마에 없는 필드를 만들지 않습니다. 확신이 없으면 가장 단순한 형태로 쓰고 notes에 적습니다.",
+  "- 목록에 없는 API나 스키마에 없는 필드를 만들지 않습니다. 확신이 없으면 가장 단순한 형태로 쓰고, 가정·확인이 필요한 점은 YAML 밖에 짧게 적습니다.",
+];
+
+const outputRules = [
+  "- 결과는 ```yaml 코드 블록 하나로 출력합니다. 시나리오마다 YAML 문서 하나이고 문서 사이는 --- 줄로 구분합니다.",
+  "- 시나리오가 2개 이상이면 마지막 문서로 스위트를 씁니다: suite: {name: 한국어 이름, scenarios: [실행 순서대로 시나리오 id]}. 하나면 스위트는 쓰지 않습니다.",
+  "- 사용자가 Checkly 검사 결과(문제 목록)를 붙여넣으면, 문제를 고친 전체 결과(모든 시나리오와 스위트)를 같은 형식으로 다시 출력합니다.",
 ];
 
 export function createAuthorPrompt(input: AiAuthorPromptInput): string {
   return [
     "# Checkly API 시나리오 작성",
-    "Checkly는 YAML 시나리오로 API를 순서대로 호출하는 QA 도구입니다. 아래 업무 목표에 맞는 시나리오를 작성하세요. API를 실제로 호출하지 말고, 파일을 만들거나 수정하지 마세요.",
-    "## 업무 목표", input.goal.trim() || "주요 API 흐름을 검증하는 시나리오를 제안하세요.",
-    "## 만들 것", "목표를 검증하는 시나리오. 서로 독립적으로 실행·재사용할 수 있는 흐름(예: 로그인과 회원 조회)은 시나리오를 나누고, 앞 시나리오가 extract로 전역변수에 저장한 값을 뒤 시나리오가 {{globals.x}}로 씁니다. 한 흐름이면 시나리오 하나로 충분합니다. 시나리오가 2개 이상이면 실행 순서대로 묶은 스위트 하나(suite.name 한국어, suite.scenarioIds는 시나리오 id 순서)를 함께 만들고, 하나면 suite는 null입니다.",
+    "Checkly는 YAML 시나리오로 API를 순서대로 호출하는 QA 도구입니다. 아래 업무 목표에 맞는 시나리오 YAML을 작성하세요. API를 실제로 호출하지 말고, 백엔드 코드는 수정하지 마세요.",
+    "## 업무 목표", input.goal.trim(),
+    "## 만들 것", "목표를 검증하는 시나리오. 서로 독립적으로 실행·재사용할 수 있는 흐름(예: 로그인과 회원 조회)은 시나리오를 나누고, 앞 시나리오가 extract로 전역변수에 저장한 값을 뒤 시나리오가 {{globals.x}}로 씁니다. 한 흐름이면 시나리오 하나로 충분합니다.",
     "## 참고 자료",
-    input.backendAvailable
-      ? "현재 작업 폴더는 이 API의 백엔드 소스입니다. 컨트롤러·DTO·검증 규칙·에러 코드를 읽어 요청값과 기대 결과를 정하세요. 읽기만 하세요."
-      : "백엔드 소스는 없습니다. 아래 API 명세만 사용하세요.",
+    input.backendPath
+      ? `이 API의 백엔드 소스는 ${input.backendPath} 에 있습니다. 컨트롤러·DTO·검증 규칙·에러 코드를 읽어 요청값과 기대 결과를 정하세요.`
+      : "지금 작업 폴더가 이 API의 백엔드 소스라면 컨트롤러·DTO·검증 규칙·에러 코드를 읽어 요청값과 기대 결과를 정하세요.",
     input.catalogFile
       ? `API별 파라미터·요청/응답 스키마는 JSON 파일 ${input.catalogFile} 에 있습니다. 목록에서 필요한 API를 고른 뒤 이 파일에서 해당 API만 찾아 읽으세요.`
       : "API별 상세 스키마는 아래 '상세 명세'에 있습니다.",
+    "## 출력 형식", ...outputRules,
     "## 작성 규칙", ...authorRules,
     "## 전역변수 이름·타입 (값 제외)", JSON.stringify(input.globals.map(({ name, type }) => ({ name, type }))),
     "## 기존 시나리오 (id가 겹치지 않게)", JSON.stringify(input.existing),
@@ -148,12 +143,31 @@ export function createAuthorPrompt(input: AiAuthorPromptInput): string {
   ].join("\n\n");
 }
 
-export function createRepairPrompt(base: string, previous: Array<{ yaml: string; problems: string[] }>, suiteProblems: string[]): string {
-  return [
-    base,
-    "## 이전 결과와 검사 문제",
-    "이전에 작성한 결과를 Checkly가 검사했더니 아래 문제가 있었습니다. 문제를 고친 전체 결과(모든 시나리오와 스위트)를 다시 출력하세요. 문제가 없던 시나리오도 그대로 포함합니다.",
-    ...previous.map((item, index) => [`### 시나리오 ${index + 1}`, "```yaml", item.yaml.trimEnd(), "```", item.problems.length ? `문제:\n${item.problems.map(problem => `- ${problem}`).join("\n")}` : "문제 없음"].join("\n")),
-    ...(suiteProblems.length ? [`### 스위트 문제\n${suiteProblems.map(problem => `- ${problem}`).join("\n")}`] : []),
-  ].join("\n\n");
+export type AiBundle = { scenarios: string[]; suite: { name: string; scenarioIds: string[] } | null };
+
+/**
+ * Splits pasted AI output into scenario YAML texts and the optional suite document.
+ * Accepts the bare YAML or chat text with ```yaml fences (prose outside is ignored).
+ * A scenario that does not parse is kept as text so its error shows up in the checks.
+ */
+export function splitAiBundle(text: string): AiBundle {
+  const fenced = [...text.matchAll(/```(?:ya?ml)?[ \t]*\r?\n([\s\S]*?)```/g)].map(match => match[1]);
+  const source = fenced.length ? fenced.join("\n---\n") : text;
+  const scenarios: string[] = [];
+  let suite: AiBundle["suite"] = null;
+  for (const document of parseAllDocuments(source)) {
+    const value = document.errors.length ? undefined : document.toJS() as unknown;
+    // Empty documents and bare prose (a plain string) are not scenarios.
+    if (!document.errors.length && (!value || typeof value !== "object")) continue;
+    if (value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length === 1 && "suite" in value) {
+      const raw = (value as { suite: { name?: unknown; scenarios?: unknown } }).suite ?? {};
+      suite = {
+        name: typeof raw.name === "string" ? raw.name.slice(0, 100) : "",
+        scenarioIds: Array.isArray(raw.scenarios) ? raw.scenarios.filter((id): id is string => typeof id === "string").slice(0, 100) : [],
+      };
+      continue;
+    }
+    scenarios.push(document.errors.length ? source.slice(document.range[0], document.range[2]) : document.toString({ lineWidth: 0 }));
+  }
+  return { scenarios, suite };
 }

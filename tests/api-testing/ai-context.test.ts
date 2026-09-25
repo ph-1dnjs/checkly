@@ -22,17 +22,20 @@ test("copyable AI prompt lists every API with schemas but no values, URLs or exa
     await workspace.importSpec({ ...scope, serverId }, spec("/login"));
     await workspace.importSpec({ ...scope, serverId: secondServerId }, spec("/admin-login"));
     await workspace.setGlobal({ projectId }, "accessToken", "session-secret");
-    const request = { scope, cli: "claude", goal: "회원과 관리자 로그인 흐름" };
+    const request = { scope, goal: "회원과 관리자 로그인 흐름" };
     const text = await workspace.buildAiPrompt(request);
     for (const secret of ["session-secret", "example-secret", "default-secret", "body-secret", "response-secret", "private-server.example.com", "admin-private.example.com"]) assert.equal(text.includes(secret), false, secret);
     assert.ok(text.includes("POST /login — 로그인") && text.includes("POST /admin-login — 로그인") && text.includes("GET /not-selected"));
     assert.ok(text.includes("### 서버: 회원") && text.includes("### 서버: 관리자"));
     assert.ok(text.includes('"accessToken"') && text.includes('"type":"string"'));
-    assert.ok(text.includes("스위트 하나") && text.includes("{{steps.1.response.body./data/challengeToken}}"));
+    assert.ok(text.includes("suite: {name") && text.includes("## 상세 명세") && text.includes("{{steps.1.response.body./data/challengeToken}}"));
     // One syntax: step inputs as {{inputs.x}}, no vars/valueBindings/step ids taught.
     assert.ok(text.includes("{{inputs.code}}") && text.includes("target: globals.accessToken"));
     for (const legacy of ["valueBindings", "{{vars.", "operationId", "request:"]) assert.equal(text.includes(legacy), false, legacy);
-    assert.equal(text.includes("백엔드 소스입니다"), false);
+    assert.ok(text.includes("지금 작업 폴더가 이 API의 백엔드 소스라면"));
+    // With the schemas saved to a file, the prompt only points at it.
+    const short = await workspace.buildAiPrompt({ ...request, catalogFile: "/work/backend/checkly-api-catalog.json" });
+    assert.ok(short.includes("/work/backend/checkly-api-catalog.json") && !short.includes("## 상세 명세") && short.length < text.length);
     const narrowed = await workspace.buildAiPrompt({ ...request, tags: ["missing-tag"] }).catch((error: Error) => error.message);
     assert.match(String(narrowed), /API 명세가 없습니다/);
     await assert.rejects(workspace.buildAiPrompt({ ...request, scope: { ...scope, environmentId: randomUUID() } }));

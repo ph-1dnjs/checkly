@@ -53,15 +53,19 @@ export function registerApiTesting() {
   ipcMain.handle("api-testing:delete-spec-account", (_event, scope) => sync.deleteAccount(scope));
   ipcMain.handle("api-testing:get-request-auth", (_event, scope) => workspace.getRequestAuth(scope));
   ipcMain.handle("api-testing:set-request-auth", (_event, scope, variable) => workspace.setRequestAuth(scope, variable));
-  ipcMain.handle("api-testing:list-ai-clis", (_event, refresh) => workspace.listAiClis(refresh === true));
-  ipcMain.handle("api-testing:get-ai-settings", () => workspace.getAiSettings());
-  ipcMain.handle("api-testing:save-ai-settings", (_event, settings) => workspace.saveAiSettings(settings));
-  ipcMain.handle("api-testing:author-with-ai", (_event, request) => workspace.authorWithAi(request));
-  ipcMain.handle("api-testing:get-ai-progress", (_event, scope) => workspace.getAiProgress(scope));
-  ipcMain.handle("api-testing:cancel-ai-author", (_event, scope) => workspace.cancelAiAuthor(scope));
   ipcMain.handle("api-testing:copy-ai-prompt", async (_event, request) => {
     clipboard.writeText(await workspace.buildAiPrompt(request));
   });
+  ipcMain.handle("api-testing:save-ai-catalog", async (_event, request) => {
+    const json = await workspace.buildAiCatalog(request);
+    const project = (await workspace.listProjects()).find(item => item.id === request?.scope?.projectId);
+    // Next to the backend source by default so the user's AI can read it without leaving the project.
+    const selected = await dialog.showSaveDialog({ title: "상세 명세 저장", defaultPath: path.join(project?.backendPath ?? app.getPath("downloads"), "checkly-api-catalog.json"), filters: [{ name: "JSON", extensions: ["json"] }] });
+    if (selected.canceled || !selected.filePath) return null;
+    await writeFile(selected.filePath, json, "utf8");
+    return selected.filePath;
+  });
+  ipcMain.handle("api-testing:check-ai-scenarios", (_event, scope, text) => workspace.checkAiScenarios(scope, text));
   ipcMain.handle("api-testing:choose-directory", async () => {
     const selected = await dialog.showOpenDialog({ title: "백엔드 프로젝트 폴더 선택", properties: ["openDirectory"] });
     return selected.canceled ? null : selected.filePaths[0] ?? null;

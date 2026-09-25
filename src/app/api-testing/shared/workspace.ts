@@ -67,29 +67,21 @@ export type ApiScenarioInputSubmission = {
   name: string;
   value: Json;
 };
-export type ApiAiCli = "claude" | "codex";
-/** Detected (or configured) CLI; error explains why it cannot be used. */
-export type ApiAiCliStatus = { cli: ApiAiCli; path?: string; version?: string; custom: boolean; error?: string };
-/** App-wide (per machine) AI settings; an empty path means auto-detect. */
-export type ApiAiSettings = { paths: Partial<Record<ApiAiCli, string>> };
-export type ApiAiAuthorRequest = { scope: ApiEnvironmentScope; cli: ApiAiCli; model?: string; goal: string; tags?: string[] };
-/** One AI-written scenario after Checkly's own checks; issues block saving it as a runnable scenario. */
+/** What the user's own AI should write; catalogFile is where the detailed schemas were saved. */
+export type ApiAiGuideRequest = { scope: ApiEnvironmentScope; goal: string; tags?: string[]; catalogFile?: string };
 export type ApiAiDraft = { id: string; name: string; yaml: string; stepCount: number; issues: string[]; executionIssues: string[] };
-export type ApiAiAuthorResult = { drafts: ApiAiDraft[]; suite: { name: string; scenarioIds: string[]; problems: string[] } | null; notes: string; attempts: number };
-export type ApiAiProgress = { phase: "writing" | "checking" | "repairing"; attempt: number; maxAttempts: number };
+export type ApiAiImportResult = { drafts: ApiAiDraft[]; suite: { name: string; scenarioIds: string[]; problems: string[] } | null };
 export type ApiTestingBridge = {
   getSpecSync(scope: ApiScope): Promise<ApiSpecSync>;
   deleteSpecAccount(scope: ApiScope): Promise<void>;
   getRequestAuth(scope: ApiScope): Promise<string | null>;
   setRequestAuth(scope: ApiScope, variable: string | null): Promise<void>;
-  /** AI CLI detection results; refresh re-probes installs. Desktop app only. */
-  listAiClis(refresh?: boolean): Promise<ApiAiCliStatus[]>;
-  getAiSettings(): Promise<ApiAiSettings>;
-  saveAiSettings(settings: ApiAiSettings): Promise<ApiAiCliStatus[]>;
-  authorWithAi(request: ApiAiAuthorRequest): Promise<ApiAiAuthorResult>;
-  getAiProgress(scope: ApiProjectScope): Promise<ApiAiProgress | null>;
-  cancelAiAuthor(scope: ApiProjectScope): Promise<void>;
-  copyAiPrompt(request: ApiAiAuthorRequest): Promise<void>;
+  /** Copies the authoring prompt for the user's own AI (Claude Code, Codex…). */
+  copyAiPrompt(request: ApiAiGuideRequest): Promise<void>;
+  /** Saves the detailed API schemas as JSON; returns the saved path, null when cancelled. */
+  saveAiCatalog(request: Omit<ApiAiGuideRequest, "catalogFile">): Promise<string | null>;
+  /** Checks pasted AI output (scenarios separated by ---, optional suite); nothing is saved. */
+  checkAiScenarios(scope: ApiEnvironmentScope, text: string): Promise<ApiAiImportResult>;
   /** Native folder picker for the project's backend source; null when cancelled. */
   chooseDirectory(): Promise<string | null>;
   listProjects(): Promise<ApiProject[]>;
