@@ -38,10 +38,10 @@ export function ProjectForm({ initial, onSave, onCancel, onDelete, onChooseDirec
       {draft.servers.map(server => <label key={server.id}>{server.name || "새 서버"} 기본 주소<input type="url" required placeholder="https://api.example.com" value={env.baseUrls[server.id]} onChange={e => setDraft({ ...draft, environments: draft.environments.map(v => v.id === env.id ? { ...v, baseUrls: { ...v.baseUrls, [server.id]: e.target.value } } : v) })} /></label>)}
     </fieldset>)}
     <button type="button" onClick={() => setDraft({ ...draft, environments: [...draft.environments, { id: crypto.randomUUID(), name: "", baseUrls: Object.fromEntries(draft.servers.map(s => [s.id, ""])) }] })}>+ 환경 추가</button>
-    <h3>AI 작성 도우미</h3>
-    <p>백엔드 소스 폴더를 지정하면 AI가 컨트롤러·DTO·검증 규칙을 읽고 시나리오를 만듭니다. 읽기만 하며 파일을 수정하지 않습니다. 비워 두면 API 명세만 사용합니다.</p>
+    <h3>백엔드 코드 폴더 (선택)</h3>
+    <p>지정하면 AI 작성 도우미가 API 문서와 함께 이 폴더의 코드를 참고합니다. 코드는 읽기만 합니다.</p>
     <div className="api-backend-path">
-      <label>백엔드 폴더 경로<input value={draft.backendPath ?? ""} placeholder="/Users/me/projects/shop-api" onChange={e => { const { backendPath: _removed, ...rest } = draft; setDraft(e.target.value.trim() ? { ...rest, backendPath: e.target.value } : rest); }} /></label>
+      <label>백엔드 폴더 경로<input value={draft.backendPath ?? ""} placeholder="비워 두면 API 문서만 봅니다" onChange={e => { const { backendPath: _removed, ...rest } = draft; setDraft(e.target.value.trim() ? { ...rest, backendPath: e.target.value } : rest); }} /></label>
       {onChooseDirectory && <button type="button" disabled={saving} onClick={async () => { try { const chosen = await onChooseDirectory(); if (chosen) setDraft({ ...draft, backendPath: chosen }); } catch (e) { setError((e as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, "")); } }}>폴더 선택</button>}
     </div>
     {error && <p role="alert">{error}</p>}

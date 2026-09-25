@@ -87,12 +87,12 @@ export async function describeAiCli(cli: ApiAiCli): Promise<ApiAiCliStatus> {
     const cached = working.get(cli);
     if (cached?.path === custom) return { cli, ...cached, custom: true };
     const version = await probeVersion(custom, await probeEnv());
-    if (!version) return { cli, path: custom, custom: true, error: "지정한 경로의 CLI가 실행되지 않습니다. 경로와 실행 권한을 확인하세요" };
+    if (!version) return { cli, path: custom, custom: true, error: "입력한 위치에서 실행되지 않습니다. 위치를 확인하세요" };
     working.set(cli, { path: custom, version });
     return { cli, path: custom, version, custom: true };
   }
   const found = await findExecutable(cli);
-  return found ? { cli, ...found, custom: false } : { cli, custom: false, error: "설치된 CLI를 찾을 수 없습니다" };
+  return found ? { cli, ...found, custom: false } : { cli, custom: false, error: "설치되어 있지 않음" };
 }
 
 export async function describeAiClis(): Promise<ApiAiCliStatus[]> {

@@ -123,24 +123,24 @@ let input = ""; process.stdin.on("data", chunk => input += chunk); process.stdin
     // AI authoring with a fake CLI: generate, review Checkly's checks, save scenarios and suite.
     await page.getByRole("tab", { name: "AI 작성 도우미", exact: true }).click();
     await expect(page.getByLabel("AI 사용 도구", { exact: true })).toHaveValue("claude");
-    await expect(page.getByRole("list", { name: "AI CLI 상태" })).toContainText("Claude Code");
-    await expect(page.getByRole("list", { name: "AI CLI 상태" })).toContainText("직접 지정");
+    await expect(page.getByRole("list", { name: "AI 프로그램 상태" })).toContainText("Claude Code");
+    await expect(page.getByRole("list", { name: "AI 프로그램 상태" })).toContainText("직접 지정한 위치");
     // The backend folder is set right in the AI tab and saved on the project.
     await page.getByLabel("AI 백엔드 폴더 경로", { exact: true }).fill(backendDir);
-    await page.getByRole("button", { name: "경로 저장", exact: true }).click();
-    await expect(page.getByText("백엔드 폴더를 저장했습니다.", { exact: true })).toBeVisible();
-    await expect(page.getByRole("region", { name: "AI 시나리오 작성" })).toContainText(`백엔드 소스 ${backendDir}`);
+    await page.getByRole("region", { name: "백엔드 코드 폴더" }).getByRole("button", { name: "저장", exact: true }).click();
+    await expect(page.getByRole("region", { name: "백엔드 코드 폴더" })).toContainText("저장했습니다.");
+    await expect(page.getByRole("region", { name: "AI 시나리오 작성" })).toContainText("API 문서와 백엔드 코드를 보고");
     await page.getByLabel("AI 시나리오 업무 목표", { exact: true }).fill("로그인 후 상품 상세 조회");
     await page.getByLabel("스위트도 함께 만들기").check();
     await page.getByRole("button", { name: "AI로 시나리오 만들기", exact: true }).click();
     const aiResult = page.getByRole("region", { name: "AI 작성 결과" });
     await expect(aiResult).toContainText("AI 로그인");
     await expect(aiResult).toContainText("AI 상품 조회");
-    await expect(aiResult).toContainText("검사 통과");
+    await expect(aiResult).toContainText("바로 실행 가능");
     const aiCall = JSON.parse((await readFile(path.join(fakeCliDir, "call.json"), "utf8")));
     if (aiCall.cwd !== await realpath(backendDir)) throw new Error(`AI CLI did not run in the backend folder: ${aiCall.cwd}`);
     if (!aiCall.args.includes("--allowedTools") || aiCall.input.includes(url)) throw new Error("AI CLI call is not read-only or leaks the base URL");
-    await page.getByRole("button", { name: "선택한 항목 저장", exact: true }).click();
+    await page.getByRole("button", { name: "선택한 것 저장", exact: true }).click();
     await expect(page.getByRole("tab", { name: "시나리오", exact: true })).toHaveAttribute("aria-selected", "true");
     await expect(page.getByRole("button", { name: /AI 로그인/ })).toBeVisible();
     await expect(page.getByRole("button", { name: /AI 상점 흐름/ })).toBeVisible();
