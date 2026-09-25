@@ -116,6 +116,10 @@ async function main() {
     // AI authoring: copy the prompt for the user's own AI, check what it wrote, save scenarios and suite.
     await page.getByRole("tab", { name: "AI 작성 도우미", exact: true }).click();
     await expect(page.getByText("명세를 다시 가져오세요")).toHaveCount(0);
+    await page.getByRole("button", { name: "가이드 보기", exact: true }).click();
+    await expect(page.getByLabel("AI 가이드 내용", { exact: true })).toContainText("먼저 사용자에게 무엇을 테스트할지 물어보세요");
+    await page.getByRole("button", { name: "가이드 닫기", exact: true }).click();
+    await expect(page.getByLabel("AI 가이드 내용", { exact: true })).toHaveCount(0);
     await page.getByRole("button", { name: "AI 가이드 복사", exact: true }).click();
     await expect(page.getByRole("region", { name: "AI 시나리오 작성" })).toContainText("복사했습니다.");
     const prompt = await app.evaluate(({ clipboard }) => clipboard.readText());

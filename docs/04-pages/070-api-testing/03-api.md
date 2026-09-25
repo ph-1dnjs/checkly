@@ -12,7 +12,7 @@
 | spec-sync / delete-spec-account | scope → 동기화·계정 저장 여부/완료 |
 | get-request-auth / set-request-auth | scope, 변수 이름 또는 null → 연결 이름/완료 |
 | list-globals / set-global / delete-global | 프로젝트, 이름·JSON 값 → 원문 값 목록/완료 |
-| copy-ai-prompt / read-ai-result / check-ai-scenarios | 프로젝트·환경, 태그 → 스키마 파일을 쓰고 가이드를 클립보드로 / 결과 파일의 경로·내용·수정 시각, 없으면 null(2MB 이하) / 붙여넣은 AI 결과 → 검사된 초안·스위트(저장하지 않음) |
+| copy-ai-prompt / get-ai-prompt / read-ai-result / check-ai-scenarios | 프로젝트·환경, 태그 → 스키마 파일을 쓰고 가이드를 클립보드로 / 같은 가이드 텍스트 / 결과 파일의 경로·내용·수정 시각, 없으면 null(2MB 이하) / 붙여넣은 AI 결과 → 검사된 초안·스위트(저장하지 않음) |
 | list-cookies / clear-cookies | 프로젝트 → 쿠키 이름·도메인·경로 목록(값 제외)/완료. 실행 중에는 비울 수 없음 |
 | execute | scope, operation key, request → 원문 ApiResponse (Swagger Try it out) |
 | cancel | scope → 현재 환경 실행 취소 |

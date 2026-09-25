@@ -7,6 +7,7 @@ const apiTesting: ApiTestingBridge = {
   getRequestAuth: (scope) => ipcRenderer.invoke('api-testing:get-request-auth', scope),
   setRequestAuth: (scope, variable) => ipcRenderer.invoke('api-testing:set-request-auth', scope, variable),
   copyAiPrompt: (request) => ipcRenderer.invoke('api-testing:copy-ai-prompt', request),
+  getAiPrompt: (request) => ipcRenderer.invoke('api-testing:get-ai-prompt', request),
   readAiResult: (scope) => ipcRenderer.invoke('api-testing:read-ai-result', scope),
   checkAiScenarios: (scope, text) => ipcRenderer.invoke('api-testing:check-ai-scenarios', scope, text),
   listProjects: () => ipcRenderer.invoke('api-testing:list-projects'),

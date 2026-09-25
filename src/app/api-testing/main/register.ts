@@ -56,6 +56,7 @@ export function registerApiTesting() {
   ipcMain.handle("api-testing:copy-ai-prompt", async (_event, request) => {
     clipboard.writeText(await workspace.buildAiPrompt(request));
   });
+  ipcMain.handle("api-testing:get-ai-prompt", (_event, request) => workspace.buildAiPrompt(request));
   ipcMain.handle("api-testing:read-ai-result", (_event, scope) => workspace.readAiResult(scope));
   ipcMain.handle("api-testing:check-ai-scenarios", (_event, scope, text) => workspace.checkAiScenarios(scope, text));
   ipcMain.handle("api-testing:list-projects", () => workspace.listProjects());

@@ -841,6 +841,7 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 .api-ai-author-notes .api-actions { margin:8px 0 0; }
 .api-ai-author-tags, .api-ai-author-paste { margin-top:12px; }
 .api-ai-author-tags > summary, .api-ai-author-paste > summary { color:var(--ck-color-blue-action); font-size:12px; cursor:pointer; }
+.api-ai-author-guide { max-height:420px; overflow:auto; margin:12px 0 0; padding:10px 12px; border:var(--ck-fx-hairline); background:var(--ck-color-surface-subtle); font-size:12px; white-space:pre-wrap; overflow-wrap:anywhere; }
 .api-ai-author-paste > textarea { width:100%; margin-top:8px; }
 .api-ai-author-paste .api-actions { margin:8px 0 0; }
 .api-ai-author-result { margin-top:16px; padding-top:16px; border-top:var(--ck-fx-hairline); }

@@ -14,6 +14,7 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
   const [tags, setTags] = useState<string[]>([]);
   const [specWarnings, setSpecWarnings] = useState<string[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [guide, setGuide] = useState<string | null>(null);
   const [answer, setAnswer] = useState("");
   const [checking, setChecking] = useState(false);
   const [result, setResult] = useState<ApiAiImportResult | null>(null);
@@ -30,6 +31,7 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
       .then(catalogs => { if (live.current) { setSpecWarnings(specWarningsFor(project, catalogs)); setTags([...new Set(catalogs.flatMap(catalog => catalog?.operations.flatMap(operation => [operation.tag, ...(operation.tags ?? [])]) ?? []))].filter(Boolean).sort()); } });
   }, []);
   const busy = checking || saving;
+  const guideRequest = () => ({ scope, ...(selectedTags.length ? { tags: selectedTags } : {}) });
   const act = async (task: () => Promise<void>) => { setError(""); setMessage(""); try { await task(); } catch (e) { if (live.current) setError(errorText(e)); } };
 
   const check = async (load?: () => Promise<string | null>) => {
@@ -87,11 +89,13 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
     <p>백엔드 프로젝트 폴더에서 Claude Code나 Codex를 열고 가이드를 붙여넣으세요. AI가 어떤 시나리오를 원하는지 물어본 뒤 작성해 저장합니다.</p>
     {specWarnings.length > 0 && <div className="api-warning" role="note"><strong>명세를 다시 가져오세요</strong><ul>{specWarnings.map(warning => <li key={warning}>{warning}</li>)}</ul>AI는 명세에 있는 API와 필드만 사용합니다. API 문서 탭에서 ‘명세 새로고침’이나 가져오기를 다시 하세요.</div>}
     <div className="api-actions">
-      <button type="button" className="api-primary" disabled={busy} onClick={() => void act(async () => { await bridge.copyAiPrompt({ scope, ...(selectedTags.length ? { tags: selectedTags } : {}) }); setMessage("가이드를 복사했습니다. AI에 붙여넣으세요."); })}>AI 가이드 복사</button>
+      <button type="button" className="api-primary" disabled={busy} onClick={() => void act(async () => { await bridge.copyAiPrompt(guideRequest()); setMessage("가이드를 복사했습니다. AI에 붙여넣으세요."); })}>AI 가이드 복사</button>
+      <button type="button" aria-expanded={guide !== null} disabled={busy} onClick={() => void act(async () => { if (guide !== null) { setGuide(null); return; } const text = await bridge.getAiPrompt(guideRequest()); if (live.current) setGuide(text); })}>{guide === null ? "가이드 보기" : "가이드 닫기"}</button>
       <button type="button" disabled={busy} onClick={() => void loadResult()}>{checking ? "검사 중…" : "AI 결과 불러오기"}</button>
     </div>
+    {guide !== null && <pre className="api-ai-author-guide" aria-label="AI 가이드 내용">{guide}</pre>}
     {tags.length > 0 && <details className="api-ai-author-tags"><summary>AI가 쓸 API · {selectedTags.length ? `태그 ${selectedTags.length}개` : "전체"}</summary>
-      <div>{tags.map(tag => <label key={tag} className="api-check-row"><input type="checkbox" checked={selectedTags.includes(tag)} disabled={busy} onChange={e => setSelectedTags(e.target.checked ? [...selectedTags, tag] : selectedTags.filter(item => item !== tag))} />{tag}</label>)}</div>
+      <div>{tags.map(tag => <label key={tag} className="api-check-row"><input type="checkbox" checked={selectedTags.includes(tag)} disabled={busy} onChange={e => { setGuide(null); setSelectedTags(e.target.checked ? [...selectedTags, tag] : selectedTags.filter(item => item !== tag)); }} />{tag}</label>)}</div>
     </details>}
     <details className="api-ai-author-paste"><summary>AI 답을 직접 붙여넣기</summary>
       <textarea aria-label="AI가 만든 YAML" rows={10} value={answer} disabled={busy} placeholder="AI가 파일 대신 대화에 출력한 YAML을 그대로 붙여넣으세요." onChange={e => { setAnswer(e.target.value); setResult(null); }} />

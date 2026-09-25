@@ -77,6 +77,8 @@ export type ApiTestingBridge = {
   setRequestAuth(scope: ApiScope, variable: string | null): Promise<void>;
   /** Copies the authoring guide for the user's own AI (Claude Code, Codex…). */
   copyAiPrompt(request: ApiAiGuideRequest): Promise<void>;
+  /** Same guide text, for reading it in the app. */
+  getAiPrompt(request: ApiAiGuideRequest): Promise<string>;
   /** The result file the user's AI wrote; null when it does not exist yet. */
   readAiResult(scope: ApiEnvironmentScope): Promise<{ path: string; text: string; modifiedAt: string } | null>;
   /** Checks pasted AI output (scenarios separated by ---, optional suite); nothing is saved. */
