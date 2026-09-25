@@ -118,6 +118,7 @@
 .run-settings-menu { position:relative; }
 .run-settings-btn { height:28px; display:flex; align-items:center; padding:0 11px; border:1px solid #d8dde2; background:#fff; font-family:D2Coding,ui-monospace,monospace; font-size:11px; color:#5a646e; cursor:pointer; }
 .run-settings-popover { position:absolute; top:34px; right:0; z-index:40; width:260px; border:1px solid #d8dde2; background:#fff; box-shadow:0 12px 28px -16px rgb(20 24 28 / 40%); }
+.run-settings-popover.shared-popover-panel { width:260px; padding:0; border-radius:0; }
 .run-settings-group { padding:10px 12px 12px; border-bottom:1px solid #edf0f2; }
 .run-settings-group p { margin:0 0 8px; font-family:D2Coding,ui-monospace,monospace; font-size:10px; letter-spacing:.1em; color:#8a939c; }
 .setting-choice { display:flex; gap:4px; }

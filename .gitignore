@@ -2,6 +2,7 @@ node_modules/
 dist/
 dist-electron/
 release/
+storybook-static/
 playwright-report/
 test-results/
 .env

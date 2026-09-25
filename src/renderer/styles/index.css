@@ -13,6 +13,11 @@
 * {
   box-sizing: border-box;
 }
+*,
+*::before,
+*::after {
+  outline: none !important;
+}
 :root {
   font-family:
     "Helvetica Neue", Helvetica, "Apple SD Gothic Neo", "Malgun Gothic",
@@ -32,13 +37,6 @@ input,
 select,
 textarea {
   font: inherit;
-}
-button:focus-visible,
-input:focus-visible,
-select:focus-visible,
-textarea:focus-visible {
-  outline: 2px solid #1f63ae;
-  outline-offset: 2px;
 }
 .msi {
   font-family: "Material Symbols Rounded";
