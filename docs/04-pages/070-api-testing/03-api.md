@@ -12,7 +12,7 @@
 | spec-sync / delete-spec-account | scope → 동기화·계정 저장 여부/완료 |
 | get-request-auth / set-request-auth | scope, 변수 이름 또는 null → 연결 이름/완료 |
 | list-globals / set-global / delete-global | 프로젝트, 이름·JSON 값 → 원문 값 목록/완료 |
-| execute / execute-live | scope, operation key, request → 원문 ApiResponse (두 채널은 동일 동작) |
+| execute | scope, operation key, request → 원문 ApiResponse (Swagger Try it out) |
 | cancel | scope → 현재 환경 실행 취소 |
 | list-scenarios / read-scenario-file | 프로젝트 ID/파일 선택 → 목록/YAML 또는 null |
 | preview-scenario | 프로젝트·환경, YAML, 서버 매핑 → scenario, issues |

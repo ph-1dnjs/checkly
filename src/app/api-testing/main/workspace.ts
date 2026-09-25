@@ -545,13 +545,6 @@ export class ApiWorkspace {
     this.active.get(`${s.projectId}:${s.environmentId}`)?.abort();
   }
   async execute(input: ApiScope, key: string, request: unknown): Promise<ApiResponse> {
-    return this.executeRequest(input, key, request);
-  }
-  /** Same raw contract as execute; kept as the Swagger "Try it out" entry point. */
-  async executeLive(input: ApiScope, key: string, request: unknown): Promise<ApiResponse> {
-    return this.executeRequest(input, key, request);
-  }
-  private async executeRequest(input: ApiScope, key: string, request: unknown): Promise<ApiResponse> {
     const { scope, baseUrl } = await this.scope(input);
     // Scope is already validated; do not read and validate projects.json twice per request.
     const catalog = await this.readCatalog(scope);

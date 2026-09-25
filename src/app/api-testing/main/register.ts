@@ -63,9 +63,7 @@ export function registerApiTesting() {
   ipcMain.handle("api-testing:delete-catalog", (_event, scope) => workspace.deleteCatalog(scope));
   ipcMain.handle("api-testing:delete-scenario", (_event, projectId, id, revision) => workspace.deleteScenario(projectId, id, revision));
   ipcMain.handle("api-testing:catalog", (_event, scope) => workspace.getCatalog(scope));
-  ipcMain.handle("api-testing:execute", (_event, scope, key, request) => workspace.execute(scope, z.string().parse(key), request));
-  ipcMain.handle("api-testing:execute-live", (_event, scope, key, request) => workspace.executeLive(scope, z.string().parse(key), request));
-  ipcMain.handle("api-testing:cancel", async (event, rawScope) => {
+  ipcMain.handle("api-testing:execute", (_event, scope, key, request) => workspace.execute(scope, z.string().parse(key), request));  ipcMain.handle("api-testing:cancel", async (event, rawScope) => {
     const scope = scopeSchema.parse(rawScope);
     await workspace.cancel(scope);
     releasePendingInputs(event.sender, scope);

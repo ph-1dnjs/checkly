@@ -78,9 +78,8 @@ export type ApiTestingBridge = {
   deleteScenario(projectId: string, id: string, expectedUpdatedAt: string): Promise<void>;
   getCatalog(scope: ApiScope): Promise<ApiCatalog | null>;
   importSpec(scope: ApiScope, source: ApiSpecSource): Promise<ApiCatalog | null>;
+  /** Raw, transient response for the Swagger "Try it out". Never use for reports, persistence or AI context. */
   execute(scope: ApiScope, operationKey: string, request: Scenario["steps"][number]["request"]): Promise<ApiResponse>;
-  /** Unredacted, transient interactive response. Never use for reports, persistence or AI context. */
-  executeLive(scope: ApiScope, operationKey: string, request: Scenario["steps"][number]["request"]): Promise<ApiResponse>;
   cancel(scope: ApiScope): Promise<void>;
   listGlobals(scope: ApiProjectScope): Promise<ApiGlobal[]>;
   setGlobal(scope: ApiProjectScope, name: string, value: Json): Promise<void>;

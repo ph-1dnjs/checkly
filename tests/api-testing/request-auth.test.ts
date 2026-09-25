@@ -32,7 +32,7 @@ test("request auth resolves latest variable and isolates server/environment/proj
     assert.equal(received.at(-1),"Bearer first-token");
     // Responses carry raw values; the renderer's hide-values toggle controls display.
     assert.deepEqual(response.body, { echo: "Bearer first-token" });
-    const live = await workspace.executeLive(scope, "GET /check", {});
+    const live = await workspace.execute(scope, "GET /check", {});
     assert.deepEqual(live.body, { echo: "Bearer first-token" });
     assert.equal(live.httpStatus, 200);
     await workspace.setGlobal({ projectId },"accessToken","next-token");

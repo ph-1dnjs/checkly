@@ -10,7 +10,7 @@ import { SpecSync } from "./spec-sync";
 
 // Explicit allowlist: never expose arbitrary workspace methods or filesystem paths.
 const methods = [
-  "listProjects", "saveProject", "getCatalog", "execute", "executeLive", "cancel",
+  "listProjects", "saveProject", "getCatalog", "execute", "cancel",
   "listGlobals", "setGlobal", "deleteGlobal", "listScenarios", "listSuites", "saveSuite", "deleteSuite", "previewScenario",
   "saveScenario", "saveScenarioDraft", "runScenario", "buildAiContext",
   "getRequestAuth", "setRequestAuth",

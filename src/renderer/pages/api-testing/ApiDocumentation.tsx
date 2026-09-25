@@ -477,7 +477,7 @@ function createSwaggerPlugin(options: {
                 const shownRequest = displayRequest(selection, url, request);
                 system.specActions.setRequest(path, method, shownRequest);
                 system.specActions.setMutatedRequest?.(path, method, shownRequest);
-                const response = await options.bridgeRef.current.executeLive(options.scopeRef.current, `${method.toUpperCase()} ${path}`, request);
+                const response = await options.bridgeRef.current.execute(options.scopeRef.current, `${method.toUpperCase()} ${path}`, request);
                 if (response.httpStatus === undefined && response.error) system.specActions.setResponse(path, method, responseFromError(response.error, url));
                 else system.specActions.setResponse(path, method, responseFromApi(response, url));
               } catch (error) {
