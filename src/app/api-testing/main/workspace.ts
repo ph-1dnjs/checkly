@@ -1,14 +1,16 @@
-import { mkdir, readFile, rename, writeFile, unlink } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rename, rm, stat, writeFile, unlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { projectSchema, type ApiCatalog, type ApiCookie, type ApiProject, type ApiScope, type ApiResponse, type ApiProjectScope, type ApiEnvironmentScope, type ApiGlobal, type SavedApiScenario, type SavedApiSuite, type ApiSidebarMetadata, type ApiScenarioPreview, type ApiScenarioResult, type ApiRequestTrace } from "../shared/workspace";
+import { projectSchema, type ApiCatalog, type ApiCookie, type ApiProject, type ApiScope, type ApiResponse, type ApiProjectScope, type ApiEnvironmentScope, type ApiGlobal, type SavedApiScenario, type SavedApiSuite, type ApiSidebarMetadata, type ApiScenarioPreview, type ApiScenarioResult, type ApiRequestTrace, type ApiAiAuthorResult, type ApiAiDraft, type ApiAiProgress } from "../shared/workspace";
 import { z } from "zod";
 import { ApiRunner } from "./execution";
 import { bindingUseLocations, pruneUnusedBrokenBindings, stringifyScenario, parseScenario, scenarioSchema, scenarioStepInputs, scenarioStepLabel, type Json, type Scenario, type ScenarioInputRequest } from "../shared/scenario";
 import { readOpenApi } from "./openapi";
 import { ApiRedactor } from "./redaction";
 import { CookieJar } from "./cookies";
-import { createAiContext } from "./ai-context";
+import { aiAnswerJsonSchema, aiCatalogDetails, createAiContext, createAuthorPrompt, createRepairPrompt } from "./ai-context";
+import { runAiCli, type AiCliRun } from "./ai-cli";
 
 export const scopeSchema = z.object({ projectId: z.string().uuid(), serverId: z.string().uuid(), environmentId: z.string().uuid() }).strict();
 const projectScopeSchema = z.object({ projectId: z.string().uuid() }).strict();
@@ -31,6 +33,15 @@ function migrateSidebarMetadata<T extends Record<string, unknown>>(item: T): T &
   });
   return { ...rest, ...metadata } as T & Partial<ApiSidebarMetadata>;
 }
+const aiAuthorRequestSchema = z.object({
+  scope: environmentScopeSchema, cli: z.enum(["claude", "codex"]), goal: z.string().trim().min(1, "만들 시나리오를 입력하세요").max(10_000),
+  includeSuite: z.boolean(), tags: z.array(z.string().max(200)).max(100).optional(),
+}).strict();
+const aiAnswerSchema = z.object({
+  scenarios: z.array(z.object({ yaml: z.string().max(200_000) })).min(1).max(30),
+  suite: z.object({ name: z.string().max(100), scenarioIds: z.array(z.string().max(1000)).max(100) }).nullable(),
+  notes: z.string().max(10_000),
+});
 export type ApiScenarioRunOptions = {
   runId?: string;
   requestInput?: (request: ScenarioInputRequest) => Promise<Json | undefined>;
@@ -160,6 +171,103 @@ export class ApiWorkspace {
     const output = redactor.mask(createAiContext(request.goal, selected, await this.listGlobals({ projectId: scope.projectId }))) as string;
     if (Buffer.byteLength(output) > 500_000) throw new Error("선택 정보가 너무 큽니다. API 수를 줄이세요");
     return output;
+  }
+
+  private aiRuns = new Map<string, { controller: AbortController; progress: ApiAiProgress }>();
+
+  getAiProgress(input: ApiProjectScope): ApiAiProgress | null {
+    return this.aiRuns.get(projectScopeSchema.parse(input).projectId)?.progress ?? null;
+  }
+
+  cancelAiAuthor(input: ApiProjectScope): void {
+    this.aiRuns.get(projectScopeSchema.parse(input).projectId)?.controller.abort();
+  }
+
+  /**
+   * Asks Claude Code or Codex (read-only, in the project's backend folder when set)
+   * to write scenarios, checks every YAML with Checkly's own validation and asks the
+   * AI to fix reported problems. Nothing is saved here; the user reviews the drafts.
+   */
+  async authorWithAi(raw: unknown, options: { run?: (run: AiCliRun) => Promise<unknown>; maxAttempts?: number } = {}): Promise<ApiAiAuthorResult> {
+    const request = aiAuthorRequestSchema.parse(raw);
+    const { scope, project } = await this.environment(request.scope);
+    if (this.aiRuns.has(scope.projectId)) throw new Error("이 프로젝트에서 이미 AI 작성이 진행 중입니다");
+    const servers = [];
+    for (const server of project.servers) {
+      const operations = ((await this.getCatalog({ ...scope, serverId: server.id }))?.operations ?? [])
+        .filter(operation => !operation.warnings.length)
+        .filter(operation => !request.tags?.length || request.tags.some(tag => operation.tag === tag || operation.tags?.includes(tag)));
+      if (operations.length) servers.push({ serverName: server.name, operations });
+    }
+    if (!servers.length) throw new Error("현재 환경에 AI가 사용할 API 명세가 없습니다. API 문서 탭에서 명세를 가져오세요");
+    let backendDir: string | undefined;
+    if (project.backendPath) {
+      if (!(await stat(project.backendPath).then(info => info.isDirectory(), () => false))) throw new Error("프로젝트 설정의 백엔드 폴더를 찾을 수 없습니다");
+      backendDir = project.backendPath;
+    }
+    const maxAttempts = options.maxAttempts ?? 3;
+    const run = options.run ?? runAiCli;
+    const controller = new AbortController();
+    const state = { controller, progress: { phase: "writing", attempt: 1, maxAttempts } as ApiAiProgress };
+    this.aiRuns.set(scope.projectId, state);
+    const work = await mkdtemp(path.join(tmpdir(), "checkly-ai-"));
+    try {
+      const catalogFile = path.join(work, "checkly-api-catalog.json");
+      await writeFile(catalogFile, JSON.stringify(aiCatalogDetails(servers), null, 1));
+      const existing = (await this.listScenarios(scope.projectId)).map(({ id, name }) => ({ id, name }));
+      const base = createAuthorPrompt({ goal: request.goal, includeSuite: request.includeSuite, servers, globals: await this.listGlobals({ projectId: scope.projectId }), existing, catalogFile, backendAvailable: Boolean(backendDir) });
+      let prompt = base;
+      let result: ApiAiAuthorResult | undefined;
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        state.progress = { phase: attempt === 1 ? "writing" : "repairing", attempt, maxAttempts };
+        const answer = aiAnswerSchema.parse(await run({ cli: request.cli, prompt, cwd: backendDir ?? work, readDirs: [work], schema: aiAnswerJsonSchema, signal: controller.signal }));
+        if (controller.signal.aborted) throw new Error("AI 작성을 취소했습니다");
+        state.progress = { phase: "checking", attempt, maxAttempts };
+        result = await this.checkAiAnswer(scope, answer, new Set(existing.map(item => item.id)), attempt);
+        const clean = result.drafts.every(draft => !draft.issues.length) && !result.suite?.problems.length;
+        if (clean || attempt === maxAttempts) break;
+        prompt = createRepairPrompt(base, result.drafts.map(draft => ({ yaml: draft.yaml, problems: draft.issues })), result.suite?.problems ?? []);
+      }
+      return result!;
+    } catch (error) {
+      if (error instanceof z.ZodError) throw new Error("AI 응답 형식이 올바르지 않습니다. 다시 시도하세요");
+      throw error;
+    } finally {
+      this.aiRuns.delete(scope.projectId);
+      await rm(work, { recursive: true, force: true });
+    }
+  }
+
+  private async checkAiAnswer(scope: ApiEnvironmentScope, answer: z.infer<typeof aiAnswerSchema>, existingIds: Set<string>, attempts: number): Promise<ApiAiAuthorResult> {
+    const seen = new Set<string>();
+    const drafts: ApiAiDraft[] = [];
+    for (const [index, { yaml }] of answer.scenarios.entries()) {
+      let id = `ai-draft-${index + 1}`, name = `AI 시나리오 ${index + 1}`, stepCount = 0;
+      const issues: string[] = [];
+      let executionIssues: string[] = [];
+      try {
+        const preview = await this.previewScenario(scope, yaml, {});
+        ({ id, name } = preview.scenario);
+        stepCount = preview.scenario.steps.length;
+        issues.push(...preview.issues);
+        executionIssues = preview.executionIssues ?? [];
+      } catch (error) {
+        issues.push(`YAML 오류: ${(error as Error).message}`);
+      }
+      if (existingIds.has(id)) issues.push(`id '${id}'가 기존 시나리오와 겹칩니다. 다른 id를 쓰세요`);
+      if (seen.has(id)) issues.push(`id '${id}'가 다른 생성 시나리오와 겹칩니다`);
+      seen.add(id);
+      drafts.push({ id, name, yaml, stepCount, issues, executionIssues });
+    }
+    const suite = answer.suite ? {
+      name: answer.suite.name.trim() || "AI 스위트",
+      scenarioIds: answer.suite.scenarioIds,
+      problems: [
+        ...answer.suite.scenarioIds.filter(id => !seen.has(id)).map(id => `스위트의 '${id}'가 생성한 시나리오 id에 없습니다`),
+        ...(answer.suite.scenarioIds.length ? [] : ["스위트에 시나리오가 없습니다"]),
+      ],
+    } : null;
+    return { drafts, suite, notes: answer.notes, attempts };
   }
 
   private async save(file: string, value: unknown) {

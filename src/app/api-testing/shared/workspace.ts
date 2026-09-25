@@ -15,6 +15,8 @@ export const projectSchema = z.object({
     id: z.string().uuid(), name: z.string().trim().min(1).max(100),
     baseUrls: z.record(z.string().uuid(), httpUrl.refine(v => !new URL(v).search, "기본 주소에 쿼리를 넣을 수 없습니다")),
   }).strict()).min(1),
+  /** Local backend source folder the AI author may read. */
+  backendPath: z.string().trim().min(1).max(4096).optional(),
 }).strict().superRefine((p, ctx) => {
   if (new Set(p.servers.map(server => server.name)).size !== p.servers.length)
     ctx.addIssue({ code: "custom", path: ["servers"], message: "프로젝트 내 서버 이름은 중복될 수 없습니다" });
@@ -65,6 +67,12 @@ export type ApiScenarioInputSubmission = {
   name: string;
   value: Json;
 };
+export type ApiAiCli = "claude" | "codex";
+export type ApiAiAuthorRequest = { scope: ApiEnvironmentScope; cli: ApiAiCli; goal: string; includeSuite: boolean; tags?: string[] };
+/** One AI-written scenario after Checkly's own checks; issues block saving it as a runnable scenario. */
+export type ApiAiDraft = { id: string; name: string; yaml: string; stepCount: number; issues: string[]; executionIssues: string[] };
+export type ApiAiAuthorResult = { drafts: ApiAiDraft[]; suite: { name: string; scenarioIds: string[]; problems: string[] } | null; notes: string; attempts: number };
+export type ApiAiProgress = { phase: "writing" | "checking" | "repairing"; attempt: number; maxAttempts: number };
 export type ApiAiContextRequest = { scope: ApiEnvironmentScope; selections: Array<{ serverId: string; operationKey: string }>; goal: string };
 export type ApiTestingBridge = {
   getSpecSync(scope: ApiScope): Promise<ApiSpecSync>;
