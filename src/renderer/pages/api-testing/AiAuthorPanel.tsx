@@ -41,7 +41,8 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved, onProje
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const live = useRef(true);
-  useEffect(() => () => { live.current = false; }, []);
+  // Set on mount too: StrictMode (dev) runs the cleanup once before the real mount.
+  useEffect(() => { live.current = true; return () => { live.current = false; }; }, []);
   useEffect(() => {
     void applyStatuses(bridge.listAiClis());
     void bridge.getAiSettings().then(settings => { if (live.current) setPathDraft({ claude: settings.paths.claude ?? "", codex: settings.paths.codex ?? "" }); }).catch(() => undefined);
