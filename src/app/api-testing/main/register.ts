@@ -71,6 +71,8 @@ export function registerApiTesting() {
   ipcMain.handle("api-testing:list-globals", (_event, scope) => workspace.listGlobals(scope));
   ipcMain.handle("api-testing:set-global", (_event, scope, name, value) => workspace.setGlobal(scope, name, value));
   ipcMain.handle("api-testing:delete-global", (_event, scope, name) => workspace.deleteGlobal(scope, name));
+  ipcMain.handle("api-testing:list-cookies", (_event, scope) => workspace.listCookies(scope));
+  ipcMain.handle("api-testing:clear-cookies", (_event, scope) => workspace.clearCookies(scope));
   ipcMain.handle("api-testing:list-scenarios", (_event, projectId) => workspace.listScenarios(projectId));
   ipcMain.handle("api-testing:list-suites", (_event, projectId) => workspace.listSuites(projectId));
   ipcMain.handle("api-testing:save-suite", (_event, projectId, suite, revision) => workspace.saveSuite(projectId, suite, revision));

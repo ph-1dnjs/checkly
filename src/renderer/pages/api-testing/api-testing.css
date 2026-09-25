@@ -357,6 +357,14 @@ html:has(.api-diagram-dialog[open]) { overflow:hidden; }
 .shared-popover-panel .api-globals-panel fieldset { margin:0; padding:10px; }
 .api-global-editor { flex:none; margin-top:10px; border-top:1px solid var(--api-border); }
 .api-global-editor > summary { padding:9px 2px; color:var(--api-primary); font-weight:600; }
+.api-cookie-list { flex:none; margin-top:10px; padding-top:10px; border-top:1px solid var(--api-border); }
+.api-cookie-list header { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.api-cookie-list h3 { margin:0; font-size:12px; }
+.api-cookie-list h3 small, .api-cookie-list > p { color:var(--api-muted); font-size:11px; font-weight:400; }
+.api-cookie-list > p { margin:6px 0; }
+.api-cookie-list ul { display:grid; gap:4px; max-height:120px; overflow:auto; margin:6px 0 0; padding:0; list-style:none; }
+.api-cookie-list li { display:flex; align-items:baseline; justify-content:space-between; gap:8px; min-width:0; padding:5px 8px; border:1px solid #e1e6e9; border-radius:3px; background:#fff; }
+.api-cookie-list li small { overflow:hidden; color:var(--api-muted); font:11px/1.4 D2Coding,ui-monospace,monospace; text-overflow:ellipsis; white-space:nowrap; }
 .api-global-form-grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:8px; }
 .api-testing-page .api-global-form-grid label { min-width:0; margin:0; gap:4px; font-size:11px; }
 .api-global-form-grid :is(input,select) { width:100%; box-sizing:border-box; }

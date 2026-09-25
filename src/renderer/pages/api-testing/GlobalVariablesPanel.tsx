@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { ApiGlobal, ApiProjectScope, ApiTestingBridge } from "../../../app/api-testing/shared/workspace";
+import type { ApiCookie, ApiGlobal, ApiProjectScope, ApiTestingBridge } from "../../../app/api-testing/shared/workspace";
 import type { Json } from "../../../app/api-testing/shared/scenario";
 import { isSensitiveKey } from "../../../app/api-testing/shared/sensitive";
 
@@ -20,11 +20,16 @@ export function GlobalVariablesPanel({ scope, bridge, targetName = "", targetReq
       formRef.current?.querySelector<HTMLInputElement>('[aria-label="전역변수 값"]')?.focus();
     });
   };
+  const [cookies, setCookies] = useState<ApiCookie[]>([]);
   const refresh = async () => setVariables(await bridge.listGlobals(scope));
+  const refreshCookies = async () => setCookies(await bridge.listCookies(scope));
   const visibleVariables = variables
     .filter(variable => variable.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))
     .sort((a, b) => a.name.localeCompare(b.name, "en", { sensitivity: "base", numeric: true }));
-  useEffect(() => { void refresh().catch(() => setError("전역변수를 읽지 못했습니다")); }, []);
+  useEffect(() => {
+    void refresh().catch(() => setError("전역변수를 읽지 못했습니다"));
+    void refreshCookies().catch(() => setError("세션 쿠키를 읽지 못했습니다"));
+  }, []);
   useEffect(() => {
     if (!targetName) return;
     let active = true;
@@ -68,6 +73,11 @@ export function GlobalVariablesPanel({ scope, bridge, targetName = "", targetReq
       <fieldset disabled={busy}><div className="api-global-form-grid"><label>변수 이름<input data-value-visibility="public" aria-label="전역변수 이름" required pattern="[A-Za-z][A-Za-z0-9_]*" value={name} onChange={e => setName(e.target.value)} placeholder="accessToken" /></label><label>값 형식<select aria-label="전역변수 형식" value={type} onChange={e => setType(e.target.value)}><option value="string">문자열</option><option value="json">JSON · 숫자, 불리언, 객체, 배열</option></select></label><label className="api-global-form-value">값<input aria-label="전역변수 값" data-value-visibility={isSensitiveKey(name) ? "sensitive" : undefined} type="text" autoComplete="off" value={value} onChange={e => setValue(e.target.value)} /></label><div className="api-global-form-actions"><button className="api-primary">전역변수 저장</button><button type="button" onClick={() => setFormOpen(false)}>취소</button></div></div></fieldset>
     </form>
     </details>
+    <section className="api-cookie-list" aria-label="세션 쿠키">
+      <header><h3>세션 쿠키 <small>{cookies.length}개</small></h3><button type="button" disabled={busy || !cookies.length} onClick={async () => { setBusy(true); setError(""); try { await bridge.clearCookies(scope); await refreshCookies(); } catch { setError("쿠키를 비우지 못했습니다. 실행 중에는 비울 수 없습니다."); } finally { setBusy(false); } }}>쿠키 비우기</button></header>
+      <p>응답의 Set-Cookie는 이 프로젝트의 시나리오·스위트·API 문서 호출이 함께 사용합니다. 값은 표시하지 않으며 앱을 종료하면 초기화됩니다.</p>
+      {cookies.length === 0 ? <p>저장된 쿠키가 없습니다.</p> : <ul>{cookies.map(cookie => <li key={`${cookie.domain}${cookie.path}${cookie.name}`}><code>{cookie.name}</code><small>{cookie.domain}{cookie.path}</small></li>)}</ul>}
+    </section>
     {error && <p role="alert" className="api-warning">{error}</p>}
   </section>;
 }

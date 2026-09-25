@@ -1,12 +1,13 @@
 import { mkdir, readFile, rename, writeFile, unlink } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { projectSchema, type ApiCatalog, type ApiProject, type ApiScope, type ApiResponse, type ApiProjectScope, type ApiEnvironmentScope, type ApiGlobal, type SavedApiScenario, type SavedApiSuite, type ApiSidebarMetadata, type ApiScenarioPreview, type ApiScenarioResult, type ApiRequestTrace } from "../shared/workspace";
+import { projectSchema, type ApiCatalog, type ApiCookie, type ApiProject, type ApiScope, type ApiResponse, type ApiProjectScope, type ApiEnvironmentScope, type ApiGlobal, type SavedApiScenario, type SavedApiSuite, type ApiSidebarMetadata, type ApiScenarioPreview, type ApiScenarioResult, type ApiRequestTrace } from "../shared/workspace";
 import { z } from "zod";
 import { ApiRunner } from "./execution";
 import { bindingUseLocations, pruneUnusedBrokenBindings, stringifyScenario, parseScenario, scenarioSchema, scenarioStepInputs, scenarioStepLabel, type Json, type Scenario, type ScenarioInputRequest } from "../shared/scenario";
 import { readOpenApi } from "./openapi";
 import { ApiRedactor } from "./redaction";
+import { CookieJar } from "./cookies";
 import { createAiContext } from "./ai-context";
 
 export const scopeSchema = z.object({ projectId: z.string().uuid(), serverId: z.string().uuid(), environmentId: z.string().uuid() }).strict();
@@ -44,6 +45,13 @@ export class ApiWorkspace {
   private maintenance = new Set<string>();
   private syncing = new Map<string, number>();
   private catalogCache = new Map<string, ApiCatalog | null>();
+  // Session cookies are shared by every run in a project, like globals, and never persisted.
+  private cookieJars = new Map<string, CookieJar>();
+  private cookieJar(projectId: string): CookieJar {
+    let jar = this.cookieJars.get(projectId);
+    if (!jar) { jar = new CookieJar(); this.cookieJars.set(projectId, jar); }
+    return jar;
+  }
   beginSpecSync(input: ApiScope) {
     const { projectId } = scopeSchema.parse(input);
     this.assertAvailable(projectId);
@@ -82,6 +90,7 @@ export class ApiWorkspace {
         for (const server of project.servers) await this.clearScope({ projectId: id, environmentId: env.id, serverId: server.id });
       }
       this.runner.globals.clear(id);
+      this.cookieJars.delete(id);
       await this.removeFile(`scenarios-${id}.json`);
       await this.removeFile(`suites-${id}.json`);
       await this.save("projects.json", projects.filter(p => p.id !== id));
@@ -302,6 +311,17 @@ export class ApiWorkspace {
     this.runner.globals.delete(scope.projectId, name);
   }
 
+  async listCookies(input: ApiProjectScope): Promise<ApiCookie[]> {
+    const { scope } = await this.project(input);
+    return this.cookieJars.get(scope.projectId)?.list() ?? [];
+  }
+
+  async clearCookies(input: ApiProjectScope): Promise<void> {
+    const { scope } = await this.project(input);
+    if (this.projectIsActive(scope.projectId)) throw new Error("실행 중에는 쿠키를 비울 수 없습니다");
+    this.cookieJars.get(scope.projectId)?.clear();
+  }
+
   async listScenarios(rawProjectId: string): Promise<SavedApiScenario[]> {
     const projectId = z.string().uuid().parse(rawProjectId);
     if (!(await this.listProjects()).some(p => p.id === projectId)) throw new Error("프로젝트를 찾을 수 없습니다");
@@ -508,7 +528,7 @@ export class ApiWorkspace {
     let variables: Record<string, Json> = {};
     try {
       const result = await this.runner.run(scenario, {
-        projectId: scope.projectId, environment: scope.environmentId, inputs, servers, signal: controller.signal, runId: options.runId ?? randomUUID(),
+        projectId: scope.projectId, environment: scope.environmentId, inputs, servers, cookies: this.cookieJar(scope.projectId), signal: controller.signal, runId: options.runId ?? randomUUID(),
         requestInput: async request => options.requestInput?.(request),
         resolveOperation: (server, operationId) => {
           const operation = catalogs.get(server)?.operations.find(o => o.operationId === operationId);
@@ -572,7 +592,7 @@ export class ApiWorkspace {
     this.active.set(runKey, controller);
     let detail: { request?: ApiRequestTrace; response?: { headers: Record<string, string>; body: Json } } | undefined;
     try {
-      const result = await this.runner.run(scenario, { projectId: scope.projectId, environment: scope.environmentId, servers: { [scope.serverId]: { baseUrl } }, signal: controller.signal, resolveOperation: () => operation, onRequest: request => {
+      const result = await this.runner.run(scenario, { projectId: scope.projectId, environment: scope.environmentId, cookies: this.cookieJar(scope.projectId), servers: { [scope.serverId]: { baseUrl } }, signal: controller.signal, resolveOperation: () => operation, onRequest: request => {
         detail = { ...(detail ?? {}), request };
       }, onResponse: response => {
         detail = { ...(detail ?? {}), response };

@@ -3,6 +3,7 @@ import { isProvidedScenarioInput, matchesScenarioInputType, scenarioInputType, s
 import type { ApiRequestTrace } from "../shared/workspace";
 import { appendQueryParameter } from "../shared/query";
 import { atPointer, GlobalStore, MissingValue, resolve, type Context, type Variables } from "./variables";
+import { CookieJar } from "./cookies";
 
 type Status = "passed" | "failed" | "blocked" | "skipped" | "cancelled";
 type InputResult = { name: string; provided: boolean };
@@ -11,6 +12,8 @@ export type RunResult = { status: Status; steps: StepResult[] };
 export type RunOptions = {
   projectId: string; environment: string; servers: Record<string, { baseUrl: string }>;
   inputs?: Variables; signal?: AbortSignal; timeoutMs?: number; runId?: string;
+  /** Shared session cookies; a fresh jar is used for this run when omitted. */
+  cookies?: CookieJar;
   requestInput?: (request: ScenarioInputRequest) => Promise<Json | undefined>;
   onRequest?: (request: ApiRequestTrace, stepId: string) => void;
   onResponse?: (response: { headers: Record<string, string>; body: Json }, stepId: string) => void;
@@ -21,8 +24,6 @@ export type RunOptions = {
 
 type ResponseSnapshot = { status: number; headers: Record<string, string>; body: Json };
 type RequestSnapshot = NonNullable<Scenario["steps"][number]["request"]>;
-type RuntimeCookie = { value: string; path: string; secure: boolean };
-type CookieJar = Map<string, Map<string, RuntimeCookie>>;
 
 class RequestValueError extends Error {}
 class SafeCheckFailure extends Error {
@@ -111,57 +112,6 @@ function applyBindings(scenario: Scenario, index: number, context: Context, requ
   }
 }
 
-function cookiePathMatches(cookiePath: string, requestPath: string): boolean {
-  if (cookiePath === "/") return true;
-  if (requestPath === cookiePath) return true;
-  return requestPath.startsWith(cookiePath.endsWith("/") ? cookiePath : `${cookiePath}/`);
-}
-
-function cookiesFor(jar: CookieJar, url: URL): Record<string, string> {
-  const cookies = jar.get(url.origin);
-  if (!cookies) return {};
-  return Object.fromEntries([...cookies.entries()]
-    .filter(([, cookie]) => (!cookie.secure || url.protocol === "https:") && cookiePathMatches(cookie.path, url.pathname || "/"))
-    .map(([name, cookie]) => [name, cookie.value]));
-}
-
-function setCookieHeaders(headers: Headers): string[] {
-  const extended = headers as Headers & { getSetCookie?: () => string[] };
-  if (typeof extended.getSetCookie === "function") return extended.getSetCookie();
-  const value = headers.get("set-cookie");
-  return value ? value.split(/,(?=\s*[^;,=\s]+=[^;,]*)/) : [];
-}
-
-function storeResponseCookies(jar: CookieJar, url: URL, headers: Headers): void {
-  const responseCookies = setCookieHeaders(headers);
-  if (!responseCookies.length) return;
-  const cookies = jar.get(url.origin) ?? new Map<string, RuntimeCookie>();
-  for (const raw of responseCookies) {
-    const [pair, ...attributes] = raw.split(";");
-    const separator = pair.indexOf("=");
-    if (separator <= 0) continue;
-    const name = pair.slice(0, separator).trim();
-    const value = pair.slice(separator + 1).trim();
-    if (!/^[^=;,\s]+$/.test(name) || /[\r\n;]/.test(value)) continue;
-    let path = "/";
-    let secure = false;
-    let remove = false;
-    for (const attribute of attributes) {
-      const [rawName, ...rawValue] = attribute.trim().split("=");
-      const attributeName = rawName.toLowerCase();
-      const attributeValue = rawValue.join("=").trim();
-      if (attributeName === "path" && attributeValue.startsWith("/")) path = attributeValue;
-      if (attributeName === "secure") secure = true;
-      if (attributeName === "max-age" && Number(attributeValue) <= 0) remove = true;
-      if (attributeName === "expires" && Number.isFinite(Date.parse(attributeValue)) && Date.parse(attributeValue) <= Date.now()) remove = true;
-    }
-    if (remove || value === "") cookies.delete(name);
-    else cookies.set(name, { value, path, secure });
-  }
-  if (cookies.size) jar.set(url.origin, cookies);
-  else jar.delete(url.origin);
-}
-
 function addCookies(headers: Headers, cookies: Record<string, Json>, automatic: Record<string, string>): void {
   const values = [...Object.entries(automatic).filter(([name]) => !Object.hasOwn(cookies, name)), ...Object.entries(cookies)].map(([name, value]) => {
     if (!/^[^=;,\s]+$/.test(name) || value === null || typeof value === "object") throw new Error("쿠키는 단순 문자열·숫자·불리언만 지원합니다");
@@ -208,7 +158,7 @@ export class ApiRunner {
       const results: StepResult[] = [];
       const requestSnapshots = new Map<string, RequestSnapshot>();
       const responseSnapshots = new Map<string, ResponseSnapshot>();
-      const cookieJar: CookieJar = new Map();
+      const cookieJar = options.cookies ?? new CookieJar();
       let stopped = false;
       for (const [index, step] of scenario.steps.entries()) {
         if (options.signal?.aborted || stopped) {
@@ -273,7 +223,7 @@ export class ApiRunner {
             if (typeof token !== "string" || !/^[A-Za-z0-9._~+/-]+=*$/.test(token)) throw new MissingValue(`인증 전역변수 '${variable}'에 유효한 토큰이 없습니다`);
             headers.set("Authorization", `Bearer ${token}`);
           }
-          addCookies(headers, req.cookies ?? {}, cookiesFor(cookieJar, url));
+          addCookies(headers, req.cookies ?? {}, cookieJar.forUrl(url));
           if (req.body !== undefined && !headers.has("content-type")) headers.set("content-type", "application/json");
           const requestTrace: ApiRequestTrace = {
             method: api.method,
@@ -286,7 +236,7 @@ export class ApiRunner {
           const signal = AbortSignal.any([AbortSignal.timeout(options.timeoutMs ?? 30_000), ...(options.signal ? [options.signal] : [])]);
           const response = await fetch(url, { method: api.method, headers, body: req.body === undefined ? undefined : JSON.stringify(req.body), signal, redirect: "manual" });
           httpStatus = response.status;
-          storeResponseCookies(cookieJar, url, response.headers);
+          cookieJar.store(url, response.headers);
           const text = await response.text();
           let body: Json = text;
           if (text) { try { body = JSON.parse(text); } catch { /* Non-JSON remains text. */ } }

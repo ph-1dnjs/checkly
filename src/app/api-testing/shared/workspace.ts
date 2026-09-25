@@ -50,6 +50,8 @@ export type ApiScope = { projectId: string; serverId: string; environmentId: str
 export type ApiProjectScope = Pick<ApiScope, "projectId">;
 export type ApiEnvironmentScope = Pick<ApiScope, "projectId" | "environmentId">;
 export type ApiGlobal = { name: string; type: string; displayValue: string };
+/** Session cookie scope only; values never leave the main process. */
+export type ApiCookie = { name: string; domain: string; path: string };
 export type SavedApiScenario = { id: string; name: string; source: string; bindings: Record<string, string>; updatedAt: string; draft?: boolean; groupPath?: string[]; tags?: string[] };
 export type SavedApiSuite = { id: string; name: string; scenarioIds: string[]; onFailure: "stop" | "continue"; updatedAt: string; groupPath?: string[]; tags?: string[] };
 export type ApiSidebarMetadata = { groupPath?: string[]; tags?: string[] };
@@ -84,6 +86,8 @@ export type ApiTestingBridge = {
   listGlobals(scope: ApiProjectScope): Promise<ApiGlobal[]>;
   setGlobal(scope: ApiProjectScope, name: string, value: Json): Promise<void>;
   deleteGlobal(scope: ApiProjectScope, name: string): Promise<void>;
+  listCookies(scope: ApiProjectScope): Promise<ApiCookie[]>;
+  clearCookies(scope: ApiProjectScope): Promise<void>;
   listScenarios(projectId: string): Promise<SavedApiScenario[]>;
   listSuites(projectId: string): Promise<SavedApiSuite[]>;
   saveSuite(projectId: string, suite: Omit<SavedApiSuite, "updatedAt">, expectedUpdatedAt?: string): Promise<SavedApiSuite>;
