@@ -15,8 +15,6 @@ export const projectSchema = z.object({
     id: z.string().uuid(), name: z.string().trim().min(1).max(100),
     baseUrls: z.record(z.string().uuid(), httpUrl.refine(v => !new URL(v).search, "기본 주소에 쿼리를 넣을 수 없습니다")),
   }).strict()).min(1),
-  /** Local backend source folder the AI author may read. */
-  backendPath: z.string().trim().min(1).max(4096).optional(),
 }).strict().superRefine((p, ctx) => {
   if (new Set(p.servers.map(server => server.name)).size !== p.servers.length)
     ctx.addIssue({ code: "custom", path: ["servers"], message: "프로젝트 내 서버 이름은 중복될 수 없습니다" });
@@ -67,8 +65,8 @@ export type ApiScenarioInputSubmission = {
   name: string;
   value: Json;
 };
-/** What the user's own AI should write; catalogFile is where the detailed schemas were saved. */
-export type ApiAiGuideRequest = { scope: ApiEnvironmentScope; goal: string; tags?: string[]; catalogFile?: string };
+/** Guide for the user's own AI; tags narrow the APIs it may use. */
+export type ApiAiGuideRequest = { scope: ApiEnvironmentScope; tags?: string[] };
 export type ApiAiDraft = { id: string; name: string; yaml: string; stepCount: number; issues: string[]; executionIssues: string[] };
 export type ApiAiImportResult = { drafts: ApiAiDraft[]; suite: { name: string; scenarioIds: string[]; problems: string[] } | null };
 export type ApiTestingBridge = {
@@ -76,16 +74,12 @@ export type ApiTestingBridge = {
   deleteSpecAccount(scope: ApiScope): Promise<void>;
   getRequestAuth(scope: ApiScope): Promise<string | null>;
   setRequestAuth(scope: ApiScope, variable: string | null): Promise<void>;
-  /** Copies the authoring prompt for the user's own AI (Claude Code, Codex…). */
+  /** Copies the authoring guide for the user's own AI (Claude Code, Codex…). */
   copyAiPrompt(request: ApiAiGuideRequest): Promise<void>;
-  /** Saves the detailed API schemas as JSON; returns the saved path, null when cancelled. */
-  saveAiCatalog(request: Omit<ApiAiGuideRequest, "catalogFile">): Promise<string | null>;
-  /** Reads <backend>/.checkly/scenarios.yaml written by the user's AI; null when it does not exist yet. */
-  readAiResult(scope: ApiEnvironmentScope): Promise<{ path: string; text: string } | null>;
+  /** The result file the user's AI wrote; null when it does not exist yet. */
+  readAiResult(scope: ApiEnvironmentScope): Promise<{ path: string; text: string; modifiedAt: string } | null>;
   /** Checks pasted AI output (scenarios separated by ---, optional suite); nothing is saved. */
   checkAiScenarios(scope: ApiEnvironmentScope, text: string): Promise<ApiAiImportResult>;
-  /** Native folder picker for the project's backend source; null when cancelled. */
-  chooseDirectory(): Promise<string | null>;
   listProjects(): Promise<ApiProject[]>;
   saveProject(project: ApiProject): Promise<ApiProject>;
   deleteProject(projectId: string): Promise<void>;

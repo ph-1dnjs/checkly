@@ -56,21 +56,8 @@ export function registerApiTesting() {
   ipcMain.handle("api-testing:copy-ai-prompt", async (_event, request) => {
     clipboard.writeText(await workspace.buildAiPrompt(request));
   });
-  ipcMain.handle("api-testing:save-ai-catalog", async (_event, request) => {
-    const json = await workspace.buildAiCatalog(request);
-    const project = (await workspace.listProjects()).find(item => item.id === request?.scope?.projectId);
-    // Next to the backend source by default so the user's AI can read it without leaving the project.
-    const selected = await dialog.showSaveDialog({ title: "상세 명세 저장", defaultPath: path.join(project?.backendPath ?? app.getPath("downloads"), "checkly-api-catalog.json"), filters: [{ name: "JSON", extensions: ["json"] }] });
-    if (selected.canceled || !selected.filePath) return null;
-    await writeFile(selected.filePath, json, "utf8");
-    return selected.filePath;
-  });
   ipcMain.handle("api-testing:read-ai-result", (_event, scope) => workspace.readAiResult(scope));
   ipcMain.handle("api-testing:check-ai-scenarios", (_event, scope, text) => workspace.checkAiScenarios(scope, text));
-  ipcMain.handle("api-testing:choose-directory", async () => {
-    const selected = await dialog.showOpenDialog({ title: "백엔드 프로젝트 폴더 선택", properties: ["openDirectory"] });
-    return selected.canceled ? null : selected.filePaths[0] ?? null;
-  });
   ipcMain.handle("api-testing:list-projects", () => workspace.listProjects());
   ipcMain.handle("api-testing:save-project", (_event, project) => workspace.saveProject(project));
   ipcMain.handle("api-testing:delete-project", (_event, id) => workspace.deleteProject(id));

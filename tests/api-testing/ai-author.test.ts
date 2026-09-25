@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { ApiWorkspace } from "../../src/app/api-testing/main/workspace";
@@ -15,11 +15,11 @@ const spec = JSON.stringify({ openapi: "3.0.3", info: { title: "상점", version
 const login = "id: shop/login\nname: 로그인\nserver: 상점\nsteps:\n  - name: 로그인\n    api: POST /login\n    auth: none\n    body: { loginId: tester }\n    extract: [{ pointer: /accessToken, target: globals.accessToken, sensitive: true }]\n";
 const read = "id: shop/read\nname: 상품 조회\nserver: 상점\nsteps:\n  - name: 상품 조회\n    api: GET /items/{id}\n    auth: globals.accessToken\n    pathParams: { id: 7 }\n";
 
-async function setup(backendPath?: string) {
+async function setup() {
   const dir = await mkdtemp(path.join(tmpdir(), "checkly-ai-author-"));
   const workspace = new ApiWorkspace(dir);
   const serverId = randomUUID(), environmentId = randomUUID();
-  const project = { id: randomUUID(), name: "AI", servers: [{ id: serverId, name: "상점" }], environments: [{ id: environmentId, name: "dev", baseUrls: { [serverId]: "https://private-base.example.com" } }], ...(backendPath ? { backendPath } : {}) };
+  const project = { id: randomUUID(), name: "AI", servers: [{ id: serverId, name: "상점" }], environments: [{ id: environmentId, name: "dev", baseUrls: { [serverId]: "https://private-base.example.com" } }] };
   await workspace.saveProject(project);
   await workspace.importSpec({ projectId: project.id, serverId, environmentId }, spec);
   await workspace.setGlobal({ projectId: project.id }, "accessToken", "global-secret-value");
@@ -51,32 +51,32 @@ test("checking pasted scenarios reports problems per draft and for the suite wit
     assert.deepEqual(result.suite, { name: "상점 흐름", scenarioIds: ["shop/login", "ghost"], problems: ["스위트의 'ghost'가 생성한 시나리오 id에 없습니다"] });
     assert.deepEqual((await workspace.listScenarios(project.id)).map(item => item.id), ["taken"]);
     await assert.rejects(workspace.checkAiScenarios(scope, "AI가 아무것도 만들지 않았습니다"), /시나리오 YAML을 찾지 못했습니다/);
-    await assert.rejects(workspace.readAiResult(scope), /백엔드 코드 폴더를 먼저 저장하세요/);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
-test("prompt names the backend folder; the schema file follows the tags and hides secrets", async () => {
-  const backend = await mkdtemp(path.join(tmpdir(), "checkly-backend-"));
-  const { dir, workspace, scope } = await setup(backend);
+test("the guide asks what to test, points at the schema and result files, and hides secrets", async () => {
+  const { dir, workspace, project, scope } = await setup();
   try {
-    const prompt = await workspace.buildAiPrompt({ scope, goal: "상품", tags: ["item"] });
-    assert.ok(prompt.includes(`백엔드 소스는 ${backend} 에 있습니다`));
+    const prompt = await workspace.buildAiPrompt({ scope, tags: ["item"] });
+    const aiDir = path.join(dir, "ai", project.id);
+    const catalogFile = path.join(aiDir, "api-catalog.json"), resultFile = path.join(aiDir, "scenarios.yaml");
+    assert.ok(prompt.includes("먼저 사용자에게 무엇을 테스트할지 물어보세요"));
+    assert.ok(prompt.includes(catalogFile) && prompt.includes(`결과를 파일 ${resultFile} 에 저장합니다`));
     assert.ok(prompt.includes("GET /items/{id}") && !prompt.includes("POST /login"));
-    // With a backend folder the AI writes a fixed file there and Checkly reads it back.
-    const resultPath = path.join(backend, ".checkly", "scenarios.yaml");
-    assert.ok(prompt.includes(`결과를 파일 ${resultPath} 에 저장합니다`) && prompt.includes("Checkly 검사 결과"));
-    assert.equal(await workspace.readAiResult(scope), null);
-    await mkdir(path.dirname(resultPath), { recursive: true });
-    await writeFile(resultPath, read);
-    assert.deepEqual(await workspace.readAiResult(scope), { path: resultPath, text: read });
-    const catalog = await workspace.buildAiCatalog({ scope, tags: ["auth"] });
-    assert.ok(catalog.includes('"loginId"') && !catalog.includes("/items/{id}"));
+    const catalog = await readFile(catalogFile, "utf8");
+    assert.ok(catalog.includes("/items/{id}") && !catalog.includes('"loginId"'));
     for (const secret of ["global-secret-value", "private-base.example.com", "example-secret"]) {
       assert.equal(prompt.includes(secret), false, secret);
       assert.equal(catalog.includes(secret), false, secret);
     }
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-    await rm(backend, { recursive: true, force: true });
-  }
+    // The AI writes the result file; Checkly reads it back.
+    assert.equal(await workspace.readAiResult(scope), null);
+    await writeFile(resultFile, read);
+    const loaded = await workspace.readAiResult(scope);
+    assert.equal(loaded?.path, resultFile);
+    assert.equal(loaded?.text, read);
+    // Deleting the project removes its exchange folder.
+    await workspace.deleteProject(project.id);
+    await assert.rejects(readFile(catalogFile));
+  } finally { await rm(dir, { recursive: true, force: true }); }
 });

@@ -1,6 +1,6 @@
 import { _electron as electron, expect } from "@playwright/test";
 import { createServer } from "node:http";
-import { mkdir, mkdtemp, rm, readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { tmpdir } from "node:os";
 
@@ -24,7 +24,6 @@ async function main() {
   });
   await new Promise<void>(r => server.listen(0, "127.0.0.1", r));
   const url = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
-  const backendDir = await mkdtemp(path.join(tmpdir(), "checkly-backend-"));
   // What the user's own AI would print in chat: prose around one fenced YAML block.
   const aiOutput = (itemApi: string) => "시나리오입니다.\n```yaml\n" + [
     "id: ai/login\nname: AI 로그인\nserver: 기본 API\nsteps:\n  - name: 로그인\n    api: POST /login\n    body: { loginId: tester }\n    extract: [{ pointer: /accessToken, target: globals.accessToken, sensitive: true }]\n",
@@ -117,25 +116,23 @@ async function main() {
     // AI authoring: copy the prompt for the user's own AI, check what it wrote, save scenarios and suite.
     await page.getByRole("tab", { name: "AI 작성 도우미", exact: true }).click();
     await expect(page.getByText("명세를 다시 가져오세요")).toHaveCount(0);
-    await page.getByLabel("AI 백엔드 폴더 경로", { exact: true }).fill(backendDir);
-    await page.getByRole("region", { name: "백엔드 코드 폴더" }).getByRole("button", { name: "저장", exact: true }).click();
-    await expect(page.getByRole("region", { name: "백엔드 코드 폴더" })).toContainText("저장했습니다.");
-    await page.getByLabel("AI 시나리오 업무 목표", { exact: true }).fill("로그인 후 상품 상세 조회");
-    await page.getByRole("button", { name: "프롬프트 복사", exact: true }).click();
+    await page.getByRole("button", { name: "AI 가이드 복사", exact: true }).click();
     await expect(page.getByRole("region", { name: "AI 시나리오 작성" })).toContainText("복사했습니다.");
     const prompt = await app.evaluate(({ clipboard }) => clipboard.readText());
-    if (!prompt.includes(backendDir) || !prompt.includes("POST /login") || !prompt.includes("## 상세 명세") || prompt.includes(url)) throw new Error("AI prompt misses the backend folder or schemas, or leaks the base URL");
-    const answer = page.getByLabel("AI가 만든 YAML", { exact: true });
-    await answer.fill(aiOutput("GET /missing"));
+    const resultFile = /결과를 파일 (.+?) 에 저장합니다/.exec(prompt)?.[1];
+    if (!resultFile || !prompt.includes("POST /login") || !prompt.includes("api-catalog.json") || prompt.includes(url)) throw new Error("AI guide misses the result or schema file, or leaks the base URL");
+    await page.getByRole("button", { name: "AI 결과 불러오기", exact: true }).click();
+    await expect(page.getByRole("alert")).toContainText("아직 AI 결과가 없습니다");
+    // Pasting what the AI printed in chat works too.
+    await page.getByText("AI 답을 직접 붙여넣기", { exact: true }).click();
+    await page.getByLabel("AI가 만든 YAML", { exact: true }).fill(aiOutput("GET /missing"));
     await page.getByRole("button", { name: "검사", exact: true }).click();
     const aiResult = page.getByRole("region", { name: "AI 작성 결과" });
     await expect(aiResult).toContainText("수정 필요");
     await expect(aiResult.getByRole("button", { name: "문제 복사", exact: true })).toBeVisible();
-    // The fixed result comes from the file the AI writes in the backend folder.
-    if (!prompt.includes(path.join(backendDir, ".checkly", "scenarios.yaml"))) throw new Error("AI prompt does not name the result file");
-    await mkdir(path.join(backendDir, ".checkly"));
-    await writeFile(path.join(backendDir, ".checkly", "scenarios.yaml"), aiOutput("GET /items/{id}"));
-    await page.getByRole("button", { name: "AI 결과 파일 불러오기", exact: true }).click();
+    // The fixed result comes from the file the AI writes.
+    await writeFile(resultFile, aiOutput("GET /items/{id}"));
+    await page.getByRole("button", { name: "AI 결과 불러오기", exact: true }).click();
     await expect(aiResult).toContainText("AI 로그인");
     await expect(aiResult).toContainText("AI 상품 조회");
     await expect(aiResult.getByText("바로 실행 가능")).toHaveCount(2);
@@ -228,7 +225,6 @@ async function main() {
     server.closeAllConnections();
     await new Promise<void>(r => server.close(() => r()));
     await rm(dir, { recursive: true, force: true });
-    await rm(backendDir, { recursive: true, force: true });
   }
 }
 void main()

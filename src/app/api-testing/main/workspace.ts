@@ -7,7 +7,7 @@ import { ApiRunner } from "./execution";
 import { bindingUseLocations, pruneUnusedBrokenBindings, stringifyScenario, parseScenario, ScenarioFormatError, scenarioSchema, scenarioStepInputs, scenarioStepLabel, type Json, type Scenario, type ScenarioInputRequest } from "../shared/scenario";
 import { readOpenApi } from "./openapi";
 import { CookieJar } from "./cookies";
-import { aiCatalogDetails, aiResultFile, createAuthorPrompt, splitAiBundle, type AiBundle } from "./ai-context";
+import { aiCatalogDetails, createAuthorPrompt, splitAiBundle, type AiBundle } from "./ai-context";
 
 export const scopeSchema = z.object({ projectId: z.string().uuid(), serverId: z.string().uuid(), environmentId: z.string().uuid() }).strict();
 const projectScopeSchema = z.object({ projectId: z.string().uuid() }).strict();
@@ -31,9 +31,7 @@ function migrateSidebarMetadata<T extends Record<string, unknown>>(item: T): T &
   return { ...rest, ...metadata } as T & Partial<ApiSidebarMetadata>;
 }
 const aiGuideRequestSchema = z.object({
-  scope: environmentScopeSchema, goal: z.string().trim().min(1, "만들 시나리오를 입력하세요").max(10_000),
-  tags: z.array(z.string().max(200)).max(100).optional(),
-  catalogFile: z.string().trim().min(1).max(4096).optional(),
+  scope: environmentScopeSchema, tags: z.array(z.string().max(200)).max(100).optional(),
 }).strict();
 export type ApiScenarioRunOptions = {
   runId?: string;
@@ -97,6 +95,7 @@ export class ApiWorkspace {
       this.cookieJars.delete(id);
       await this.removeFile(`scenarios-${id}.json`);
       await this.removeFile(`suites-${id}.json`);
+      await rm(this.aiFiles(id).dir, { recursive: true, force: true });
       await this.save("projects.json", projects.filter(p => p.id !== id));
     });
   }
@@ -160,40 +159,41 @@ export class ApiWorkspace {
     return text => secrets.reduce((masked, secret) => masked.split(secret).join("***"), text);
   }
 
+  /** Per-project exchange folder with the user's AI: the schema file it reads and the result file it writes. */
+  private aiFiles(projectId: string) {
+    const dir = path.join(this.directory, "ai", projectId);
+    return { dir, catalog: path.join(dir, "api-catalog.json"), result: path.join(dir, "scenarios.yaml") };
+  }
+
   /**
-   * Prompt the user pastes into their own AI (Claude Code, Codex…) inside the backend
-   * project. Detailed schemas are inlined unless they were saved to catalogFile.
+   * Guide the user pastes into their own AI (Claude Code, Codex…) in the backend project.
+   * Writes the current detailed schemas next to the result file so the prompt stays short.
    */
   async buildAiPrompt(raw: unknown): Promise<string> {
     const request = aiGuideRequestSchema.parse(raw);
     const { scope, project } = await this.environment(request.scope);
-    const prompt = this.aiRedact(scope.projectId)(createAuthorPrompt({
-      goal: request.goal, servers: await this.aiServers(scope, project, request.tags),
-      globals: await this.listGlobals({ projectId: scope.projectId }),
+    const servers = await this.aiServers(scope, project, request.tags);
+    const redact = this.aiRedact(scope.projectId);
+    const files = this.aiFiles(scope.projectId);
+    await mkdir(files.dir, { recursive: true });
+    await writeFile(files.catalog, redact(JSON.stringify(aiCatalogDetails(servers), null, 1)), { mode: 0o600 });
+    const prompt = redact(createAuthorPrompt({
+      servers, globals: await this.listGlobals({ projectId: scope.projectId }),
       existing: (await this.listScenarios(scope.projectId)).map(({ id, name }) => ({ id, name })),
-      ...(request.catalogFile ? { catalogFile: request.catalogFile } : {}),
-      ...(project.backendPath ? { backendPath: project.backendPath } : {}),
+      catalogFile: files.catalog, resultFile: files.result,
     }));
-    if (Buffer.byteLength(prompt) > 1_000_000) throw new Error("API가 너무 많습니다. 태그로 범위를 좁히거나 상세 명세를 파일로 저장하세요");
+    if (Buffer.byteLength(prompt) > 1_000_000) throw new Error("API가 너무 많습니다. 태그로 범위를 좁히세요");
     return prompt;
   }
 
-  /** Detailed schemas as JSON, for saving next to the backend source instead of pasting. */
-  async buildAiCatalog(raw: unknown): Promise<string> {
-    const request = aiGuideRequestSchema.pick({ scope: true, tags: true }).parse(raw);
-    const { scope, project } = await this.environment(request.scope);
-    return this.aiRedact(scope.projectId)(JSON.stringify(aiCatalogDetails(await this.aiServers(scope, project, request.tags)), null, 1));
-  }
-
-  /** The result file the user's AI wrote in the backend project; null when there is none yet. */
-  async readAiResult(rawScope: unknown): Promise<{ path: string; text: string } | null> {
-    const { project } = await this.environment(environmentScopeSchema.parse(rawScope));
-    if (!project.backendPath) throw new Error("백엔드 코드 폴더를 먼저 저장하세요");
-    const file = aiResultFile(project.backendPath);
+  /** What the user's AI last wrote to the result file; null when there is none yet. */
+  async readAiResult(rawScope: unknown): Promise<{ path: string; text: string; modifiedAt: string } | null> {
+    const { scope } = await this.environment(environmentScopeSchema.parse(rawScope));
+    const file = this.aiFiles(scope.projectId).result;
     const info = await stat(file).catch(() => null);
     if (!info?.isFile()) return null;
     if (info.size > 2_000_000) throw new Error("AI 결과 파일은 2MB 이하만 불러올 수 있습니다");
-    return { path: file, text: await readFile(file, "utf8") };
+    return { path: file, text: await readFile(file, "utf8"), modifiedAt: info.mtime.toISOString() };
   }
 
   /**

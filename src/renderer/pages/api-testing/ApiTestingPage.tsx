@@ -155,7 +155,7 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
   const locked = busy || scenarioComposerOpen;
   return <GlobalVariableAccessProvider key={projectId}><SensitiveValuesProvider projectId={projectId} bridge={bridge}><section className={`api-testing-page api-swagger-shell${hideValues ? " api-hide-values" : ""}`}>
     <header className="api-toolbar"><h1>API 테스트</h1><div className="api-actions"><select aria-label="API 프로젝트" disabled={locked || loading} value={projectId} onChange={e => selectProject(projects.find(p => p.id === e.target.value)!)}><option value="" disabled>프로젝트 선택</option>{projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select><button disabled={locked || loading} onClick={() => setForm("new")}>+ 프로젝트</button>{project && <button disabled={locked || loading} onClick={() => setForm("edit")}>설정</button>}</div></header>
-    {form ? <ProjectForm key={`${form}:${projectId}`} onChooseDirectory={() => bridge.chooseDirectory()} initial={form === "edit" ? project : undefined} onCancel={() => setForm(null)} onDelete={async () => {
+    {form ? <ProjectForm key={`${form}:${projectId}`} initial={form === "edit" ? project : undefined} onCancel={() => setForm(null)} onDelete={async () => {
       setBusy(true);
       try {
       await bridge.deleteProject(projectId);
@@ -171,7 +171,7 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
           <button role="tab" aria-selected={tab === "api"} disabled={locked} onClick={() => changeTab("api")}>API 문서 {catalog?.operations.length ?? 0}</button>
           <button role="tab" aria-selected={tab === "ai"} disabled={locked} onClick={() => changeTab("ai")}>AI 작성 도우미</button>
         </div>
-        {tab === "ai" && <AiAuthorPanel key={`${projectId}:${environmentId}`} project={project} scope={{ projectId, environmentId }} bridge={bridge} onBusy={setBusy} onSaved={() => { setBusy(false); setTab("scenarios"); }} onProjectChange={async next => { await bridge.saveProject(next); setProjects(await bridge.listProjects()); }} />}
+        {tab === "ai" && <AiAuthorPanel key={`${projectId}:${environmentId}`} project={project} scope={{ projectId, environmentId }} bridge={bridge} onBusy={setBusy} onSaved={() => { setBusy(false); setTab("scenarios"); }} />}
         {tab === "scenarios" && <ScenarioPanel key={`${projectId}:${environmentId}:${serverId}`} project={project} scope={scope} bridge={bridge} onBusy={setBusy} onRunAction={onRunAction} runSaved={runSaved} onRunSavedConsumed={() => setRunSaved(null)} onCreateScenario={() => openScenarioEditor()} onEditScenario={item => openScenarioEditor(item.id)} />}
         {tab === "scenario-editor" && <ScenarioEditorPanel key={`${projectId}:${serverId}`} project={project} scope={scope} bridge={bridge} onBusy={setBusy} onRunAction={onRunAction} onBackToScenarios={() => { setScenarioDirty(false); setScenarioComposerOpen(false); setScenarioEditorScenarioId(null); setScenarioCreateRequest(0); setError(""); setTab("scenarios"); }} onExecuteSaved={executeSaved} startCreateRequest={scenarioCreateRequest} editScenarioId={scenarioEditorScenarioId} onCreateConsumed={() => setScenarioCreateRequest(0)} onComposerOpenChange={setScenarioComposerOpen} onUnsavedChange={setScenarioDirty} onCreateScenario={() => openScenarioEditor()} onEditScenario={item => openScenarioEditor(item.id)} />}
         {tab === "api" && <>

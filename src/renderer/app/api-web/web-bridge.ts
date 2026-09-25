@@ -38,7 +38,6 @@ export const webBridge: ApiTestingBridge = new Proxy({} as ApiTestingBridge, {
   get(_target, method: string) {
     if (method === "readScenarioFile") return () => pickText(".yaml,.yml", 1_000_000);
     if (method === "saveSuiteReport") return async (filename: string, html: string) => download(filename, html, "text/html;charset=utf-8");
-    if (method === "saveAiCatalog") return async (request: unknown) => download("checkly-api-catalog.json", await rpc("buildAiCatalog", [request]), "application/json");
     if (method === "copyAiPrompt") return async (request: unknown) =>
       navigator.clipboard.writeText(await rpc("buildAiPrompt", [request]));
     if (method === "importSpec") return async (scope: unknown, source: { kind: string }) => {
