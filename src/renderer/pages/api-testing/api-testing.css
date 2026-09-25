@@ -307,13 +307,15 @@ html:has(.api-diagram-dialog[open]) { overflow:hidden; }
 .api-run-step-index { display:grid; flex:none; place-items:center; width:24px; height:24px; border-radius:50%; background:var(--ck-color-surface-hover-strong); color:var(--api-muted); font-size:12px; font-weight:700; }
 .api-run-step-main { min-width:0; flex:1; }
 .api-run-step-reference { display:flex; align-items:center; gap:10px; min-width:0; }
-.api-run-step-reference code { min-width:0; overflow-wrap:anywhere; color:var(--api-ink); font-weight:600; }
+.api-run-step-reference code { min-width:0; overflow:hidden; color:var(--api-ink); font-weight:600; text-overflow:ellipsis; white-space:nowrap; }
 .api-run-step-main small { display:block; margin-top:4px; overflow-wrap:anywhere; color:var(--api-muted); }
-.api-run-step-counts { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:4px 8px; max-width:45%; }
-.api-testing-page .api-run-step-counts button { min-height:24px; padding:2px 4px; border:0; background:transparent; color:var(--api-primary); font-size:11px; white-space:nowrap; text-decoration:underline; text-underline-offset:3px; }
+/* Counts are a mono text tag (DESIGN.md), not links. */
+.api-run-step-counts { display:flex; flex:none; align-items:center; gap:2px; }
+.api-testing-page .api-run-step-counts button { min-height:0; padding:2px 4px; border:0; border-radius:var(--ck-dim-radius-base); background:transparent; color:var(--ck-color-text-mute); font:10.5px/1.4 var(--ck-font-mono); white-space:nowrap; }
+.api-testing-page .api-run-step-counts button:hover { background:var(--ck-color-surface-hover-strong); color:var(--ck-color-blue-action); }
+.api-run-step-counts button + button::before { content:"·"; margin-right:4px; color:var(--ck-color-text-disabled); }
 .api-run-step-counts:empty { display:none; }
 .api-summary-card [data-summary-area]:focus { outline:2px solid var(--api-primary); outline-offset:3px; }
-.api-run-step-preview-label { flex:none; color:var(--api-primary); font-size:11px; white-space:nowrap; }
 .api-run-step-preview-body { padding:12px 14px 14px; border-top:1px solid var(--ck-color-line-soft); background:var(--ck-color-canvas); }
 .api-run-step-preview-body pre { max-height:320px; margin:0; overflow:auto; }
 .api-scenario-run .api-response { margin-top:28px; padding:20px 24px 24px; border:1px solid var(--api-border); background:var(--ck-color-canvas); }

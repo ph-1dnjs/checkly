@@ -41,9 +41,9 @@ export function ScenarioRunFlow({ preview, catalogs, bindings, focusRequest }: {
           : "operationId" in step.api ? step.api.operationId : `${step.api.method} ${step.api.path}`;
         const [method, ...pathParts] = reference.split(" ");
         const counts = [
-          { area: "request", label: "입력 연결", count: configuredFields(preview.scenario, index).filter(field => !field.direct).length },
-          { area: "response", label: "응답 저장", count: step.extract.length },
-          { area: "expect", label: "검증", count: step.expect?.length ?? 0 },
+          { area: "request", label: "입력", title: "입력 연결", count: configuredFields(preview.scenario, index).filter(field => !field.direct).length },
+          { area: "response", label: "저장", title: "응답 저장", count: step.extract.length },
+          { area: "expect", label: "검증", title: "검증", count: step.expect?.length ?? 0 },
         ];
         const missingGlobals = new Set((preview.executionIssues ?? []).flatMap(issue => /전역변수 '([A-Za-z][A-Za-z0-9_]*)'/.exec(issue)?.[1] ?? []));
         return <details key={step.id} open={openSteps.has(step.id)} onToggle={event => setStepOpen(step.id, event.currentTarget.open)} className={`api-run-step api-selected-${method.toLowerCase()}`}>
@@ -51,10 +51,10 @@ export function ScenarioRunFlow({ preview, catalogs, bindings, focusRequest }: {
             <span className="api-run-step-chevron" aria-hidden="true">▸</span>
             <span className="api-run-step-index" aria-hidden="true">{index + 1}</span>
             <div className="api-run-step-main">
-              <div className="api-run-step-reference"><span className="api-method" data-method={method}>{method}</span><code>{pathParts.join(" ")}</code></div>
+              <div className="api-run-step-reference"><span className="api-method" data-method={method}>{method}</span><code title={pathParts.join(" ")}>{pathParts.join(" ")}</code></div>
               <small>{step.name ?? operation?.summary ?? step.id}</small>
             </div>
-            <span className="api-run-step-counts">{counts.filter(item => item.count > 0).map(item => <button type="button" key={item.area} aria-label={`${index + 1}단계 ${item.label} ${item.count}개 보기`} onClick={event => {
+            <span className="api-run-step-counts">{counts.filter(item => item.count > 0).map(item => <button type="button" key={item.area} aria-label={`${index + 1}단계 ${item.title} ${item.count}개 보기`} title={`${item.title} ${item.count}개 보기`} onClick={event => {
               event.preventDefault(); event.stopPropagation();
               const details = event.currentTarget.closest("details");
               if (!details) return;
@@ -64,7 +64,6 @@ export function ScenarioRunFlow({ preview, catalogs, bindings, focusRequest }: {
               target?.scrollIntoView({ block: "center", behavior: "smooth" });
               target?.focus({ preventScroll: true });
             }}>{item.label} {item.count}</button>)}</span>
-            <span className="api-run-step-preview-label">미리보기</span>
           </summary>
           <div className="api-run-step-preview-body">
             <div className="api-summary-card api-run-step-preview-summary"><ScenarioStepSummary scenario={preview.scenario} stepIndex={index} operation={operation} catalog={catalogs[bindings[step.server] ?? step.server]} missingGlobals={missingGlobals} /></div>
