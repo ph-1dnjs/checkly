@@ -10,8 +10,8 @@ import { producedGlobalNames, renderSuiteReport, reportScenario, usesInvalidated
 import { parseScenario } from "../../src/app/api-testing/shared/scenario";
 
 test("a failed producer invalidates stale globals used by later scenarios", () => {
-  const producer = parseScenario(`version: 1\nid: login\nname: 로그인\nsteps:\n  - id: login\n    server: main\n    api: { method: POST, path: /login }\n    extract:\n      - { source: body, pointer: /token, target: globals.accessToken }\n`);
-  const consumer = parseScenario(`version: 1\nid: data\nname: 조회\nauth: globals.accessToken\nsteps:\n  - id: read\n    server: main\n    api: { method: GET, path: /data }\n`);
+  const producer = parseScenario(`id: login\nname: 로그인\nserver: main\nsteps:\n  - api: POST /login\n    extract:\n      - { source: body, pointer: /token, target: globals.accessToken }\n`);
+  const consumer = parseScenario(`id: data\nname: 조회\nauth: globals.accessToken\nserver: main\nsteps:\n  - api: GET /data\n`);
   const names = new Set(producedGlobalNames(producer));
   assert.deepEqual([...names], ["accessToken"]);
   assert.equal(usesInvalidatedGlobal(consumer, names), true);
@@ -30,8 +30,8 @@ test("HTML report escapes labels and excludes raw credentials, request and respo
 });
 
 test("HTML report summarizes failures, skipped runs and repeated scenarios without exposing values", () => {
-  const source = parseScenario(`version: 1\nid: lookup\nname: 조회\nsteps:\n  - id: read\n    server: main\n    api: { method: GET, path: /lookup }\n    expect:\n      - { source: status, operator: equals, value: 200 }\n    extract:\n      - { source: body, pointer: /token, target: globals.accessToken, sensitive: true }\n`);
-  const result = { status: "failed", variables: { accessToken: "private-token" }, steps: [{ id: "read", name: "조회", status: "failed", durationMs: 21, httpStatus: 500, body: { token: "private-token" }, failure: { kind: "assertion" as const, source: "status" as const, operator: "equals" as const } }] };
+  const source = parseScenario(`id: lookup\nname: 조회\nserver: main\nsteps:\n  - api: GET /lookup\n    expect:\n      - { source: status, operator: equals, value: 200 }\n    extract:\n      - { source: body, pointer: /token, target: globals.accessToken, sensitive: true }\n`);
+  const result = { status: "failed", variables: { accessToken: "private-token" }, steps: [{ id: "get__lookup", name: "조회", status: "failed", durationMs: 21, httpStatus: 500, body: { token: "private-token" }, failure: { kind: "assertion" as const, source: "status" as const, operator: "equals" as const } }] };
   const row = reportScenario("lookup", "조회", result, [{ name: "조회", reference: "GET /lookup" }], 24, source);
   const html = renderSuiteReport({ suiteName: "반복 점검", projectName: "프로젝트", environmentName: "dev", startedAt: "2026-01-01T00:00:00Z", completedAt: "2026-01-01T00:00:01Z", status: "failed", scenarios: [row, { ...row, durationMs: 35 }, { id: "later", name: "다음 조회", status: "skipped", durationMs: 0, steps: [], reason: "앞 시나리오가 통과하지 않아 호출하지 않았습니다." }] });
   assert.match(html, /확인이 필요한 항목/);
@@ -50,7 +50,7 @@ test("suite persistence validates order, revision and referenced scenarios", asy
     const serverId = randomUUID(), environmentId = randomUUID(), projectId = randomUUID();
     await workspace.saveProject({ id: projectId, name: "프로젝트", servers: [{ id: serverId, name: "main" }], environments: [{ id: environmentId, name: "dev", baseUrls: { [serverId]: "http://127.0.0.1:1234" } }] });
     await workspace.importSpec({ projectId, serverId, environmentId }, JSON.stringify({ openapi: "3.0.3", info: { title: "API", version: "1" }, paths: { "/health": { get: { responses: { "200": { description: "ok" } } } } } }));
-    const source = `version: 1\nid: health\nname: 상태 조회\nsteps:\n  - id: read\n    server: main\n    api: { method: GET, path: /health }\n`;
+    const source = `id: health\nname: 상태 조회\nserver: main\nsteps:\n  - api: GET /health\n`;
     await workspace.saveScenario({ projectId, environmentId }, source, {});
     const suite = await workspace.saveSuite(projectId, { id: randomUUID(), name: "기본 점검", scenarioIds: ["health"], onFailure: "stop" });
     assert.deepEqual(await new ApiWorkspace(directory).listSuites(projectId), [suite]);
@@ -82,8 +82,8 @@ test("ordered scenarios reuse a token produced by the previous scenario without 
     const scope = { projectId, environmentId };
     await workspace.saveProject({ id: projectId, name: "점검", servers: [{ id: serverId, name: "main" }], environments: [{ id: environmentId, name: "local", baseUrls: { [serverId]: `http://127.0.0.1:${(server.address() as { port: number }).port}` } }] });
     await workspace.importSpec({ ...scope, serverId }, JSON.stringify({ openapi: "3.0.3", info: { title: "API", version: "1" }, paths: { "/login": { post: { responses: { "200": { description: "ok" } } }, }, "/data": { get: { responses: { "200": { description: "ok" } } } } } }));
-    const login = `version: 1\nid: login\nname: 로그인\nsteps:\n  - id: login\n    server: main\n    api: { method: POST, path: /login }\n    extract:\n      - { source: body, pointer: /token, target: globals.accessToken, sensitive: true }\n`;
-    const data = `version: 1\nid: data\nname: 조회\nauth: globals.accessToken\nsteps:\n  - id: data\n    server: main\n    api: { method: GET, path: /data }\n`;
+    const login = `id: login\nname: 로그인\nserver: main\nsteps:\n  - api: POST /login\n    extract:\n      - { source: body, pointer: /token, target: globals.accessToken, sensitive: true }\n`;
+    const data = `id: data\nname: 조회\nauth: globals.accessToken\nserver: main\nsteps:\n  - api: GET /data\n`;
     await workspace.saveScenario(scope, login, {});
     await workspace.saveScenario(scope, data, {});
     const first = await workspace.runScenario(scope, login, {}, {});

@@ -4,7 +4,6 @@ import { parseScenario, type Json, type Scenario } from "../../../app/api-testin
 import { useSensitiveValues } from "./sensitive-values";
 import { useRunAction } from "./useRunAction";
 import type { OnRunAction } from "./useRunAction";
-import { ScenarioBuilder } from "./ScenarioBuilder";
 import { ApiDocumentation } from "./ApiDocumentation";
 import { DeleteAction } from "./DeleteAction";
 import { ProgressBar } from "../../shared/ui/ProgressBar";
@@ -59,7 +58,6 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
   const sensitiveValues = useSensitiveValues();
   const checkedGlobalRevision = useRef(globalAccess.revision);
   const [editing, setEditing] = useState(editorMode);
-  const [visual, setVisual] = useState(false);
   const [query, setQuery] = useState("");
   const [scenariosExpanded, setScenariosExpanded] = useState(true);
   const [suitesExpanded, setSuitesExpanded] = useState(true);
@@ -160,7 +158,7 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
     }
     const url = new URL(window.location.href);
     if (url.hash) { url.hash = ""; window.history.replaceState(window.history.state, "", url.href); }
-    setEditing(true); setVisual(false); setCurrent(null); setSource(""); setScenarioGroupPath([]); setDirty(false); setPreview(null); setResult(null); setBindings({}); setInputs({}); setNotice(""); setError("");
+    setEditing(true); setCurrent(null); setSource(""); setScenarioGroupPath([]); setDirty(false); setPreview(null); setResult(null); setBindings({}); setInputs({}); setNotice(""); setError("");
     setComposer({});
   };
   useEffect(() => {
@@ -328,11 +326,8 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
       {!current && !editorMode && <div className="api-empty"><h3>실행할 시나리오를 선택하세요</h3><p>저장된 시나리오를 선택하면 실행·결과·리포트를 이곳에서 확인합니다.</p><button disabled={busy} onClick={onCreateScenario}>+ 새 시나리오 작성</button></div>}
       {current && editorMode && preview && !editing && <button disabled={busy} onClick={() => openComposer(current, preview)}>Swagger 방식으로 편집</button>}
       {editorMode && editing && <section className="api-source-editor" aria-label="시나리오 편집">
-      {!visual && <button type="button" className="api-primary" disabled={busy} onClick={openNewScenario}>Swagger 방식으로 작성</button>}
-      {visual ? <ScenarioBuilder source={source} bindings={bindings} project={project} scope={scope} bridge={bridge} onCancel={() => { setVisual(false); working(false); }} onApply={yaml => {
-        setSource(yaml); setDirty(true); setPreview(null); setResult(null); setNotice(""); setError(""); setVisual(false);
-        void check(yaml).catch(e => setError(errorText(e))).finally(() => working(false));
-      }} /> : <>
+      {<button type="button" className="api-primary" disabled={busy} onClick={openNewScenario}>Swagger 방식으로 작성</button>}
+      {<>
       <h3>YAML 편집 · 가져오기</h3><p>YAML을 붙여넣거나 파일로 가져온 뒤 서버 연결과 호출 순서를 확인하세요. 엔드포인트 설명과 요청·응답 구조는 연결된 OpenAPI 명세에서 표시합니다. 저장과 실행은 별도 작업입니다.</p>
       <SidebarMetadataFields key={current?.id ?? "new-scenario-yaml"} groupPath={scenarioGroupPath} existingGroupPaths={availableGroupPaths} disabled={busy} onGroupPathChange={path => { setScenarioGroupPath(path); setDirty(true); }} />
       <p>비밀번호·토큰은 YAML에 직접 넣지 말고 <code>inputs</code> 또는 <code>globals</code>를 참조하세요.</p>

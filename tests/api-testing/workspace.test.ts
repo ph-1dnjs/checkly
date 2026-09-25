@@ -24,25 +24,19 @@ test("globals and saved scenario lifecycle: mapping, reuse, visible values, conf
   const baseUrls = { [serverId]: `http://127.0.0.1:${(server.address() as { port: number }).port}` };
   const project = { id: randomUUID(), name: "시나리오 프로젝트", servers: [{ id: serverId, name: "회원" }], environments: [{ id: environmentId, name: "dev", baseUrls }, { id: otherEnvironment, name: "stg", baseUrls }] };
   const scope = { projectId: project.id, serverId, environmentId };
-  const yaml = `version: 1
-id: login/read
+  const yaml = `id: login/read
 name: 로그인 후 조회
 description: 응답 ID와 토큰을 재사용합니다.
+server: member
 steps:
-  - id: login
-    name: 로그인
-    server: member
-    api: { method: POST, path: /login }
+  - name: 로그인
+    api: POST /login
     extract:
-      - { source: body, pointer: /accessToken, target: globals.accessToken, sensitive: true }
-      - { source: body, pointer: /id, target: vars.itemId }
-  - id: read
-    name: 상품 조회
-    server: member
-    api: { method: GET, path: '/items/{id}' }
-    request:
-      pathParams: { id: '{{vars.itemId}}' }
-      headers: { Authorization: 'Bearer {{globals.accessToken}}' }
+      - { pointer: /accessToken, target: globals.accessToken, sensitive: true }
+  - name: 상품 조회
+    api: 'GET /items/{id}'
+    pathParams: { id: '{{steps.1.response.body./id}}' }
+    headers: { Authorization: 'Bearer {{globals.accessToken}}' }
 `;
   try {
     const workspace = new ApiWorkspace(dir);
@@ -55,19 +49,10 @@ steps:
     assert.ok((await workspace.previewScenario(scope, yaml, {})).issues.some(i => i.includes("서버")));
     const bindings = { member: serverId };
     assert.deepEqual((await workspace.previewScenario(scope, yaml, bindings)).issues, []);
-    assert.ok((await workspace.previewScenario(scope, yaml.replace("vars.itemId}}", "vars.missing}}"), bindings)).issues.some(i => i.includes("정의")));
-    const futureValue = `version: 1
-id: future-value
-name: 순서 오류
-valueBindings:
-  - { name: laterId, step: later, source: request, area: query, pointer: /id }
-steps:
-  - { id: first, name: 먼저 사용, server: member, api: { method: GET, path: '/items/{id}' }, request: { pathParams: { id: '{{vars.laterId}}' } } }
-  - { id: later, name: 나중 출처, server: member, api: { method: GET, path: '/items/{id}' }, request: { pathParams: { id: 7 } } }
-`;
-    const futureIssues = (await workspace.previewScenario(scope, futureValue, bindings)).issues;
-    assert.equal(futureIssues.filter(issue => issue.includes("값 순서 오류")).length, 1);
-    assert.equal(futureIssues.some(issue => issue.includes("vars.laterId는")), false);
+    // Authoring mistakes come back as the fix to make, not a generic YAML error.
+    await assert.rejects(workspace.previewScenario(scope, yaml.replace("{{steps.1.response.body./id}}", "{{inputs.missing}}"), bindings), /inputs에 missing을 정의하세요/);
+    await assert.rejects(workspace.previewScenario(scope, yaml.replace("{{steps.1.", "{{steps.2."), bindings), /앞선 단계만/);
+    await assert.rejects(workspace.previewScenario(scope, `version: 1\n${yaml}`, bindings), /version은 쓰지 않습니다/);
     const item = await workspace.saveScenario(scope, yaml, bindings);
     await assert.rejects(workspace.saveScenario(scope, yaml, bindings), /같은 ID/);
     // Saved YAML is the one authoring format: no step ids, defaults omitted, current server name.
@@ -82,19 +67,17 @@ steps:
       - pointer: /accessToken
         target: globals.accessToken
         sensitive: true
-      - pointer: /id
-        target: vars.itemId
   - name: 상품 조회
     api: GET /items/{id}
     pathParams:
-      id: "{{vars.itemId}}"
+      id: "{{steps.1.response.body./id}}"
     headers:
       Authorization: Bearer {{globals.accessToken}}
 `);
     await workspace.saveScenario(scope, yaml, bindings, item.updatedAt);
     const result = await workspace.runScenario(scope, yaml, bindings, {});
     assert.equal(result.status, "passed");
-    assert.equal(result.variables.itemId, 42);
+    assert.equal(result.steps[1].request?.url.endsWith("/items/42"), true);
     assert.equal(result.steps[0].request?.method, "POST");
     assert.match(result.steps[0].request?.url ?? "", /\/login$/);
     assert.equal(JSON.stringify(result).includes("session-secret"), true);

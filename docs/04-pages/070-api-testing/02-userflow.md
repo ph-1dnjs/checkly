@@ -97,7 +97,7 @@ steps:
 
 값 전체가 참조이면 JSON 타입을 유지합니다. 문자열 안의 참조는 문자열로 조합하며 객체·배열을 문자열에 넣으면 오류입니다. 검증 연산자는 equals, exists, contains이며 암묵적 타입 변환이 없습니다. `expect`를 생략하면 HTTP 2xx만 확인하고 중간 업무 검증을 자동으로 넣지 않습니다.
 
-**이전 형식(읽기 호환):** `version`, 단계 `id`, `api: { method, path }`·`operationId`, `request:` 감싸기, `valueBindings`, `vars`, `extract … target: vars.x`, 단계 `input`(단수), 최상위 `inputs`는 그대로 읽고 실행합니다. 편집기에서 다시 저장하면 가능한 부분은 위 문법으로 바뀝니다.
+**다른 표기는 받지 않습니다.** `version`, 단계 `id`, `request:` 감싸기, `api: { method, path }`·`operationId`, `vars`, `valueBindings`, 단계 `input`(단수), 최상위 `inputs`, `{{vars.…}}`를 쓰면 해당 줄을 어떻게 고칠지 알려 주는 오류가 납니다.
 
 ## AI 작성 도우미
 

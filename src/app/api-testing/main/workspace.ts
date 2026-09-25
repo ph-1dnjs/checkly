@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import { projectSchema, type ApiCatalog, type ApiCookie, type ApiProject, type ApiScope, type ApiResponse, type ApiProjectScope, type ApiEnvironmentScope, type ApiGlobal, type SavedApiScenario, type SavedApiSuite, type ApiSidebarMetadata, type ApiScenarioPreview, type ApiScenarioResult, type ApiRequestTrace, type ApiAiAuthorResult, type ApiAiDraft, type ApiAiProgress, type ApiAiCliStatus, type ApiAiSettings } from "../shared/workspace";
 import { z } from "zod";
 import { ApiRunner } from "./execution";
-import { bindingUseLocations, pruneUnusedBrokenBindings, stringifyScenario, parseScenario, scenarioSchema, scenarioStepInputs, scenarioStepLabel, type Json, type Scenario, type ScenarioInputRequest } from "../shared/scenario";
+import { bindingUseLocations, pruneUnusedBrokenBindings, stringifyScenario, parseScenario, ScenarioFormatError, scenarioSchema, scenarioStepInputs, scenarioStepLabel, type Json, type Scenario, type ScenarioInputRequest } from "../shared/scenario";
 import { readOpenApi } from "./openapi";
 import { CookieJar } from "./cookies";
 import { aiAnswerJsonSchema, aiCatalogDetails, createAuthorPrompt, createRepairPrompt } from "./ai-context";
@@ -511,6 +511,8 @@ export class ApiWorkspace {
     try { return pruneUnusedBrokenBindings(parseScenario(source)); }
     catch (e) {
       if (e instanceof z.ZodError) throw new Error(e.issues.map(i => `${i.path.join(".") || "시나리오"}: ${i.message}`).join("\n"));
+      // Retired syntax, undefined inputs, future step references: the message says how to fix it.
+      if (e instanceof ScenarioFormatError) throw new Error(e.message);
       throw new Error("YAML 문법이 올바르지 않습니다. 들여쓰기와 중복 키를 확인하세요");
     }
   }

@@ -170,24 +170,119 @@ export function normalizeScenarioForStorage(scenario: Scenario): Scenario {
   };
 }
 
+/** Authoring-format problem with a concrete fix; shown to the user as-is. */
+export class ScenarioFormatError extends Error {}
+
+const methodPath = /^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+(\/\S*)$/;
+const globalsRef = z.string().regex(/^globals\.[A-Za-z][A-Za-z0-9_]*$/, "globals.이름 형식으로 쓰세요");
+const authoringExtraction = z.object({
+  source: z.enum(["body", "header"]).default("body"),
+  pointer: pointer.optional(), header: z.string().optional(),
+  target: globalsRef,
+  sensitive: z.boolean().default(false),
+}).strict().superRefine((v, ctx) => {
+  if (v.source === "body" ? v.pointer === undefined : !v.header)
+    ctx.addIssue({ code: "custom", message: "추출할 pointer 또는 header가 필요합니다" });
+});
+const authoringStep = z.object({
+  name: z.string().min(1).optional(),
+  server: z.string().min(1).optional(),
+  api: z.string().trim().regex(methodPath, "api는 'POST /bos/login' 형식으로 쓰세요"),
+  auth: z.union([z.literal("none"), globalsRef]).optional(),
+  inputs: z.array(scenarioInputSchema).optional(),
+  pathParams: z.record(z.string(), value).optional(),
+  query: z.record(z.string(), value).optional(),
+  headers: z.record(z.string(), z.string()).optional(),
+  cookies: z.record(z.string(), value).optional(),
+  body: value.optional(),
+  expect: z.array(expectation).optional(),
+  extract: z.array(authoringExtraction).optional(),
+}).strict();
+const authoringScenario = z.object({
+  id: z.string().min(1).optional(), name: z.string().min(1), description: z.string().optional(),
+  server: z.string().min(1).optional(), auth: globalsRef.optional(),
+  onFailure: z.enum(["stop", "continue"]).optional(),
+  environments: z.array(z.string().min(1)).min(1).optional(),
+  steps: z.array(authoringStep).min(1),
+}).strict();
+
+// Keys of retired syntaxes, with the one way to write the same thing now.
+const retiredScenarioKeys: Record<string, string> = {
+  version: "version은 쓰지 않습니다. 지우세요",
+  inputs: "실행 중 입력은 해당 단계의 inputs에 쓰고 {{inputs.이름}}으로 사용하세요",
+  vars: "vars는 쓰지 않습니다. 값은 요청에 직접 쓰거나 앞 단계 값은 {{steps.N.response.body./경로}}로 쓰세요",
+  valueBindings: "valueBindings는 쓰지 않습니다. 앞 단계 값은 {{steps.N.response.body./경로}}로 쓰세요",
+};
+const retiredStepKeys: Record<string, string> = {
+  id: "단계 id는 쓰지 않습니다. 앞 단계 값은 단계 번호로 {{steps.N.…}}처럼 참조하세요",
+  request: "request: 없이 body·query·pathParams·headers·cookies를 단계 바로 아래 쓰세요",
+  input: "input 대신 inputs 목록을 쓰세요: inputs: [{ name: code, label: 인증번호 }]",
+  description: "단계 설명은 쓰지 않습니다. API 설명은 명세에서 표시합니다",
+};
+
+function assertCurrentSyntax(raw: unknown): void {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return;
+  const data = raw as Record<string, unknown>;
+  const problems = Object.keys(retiredScenarioKeys).filter(key => Object.hasOwn(data, key)).map(key => retiredScenarioKeys[key]);
+  (Array.isArray(data.steps) ? data.steps : []).forEach((step, index) => {
+    if (!step || typeof step !== "object") return;
+    for (const key of Object.keys(retiredStepKeys)) if (Object.hasOwn(step, key)) problems.push(`${index + 1}단계: ${retiredStepKeys[key]}`);
+    const api = (step as Record<string, unknown>).api;
+    if (api !== undefined && typeof api !== "string") problems.push(`${index + 1}단계: api는 'POST /bos/login' 형식의 문자열로 쓰세요`);
+  });
+  if (problems.length) throw new ScenarioFormatError([...new Set(problems)].join("\n"));
+}
+
+/**
+ * Reads the one authoring format (see stringifyScenario) into the runner model:
+ * steps get generated ids, {{inputs.x}} of step inputs become runner vars and
+ * {{steps.N.…}} become value links.
+ */
 export function parseScenario(source: string): Scenario {
   const doc = parseDocument(source, { uniqueKeys: true });
   if (doc.errors.length) throw new Error(doc.errors.map(e => e.message).join("\n"));
-  return expandStepReferences(stepInputReferencesToVars(scenarioSchema.parse(expandScenario(doc.toJS({ maxAliasCount: 50 })))));
+  const raw = doc.toJS({ maxAliasCount: 50 });
+  assertCurrentSyntax(raw);
+  const authored = authoringScenario.parse(raw);
+  const used = new Set<string>();
+  const declared = new Set<string>();
+  const problems: string[] = [];
+  const steps = authored.steps.map((step, index) => {
+    const [, method, path] = methodPath.exec(step.api.trim())!;
+    const base = `${method}_${path}`.toLowerCase().replace(/[^a-z0-9_]+/g, "_");
+    let id = base;
+    for (let suffix = 2; used.has(id); suffix++) id = `${base}_${suffix}`;
+    used.add(id);
+    const server = step.server ?? authored.server;
+    if (!server) problems.push(`${index + 1}단계: server를 시나리오 또는 단계에 쓰세요`);
+    (step.inputs ?? []).forEach(input => declared.add(input.name));
+    const check = (text: string) => {
+      for (const match of text.matchAll(/\{\{vars\.[^}]*\}\}/g)) problems.push(`${index + 1}단계: ${match[0]}는 쓰지 않습니다. 앞 단계 값은 {{steps.N.…}}, 실행 입력은 {{inputs.이름}}으로 쓰세요`);
+      for (const match of text.matchAll(/\{\{inputs\.([A-Za-z][A-Za-z0-9_]*)\}\}/g))
+        if (!declared.has(match[1])) problems.push(`${index + 1}단계: {{inputs.${match[1]}}}를 쓰려면 이 단계나 앞 단계의 inputs에 ${match[1]}을 정의하세요`);
+      // Step input values live in the runner's vars.
+      return text.replace(/\{\{inputs\.([A-Za-z][A-Za-z0-9_]*)\}\}/g, "{{vars.$1}}");
+    };
+    const request = mapStrings({ pathParams: step.pathParams, query: step.query, headers: step.headers, cookies: step.cookies, body: step.body }, check);
+    return {
+      id, ...(step.name ? { name: step.name } : {}), server: server ?? "", api: { method, path },
+      ...(step.auth ? { auth: step.auth } : {}), ...(step.inputs?.length ? { inputs: step.inputs } : {}),
+      request: Object.fromEntries(Object.entries(request).filter(([, v]) => v !== undefined)),
+      ...(step.expect ? { expect: mapStrings(step.expect, check) } : {}),
+      extract: step.extract ?? [],
+    };
+  });
+  if (problems.length) throw new ScenarioFormatError([...new Set(problems)].join("\n"));
+  return expandStepReferences(scenarioSchema.parse({
+    version: 1, id: authored.id ?? `scenario-${encodeURIComponent(authored.name)}`, name: authored.name,
+    ...(authored.description !== undefined ? { description: authored.description } : {}),
+    ...(authored.auth ? { auth: authored.auth } : {}), ...(authored.onFailure ? { onFailure: authored.onFailure } : {}),
+    ...(authored.environments ? { environments: authored.environments } : {}),
+    steps,
+  }));
 }
 
-/** Names of run-time step inputs that are not also scenario-level inputs. */
-function stepInputNames(scenario: Scenario): Set<string> {
-  return new Set(scenario.steps.flatMap(step => scenarioStepInputs(step).map(input => input.name)).filter(name => !Object.hasOwn(scenario.inputs, name)));
-}
 
-/** Authoring writes {{inputs.code}} for a step input; the runner keeps step input values in vars. */
-function stepInputReferencesToVars(scenario: Scenario): Scenario {
-  const names = stepInputNames(scenario);
-  if (!names.size) return scenario;
-  const convert = (text: string) => text.replace(/\{\{inputs\.([A-Za-z][A-Za-z0-9_]*)\}\}/g, (match, name) => names.has(name) ? `{{vars.${name}}}` : match);
-  return { ...scenario, steps: scenario.steps.map(step => ({ ...step, request: mapStrings(step.request, convert), ...(step.expect ? { expect: mapStrings(step.expect, convert) } : {}) })) };
-}
 
 /** Variable name for a linked value: the last pointer segment or header name, made identifier-safe. */
 export function linkVariableName(source: string): string {
@@ -210,7 +305,7 @@ function expandStepReferences(scenario: Scenario): Scenario {
   const steps = scenario.steps.map((step, index) => {
     const convert = (text: string) => text.replace(/\{\{steps\.(\d+)\.(request|response)\.(body|header|headers|query|cookies|pathParams)\.([^{}]*)\}\}/g, (_, number, source, area, path) => {
       const from = Number(number) - 1;
-      if (from < 0 || from >= index) throw new Error(`${index + 1}단계 연결은 앞선 단계만 참조할 수 있습니다 (${number}단계)`);
+      if (from < 0 || from >= index) throw new ScenarioFormatError(`${index + 1}단계 연결은 앞선 단계만 참조할 수 있습니다 (${number}단계)`);
       let binding = bindings.find(b => b.step === scenario.steps[from].id && b.source === source && b.area === area && (area === "header" ? b.header === path : b.pointer === path));
       if (!binding) {
         const base = linkVariableName(path);
@@ -228,44 +323,6 @@ function expandStepReferences(scenario: Scenario): Scenario {
 }
 
 
-function expandScenario(raw: unknown): unknown {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return raw;
-  const data = { ...raw } as Record<string, any>;
-  const server = data.server;
-  delete data.server;
-  data.version ??= 1;
-  // Deterministic across preview/save; identity is persisted by the editor on save.
-  data.id ??= `scenario-${encodeURIComponent(String(data.name ?? "untitled"))}`;
-  if (!Array.isArray(data.steps)) return data;
-  const used = new Set(data.steps.map((s: any) => s?.id).filter(Boolean));
-  data.steps = data.steps.map((rawStep: any) => {
-    if (!rawStep || typeof rawStep !== "object" || Array.isArray(rawStep)) return rawStep;
-    const step = { ...rawStep };
-    if (typeof step.api === "string") {
-      const match = /^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+(\/\S*)$/i.exec(step.api.trim());
-      if (!match) throw new Error("api는 'POST /bos/login' 형식으로 작성하세요");
-      step.api = { method: match[1].toUpperCase(), path: match[2] };
-    }
-    step.server ??= server;
-    if (step.id === undefined) {
-      const base = `${step.api?.method ?? "api"}_${step.api?.path ?? step.api?.operationId ?? "step"}`.toLowerCase().replace(/[^a-z0-9_]+/g, "_");
-      let id = base;
-      for (let suffix = 2; used.has(id); suffix++) id = `${base}_${suffix}`;
-      used.add(id); step.id = id;
-    }
-    for (const key of ["body", "query", "headers", "cookies", "pathParams"]) {
-      if (!Object.hasOwn(step, key)) continue;
-      if (step.request && Object.hasOwn(step.request, key)) throw new Error(`${key}와 request.${key}를 동시에 지정할 수 없습니다`);
-      step.request = { ...step.request, [key]: step[key] };
-      delete step[key];
-    }
-    if (step.extract && typeof step.extract === "object" && !Array.isArray(step.extract)) {
-      step.extract = Object.entries(step.extract).map(([name, pointer]) => ({ source: "body", pointer, target: `vars.${name}` }));
-    }
-    return step;
-  });
-  return data;
-}
 
 /** Compact authoring format. Keep identities when saving an existing editor document. */
 /**
@@ -274,49 +331,45 @@ function expandScenario(raw: unknown): unknown {
  * preserveIds keeps the scenario id (saved files); internal link names never appear.
  */
 export function stringifyScenario(scenario: Scenario, preserveIds = false, resolveApi?: (step: Scenario["steps"][number]) => { method: string; path: string } | undefined, serverNames: Record<string, string> = {}): string {
-  const normalized = normalizeScenarioForStorage(pruneUnusedBrokenBindings(scenario));
-  const replacements = new Map<string, string>(normalized.valueBindings.flatMap(binding => {
+  const normalized = normalizeScenarioForStorage(scenario);
+  const replacements = new Map<string, string>();
+  for (const binding of normalized.valueBindings) {
     const index = normalized.steps.findIndex(step => step.id === binding.step);
-    return index < 0 ? [] : [[`{{vars.${binding.name}}}`, `{{steps.${index + 1}.${binding.source}.${binding.area}.${binding.header ?? binding.pointer ?? ""}}}`] as const];
-  }));
-  for (const name of stepInputNames(normalized)) replacements.set(`{{vars.${name}}}`, `{{inputs.${name}}}`);
+    // A link whose source step was deleted has no valid reference; the field is left empty.
+    replacements.set(`{{vars.${binding.name}}}`, index < 0 ? "" : `{{steps.${index + 1}.${binding.source}.${binding.area}.${binding.header ?? binding.pointer ?? ""}}}`);
+  }
+  for (const step of normalized.steps) for (const input of scenarioStepInputs(step)) replacements.set(`{{vars.${input.name}}}`, `{{inputs.${input.name}}}`);
   normalized.steps = mapStrings(normalized.steps, text => {
     for (const [from, to] of replacements) text = text.split(from).join(to);
     return text;
   });
-  normalized.valueBindings = normalized.valueBindings.filter(binding => !replacements.has(`{{vars.${binding.name}}}`));
-  const { version: _version, id, steps, valueBindings, inputs, vars, onFailure, auth, ...rest } = normalized;
+  const { id, name, description, environments, steps, onFailure, auth } = normalized;
   const commonServer = steps.every(step => step.server === steps[0].server) ? steps[0].server : undefined;
-  // Step ids are only written when an unconvertible legacy binding still points at them.
-  const referenced = new Set(valueBindings.map(binding => binding.step));
-  const extractFor = (extract: Scenario["steps"][number]["extract"]) => extract.every(e => e.source === "body" && e.target.startsWith("vars.") && !e.sensitive)
-    ? Object.fromEntries(extract.map(e => [e.target.slice(5), e.pointer]))
-    : extract.map(({ source, sensitive, ...e }) => ({ ...(source !== "body" ? { source } : {}), ...e, ...(sensitive ? { sensitive } : {}) }));
+  const extractFor = (extract: Scenario["steps"][number]["extract"]) =>
+    extract.map(({ source, sensitive, ...e }) => ({ ...(source !== "body" ? { source } : {}), ...e, ...(sensitive ? { sensitive } : {}) }));
   return stringify({
-    ...(preserveIds ? { id } : {}), ...rest,
+    ...(preserveIds ? { id } : {}), name,
+    ...(description !== undefined ? { description } : {}),
     ...(commonServer ? { server: serverNames[commonServer] ?? commonServer } : {}),
     ...(auth ? { auth } : {}),
     ...(onFailure !== "stop" ? { onFailure } : {}),
-    ...(Object.keys(inputs).length ? { inputs } : {}),
-    ...(Object.keys(vars).length ? { vars } : {}),
+    ...(environments ? { environments } : {}),
     steps: steps.map(original => {
-      const { id: stepId, name, server, api, auth: stepAuth, input, inputs: stepInputs, request, expect, extract, ...step } = original;
+      const { name: stepName, server, api, auth: stepAuth, request, expect, extract } = original;
       const resolved = "method" in api ? api : resolveApi?.(original);
-      const allInputs = scenarioStepInputs({ input, inputs: stepInputs } as Scenario["steps"][number]);
+      const inputs = scenarioStepInputs(original);
       return {
-        ...(referenced.has(stepId) ? { id: stepId } : {}),
-        ...(name ? { name } : {}),
+        ...(stepName ? { name: stepName } : {}),
         ...(!commonServer ? { server: serverNames[server] ?? server } : {}),
         api: resolved ? `${resolved.method.toUpperCase()} ${resolved.path}` : api,
         ...(stepAuth ? { auth: stepAuth } : {}),
         // Defaults (string, required, sensitive) are omitted.
-        ...(allInputs.length ? { inputs: allInputs.map(({ type, required, sensitive, ...input }) => ({ ...input, ...(type !== "string" ? { type } : {}), ...(!required ? { required } : {}), ...(!sensitive ? { sensitive } : {}) })) } : {}),
-        ...request,
+        ...(inputs.length ? { inputs: inputs.map(({ type, required, sensitive, ...input }) => ({ ...input, ...(type !== "string" ? { type } : {}), ...(!required ? { required } : {}), ...(!sensitive ? { sensitive } : {}) })) } : {}),
+        // Fixed order so saving is stable regardless of edit order.
+        ...Object.fromEntries((["pathParams", "query", "headers", "cookies", "body"] as const).filter(area => request[area] !== undefined).map(area => [area, request[area]])),
         ...(expect?.length ? { expect } : {}),
         ...(extract.length ? { extract: extractFor(extract) } : {}),
-        ...step,
       };
     }),
-    ...(valueBindings.length ? { valueBindings } : {}),
   });
 }

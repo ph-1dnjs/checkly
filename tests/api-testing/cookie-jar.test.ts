@@ -77,9 +77,9 @@ test("project cookies carry over between scenarios and Swagger calls, per projec
     await workspace.importSpec(scope, spec);
     await workspace.importSpec(otherScope, spec);
 
-    const login = "version: 1\nid: login\nname: 로그인\nsteps:\n  - { id: login, server: 회원, api: { method: POST, path: /login } }\n";
+    const login = "id: login\nname: 로그인\nserver: 회원\nsteps:\n  - api: POST /login\n";
     assert.equal((await workspace.runScenario({ projectId: project.id, environmentId: dev }, login, {}, {})).status, "passed");
-    const me = "version: 1\nid: me\nname: 내 정보\nsteps:\n  - { id: me, server: 회원, api: { method: GET, path: /me } }\n";
+    const me = "id: me\nname: 내 정보\nserver: 회원\nsteps:\n  - api: GET /me\n";
     await workspace.runScenario({ projectId: project.id, environmentId: dev }, me, {}, {});
     assert.equal(received.at(-1), "SESSION=cookie-secret");
     await workspace.execute(scope, "GET /me", {});

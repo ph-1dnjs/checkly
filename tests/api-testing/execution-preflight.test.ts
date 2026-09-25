@@ -14,13 +14,13 @@ test("preflight reports missing globals without preventing storage and allows ea
     const scope = { projectId, serverId, environmentId };
     await workspace.saveProject({ id: projectId, name: "test", servers: [{ id: serverId, name: "api" }], environments: [{ id: environmentId, name: "dev", baseUrls: { [serverId]: "https://example.invalid" } }] });
     await workspace.importSpec(scope, JSON.stringify({ openapi: "3.0.3", info: { title: "test", version: "1" }, paths: { "/test": { get: { responses: { "200": { description: "OK" } } } } } }));
-    const source = `version: 1\nid: test\nname: test\nsteps:\n  - id: use\n    server: ${serverId}\n    api: { method: GET, path: /test }\n    request: { headers: { Authorization: '{{globals.token}}' } }\n`;
+    const source = `id: test\nname: test\nsteps:\n  - server: ${serverId}\n    api: GET /test\n    headers: { Authorization: '{{globals.token}}' }\n`;
     const missing = await workspace.previewScenario(scope, source, {});
     assert.equal(missing.issues.length, 0);
     assert.match(missing.executionIssues!.join(), /1단계.*token/);
     await workspace.saveScenario(scope, source, {});
     await assert.rejects(workspace.runScenario(scope, source, {}, {}), /token/);
-    const produced = source.replace("steps:\n", `steps:\n  - id: produce\n    server: ${serverId}\n    api: { method: GET, path: /test }\n    extract: [{ source: body, pointer: /token, target: globals.token }]\n`);
+    const produced = source.replace("steps:\n", `steps:\n  - server: ${serverId}\n    api: GET /test\n    extract: [{ pointer: /token, target: globals.token }]\n`);
     assert.deepEqual((await workspace.previewScenario(scope, produced, {})).executionIssues, []);
     await workspace.setGlobal({ projectId }, "token", "secret-value");
     assert.deepEqual((await workspace.previewScenario(scope, source, {})).executionIssues, []);

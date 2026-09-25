@@ -78,7 +78,7 @@ test("stored catalogs refresh stale support warnings from their saved spec", asy
     const reloaded = new ApiWorkspace(dir);
     const catalog = await reloaded.getCatalog(scope);
     assert.deepEqual(catalog?.operations[0].warnings, []);
-    const source = "version: 1\nid: cookie-preview\nname: 쿠키 확인\nsteps:\n  - id: session\n    name: 세션 확인\n    server: api\n    api: { method: GET, path: /session }\n    request: {}\n";
+    const source = "id: cookie-preview\nname: 쿠키 확인\nsteps:\n  - name: 세션 확인\n    server: api\n    api: GET /session\n";
     assert.deepEqual((await reloaded.previewScenario({ projectId, environmentId }, source, { api: serverId })).issues, []);
   } finally {
     await rm(dir, { recursive: true, force: true });

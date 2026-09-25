@@ -14,7 +14,7 @@ test("drafts preserve incomplete scenarios but cannot bypass catalog or environm
     const projectId = randomUUID(), serverId = randomUUID(), local = randomUUID(), dev = randomUUID();
     await workspace.saveProject({id:projectId,name:"초안",servers:[{id:serverId,name:"API"}],environments:[{id:local,name:"local",baseUrls:{[serverId]:"http://127.0.0.1:1"}},{id:dev,name:"dev",baseUrls:{[serverId]:"http://127.0.0.1:1"}}]});
     const scope = {projectId,serverId,environmentId:local};
-    const source = 'version: 1\nid: local-login\nname: 로컬 전용\nenvironments: [local]\nsteps:\n  - id: login\n    name: 로그인\n    server: api\n    api: {method: POST, path: /login}\n';
+    const source = 'id: local-login\nname: 로컬 전용\nenvironments: [local]\nsteps:\n  - name: 로그인\n    server: api\n    api: POST /login\n';
     const bindings = {api:serverId};
     const draft = await workspace.saveScenarioDraft(scope,source,bindings);
     assert.equal(draft.draft,true);

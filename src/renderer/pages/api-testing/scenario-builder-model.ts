@@ -8,8 +8,8 @@ export type RequestArea = "pathParams" | "query" | "headers" | "cookies" | "body
 export type BindingArea = ValueBinding["area"];
 
 /** Store a stable OpenAPI operation reference instead of copying its label. */
-export function apiReference(operation: Pick<ApiOperation, "operationId" | "method" | "path">): Step["api"] {
-  if (operation.operationId) return { operationId: operation.operationId };
+/** Steps always reference the endpoint by method and path (the one authoring syntax). */
+export function apiReference(operation: Pick<ApiOperation, "method" | "path">): Step["api"] {
   return { method: operation.method.toUpperCase() as Extract<Step["api"], { method: string }>["method"], path: operation.path };
 }
 
@@ -22,23 +22,6 @@ export function moveStep(scenario: Scenario, index: number, offset: number): Sce
   return { ...scenario, steps };
 }
 
-export function connectResponse(scenario: Scenario, from: number, to: number, pointer: string, variable: string, area: RequestArea, field: string, prefix = ""): Scenario {
-  if (!Number.isInteger(from) || !Number.isInteger(to) || from < 0 || from >= to || to >= scenario.steps.length) throw new Error("현재 단계보다 앞선 응답을 선택하세요");
-  if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(variable) || ["constructor", "prototype"].includes(variable)) throw new Error("변수 이름은 영문으로 시작하고 영문·숫자·밑줄만 사용하세요");
-  if (!/^(?:\/(?:[^~]|~[01])*)*$/.test(pointer)) throw new Error("응답 경로는 JSON Pointer 형식으로 입력하세요. 예: /data/id");
-  if (!field || ["__proto__", "constructor", "prototype"].includes(field)) throw new Error("유효한 요청 필드 이름을 입력하세요");
-  const target = `vars.${variable}`;
-  if (Object.hasOwn(scenario.vars, variable) || scenario.steps.some(s => s.extract.some(e => e.target === target))) throw new Error("이미 사용 중인 변수 이름입니다. 다른 이름을 입력하거나 기존 변수 참조를 사용하세요");
-  const previous = scenario.steps[to].request[area];
-  if (previous !== undefined && (!previous || typeof previous !== "object" || Array.isArray(previous))) throw new Error("응답 연결은 객체 요청 본문의 최상위 필드에 지원합니다. 배열·전체 본문은 JSON 편집을 사용하세요");
-  const reference = `${prefix}{{${target}}}`;
-  const steps = scenario.steps.map((step, index) => index === from ? {
-    ...step, extract: [...step.extract, { source: "body" as const, pointer, target, sensitive: false }],
-  } : index === to ? {
-    ...step, request: { ...step.request, [area]: { ...(previous as Record<string, Json> ?? {}), [field]: reference } },
-  } : step);
-  return { ...scenario, steps };
-}
 
 
 /** Connects any captured request/response value to a later request template. */

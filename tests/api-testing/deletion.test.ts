@@ -20,7 +20,7 @@ test("deletion protects references, revisions and sync; cleans only the selected
     await workspace.importSpec(scope, spec);
     await workspace.importSpec({ ...scope, projectId: other.id }, spec);
     await workspace.setGlobal({ projectId: project.id }, "token", "test-token"); await workspace.setRequestAuth(scope, "token");
-    const source = `version: 1\nid: test/read\nname: 조회\nsteps:\n  - id: read\n    name: 조회\n    server: main\n    api: { method: GET, path: /health }\n`;
+    const source = `id: test/read\nname: 조회\nsteps:\n  - name: 조회\n    server: main\n    api: GET /health\n`;
     const item = await workspace.saveScenario(scope, source, { main: serverId });
     await assert.rejects(workspace.deleteScenario(project.id, item.id, "stale"), /변경/);
     await assert.rejects(workspace.saveProject({ ...project, environments: [project.environments[0]] }), /참조/);

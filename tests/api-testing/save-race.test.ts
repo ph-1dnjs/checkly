@@ -16,7 +16,7 @@ test("scenario save and server removal apply in call order without a dangling re
     await workspace.saveProject(project);
     const spec = JSON.stringify({ openapi: "3.0.3", info: { title: "주문", version: "1" }, paths: { "/orders": { get: { responses: { "200": { description: "성공" } } } } } });
     await workspace.importSpec({ projectId: project.id, serverId: orderId, environmentId: dev }, spec);
-    const yaml = "version: 1\nid: orders\nname: 주문 조회\nsteps:\n  - { id: list, server: 주문, api: { method: GET, path: /orders } }\n";
+    const yaml = "id: orders\nname: 주문 조회\nserver: 주문\nsteps:\n  - api: GET /orders\n";
 
     // Issued back to back: the save validates against the project that still has 주문,
     // so the server removal must see the saved scenario and refuse.
