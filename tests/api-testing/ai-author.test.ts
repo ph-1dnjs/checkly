@@ -62,7 +62,7 @@ test("the guide asks what to test, points at the schema and result files, and hi
     const catalogFile = path.join(aiDir, "api-catalog.json"), resultFile = path.join(aiDir, "scenarios.yaml");
     assert.ok(prompt.includes("먼저 사용자에게 무엇을 테스트할지 물어보세요"));
     assert.ok(prompt.includes(catalogFile) && prompt.includes(`결과를 파일 ${resultFile} 에 저장합니다`));
-    assert.ok(prompt.includes("GET /items/{id}") && !prompt.includes("POST /login"));
+    assert.ok(prompt.includes("- 상점 (API 1개)"));
     const catalog = await readFile(catalogFile, "utf8");
     assert.ok(catalog.includes("/items/{id}") && !catalog.includes('"loginId"'));
     for (const secret of ["global-secret-value", "private-base.example.com", "example-secret"]) {

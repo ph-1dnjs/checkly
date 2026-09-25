@@ -120,7 +120,7 @@ async function main() {
     await expect(page.getByRole("region", { name: "AI 시나리오 작성" })).toContainText("복사했습니다.");
     const prompt = await app.evaluate(({ clipboard }) => clipboard.readText());
     const resultFile = /결과를 파일 (.+?) 에 저장합니다/.exec(prompt)?.[1];
-    if (!resultFile || !prompt.includes("POST /login") || !prompt.includes("api-catalog.json") || prompt.includes(url)) throw new Error("AI guide misses the result or schema file, or leaks the base URL");
+    if (!resultFile || !prompt.includes("api-catalog.json") || prompt.includes(url)) throw new Error("AI guide misses the result or schema file, or leaks the base URL");
     await page.getByRole("button", { name: "AI 결과 불러오기", exact: true }).click();
     await expect(page.getByRole("alert")).toContainText("아직 AI 결과가 없습니다");
     // Pasting what the AI printed in chat works too.

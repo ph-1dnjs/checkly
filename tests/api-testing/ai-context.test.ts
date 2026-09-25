@@ -25,11 +25,12 @@ test("AI guide lists every API, writes schemas to a file, and leaks no values, U
     const request = { scope };
     const text = await workspace.buildAiPrompt(request);
     for (const secret of ["session-secret", "example-secret", "default-secret", "body-secret", "response-secret", "private-server.example.com", "admin-private.example.com"]) assert.equal(text.includes(secret), false, secret);
-    assert.ok(text.includes("POST /login — 로그인") && text.includes("POST /admin-login — 로그인") && text.includes("GET /not-selected"));
-    assert.ok(text.includes("### 서버: 회원") && text.includes("### 서버: 관리자"));
+    // The API list lives only in the catalog file; the guide names the servers.
+    assert.ok(text.includes("- 회원 (API 2개)") && text.includes("- 관리자 (API 2개)") && !text.includes("POST /login"));
     assert.ok(text.includes('"accessToken"'));
     // Schemas go to the catalog file, also without secrets.
     const catalog = await readFile(path.join(dir, "ai", projectId, "api-catalog.json"), "utf8");
+    assert.ok(catalog.includes('"api": "POST /login"') && catalog.includes('"api": "POST /admin-login"') && catalog.includes('"api": "GET /not-selected"'));
     assert.ok(catalog.includes('"password"') && catalog.includes('"type": "string"'));
     for (const secret of ["session-secret", "example-secret", "default-secret", "body-secret", "response-secret"]) assert.equal(catalog.includes(secret), false, secret);
     assert.ok(text.includes("suite: {name") && text.includes("{{steps.1.response.body./data/challengeToken}}"));
