@@ -1,5 +1,4 @@
 import { type ComponentType } from "react";
-import { requestBodyValue } from "./swagger-request";
 
 export type SwaggerMap = {
   get: (key: string, notSetValue?: unknown) => unknown;
