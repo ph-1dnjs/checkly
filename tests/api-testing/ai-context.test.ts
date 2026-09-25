@@ -41,3 +41,22 @@ test("copyable AI prompt lists every API with schemas but no values, URLs or exa
 test("schema export retains property names and flags unresolved refs without example values", () => {
   assert.deepEqual(schemaForAi({ type: "object", properties: { example: { type: "string", example: "secret" }, item: { $ref: "#/components/schemas/Item" } }, "x-secret": "hidden" }), { type: "object", properties: { example: { type: "string" }, item: { unresolvedReference: true } } });
 });
+
+test("AI schemas inline local $refs, cut cycles and resolve shared responses", async () => {
+  const { specRefResolver, aiCatalogDetails } = await import("../../src/app/api-testing/main/ai-context");
+  const spec = { components: {
+    schemas: {
+      Token: { type: "object", properties: { accessToken: { type: "string", example: "secret" } } },
+      Node: { type: "object", properties: { child: { $ref: "#/components/schemas/Node" } } },
+      Envelope: { type: "object", properties: { data: { $ref: "#/components/schemas/Token" } } },
+    },
+    responses: { Ok: { description: "성공", content: { "application/json": { schema: { $ref: "#/components/schemas/Envelope" } } } } },
+  } };
+  const resolve = specRefResolver(spec);
+  assert.deepEqual(schemaForAi({ $ref: "#/components/schemas/Envelope" }, 0, resolve), { type: "object", properties: { data: { type: "object", properties: { accessToken: { type: "string" } } } } });
+  assert.deepEqual(schemaForAi({ $ref: "#/components/schemas/Node" }, 0, resolve), { type: "object", properties: { child: { circularReference: "Node" } } });
+  assert.deepEqual(schemaForAi({ $ref: "#/components/schemas/Missing" }, 0, resolve), { unresolvedReference: true });
+  const [server] = aiCatalogDetails([{ serverName: "API", spec, operations: [{ key: "POST /login", method: "POST", path: "/login", summary: "로그인", description: "", tag: "auth", parameters: [], bodyRequired: true, bodySchema: { $ref: "#/components/schemas/Token" }, responses: { "200": { $ref: "#/components/responses/Ok" } }, warnings: [] }] }]);
+  assert.deepEqual(server.apis[0].requestSchema, { type: "object", properties: { accessToken: { type: "string" } } });
+  assert.deepEqual(server.apis[0].responses, { "200": { description: "성공", content: { "application/json": { schema: { type: "object", properties: { data: { type: "object", properties: { accessToken: { type: "string" } } } } } } } } });
+});

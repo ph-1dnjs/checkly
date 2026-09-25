@@ -150,10 +150,11 @@ export class ApiWorkspace {
   private async aiServers(scope: ApiEnvironmentScope, project: ApiProject, tags?: string[]) {
     const servers = [];
     for (const server of project.servers) {
-      const operations = ((await this.getCatalog({ ...scope, serverId: server.id }))?.operations ?? [])
+      const catalog = await this.getCatalog({ ...scope, serverId: server.id });
+      const operations = (catalog?.operations ?? [])
         .filter(operation => !operation.warnings.length)
         .filter(operation => !tags?.length || tags.some(tag => operation.tag === tag || operation.tags?.includes(tag)));
-      if (operations.length) servers.push({ serverName: server.name, operations });
+      if (operations.length) servers.push({ serverName: server.name, operations, spec: catalog?.spec });
     }
     if (!servers.length) throw new Error("현재 환경에 AI가 사용할 API 명세가 없습니다. API 문서 탭에서 명세를 가져오세요");
     return servers;

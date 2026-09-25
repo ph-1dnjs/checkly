@@ -1,45 +1,75 @@
 import type { Json } from "../shared/scenario";
 import type { ApiGlobal, ApiOperation } from "../shared/workspace";
 
+/** Looks up a local JSON reference ("#/components/schemas/Item") in the stored spec. */
+export type RefResolver = (ref: string) => unknown;
+
+export function specRefResolver(spec: unknown): RefResolver {
+  return ref => {
+    if (!ref.startsWith("#/") || !spec || typeof spec !== "object") return undefined;
+    let node: unknown = spec;
+    for (const part of ref.slice(2).split("/")) {
+      const key = part.replace(/~1/g, "/").replace(/~0/g, "~");
+      if (!node || typeof node !== "object" || !Object.hasOwn(node, key)) return undefined;
+      node = (node as Record<string, unknown>)[key];
+    }
+    return node;
+  };
+}
+
+const refName = (ref: string) => ref.split("/").pop() ?? ref;
+
 // Deliberately exclude examples/defaults/enums, vendor extensions and runtime data.
 // Preserve property names and the schema shape needed for request/response linking.
-export function schemaForAi(value: unknown, depth = 0): unknown {
+// Local $refs are inlined when a resolver is given; cycles are cut with a marker.
+export function schemaForAi(value: unknown, depth = 0, resolve?: RefResolver, seen: readonly string[] = []): unknown {
   if (typeof value === "boolean") return value;
   if (!value || typeof value !== "object" || Array.isArray(value) || depth > 12) return {};
   const source = value as Record<string, unknown>;
+  if (typeof source.$ref === "string") {
+    const ref = source.$ref;
+    if (seen.includes(ref)) return { circularReference: refName(ref) };
+    const target = resolve?.(ref);
+    if (target === undefined) return { unresolvedReference: true };
+    const resolved = schemaForAi(target, depth + 1, resolve, [...seen, ref]) as Record<string, unknown>;
+    // OpenAPI 3.1 allows a description next to $ref; keep it.
+    return typeof source.description === "string" ? { ...resolved, description: source.description } : resolved;
+  }
   const out: Record<string, unknown> = {};
   for (const key of ["type", "format", "description", "required", "nullable", "readOnly", "writeOnly", "minimum", "maximum", "minLength", "maxLength"]) {
     if (source[key] !== undefined) out[key] = source[key];
   }
-  if (source.$ref) out.unresolvedReference = true;
+  const child = (schema: unknown) => schemaForAi(schema, depth + 1, resolve, seen);
   if (source.properties && typeof source.properties === "object") {
-    out.properties = Object.fromEntries(Object.entries(source.properties).map(([key, schema]) => [key, schemaForAi(schema, depth + 1)]));
+    out.properties = Object.fromEntries(Object.entries(source.properties).map(([key, schema]) => [key, child(schema)]));
   }
   for (const key of ["items", "additionalProperties"]) {
-    if (source[key] !== undefined) out[key] = schemaForAi(source[key], depth + 1);
+    if (source[key] !== undefined) out[key] = child(source[key]);
   }
   for (const key of ["allOf", "oneOf", "anyOf"]) {
-    if (Array.isArray(source[key])) out[key] = source[key].map(schema => schemaForAi(schema, depth + 1));
+    if (Array.isArray(source[key])) out[key] = source[key].map(child);
   }
   return out;
 }
 
-function responseForAi(value: Json) {
+function responseForAi(value: Json, resolve?: RefResolver) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   return Object.fromEntries(Object.entries(value).map(([status, raw]) => {
-    const response = raw as Record<string, Json>;
+    let response = raw as Record<string, Json>;
+    // Whole responses can be shared via #/components/responses.
+    if (response && typeof response === "object" && typeof response.$ref === "string") response = (resolve?.(response.$ref) ?? {}) as Record<string, Json>;
     if (!response || typeof response !== "object") return [status, {}];
     const content = response.content as Record<string, Record<string, Json>> | undefined;
     return [status, {
       description: response.description,
-      content: content && Object.fromEntries(Object.entries(content).map(([media, entry]) => [media, { schema: schemaForAi(entry.schema) }])),
+      content: content && Object.fromEntries(Object.entries(content).map(([media, entry]) => [media, { schema: schemaForAi(entry?.schema, 0, resolve) }])),
     }];
   }));
 }
 
 // ---- CLI authoring (Claude Code / Codex) ----
 
-export type AiAuthorServer = { serverName: string; operations: ApiOperation[] };
+export type AiAuthorServer = { serverName: string; operations: ApiOperation[]; /** Original spec, for resolving $refs. */ spec?: Json };
 export type AiAuthorPromptInput = {
   goal: string;
   includeSuite: boolean;
@@ -64,16 +94,18 @@ export const aiAnswerJsonSchema = {
 } as const;
 
 export function aiCatalogDetails(servers: AiAuthorServer[]) {
-  return servers.map(({ serverName, operations }) => ({
+  return servers.map(({ serverName, operations, spec }) => {
+    const resolve = specRefResolver(spec);
+    return {
     server: serverName,
     apis: operations.map(operation => ({
       api: `${operation.method.toUpperCase()} ${operation.path}`,
       tag: operation.tag, summary: operation.summary, description: operation.description,
       parameters: operation.parameters.map(({ example: _example, ...parameter }) => parameter),
-      bodyRequired: operation.bodyRequired, requestSchema: schemaForAi(operation.bodySchema),
-      responses: responseForAi(operation.responses),
+      bodyRequired: operation.bodyRequired, requestSchema: schemaForAi(operation.bodySchema, 0, resolve),
+      responses: responseForAi(operation.responses, resolve),
     })),
-  }));
+  }; });
 }
 
 function catalogIndex(servers: AiAuthorServer[]): string {
