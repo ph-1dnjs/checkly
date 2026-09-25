@@ -12,7 +12,7 @@ import { SpecSync } from "./spec-sync";
 const methods = [
   "listProjects", "saveProject", "getCatalog", "execute", "cancel",
   "listGlobals", "setGlobal", "deleteGlobal", "listCookies", "clearCookies", "listScenarios", "listSuites", "saveSuite", "deleteSuite", "previewScenario",
-  "saveScenario", "saveScenarioDraft", "runScenario", "buildAiContext",
+  "saveScenario", "saveScenarioDraft", "runScenario", "buildAiContext", "buildAiPrompt", "getAiProgress", "cancelAiAuthor",
   "getRequestAuth", "setRequestAuth",
   "deleteProject", "deleteCatalog", "deleteScenario",
 ] as const;
@@ -99,6 +99,11 @@ export function apiWebDev(): Plugin {
           } else if (methods.includes(method as typeof methods[number])) {
             const action = workspace[method as typeof methods[number]] as (...values: unknown[]) => unknown;
             result = await action.apply(workspace, args);
+          } else if (method === "listAiClis") {
+            // Spawning local AI CLIs is a desktop-app feature.
+            result = [];
+          } else if (["authorWithAi", "copyAiPrompt", "chooseDirectory"].includes(method)) {
+            throw new Error("AI 작성과 폴더 선택은 데스크톱 앱에서 사용할 수 있습니다");
           } else if (method === "importText") {
             const text = z.string().max(5_000_000).parse(args[1]);
             if (Buffer.byteLength(text) > 5_000_000) throw new Error("명세는 5MB 이하만 지원합니다");

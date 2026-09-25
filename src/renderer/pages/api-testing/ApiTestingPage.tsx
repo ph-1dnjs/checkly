@@ -155,7 +155,7 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
   const locked = busy || scenarioComposerOpen;
   return <GlobalVariableAccessProvider key={projectId}><SensitiveValuesProvider projectId={projectId} bridge={bridge}><section className={`api-testing-page api-swagger-shell${hideValues ? " api-hide-values" : ""}`}>
     <header className="api-toolbar"><h1>API 테스트</h1><div className="api-actions"><select aria-label="API 프로젝트" disabled={locked || loading} value={projectId} onChange={e => selectProject(projects.find(p => p.id === e.target.value)!)}><option value="" disabled>프로젝트 선택</option>{projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select><button disabled={locked || loading} onClick={() => setForm("new")}>+ 프로젝트</button>{project && <button disabled={locked || loading} onClick={() => setForm("edit")}>설정</button>}</div></header>
-    {form ? <ProjectForm key={`${form}:${projectId}`} initial={form === "edit" ? project : undefined} onCancel={() => setForm(null)} onDelete={async () => {
+    {form ? <ProjectForm key={`${form}:${projectId}`} onChooseDirectory={() => bridge.chooseDirectory()} initial={form === "edit" ? project : undefined} onCancel={() => setForm(null)} onDelete={async () => {
       setBusy(true);
       try {
       await bridge.deleteProject(projectId);

@@ -6,6 +6,7 @@ import { ApiWorkspace, scopeSchema } from "./workspace";
 import { specSourceSchema } from "../shared/workspace";
 import { z } from "zod";
 import { SpecSync } from "./spec-sync";
+import { availableAiClis } from "./ai-cli";
 import { isProvidedScenarioInput, matchesScenarioInputType, type Json, type ScenarioInputRequest } from "../shared/scenario";
 import type { ApiScenarioInputRequest } from "../shared/workspace";
 
@@ -56,6 +57,17 @@ export function registerApiTesting() {
   ipcMain.handle("api-testing:ai-context", (_event, request) => workspace.buildAiContext(request));
   ipcMain.handle("api-testing:copy-ai-context", async (_event, request) => {
     clipboard.writeText(await workspace.buildAiContext(request));
+  });
+  ipcMain.handle("api-testing:list-ai-clis", () => availableAiClis());
+  ipcMain.handle("api-testing:author-with-ai", (_event, request) => workspace.authorWithAi(request));
+  ipcMain.handle("api-testing:get-ai-progress", (_event, scope) => workspace.getAiProgress(scope));
+  ipcMain.handle("api-testing:cancel-ai-author", (_event, scope) => workspace.cancelAiAuthor(scope));
+  ipcMain.handle("api-testing:copy-ai-prompt", async (_event, request) => {
+    clipboard.writeText(await workspace.buildAiPrompt(request));
+  });
+  ipcMain.handle("api-testing:choose-directory", async () => {
+    const selected = await dialog.showOpenDialog({ title: "백엔드 프로젝트 폴더 선택", properties: ["openDirectory"] });
+    return selected.canceled ? null : selected.filePaths[0] ?? null;
   });
   ipcMain.handle("api-testing:list-projects", () => workspace.listProjects());
   ipcMain.handle("api-testing:save-project", (_event, project) => workspace.saveProject(project));

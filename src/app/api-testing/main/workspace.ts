@@ -173,6 +173,31 @@ export class ApiWorkspace {
     return output;
   }
 
+  private async aiServers(scope: ApiEnvironmentScope, project: ApiProject, tags?: string[]) {
+    const servers = [];
+    for (const server of project.servers) {
+      const operations = ((await this.getCatalog({ ...scope, serverId: server.id }))?.operations ?? [])
+        .filter(operation => !operation.warnings.length)
+        .filter(operation => !tags?.length || tags.some(tag => operation.tag === tag || operation.tags?.includes(tag)));
+      if (operations.length) servers.push({ serverName: server.name, operations });
+    }
+    if (!servers.length) throw new Error("현재 환경에 AI가 사용할 API 명세가 없습니다. API 문서 탭에서 명세를 가져오세요");
+    return servers;
+  }
+
+  /** Same prompt with the schemas inlined, for pasting into an external AI when no CLI is available. */
+  async buildAiPrompt(raw: unknown): Promise<string> {
+    const request = aiAuthorRequestSchema.parse(raw);
+    const { scope, project } = await this.environment(request.scope);
+    const prompt = createAuthorPrompt({
+      goal: request.goal, includeSuite: request.includeSuite, servers: await this.aiServers(scope, project, request.tags),
+      globals: await this.listGlobals({ projectId: scope.projectId }),
+      existing: (await this.listScenarios(scope.projectId)).map(({ id, name }) => ({ id, name })), backendAvailable: false,
+    });
+    if (Buffer.byteLength(prompt) > 1_000_000) throw new Error("API가 너무 많습니다. 태그로 범위를 좁히세요");
+    return prompt;
+  }
+
   private aiRuns = new Map<string, { controller: AbortController; progress: ApiAiProgress }>();
 
   getAiProgress(input: ApiProjectScope): ApiAiProgress | null {
@@ -192,14 +217,7 @@ export class ApiWorkspace {
     const request = aiAuthorRequestSchema.parse(raw);
     const { scope, project } = await this.environment(request.scope);
     if (this.aiRuns.has(scope.projectId)) throw new Error("이 프로젝트에서 이미 AI 작성이 진행 중입니다");
-    const servers = [];
-    for (const server of project.servers) {
-      const operations = ((await this.getCatalog({ ...scope, serverId: server.id }))?.operations ?? [])
-        .filter(operation => !operation.warnings.length)
-        .filter(operation => !request.tags?.length || request.tags.some(tag => operation.tag === tag || operation.tags?.includes(tag)));
-      if (operations.length) servers.push({ serverName: server.name, operations });
-    }
-    if (!servers.length) throw new Error("현재 환경에 AI가 사용할 API 명세가 없습니다. API 문서 탭에서 명세를 가져오세요");
+    const servers = await this.aiServers(scope, project, request.tags);
     let backendDir: string | undefined;
     if (project.backendPath) {
       if (!(await stat(project.backendPath).then(info => info.isDirectory(), () => false))) throw new Error("프로젝트 설정의 백엔드 폴더를 찾을 수 없습니다");

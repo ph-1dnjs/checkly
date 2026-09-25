@@ -81,6 +81,14 @@ export type ApiTestingBridge = {
   setRequestAuth(scope: ApiScope, variable: string | null): Promise<void>;
   buildAiContext(request: ApiAiContextRequest): Promise<string>;
   copyAiContext(request: ApiAiContextRequest): Promise<void>;
+  /** Installed AI CLIs; desktop app only. */
+  listAiClis(): Promise<ApiAiCli[]>;
+  authorWithAi(request: ApiAiAuthorRequest): Promise<ApiAiAuthorResult>;
+  getAiProgress(scope: ApiProjectScope): Promise<ApiAiProgress | null>;
+  cancelAiAuthor(scope: ApiProjectScope): Promise<void>;
+  copyAiPrompt(request: ApiAiAuthorRequest): Promise<void>;
+  /** Native folder picker for the project's backend source; null when cancelled. */
+  chooseDirectory(): Promise<string | null>;
   listProjects(): Promise<ApiProject[]>;
   saveProject(project: ApiProject): Promise<ApiProject>;
   deleteProject(projectId: string): Promise<void>;

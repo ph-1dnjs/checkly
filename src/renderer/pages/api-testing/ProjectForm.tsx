@@ -2,8 +2,9 @@ import { useState } from "react";
 import { projectSchema, type ApiProject } from "../../../app/api-testing/shared/workspace";
 import { DeleteAction } from "./DeleteAction";
 
-export function ProjectForm({ initial, onSave, onCancel, onDelete }: {
+export function ProjectForm({ initial, onSave, onCancel, onDelete, onChooseDirectory }: {
   initial?: ApiProject; onSave: (project: ApiProject) => Promise<void>; onCancel: () => void; onDelete?: () => Promise<void>;
+  onChooseDirectory?: () => Promise<string | null>;
 }) {
   const [draft, setDraft] = useState<ApiProject>(() => {
     const serverId = crypto.randomUUID();
@@ -37,6 +38,12 @@ export function ProjectForm({ initial, onSave, onCancel, onDelete }: {
       {draft.servers.map(server => <label key={server.id}>{server.name || "새 서버"} 기본 주소<input type="url" required placeholder="https://api.example.com" value={env.baseUrls[server.id]} onChange={e => setDraft({ ...draft, environments: draft.environments.map(v => v.id === env.id ? { ...v, baseUrls: { ...v.baseUrls, [server.id]: e.target.value } } : v) })} /></label>)}
     </fieldset>)}
     <button type="button" onClick={() => setDraft({ ...draft, environments: [...draft.environments, { id: crypto.randomUUID(), name: "", baseUrls: Object.fromEntries(draft.servers.map(s => [s.id, ""])) }] })}>+ 환경 추가</button>
+    <h3>AI 작성 도우미</h3>
+    <p>백엔드 소스 폴더를 지정하면 AI가 컨트롤러·DTO·검증 규칙을 읽고 시나리오를 만듭니다. 읽기만 하며 파일을 수정하지 않습니다. 비워 두면 API 명세만 사용합니다.</p>
+    <div className="api-backend-path">
+      <label>백엔드 폴더 경로<input value={draft.backendPath ?? ""} placeholder="/Users/me/projects/shop-api" onChange={e => { const { backendPath: _removed, ...rest } = draft; setDraft(e.target.value.trim() ? { ...rest, backendPath: e.target.value } : rest); }} /></label>
+      {onChooseDirectory && <button type="button" disabled={saving} onClick={async () => { try { const chosen = await onChooseDirectory(); if (chosen) setDraft({ ...draft, backendPath: chosen }); } catch (e) { setError((e as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, "")); } }}>폴더 선택</button>}
+    </div>
     {error && <p role="alert">{error}</p>}
     {!!removed.length && <label key={removed.join(",")}><input type="checkbox" required />{removed.join(", ")} 및 관련 저장 데이터 삭제를 확인했습니다. 환경 삭제 시 해당 전역 변수도 삭제됩니다. 저장 후에는 되돌릴 수 없습니다.</label>}
     {initial && onDelete && <DeleteAction label="프로젝트 삭제" disabled={saving} description={`‘${initial.name}’의 모든 서버·환경, API 명세, 시나리오·초안, 저장된 문서 계정과 전역 변수를 삭제합니다. 실제 API 서버의 데이터는 삭제하지 않습니다.`} onDelete={onDelete} />}
