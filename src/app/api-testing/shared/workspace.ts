@@ -16,6 +16,8 @@ export const projectSchema = z.object({
     baseUrls: z.record(z.string().uuid(), httpUrl.refine(v => !new URL(v).search, "기본 주소에 쿼리를 넣을 수 없습니다")),
   }).strict()).min(1),
 }).strict().superRefine((p, ctx) => {
+  if (new Set(p.servers.map(server => server.name)).size !== p.servers.length)
+    ctx.addIssue({ code: "custom", path: ["servers"], message: "프로젝트 내 서버 이름은 중복될 수 없습니다" });
   for (const group of [p.servers, p.environments]) {
     if (new Set(group.map(v => v.id)).size !== group.length)
       ctx.addIssue({ code: "custom", message: "중복 식별자" });
@@ -34,7 +36,7 @@ export const specSourceSchema = z.discriminatedUnion("kind", [
 ]);
 export type ApiSpecSource = z.infer<typeof specSourceSchema>;
 export type ApiSpecSync = { url?: string; username?: string; hasSavedAccount: boolean; secureStorageAvailable: boolean; lastAttemptAt?: string; lastSuccessAt?: string; status?: "success" | "failed" };
-export type ApiParameter = { name: string; location: string; required: boolean; description: string; type: string; example?: Json };
+export type ApiParameter = { name: string; location: string; required: boolean; description: string; type: string; style?: string; explode?: boolean; example?: Json };
 export type ApiOperation = {
   tags?: string[];
   key: string; method: string; path: string; operationId?: string; summary: string; description: string; tag: string;
@@ -42,12 +44,16 @@ export type ApiOperation = {
   bodySchema?: Json; responses: Json; warnings: string[];
 };
 export type ApiCatalog = { title: string; version: string; importedAt: string; spec?: Json; operations: ApiOperation[]; tags?: Array<{ name: string; description: string }> };
-export type ApiResponse = { status: string; httpStatus?: number; durationMs: number; headers?: Record<string, string>; body?: Json; error?: string; input?: { name: string; provided: boolean } };
+export type ApiRequestTrace = { method: string; url: string; headers: Record<string, string>; body?: Json };
+export type ApiResponse = { status: string; httpStatus?: number; durationMs: number; request?: ApiRequestTrace; headers?: Record<string, string>; body?: Json; error?: string; failure?: { kind: "http" | "assertion" | "extraction" | "request" | "input" | "other"; source?: "status" | "header" | "body"; operator?: "exists" | "equals" | "contains" | "includes" }; input?: { name: string; provided: boolean }; inputs?: Array<{ name: string; provided: boolean }> };
 export type ApiScope = { projectId: string; serverId: string; environmentId: string };
+export type ApiProjectScope = Pick<ApiScope, "projectId">;
 export type ApiEnvironmentScope = Pick<ApiScope, "projectId" | "environmentId">;
 export type ApiGlobal = { name: string; type: string; displayValue: string };
-export type SavedApiScenario = { id: string; name: string; source: string; bindings: Record<string, string>; updatedAt: string; draft?: boolean };
-export type ApiScenarioPreview = { scenario: Scenario; issues: string[] };
+export type SavedApiScenario = { id: string; name: string; source: string; bindings: Record<string, string>; updatedAt: string; draft?: boolean; groupPath?: string[]; tags?: string[] };
+export type SavedApiSuite = { id: string; name: string; scenarioIds: string[]; onFailure: "stop" | "continue"; updatedAt: string; groupPath?: string[]; tags?: string[] };
+export type ApiSidebarMetadata = { groupPath?: string[]; tags?: string[] };
+export type ApiScenarioPreview = { scenario: Scenario; issues: string[]; executionIssues?: string[] };
 export type ApiScenarioResult = { status: string; steps: Array<ApiResponse & { id: string; name: string }>; variables: Record<string, Json> };
 export type ApiScenarioInputRequest = ScenarioInputRequest & { requestId: string };
 export type ApiScenarioInputSubmission = {
@@ -76,14 +82,18 @@ export type ApiTestingBridge = {
   /** Unredacted, transient interactive response. Never use for reports, persistence or AI context. */
   executeLive(scope: ApiScope, operationKey: string, request: Scenario["steps"][number]["request"]): Promise<ApiResponse>;
   cancel(scope: ApiScope): Promise<void>;
-  listGlobals(scope: ApiEnvironmentScope): Promise<ApiGlobal[]>;
-  setGlobal(scope: ApiEnvironmentScope, name: string, value: Json): Promise<void>;
-  deleteGlobal(scope: ApiEnvironmentScope, name: string): Promise<void>;
+  listGlobals(scope: ApiProjectScope): Promise<ApiGlobal[]>;
+  setGlobal(scope: ApiProjectScope, name: string, value: Json): Promise<void>;
+  deleteGlobal(scope: ApiProjectScope, name: string): Promise<void>;
   listScenarios(projectId: string): Promise<SavedApiScenario[]>;
+  listSuites(projectId: string): Promise<SavedApiSuite[]>;
+  saveSuite(projectId: string, suite: Omit<SavedApiSuite, "updatedAt">, expectedUpdatedAt?: string): Promise<SavedApiSuite>;
+  deleteSuite(projectId: string, id: string, expectedUpdatedAt: string): Promise<void>;
+  saveSuiteReport(filename: string, html: string): Promise<string | null>;
   readScenarioFile(): Promise<string | null>;
   previewScenario(scope: ApiEnvironmentScope, source: string, bindings: Record<string, string>): Promise<ApiScenarioPreview>;
-  saveScenario(scope: ApiEnvironmentScope, source: string, bindings: Record<string, string>, expectedUpdatedAt?: string): Promise<SavedApiScenario>;
-  saveScenarioDraft(scope: ApiEnvironmentScope, source: string, bindings: Record<string, string>, expectedUpdatedAt?: string): Promise<SavedApiScenario>;
+  saveScenario(scope: ApiEnvironmentScope, source: string, bindings: Record<string, string>, expectedUpdatedAt?: string, metadata?: ApiSidebarMetadata): Promise<SavedApiScenario>;
+  saveScenarioDraft(scope: ApiEnvironmentScope, source: string, bindings: Record<string, string>, expectedUpdatedAt?: string, metadata?: ApiSidebarMetadata): Promise<SavedApiScenario>;
   runScenario(scope: ApiEnvironmentScope, source: string, bindings: Record<string, string>, inputs: Record<string, Json>): Promise<ApiScenarioResult>;
   getPendingScenarioInput(scope: ApiEnvironmentScope): Promise<ApiScenarioInputRequest | null>;
   submitScenarioInput(scope: ApiEnvironmentScope, submission: ApiScenarioInputSubmission): Promise<void>;

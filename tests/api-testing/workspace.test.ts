@@ -13,7 +13,7 @@ export const spec = JSON.stringify({ openapi: "3.0.3", info: { title: "테스트
   "/login": { post: { summary: "로그인", requestBody: { content: { "application/json": { schema: { $ref: "#/components/schemas/Login" } } } }, responses: { "200": { description: "토큰" } } } },
 }, components: { schemas: { Login: { type: "object", properties: { loginId: { type: "string" } } } } } });
 
-test("globals and saved scenario lifecycle: mapping, reuse, masking, conflicts and isolation", async () => {
+test("globals and saved scenario lifecycle: mapping, reuse, visible values, conflicts and isolation", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "checkly-scenarios-"));
   const server = createServer((req, res) => {
     res.setHeader("content-type", "application/json");
@@ -47,11 +47,11 @@ steps:
   try {
     const workspace = new ApiWorkspace(dir);
     await workspace.saveProject(project); await workspace.importSpec(scope, spec);
-    await workspace.setGlobal(scope, "manual", "manual-secret");
-    assert.equal(JSON.stringify(await workspace.listGlobals(scope)).includes("manual-secret"), false);
-    assert.deepEqual(await workspace.listGlobals({ ...scope, environmentId: otherEnvironment }), []);
-    await workspace.deleteGlobal(scope, "manual");
-    assert.deepEqual(await workspace.listGlobals(scope), []);
+    await workspace.setGlobal({ projectId: project.id }, "manual", "manual-secret");
+    assert.equal(JSON.stringify(await workspace.listGlobals({ projectId: project.id })).includes("manual-secret"), true);
+    assert.equal((await workspace.listGlobals({ projectId: project.id })).length, 1);
+    await workspace.deleteGlobal({ projectId: project.id }, "manual");
+    assert.deepEqual(await workspace.listGlobals({ projectId: project.id }), []);
     assert.ok((await workspace.previewScenario(scope, yaml, {})).issues.some(i => i.includes("서버")));
     const bindings = { member: serverId };
     assert.deepEqual((await workspace.previewScenario(scope, yaml, bindings)).issues, []);
@@ -75,12 +75,14 @@ steps:
     const result = await workspace.runScenario(scope, yaml, bindings, {});
     assert.equal(result.status, "passed");
     assert.equal(result.variables.itemId, 42);
-    assert.equal(JSON.stringify(result).includes("session-secret"), false);
+    assert.equal(result.steps[0].request?.method, "POST");
+    assert.match(result.steps[0].request?.url ?? "", /\/login$/);
+    assert.equal(JSON.stringify(result).includes("session-secret"), true);
     const single = await workspace.execute(scope, "GET /items/{id}", { pathParams: { id: 42 }, headers: { Authorization: "Bearer {{globals.accessToken}}" } });
     assert.equal(single.status, "passed");
-    assert.equal(JSON.stringify(single).includes("session-secret"), false);
-    assert.ok((await workspace.listGlobals(scope)).some(v => v.name === "accessToken"));
-    assert.deepEqual(await new ApiWorkspace(dir).listGlobals(scope), []);
+    assert.equal(JSON.stringify(single).includes("session-secret"), true);
+    assert.ok((await workspace.listGlobals({ projectId: project.id })).some(v => v.name === "accessToken"));
+    assert.deepEqual(await new ApiWorkspace(dir).listGlobals({ projectId: project.id }), []);
     await assert.rejects(workspace.runScenario({ ...scope, environmentId: otherEnvironment }, yaml, bindings, {}), /명세/);
   } finally { server.closeAllConnections(); await new Promise<void>(r => server.close(() => r())); await rm(dir, { recursive: true, force: true }); }
 });
@@ -94,7 +96,7 @@ test("OpenAPI descriptions, local refs and unsupported formats", () => {
   assert.throws(() => readOpenApi(spec.replace("#/components/schemas/Login", "https://example.com/schema")), /외부/);
 });
 
-test("project persistence, catalog isolation, failed import retention and real masked response", async () => {
+test("project persistence, catalog isolation, failed import retention and original response", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "checkly-api-"));
   const server = createServer((req, res) => { res.setHeader("content-type", "application/json"); res.setHeader("set-cookie", "secret=hidden"); res.end(JSON.stringify({ id: 7, path: req.url, accessToken: "secret-token" })); });
   await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
@@ -112,8 +114,10 @@ test("project persistence, catalog isolation, failed import retention and real m
     await assert.rejects(workspace.execute(scope, "GET /items/{id}", {}), /필수/);
     const response = await workspace.execute(scope, "GET /items/{id}", { pathParams: { id: 7 } });
     assert.equal(response.httpStatus, 200);
-    assert.deepEqual(response.body, { id: 7, path: "/items/7", accessToken: "***" });
-    assert.equal(response.headers?.["set-cookie"], "***");
-    assert.equal(JSON.stringify(response).includes("secret-token"), false);
+    assert.equal(response.request?.method, "GET");
+    assert.match(response.request?.url ?? "", /\/items\/7$/);
+    assert.deepEqual(response.body, { id: 7, path: "/items/7", accessToken: "secret-token" });
+    assert.equal(response.headers?.["set-cookie"], "secret=hidden");
+    assert.equal(JSON.stringify(response).includes("secret-token"), true);
   } finally { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); await rm(dir, { recursive: true, force: true }); }
 });

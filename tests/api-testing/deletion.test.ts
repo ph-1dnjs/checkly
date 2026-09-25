@@ -19,7 +19,7 @@ test("deletion protects references, revisions and sync; cleans only the selected
     await workspace.saveProject(project); await workspace.saveProject(other);
     await workspace.importSpec(scope, spec);
     await workspace.importSpec({ ...scope, projectId: other.id }, spec);
-    await workspace.setGlobal(scope, "token", "test-token"); await workspace.setRequestAuth(scope, "token");
+    await workspace.setGlobal({ projectId: project.id }, "token", "test-token"); await workspace.setRequestAuth(scope, "token");
     const source = `version: 1\nid: test/read\nname: 조회\nsteps:\n  - id: read\n    name: 조회\n    server: main\n    api: { method: GET, path: /health }\n`;
     const item = await workspace.saveScenario(scope, source, { main: serverId });
     await assert.rejects(workspace.deleteScenario(project.id, item.id, "stale"), /변경/);
@@ -37,7 +37,7 @@ test("deletion protects references, revisions and sync; cleans only the selected
     assert.equal(await workspace.getRequestAuth(scope), null);
     assert.equal((await readdir(dir)).includes(accountFile), false);
     assert.equal((await workspace.listScenarios(project.id)).length, 1);
-    assert.equal((await workspace.listGlobals(scope)).length, 1);
+    assert.equal((await workspace.listGlobals({ projectId: project.id })).length, 1);
     await workspace.deleteScenario(project.id, item.id, item.updatedAt);
     assert.deepEqual(await workspace.listScenarios(project.id), []);
     await workspace.saveProject({ ...project, environments: [project.environments[0]] });
@@ -47,6 +47,6 @@ test("deletion protects references, revisions and sync; cleans only the selected
     assert.ok((await readdir(dir)).every(file => !file.includes(project.id)));
     await assert.rejects(workspace.deleteProject("../projects.json"));
     await workspace.saveProject(project);
-    assert.deepEqual(await workspace.listGlobals(scope), []);
+    assert.deepEqual(await workspace.listGlobals({ projectId: project.id }), []);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });

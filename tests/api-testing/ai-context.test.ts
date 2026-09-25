@@ -8,7 +8,7 @@ import { ApiWorkspace } from "../../src/app/api-testing/main/workspace";
 import { parseScenario } from "../../src/app/api-testing/shared/scenario";
 import { schemaForAi } from "../../src/app/api-testing/main/ai-context";
 
-test("AI context is selected, environment-scoped, value-free and has importable YAML example", async () => {
+test("AI context is selected, project-scoped, value-free and has importable YAML example", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "checkly-ai-context-"));
   const serverId = randomUUID(), secondServerId = randomUUID(), environmentId = randomUUID();
   const projectId = randomUUID();
@@ -22,7 +22,7 @@ test("AI context is selected, environment-scoped, value-free and has importable 
     const scope = { projectId, environmentId };
     await workspace.importSpec({ ...scope, serverId }, spec("/login"));
     await workspace.importSpec({ ...scope, serverId: secondServerId }, spec("/admin-login"));
-    await workspace.setGlobal(scope, "accessToken", "session-secret");
+    await workspace.setGlobal({ projectId }, "accessToken", "session-secret");
     const request = { scope, goal: "회원과 관리자 로그인 흐름", selections: [{ serverId, operationKey: "POST /login" }, { serverId: secondServerId, operationKey: "POST /admin-login" }] };
     const text = await workspace.buildAiContext(request);
     for (const secret of ["session-secret", "example-secret", "default-secret", "body-secret", "response-secret", "private-server.example.com", "admin-private.example.com", "/not-selected"]) assert.equal(text.includes(secret), false, secret);
@@ -30,7 +30,7 @@ test("AI context is selected, environment-scoped, value-free and has importable 
     assert.ok(text.includes('"accessToken"') && text.includes('"type": "string"'));
     const yaml = /```yaml\n([\s\S]*?)```/.exec(text)![1];
     const parsed = parseScenario(yaml);
-    assert.equal(parsed.steps[0].server, serverId);
+    assert.equal(parsed.steps[0].server, "회원");
     assert.deepEqual((await workspace.previewScenario(scope, yaml, {})).issues, []);
     await assert.rejects(workspace.buildAiContext({ ...request, scope: { ...scope, environmentId: randomUUID() } }));
     await assert.rejects(workspace.buildAiContext({ ...request, selections: [{ serverId, operationKey: "GET /missing" }] }));

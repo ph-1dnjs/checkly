@@ -30,7 +30,30 @@ test("YAML validation and typed references", () => {
   assert.equal(atPointer({}, "/missing"), undefined);
 });
 
-test("two servers, step 2 to step 6, global reuse and project/environment isolation", async () => {
+test("scenario bearer default, step override and no-auth use current globals", async () => {
+  const observed: Array<string | undefined> = [];
+  const server = createServer((req, res) => {
+    observed.push(req.headers.authorization);
+    res.setHeader("content-type", "application/json");
+    res.end(JSON.stringify({ token: "fresh-token" }));
+  });
+  await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const scenario = parseScenario(`name: 인증 혼합\nserver: api\nauth: globals.memberToken\nsteps:\n  - api: GET /member\n  - api: GET /admin\n    auth: globals.adminToken\n  - api: GET /public\n    auth: none\n  - api: GET /refresh\n    auth: none\n    extract:\n      - { source: body, pointer: /token, target: globals.memberToken }\n  - api: GET /member-again\n`);
+    const runner = new ApiRunner();
+    runner.globals.commit("auth-test", { memberToken: "old-token", adminToken: "admin-token" });
+    const options = { projectId: "auth-test", environment: "dev", servers: { api: { baseUrl: `http://127.0.0.1:${(server.address() as { port: number }).port}` } } };
+    assert.equal((await runner.run(scenario, options)).status, "passed");
+    assert.deepEqual(observed, ["Bearer old-token", "Bearer admin-token", undefined, undefined, "Bearer fresh-token"]);
+    scenario.steps[0].request.headers = { Authorization: "manual" };
+    assert.equal((await runner.run(scenario, options)).steps[0].status, "failed");
+    scenario.steps[0].request.headers = undefined;
+    runner.globals.delete("auth-test", "memberToken");
+    assert.equal((await runner.run(scenario, options)).steps[0].status, "blocked");
+  } finally { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); }
+});
+
+test("two servers, step 2 to step 6, global reuse and project isolation", async () => {
   const seen: string[] = [];
   const server = (role: string) => createServer(async (req, res) => {
     seen.push(`${role} ${req.method} ${req.url}`);
@@ -60,12 +83,12 @@ test("two servers, step 2 to step 6, global reuse and project/environment isolat
     const single = scenarioSchema.parse({ version: 1, id: "reuse", name: "재사용", steps: [{ id: "read", name: "조회", server: "member", api: { method: "GET", path: "/inquiries" }, request: { headers: { Authorization: "Bearer {{globals.memberAccessToken}}" } } }] });
     assert.equal((await runner.run(single, options)).status, "passed");
     assert.equal((await runner.run(single, { ...options, projectId: "other" })).status, "blocked");
-    assert.equal((await runner.run(single, { ...options, environment: "stg" })).status, "blocked");
+    assert.equal((await runner.run(single, { ...options, environment: "stg" })).status, "passed");
     single.steps[0].request.pathParams = { id: "{{vars.inquiryId}}" };
     assert.equal((await runner.run(single, options)).status, "blocked");
     const bad = scenarioSchema.parse({ ...single, steps: [{ id: "login", name: "로그인", server: "member", api: { method: "POST", path: "/auth/login" }, extract: [{ source: "body", pointer: "/accessToken", target: "globals.partial" }, { source: "body", pointer: "/absent", target: "vars.absent" }] }] });
     assert.equal((await runner.run(bad, options)).status, "failed");
-    assert.equal(runner.globals.snapshot("shop", "dev").partial, undefined);
+    assert.equal(runner.globals.snapshot("shop").partial, undefined);
   } finally {
     await Promise.all([member, admin].map(s => new Promise<void>((resolve, reject) => { s.closeAllConnections(); s.close(e => e ? reject(e) : resolve()); })));
   }
@@ -101,6 +124,36 @@ test("step input waits for a value and exposes it only through vars", async () =
   } finally { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); }
 });
 
+test("a step can wait for multiple runtime inputs", async () => {
+  const server = createServer(async (req, res) => {
+    let body = "";
+    for await (const chunk of req) body += chunk;
+    assert.deepEqual(JSON.parse(body), { loginId: "user@example.com", password: "one-time" });
+    res.setHeader("content-type", "application/json");
+    res.end(JSON.stringify({ verified: true }));
+  });
+  await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const scenario = scenarioSchema.parse({ version: 1, id: "multiple-inputs", name: "여러 입력", steps: [{
+      id: "login", name: "로그인", server: "api", api: { method: "POST", path: "/login" },
+      inputs: [
+        { name: "loginId", label: "로그인 ID", sensitive: false },
+        { name: "password", label: "비밀번호", sensitive: true },
+      ],
+      request: { body: { loginId: "{{vars.loginId}}", password: "{{vars.password}}" } },
+    }] });
+    const prompts: string[] = [];
+    const result = await new ApiRunner().run(scenario, {
+      projectId: "multiple-inputs", environment: "local", runId: "multiple-inputs-run",
+      servers: { api: { baseUrl: `http://127.0.0.1:${(server.address() as { port: number }).port}` } },
+      requestInput: async request => { prompts.push(request.name); return request.name === "loginId" ? "user@example.com" : "one-time"; },
+    });
+    assert.equal(result.status, "passed");
+    assert.deepEqual(prompts, ["loginId", "password"]);
+    assert.deepEqual(result.steps[0].inputs, [{ name: "loginId", provided: true }, { name: "password", provided: true }]);
+  } finally { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); }
+});
+
 test("scenario bindings can reuse request and response values from any earlier step", async () => {
   const server = createServer(async (req, res) => {
     res.setHeader("content-type", "application/json");
@@ -122,6 +175,41 @@ test("scenario bindings can reuse request and response values from any earlier s
     ] });
     const result = await new ApiRunner().run(scenario, { projectId: "all-sources", environment: "local", servers: { api: { baseUrl: `http://127.0.0.1:${(server.address() as { port: number }).port}` } } });
     assert.equal(result.status, "passed");
+  } finally { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); }
+});
+
+test("resolved requests are reported and body binding type errors explain the selected path", async () => {
+  let verifyCalls = 0;
+  const server = createServer(async (req, res) => {
+    if (req.url === "/login") {
+      res.setHeader("content-type", "application/json");
+      res.end(JSON.stringify({ data: { challengeToken: "challenge-value" } }));
+      return;
+    }
+    verifyCalls++;
+    res.end(JSON.stringify({ ok: true }));
+  });
+  await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const scenario = scenarioSchema.parse({ version: 1, id: "request-trace", name: "요청 추적", valueBindings: [
+      { name: "challengeToken", step: "login", source: "response", area: "body", pointer: "/data", sensitive: true },
+    ], steps: [
+      { id: "login", name: "로그인", server: "api", api: { method: "GET", path: "/login" } },
+      { id: "verify", name: "확인", server: "api", api: { operationId: "verify" }, request: { body: { challengeToken: "{{vars.challengeToken}}" } } },
+    ] });
+    const traces: Array<{ method: string; url: string; body?: unknown }> = [];
+    const result = await new ApiRunner().run(scenario, {
+      projectId: "request-trace", environment: "local", servers: { api: { baseUrl: `http://127.0.0.1:${(server.address() as { port: number }).port}` } },
+      resolveOperation: () => ({ method: "POST", path: "/verify", bodySchema: { type: "object", properties: { challengeToken: { type: "string" } }, required: ["challengeToken"] } }),
+      onRequest: request => traces.push({ method: request.method, url: request.url, body: request.body }),
+    });
+    assert.equal(result.status, "failed");
+    assert.equal(verifyCalls, 0);
+    assert.equal(traces.length, 2);
+    assert.equal(traces[1].method, "POST");
+    assert.deepEqual(traces[1].body, { challengeToken: { challengeToken: "challenge-value" } });
+    assert.match(result.steps[1].error!, /body\.challengeToken는 string이어야 하지만 현재 object/);
+    assert.match(result.steps[1].error!, /\/data\/challengeToken/);
   } finally { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); }
 });
 

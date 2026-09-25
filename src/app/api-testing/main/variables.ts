@@ -41,23 +41,23 @@ export function atPointer(body: Json, pointer: string): Json | undefined {
 export class GlobalStore {
   private values = new Map<string, Variables>();
   private active = new Set<string>();
-  clear(project: string, environment: string) { this.values.delete(this.key(project, environment)); }
-  private key(project: string, environment: string) { return JSON.stringify([project, environment]); }
-  snapshot(project: string, environment: string): Variables {
-    return structuredClone(this.values.get(this.key(project, environment)) ?? {});
+  clear(project: string) { this.values.delete(this.key(project)); }
+  private key(project: string) { return JSON.stringify([project]); }
+  snapshot(project: string): Variables {
+    return structuredClone(this.values.get(this.key(project)) ?? {});
   }
-  commit(project: string, environment: string, values: Variables) {
-    const key = this.key(project, environment);
+  commit(project: string, values: Variables) {
+    const key = this.key(project);
     this.values.set(key, { ...this.values.get(key), ...structuredClone(values) });
   }
-  delete(project: string, environment: string, name: string) {
-    const key = this.key(project, environment);
+  delete(project: string, name: string) {
+    const key = this.key(project);
     const values = { ...this.values.get(key) };
     delete values[name];
     this.values.set(key, values);
   }
   acquire(project: string, environment: string): () => void {
-    const key = this.key(project, environment);
+    const key = `${project}:${environment}`;
     if (this.active.has(key)) throw new Error("같은 프로젝트·환경에서 이미 실행 중입니다");
     this.active.add(key);
     return () => { this.active.delete(key); };

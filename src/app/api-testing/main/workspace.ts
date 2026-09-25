@@ -1,19 +1,36 @@
 import { mkdir, readFile, rename, writeFile, unlink } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { projectSchema, type ApiCatalog, type ApiProject, type ApiScope, type ApiResponse, type ApiEnvironmentScope, type ApiGlobal, type SavedApiScenario, type ApiScenarioPreview, type ApiScenarioResult } from "../shared/workspace";
+import { projectSchema, type ApiCatalog, type ApiProject, type ApiScope, type ApiResponse, type ApiProjectScope, type ApiEnvironmentScope, type ApiGlobal, type SavedApiScenario, type SavedApiSuite, type ApiSidebarMetadata, type ApiScenarioPreview, type ApiScenarioResult, type ApiRequestTrace } from "../shared/workspace";
 import { z } from "zod";
 import { ApiRunner } from "./execution";
-import { parseScenario, scenarioSchema, scenarioStepLabel, type Json, type Scenario, type ScenarioInputRequest } from "../shared/scenario";
+import { bindingUseLocations, pruneUnusedBrokenBindings, stringifyScenario, parseScenario, scenarioSchema, scenarioStepInputs, scenarioStepLabel, type Json, type Scenario, type ScenarioInputRequest } from "../shared/scenario";
 import { readOpenApi } from "./openapi";
 import { atPointer } from "./variables";
 import { ApiRedactor } from "./redaction";
 import { createAiContext } from "./ai-context";
 
 export const scopeSchema = z.object({ projectId: z.string().uuid(), serverId: z.string().uuid(), environmentId: z.string().uuid() }).strict();
+const projectScopeSchema = z.object({ projectId: z.string().uuid() }).strict();
 const environmentScopeSchema = scopeSchema.partial({ serverId: true });
 const variableName = z.string().regex(/^[A-Za-z][A-Za-z0-9_]*$/).refine(v => !["constructor", "prototype"].includes(v));
 const bindingSchema = z.record(z.string(), z.string().uuid());
+const sidebarMetadataSchema = z.object({
+  groupPath: z.array(z.string().trim().min(1).max(80).refine(segment => !segment.includes("/"), "폴더 이름에는 /를 사용할 수 없습니다")).max(10).optional().refine(value => !value || value.join("/").length <= 200, "그룹 경로는 200자 이하로 입력하세요").transform(value => value?.length ? value : undefined),
+  tags: z.array(z.string().trim().min(1).max(32)).max(20).optional().transform(values => values?.length ? [...new Map(values.map(value => [value.toLocaleLowerCase(), value])).values()] : undefined),
+}).strict();
+const suiteSchema = z.object({ id: z.string().uuid(), name: z.string().trim().min(1).max(100), scenarioIds: z.array(z.string().min(1).max(1000)).min(1).max(100), onFailure: z.enum(["stop", "continue"]) }).extend(sidebarMetadataSchema.shape).strict();
+function migrateSidebarMetadata<T extends Record<string, unknown>>(item: T): T & Partial<ApiSidebarMetadata> {
+  const { group: legacyGroup, ...rest } = item;
+  const rawPath = Array.isArray(item.groupPath)
+    ? item.groupPath
+    : typeof legacyGroup === "string" ? legacyGroup.split("/") : undefined;
+  const metadata = sidebarMetadataSchema.parse({
+    ...(rawPath !== undefined ? { groupPath: rawPath } : {}),
+    ...(Array.isArray(item.tags) ? { tags: item.tags } : {}),
+  });
+  return { ...rest, ...metadata } as T & Partial<ApiSidebarMetadata>;
+}
 export type ApiScenarioRunOptions = {
   runId?: string;
   requestInput?: (request: ScenarioInputRequest) => Promise<Json | undefined>;
@@ -27,6 +44,7 @@ export class ApiWorkspace {
   constructor(private directory: string) {}
   private maintenance = new Set<string>();
   private syncing = new Map<string, number>();
+  private catalogCache = new Map<string, ApiCatalog | null>();
   beginSpecSync(input: ApiScope) {
     const { projectId } = scopeSchema.parse(input);
     this.assertAvailable(projectId);
@@ -53,6 +71,7 @@ export class ApiWorkspace {
     await this.removeFile(this.filename(scope));
     await this.removeFile(`spec-source-${scope.projectId}-${scope.environmentId}-${scope.serverId}.json`);
     this.requestAuth.delete(this.authKey(scope));
+    this.catalogCache.delete(this.filename(scope));
   }
   async deleteProject(rawId: string): Promise<void> {
     const id = z.string().uuid().parse(rawId);
@@ -62,9 +81,10 @@ export class ApiWorkspace {
       if (!project) throw new Error("프로젝트를 찾을 수 없습니다");
       for (const env of project.environments) {
         for (const server of project.servers) await this.clearScope({ projectId: id, environmentId: env.id, serverId: server.id });
-        this.runner.globals.clear(id, env.id);
       }
+      this.runner.globals.clear(id);
       await this.removeFile(`scenarios-${id}.json`);
+      await this.removeFile(`suites-${id}.json`);
       await this.save("projects.json", projects.filter(p => p.id !== id));
     });
   }
@@ -102,7 +122,7 @@ export class ApiWorkspace {
     this.requestAuth.set(this.authKey(scope), { variable, baseUrl });
   }
   private authToken(scope: ApiScope, variable: string): string {
-    const token = this.runner.globals.snapshot(scope.projectId, scope.environmentId)[variable];
+    const token = this.runner.globals.snapshot(scope.projectId)[variable];
     if (typeof token !== "string" || !/^[A-Za-z0-9._~+/-]+=*$/.test(token)) throw new Error("인증 변수에 유효한 토큰 문자열이 없습니다. Bearer 접두사 없이 토큰을 저장하세요");
     return token;
   }
@@ -127,9 +147,9 @@ export class ApiWorkspace {
       selected.push({ server: server.id, serverName: server.name, operation });
     }
     const redactor = new ApiRedactor();
-    redactor.add(this.runner.globals.snapshot(scope.projectId, scope.environmentId));
+    redactor.add(this.runner.globals.snapshot(scope.projectId));
     selected.forEach(({ operation }) => redactor.discover(operation.bodyExample));
-    const output = redactor.mask(createAiContext(request.goal, selected, await this.listGlobals(scope))) as string;
+    const output = redactor.mask(createAiContext(request.goal, selected, await this.listGlobals({ projectId: scope.projectId }))) as string;
     if (Buffer.byteLength(output) > 500_000) throw new Error("선택 정보가 너무 큽니다. API 수를 줄이세요");
     return output;
   }
@@ -152,8 +172,26 @@ export class ApiWorkspace {
     return this.mutate(project.id, async () => {
       const projects = await this.listProjects();
       const index = projects.findIndex(p => p.id === project.id);
+      let originalScenarios: SavedApiScenario[] | undefined;
+      let renamedScenarios: SavedApiScenario[] | undefined;
       if (index >= 0) {
         const previous = projects[index];
+        if (previous.servers.some(old => project.servers.some(next => next.id === old.id && next.name !== old.name))) {
+          originalScenarios = await this.listScenarios(project.id);
+          renamedScenarios = originalScenarios.map(item => {
+            const scenario = this.parseSource(item.source);
+            let changed = false;
+            const steps = scenario.steps.map(step => {
+              const key = item.bindings[step.server] ?? step.server;
+              const old = previous.servers.find(server => server.id === key || server.name === key);
+              const next = old && project.servers.find(server => server.id === old.id);
+              if (!next) return step;
+              if (step.server !== next.name) changed = true;
+              return { ...step, server: next.name };
+            });
+            return changed ? { ...item, source: stringifyScenario({ ...scenario, steps }, true), bindings: {}, updatedAt: new Date(Math.max(Date.now(), Date.parse(item.updatedAt) + 1)).toISOString() } : item;
+          });
+        }
         const removedServers = previous.servers.filter(s => !project.servers.some(n => n.id === s.id));
         const removedEnvironments = previous.environments.filter(e => !project.environments.some(n => n.id === e.id));
         if (removedServers.length || removedEnvironments.length) {
@@ -161,17 +199,21 @@ export class ApiWorkspace {
           const affected = scenarios.filter(item => {
             if (removedEnvironments.length) return true; // Scenarios are project-wide and can run in every environment.
             const scenario = this.parseSource(item.source);
-            return scenario.steps.some(step => removedServers.some(s => s.id === (item.bindings[step.server] ?? step.server)));
+            return scenario.steps.some(step => removedServers.some(s => s.id === (item.bindings[step.server] ?? step.server) || s.name === step.server));
           });
           if (affected.length) throw new Error(`시나리오 참조를 먼저 정리하세요: ${affected.map(s => s.name).join(", ")}`);
           for (const env of previous.environments) {
             for (const server of previous.servers) if (removedEnvironments.some(e => e.id === env.id) || removedServers.some(s => s.id === server.id)) await this.clearScope({ projectId: project.id, environmentId: env.id, serverId: server.id });
-            if (removedEnvironments.some(e => e.id === env.id)) this.runner.globals.clear(project.id, env.id);
           }
         }
       }
       if (index < 0) projects.push(project); else projects[index] = project;
-      await this.save("projects.json", projects);
+      if (renamedScenarios) await this.save(`scenarios-${project.id}.json`, renamedScenarios);
+      try { await this.save("projects.json", projects); }
+      catch (error) {
+        if (originalScenarios) await this.save(`scenarios-${project.id}.json`, originalScenarios);
+        throw error;
+      }
       return project;
     });
   }
@@ -184,9 +226,27 @@ export class ApiWorkspace {
     return { scope: s, baseUrl: environment.baseUrls[s.serverId] };
   }
   private filename(s: ApiScope) { return `catalog-${s.projectId}-${s.environmentId}-${s.serverId}.json`; }
+  private async readCatalog(scope: ApiScope): Promise<ApiCatalog | null> {
+    const filename = this.filename(scope);
+    if (this.catalogCache.has(filename)) return this.catalogCache.get(filename)!;
+    const catalog = await this.read(filename) as ApiCatalog | null;
+    let current = catalog;
+    // Catalogs persist the source spec as well as the derived operations. Rebuild
+    // derived metadata when an older app version left stale support warnings.
+    if (catalog?.spec && catalog.operations?.some(operation => operation.warnings.length > 0)) {
+      try {
+        const refreshed = readOpenApi(JSON.stringify(catalog.spec));
+        current = { ...catalog, title: refreshed.title, version: refreshed.version, operations: refreshed.operations, tags: refreshed.tags };
+      } catch {
+        // Keep the saved catalog if its legacy spec cannot be parsed by the current reader.
+      }
+    }
+    this.catalogCache.set(filename, current);
+    return current;
+  }
   async getCatalog(input: ApiScope): Promise<ApiCatalog | null> {
     const { scope } = await this.scope(input);
-    return await this.read(this.filename(scope)) as ApiCatalog | null;
+    return this.readCatalog(scope);
   }
   async importSpec(input: ApiScope, source: string): Promise<ApiCatalog> {
     const release = this.beginSpecSync(input);
@@ -194,6 +254,7 @@ export class ApiWorkspace {
       const { scope } = await this.scope(input);
       const catalog = readOpenApi(source);
       await this.save(this.filename(scope), catalog);
+      this.catalogCache.set(this.filename(scope), catalog);
       return catalog;
     } finally { release(); }
   }
@@ -207,38 +268,89 @@ export class ApiWorkspace {
     return { scope, project, environment };
   }
 
-  async listGlobals(input: ApiEnvironmentScope): Promise<ApiGlobal[]> {
-    const { scope } = await this.environment(input);
-    return Object.entries(this.runner.globals.snapshot(scope.projectId, scope.environmentId)).map(([name, value]) => ({
-      name, type: value === null ? "null" : Array.isArray(value) ? "array" : typeof value, displayValue: "***",
+  private async project(input: ApiProjectScope) {
+    const scope = projectScopeSchema.parse(input);
+    const project = (await this.listProjects()).find(p => p.id === scope.projectId);
+    this.assertAvailable(scope.projectId);
+    if (!project) throw new Error("프로젝트를 찾을 수 없습니다");
+    return { scope, project };
+  }
+
+  private projectIsActive(projectId: string) {
+    return [...this.active.keys()].some(key => key.startsWith(`${projectId}:`));
+  }
+
+  async listGlobals(input: ApiProjectScope): Promise<ApiGlobal[]> {
+    const { scope } = await this.project(input);
+    return Object.entries(this.runner.globals.snapshot(scope.projectId)).map(([name, value]) => ({
+      name, type: value === null ? "null" : Array.isArray(value) ? "array" : typeof value, displayValue: typeof value === "string" ? value : JSON.stringify(value),
     }));
   }
 
-  async setGlobal(input: ApiEnvironmentScope, rawName: string, rawValue: Json) {
-    const { scope } = await this.environment(input);
+  async setGlobal(input: ApiProjectScope, rawName: string, rawValue: Json) {
+    const { scope } = await this.project(input);
     const name = variableName.parse(rawName);
     const value = z.json().parse(rawValue);
     if (JSON.stringify(value).length > 100_000) throw new Error("변수는 100KB 이하만 저장할 수 있습니다");
-    if (this.active.has(`${scope.projectId}:${scope.environmentId}`)) throw new Error("실행 중에는 전역변수를 변경할 수 없습니다");
-    this.runner.globals.commit(scope.projectId, scope.environmentId, { [name]: value });
+    if (this.projectIsActive(scope.projectId)) throw new Error("실행 중에는 전역변수를 변경할 수 없습니다");
+    this.runner.globals.commit(scope.projectId, { [name]: value });
   }
 
-  async deleteGlobal(input: ApiEnvironmentScope, rawName: string) {
-    const { scope } = await this.environment(input);
+  async deleteGlobal(input: ApiProjectScope, rawName: string) {
+    const { scope } = await this.project(input);
     const name = variableName.parse(rawName);
-    if (this.active.has(`${scope.projectId}:${scope.environmentId}`)) throw new Error("실행 중에는 전역변수를 변경할 수 없습니다");
-    this.runner.globals.delete(scope.projectId, scope.environmentId, name);
+    if (this.projectIsActive(scope.projectId)) throw new Error("실행 중에는 전역변수를 변경할 수 없습니다");
+    this.runner.globals.delete(scope.projectId, name);
   }
 
   async listScenarios(rawProjectId: string): Promise<SavedApiScenario[]> {
     const projectId = z.string().uuid().parse(rawProjectId);
     if (!(await this.listProjects()).some(p => p.id === projectId)) throw new Error("프로젝트를 찾을 수 없습니다");
-    return await this.read(`scenarios-${projectId}.json`) as SavedApiScenario[] ?? [];
+    const saved = await this.read(`scenarios-${projectId}.json`) as Record<string, unknown>[] | undefined;
+    return (saved ?? []).map(item => migrateSidebarMetadata(item) as unknown as SavedApiScenario);
+  }
+
+  async listSuites(rawProjectId: string): Promise<SavedApiSuite[]> {
+    const projectId = z.string().uuid().parse(rawProjectId);
+    if (!(await this.listProjects()).some(project => project.id === projectId)) throw new Error("프로젝트를 찾을 수 없습니다");
+    const saved = await this.read(`suites-${projectId}.json`) as Record<string, unknown>[] | undefined;
+    return z.array(suiteSchema.extend({ updatedAt: z.string().datetime() })).parse((saved ?? []).map(migrateSidebarMetadata));
+  }
+
+  async saveSuite(rawProjectId: string, rawSuite: Omit<SavedApiSuite, "updatedAt">, expectedUpdatedAt?: string): Promise<SavedApiSuite> {
+    const projectId = z.string().uuid().parse(rawProjectId);
+    const suite = suiteSchema.parse(rawSuite);
+    const action = this.queue.then(async () => {
+      const scenarios = await this.listScenarios(projectId);
+      if (suite.scenarioIds.some(id => !scenarios.some(item => item.id === id && !item.draft))) throw new Error("저장된 실행 가능 시나리오만 묶음에 추가하세요");
+      const saved = await this.listSuites(projectId);
+      const index = saved.findIndex(item => item.id === suite.id);
+      if (index >= 0 && saved[index].updatedAt !== expectedUpdatedAt) throw new Error("묶음이 변경되었습니다. 최신 목록에서 다시 선택하세요");
+      const item: SavedApiSuite = { ...suite, updatedAt: new Date(Math.max(Date.now(), index >= 0 ? Date.parse(saved[index].updatedAt) + 1 : 0)).toISOString() };
+      if (index >= 0) saved[index] = item; else saved.push(item);
+      await this.save(`suites-${projectId}.json`, saved);
+      return item;
+    });
+    this.queue = action.catch(() => undefined);
+    return action;
+  }
+
+  async deleteSuite(rawProjectId: string, rawId: string, expectedUpdatedAt: string): Promise<void> {
+    const projectId = z.string().uuid().parse(rawProjectId);
+    const id = z.string().uuid().parse(rawId);
+    const action = this.queue.then(async () => {
+      const saved = await this.listSuites(projectId);
+      const item = saved.find(suite => suite.id === id);
+      if (!item || item.updatedAt !== expectedUpdatedAt) throw new Error("묶음이 변경되었습니다. 최신 목록에서 다시 선택하세요");
+      await this.save(`suites-${projectId}.json`, saved.filter(suite => suite.id !== id));
+    });
+    this.queue = action.catch(() => undefined);
+    return action;
   }
 
   private parseSource(source: string): Scenario {
     if (typeof source !== "string" || Buffer.byteLength(source) > 1_000_000) throw new Error("시나리오 YAML은 1MB 이하로 입력하세요");
-    try { return parseScenario(source); }
+    try { return pruneUnusedBrokenBindings(parseScenario(source)); }
     catch (e) {
       if (e instanceof z.ZodError) throw new Error(e.issues.map(i => `${i.path.join(".") || "시나리오"}: ${i.message}`).join("\n"));
       throw new Error("YAML 문법이 올바르지 않습니다. 들여쓰기와 중복 키를 확인하세요");
@@ -249,7 +361,15 @@ export class ApiWorkspace {
     const { scope, project, environment } = await this.environment(input);
     const scenario = this.parseSource(source);
     const bindings = bindingSchema.parse(rawBindings);
+    // Resolve names only for this preview/run; persisted YAML uses the current name.
+    scenario.steps = scenario.steps.map(step => {
+      const key = bindings[step.server] ?? step.server;
+      const server = project.servers.find(server => server.id === key) ?? project.servers.find(server => server.name === key);
+      return server ? { ...step, server: server.id } : step;
+    });
     const issues: string[] = [];
+    const executionIssues: string[] = [];
+    const availableGlobals = new Set(Object.entries(this.runner.globals.snapshot(scope.projectId)).filter(([, value]) => value !== null && value !== "").map(([name]) => name));
     if (scenario.environments && !scenario.environments.includes(environment.name)) issues.push(`지원 환경: ${scenario.environments.join(", ")} · 현재 환경: ${environment.name}`);
     const catalogs = new Map<string, ApiCatalog | null>();
     const variables = new Set(Object.keys(scenario.vars));
@@ -269,7 +389,7 @@ export class ApiWorkspace {
     for (const binding of scenario.valueBindings) {
       const sourceIndex = stepIndexes.get(binding.step);
       if (sourceIndex === undefined) {
-        issues.push(`값 출처 단계 '${binding.step}'를 찾을 수 없습니다`);
+        issues.push(`${bindingUseLocations(scenario, binding.name).join(", ")}의 연결 출처가 삭제되었습니다. 해당 값 연결에서 출처를 다시 선택하세요.`);
         continue;
       }
       if (bindingNames.has(binding.name) || Object.hasOwn(scenario.vars, binding.name) || scenario.steps.some(step => step.extract.some(extract => extract.target === `vars.${binding.name}`))) {
@@ -282,11 +402,23 @@ export class ApiWorkspace {
     }
     for (const [index, step] of scenario.steps.entries()) {
       const stepName = scenarioStepLabel(step);
+      const executionLabel = `${index + 1}단계 · ${stepName}`;
+      const auth = step.auth === "none" ? undefined : step.auth ?? scenario.auth;
+      if (auth) {
+        const variable = auth.slice("globals.".length);
+        if (Object.keys(step.request.headers ?? {}).some(name => name.toLowerCase() === "authorization")) issues.push(`${executionLabel}: 단계 인증과 Authorization 헤더가 중복됩니다`);
+        if (!availableGlobals.has(variable)) executionIssues.push(`${executionLabel}: 인증 전역변수 '${variable}' 값이 없습니다. 전역 변수에서 설정하세요`);
+        else {
+          const token = this.runner.globals.snapshot(scope.projectId)[variable];
+          if (typeof token !== "string" || !/^[A-Za-z0-9._~+/-]+=*$/.test(token)) executionIssues.push(`${executionLabel}: 인증 전역변수 '${variable}'는 Bearer 접두사 없는 토큰 문자열이어야 합니다`);
+        }
+      }
       for (const binding of scenario.valueBindings) {
         const sourceIndex = stepIndexes.get(binding.step);
         if (sourceIndex !== undefined && sourceIndex < index) variables.add(binding.name);
       }
       const serverId = bindings[step.server] ?? step.server;
+      if (!environment.baseUrls[serverId]) executionIssues.push(`${executionLabel}: 서버 기본 URL을 환경 설정에서 지정하세요`);
       if (!project.servers.some(s => s.id === serverId)) issues.push(`${stepName}: 서버 '${step.server}'를 연결하세요`);
       else {
         if (!catalogs.has(serverId)) catalogs.set(serverId, await this.getCatalog({ ...scope, serverId }));
@@ -298,14 +430,19 @@ export class ApiWorkspace {
           issues.push(...op.warnings.map(w => `${stepName}: ${w}`));
           for (const p of op.parameters.filter(p => p.required)) {
             const values = p.location === "path" ? step.request.pathParams : p.location === "query" ? step.request.query : p.location === "cookie" ? step.request.cookies : step.request.headers;
-            if (!Object.entries(values ?? {}).some(([k, v]) => (p.location === "header" ? k.toLowerCase() === p.name.toLowerCase() : k === p.name) && v !== "")) issues.push(`${stepName}: 필수 입력 '${p.name}'이 없습니다`);
+            // Cookies can be issued by an earlier response (or by this first request),
+            // so an empty cookie is resolved by the runner's session jar at runtime.
+            if (p.location !== "cookie" && !(p.location === "header" && p.name.toLowerCase() === "authorization" && auth) && !Object.entries(values ?? {}).some(([k, v]) => (p.location === "header" ? k.toLowerCase() === p.name.toLowerCase() : k === p.name) && v !== "")) issues.push(`${stepName}: 필수 입력 '${p.name}'이 없습니다`);
           }
           if (op.bodyRequired && step.request.body === undefined) issues.push(`${stepName}: 요청 본문이 필요합니다`);
         }
       }
-      if (step.input) variables.add(step.input.name);
+      scenarioStepInputs(step).forEach(input => variables.add(input.name));
       const check = (v: unknown) => {
         if (typeof v === "string") {
+          for (const match of v.matchAll(/\{\{globals\.([A-Za-z][A-Za-z0-9_]*)\}\}/g)) {
+            if (!availableGlobals.has(match[1])) executionIssues.push(`${executionLabel}: 전역변수 '${match[1]}' 값이 없습니다. 전역 변수에서 설정하세요`);
+          }
           for (const match of v.matchAll(/\{\{(vars|inputs)\.([A-Za-z][A-Za-z0-9_]*)\}\}/g)) {
             const declaredByBinding = match[1] === "vars" && bindingNames.has(match[2]);
             if (match[1] === "vars" ? !variables.has(match[2]) && !declaredByBinding : !Object.hasOwn(scenario.inputs, match[2])) issues.push(`${stepName}: ${match[1]}.${match[2]}는 이 단계 전에 정의되지 않았습니다`);
@@ -313,28 +450,37 @@ export class ApiWorkspace {
         } else if (v && typeof v === "object") Object.values(v).forEach(check);
       };
       check(step.request); check(step.expect);
+      step.extract.filter(e => e.target.startsWith("globals.")).forEach(e => availableGlobals.add(e.target.slice(8)));
       step.extract.filter(e => e.target.startsWith("vars.")).forEach(e => variables.add(e.target.slice(5)));
     }
-    return { scenario, issues: [...new Set(issues)] };
+    return { scenario, issues: [...new Set(issues)], executionIssues: [...new Set(executionIssues)] };
   }
 
-  async saveScenario(input: ApiEnvironmentScope, source: string, bindings: Record<string, string>, expectedUpdatedAt?: string): Promise<SavedApiScenario> {
-    return this.persistScenario(input, source, bindings, expectedUpdatedAt, false);
+  async saveScenario(input: ApiEnvironmentScope, source: string, bindings: Record<string, string>, expectedUpdatedAt?: string, metadata?: ApiSidebarMetadata): Promise<SavedApiScenario> {
+    return this.persistScenario(input, source, bindings, expectedUpdatedAt, false, metadata);
   }
 
-  async saveScenarioDraft(input: ApiEnvironmentScope, source: string, bindings: Record<string, string>, expectedUpdatedAt?: string): Promise<SavedApiScenario> {
-    return this.persistScenario(input, source, bindings, expectedUpdatedAt, true);
+  async saveScenarioDraft(input: ApiEnvironmentScope, source: string, bindings: Record<string, string>, expectedUpdatedAt?: string, metadata?: ApiSidebarMetadata): Promise<SavedApiScenario> {
+    return this.persistScenario(input, source, bindings, expectedUpdatedAt, true, metadata);
   }
 
-  private async persistScenario(input: ApiEnvironmentScope, source: string, bindings: Record<string, string>, expectedUpdatedAt: string | undefined, draft: boolean): Promise<SavedApiScenario> {
+  private async persistScenario(input: ApiEnvironmentScope, source: string, bindings: Record<string, string>, expectedUpdatedAt: string | undefined, draft: boolean, rawMetadata?: ApiSidebarMetadata): Promise<SavedApiScenario> {
     const preview = await this.previewScenario(input, source, bindings);
     if (!draft && preview.issues.length) throw new Error(preview.issues.join("\n"));
+    if (parseScenario(source).valueBindings.length !== preview.scenario.valueBindings.length) source = stringifyScenario(preview.scenario, true);
+    const metadata = rawMetadata === undefined ? undefined : sidebarMetadataSchema.parse(rawMetadata);
     const action = this.queue.then(async () => {
-      await this.environment(input);
+      const { project } = await this.environment(input);
       const saved = await this.listScenarios(input.projectId);
       const index = saved.findIndex(s => s.id === preview.scenario.id);
       if (index >= 0 && saved[index].updatedAt !== expectedUpdatedAt) throw new Error("같은 ID의 시나리오가 있습니다. 목록에서 최신 시나리오를 열어 수정하세요");
-      const item = { id: preview.scenario.id, name: preview.scenario.name, source, bindings, updatedAt: new Date().toISOString(), draft };
+      const named = { ...preview.scenario, steps: preview.scenario.steps.map(step => ({ ...step, server: project.servers.find(server => server.id === step.server)?.name ?? step.server })) };
+      const previous = index >= 0 ? saved[index] : undefined;
+      const item: SavedApiScenario = {
+        id: preview.scenario.id, name: preview.scenario.name, source: stringifyScenario(named, true), bindings: {}, updatedAt: new Date().toISOString(), draft,
+        ...(metadata?.groupPath !== undefined ? { groupPath: metadata.groupPath } : metadata === undefined && previous?.groupPath ? { groupPath: previous.groupPath } : {}),
+        ...(metadata?.tags !== undefined ? { tags: metadata.tags } : previous?.tags ? { tags: previous.tags } : {}),
+      };
       if (index >= 0) saved[index] = item; else saved.push(item);
       await this.save(`scenarios-${input.projectId}.json`, saved);
       return item;
@@ -346,7 +492,7 @@ export class ApiWorkspace {
   async runScenario(input: ApiEnvironmentScope, source: string, bindings: Record<string, string>, rawInputs: Record<string, Json>, options: ApiScenarioRunOptions = {}): Promise<ApiScenarioResult> {
     const { scope, environment } = await this.environment(input);
     const preview = await this.previewScenario(scope, source, bindings);
-    if (preview.issues.length) throw new Error(preview.issues.join("\n"));
+    if (preview.issues.length || preview.executionIssues?.length) throw new Error([...preview.issues, ...(preview.executionIssues ?? [])].join("\n"));
     const inputs = z.record(z.string(), z.json()).parse(rawInputs);
     const scenario = preview.scenario;
     const servers = Object.fromEntries([...new Set(scenario.steps.map(s => s.server))].map(key => [key, { baseUrl: environment.baseUrls[bindings[key] ?? key] }]));
@@ -358,11 +504,11 @@ export class ApiWorkspace {
     const controller = new AbortController();
     this.active.set(runKey, controller);
     const redactor = new ApiRedactor();
-    redactor.add(this.runner.globals.snapshot(scope.projectId, scope.environmentId));
+    redactor.add(this.runner.globals.snapshot(scope.projectId));
     redactor.discover(scenario); redactor.discover(inputs);
     Object.entries(scenario.inputs).filter(([, v]) => v.sensitive).forEach(([key]) => redactor.add(inputs[key]));
-    scenario.steps.filter(step => step.input?.sensitive).forEach(step => redactor.add(inputs[step.input!.name]));
-    const details = new Map<string, { headers: Record<string, string>; body: Json }>();
+    scenario.steps.flatMap(scenarioStepInputs).filter(input => input.sensitive).forEach(input => redactor.add(inputs[input.name]));
+    const details = new Map<string, { request?: ApiRequestTrace; response?: { headers: Record<string, string>; body: Json } }>();
     let variables: Record<string, Json> = {};
     try {
       const result = await this.runner.run(scenario, {
@@ -377,8 +523,16 @@ export class ApiWorkspace {
           if (!operation) throw new Error("API 명세가 변경되었습니다");
           return operation;
         },
+        onRequest: (request, id) => {
+          const detail = details.get(id) ?? {};
+          detail.request = request;
+          details.set(id, detail);
+          redactor.discover(request);
+        },
         onResponse: (response, id) => {
-          details.set(id, response);
+          const detail = details.get(id) ?? {};
+          detail.response = response;
+          details.set(id, detail);
           redactor.discover(response);
           scenario.steps.find(s => s.id === id)!.extract.filter(e => e.sensitive || e.target.startsWith("globals.")).forEach(e => {
             redactor.add(e.source === "body" ? atPointer(response.body, e.pointer!) : response.headers[e.header!.toLowerCase()]);
@@ -387,9 +541,16 @@ export class ApiWorkspace {
         onValue: (value, sensitive) => { if (sensitive) redactor.add(value); else redactor.discover(value); },
         onVariables: value => { variables = value; },
       });
-      return { status: result.status, variables: redactor.mask(variables) as Record<string, Json>, steps: result.steps.map(step => {
+      return { status: result.status, variables, steps: result.steps.map(step => {
         const detail = details.get(step.id);
-        return { ...step, ...(detail ? { headers: redactor.mask(detail.headers) as Record<string, string>, body: typeof detail.body === "string" ? "텍스트 응답은 표시하지 않습니다" : redactor.mask(detail.body) } : {}) };
+        return {
+          ...step,
+          ...(detail?.request ? { request: detail.request } : {}),
+          ...(detail?.response ? {
+            headers: detail.response.headers,
+            body: detail.response.body,
+          } : {}),
+        };
       }) };
     } finally { this.active.delete(runKey); }
   }
@@ -406,11 +567,11 @@ export class ApiWorkspace {
   private async executeRequest(input: ApiScope, key: string, request: unknown, live: boolean): Promise<ApiResponse> {
     const { scope, baseUrl } = await this.scope(input);
     // Scope is already validated; do not read and validate projects.json twice per request.
-    const catalog = await this.read(this.filename(scope)) as ApiCatalog | null;
+    const catalog = await this.readCatalog(scope);
     const operation = catalog?.operations.find(o => o.key === key);
     if (!operation) throw new Error("명세에서 API를 다시 선택하세요");
     if (operation.warnings.length) throw new Error(operation.warnings.join("\n"));
-    const scenario = scenarioSchema.parse({ version: 1, id: "single", name: operation.summary, steps: [{ id: "request", name: operation.summary, server: scope.serverId, api: { method: operation.method, path: operation.path }, request }] });
+    const scenario = scenarioSchema.parse({ version: 1, id: "single", name: operation.summary, steps: [{ id: "request", name: operation.summary, server: scope.serverId, api: operation.operationId ? { operationId: operation.operationId } : { method: operation.method, path: operation.path }, request }] });
     const req = scenario.steps[0].request;
     const auth = this.requestAuth.get(this.authKey(scope));
     if (auth) {
@@ -429,35 +590,15 @@ export class ApiWorkspace {
     if (this.active.has(runKey)) throw new Error("이 환경에서 이미 요청을 실행 중입니다");
     const controller = new AbortController();
     this.active.set(runKey, controller);
-    let detail: { headers: Record<string, string>; body: Json } | undefined;
-    const secrets: string[] = [];
-    const sensitive = /authorization|cookie|password|token|secret|api.?key|otp/i;
-    const collect = (v: unknown, name = "") => {
-      if (sensitive.test(name) && typeof v === "string" && v) {
-        secrets.push(v, v.replace(/^Bearer\s+/i, ""));
-      } else if (v && typeof v === "object") Object.entries(v).forEach(([k, value]) => collect(value, k));
-    };
-    if (!live) collect(req);
-    const collectGlobal = (value: unknown) => {
-      if (typeof value === "string" && value) secrets.push(value);
-      else if (value && typeof value === "object") Object.values(value).forEach(collectGlobal);
-    };
-    if (!live) collectGlobal(this.runner.globals.snapshot(scope.projectId, scope.environmentId));
-    const mask = (v: Json, key = ""): Json => {
-      if (sensitive.test(key)) return "***";
-      if (Array.isArray(v)) return v.map(value => mask(value));
-      if (v && typeof v === "object") return Object.fromEntries(Object.entries(v).map(([k, value]) => [k, mask(value, k)]));
-      if (typeof v === "string") return secrets.filter(Boolean).reduce((s, secret) => s.split(secret).join("***"), v);
-      return v;
-    };
+    let detail: { request?: ApiRequestTrace; response?: { headers: Record<string, string>; body: Json } } | undefined;
     try {
-      const result = await this.runner.run(scenario, { projectId: scope.projectId, environment: scope.environmentId, servers: { [scope.serverId]: { baseUrl } }, signal: controller.signal, onResponse: response => {
-        if (live) { detail = response; return; }
-        collect(response);
-        detail = { headers: mask(response.headers) as Record<string, string>, body: typeof response.body === "string" ? "텍스트 응답은 민감값 보호를 위해 표시하지 않습니다" : mask(response.body) };
+      const result = await this.runner.run(scenario, { projectId: scope.projectId, environment: scope.environmentId, servers: { [scope.serverId]: { baseUrl } }, signal: controller.signal, resolveOperation: () => operation, onRequest: request => {
+        detail = { ...(detail ?? {}), request };
+      }, onResponse: response => {
+        detail = { ...(detail ?? {}), response };
       } });
       const step = result.steps[0];
-      return { status: step.status, httpStatus: step.httpStatus, durationMs: step.durationMs, error: step.error, ...detail };
+      return { status: step.status, httpStatus: step.httpStatus, durationMs: step.durationMs, error: step.error, ...(detail?.request ? { request: detail.request } : {}), ...(detail?.response ? detail.response : {}) };
     } finally { this.active.delete(runKey); }
   }
 }

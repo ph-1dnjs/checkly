@@ -29,6 +29,14 @@ function pickText(accept: string, limit: number): Promise<string | null> {
 export const webBridge: ApiTestingBridge = new Proxy({} as ApiTestingBridge, {
   get(_target, method: string) {
     if (method === "readScenarioFile") return () => pickText(".yaml,.yml", 1_000_000);
+    if (method === "saveSuiteReport") return async (filename: string, html: string) => {
+      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a"); link.href = url; link.download = filename;
+      document.body.append(link); link.click(); link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      return filename;
+    };
     if (method === "copyAiContext") return async (request: unknown) =>
       navigator.clipboard.writeText(await rpc("buildAiContext", [request]));
     if (method === "importSpec") return async (scope: unknown, source: { kind: string }) => {
