@@ -48,6 +48,15 @@ export async function availableAiClis(): Promise<ApiAiCli[]> {
   return found.filter((cli): cli is ApiAiCli => Boolean(cli));
 }
 
+/** Claude Code reports failures (e.g. "Not logged in") as a JSON result on stdout. */
+function cliErrorDetail(stdout: string, stderr: string): string {
+  try {
+    const envelope = JSON.parse(stdout) as { is_error?: boolean; result?: unknown };
+    if (envelope.is_error && typeof envelope.result === "string") return envelope.result.slice(0, 500);
+  } catch { /* not a JSON envelope */ }
+  return (stderr.trim() || stdout.trim()).slice(-500);
+}
+
 function runProcess(command: string, args: string[], input: string, cwd: string, signal: AbortSignal | undefined, timeoutMs: number, env: NodeJS.ProcessEnv): Promise<string> {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, { cwd, env, stdio: ["pipe", "pipe", "pipe"] });
@@ -75,7 +84,7 @@ function runProcess(command: string, args: string[], input: string, cwd: string,
     });
     child.stderr.on("data", chunk => { stderr = (stderr + chunk).slice(-4_000); });
     child.on("error", error => finish(new Error(`AI CLI를 실행하지 못했습니다: ${error.message}`)));
-    child.on("close", code => code === 0 ? finish() : finish(new Error(`AI CLI가 실패했습니다 (종료 코드 ${code}). ${stderr.trim().slice(-500)}`)));
+    child.on("close", code => code === 0 ? finish() : finish(new Error(`AI CLI가 실패했습니다 (종료 코드 ${code}). ${cliErrorDetail(stdout, stderr)}`)));
     child.stdin.on("error", () => { /* The CLI may exit before reading all input; close/exit reports it. */ });
     child.stdin.end(input);
   });

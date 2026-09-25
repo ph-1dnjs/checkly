@@ -112,6 +112,7 @@ import { writeFileSync, appendFileSync } from "node:fs";
 const args = process.argv.slice(2);
 let input = ""; process.stdin.on("data", c => input += c); process.stdin.on("end", () => {
   appendFileSync(${JSON.stringify(path.join(dir, "calls.jsonl"))}, JSON.stringify({ args, cwd: process.cwd(), input }) + "\\n");
+  if (input === "fail") { process.stdout.write(JSON.stringify({ type: "result", is_error: true, result: "Not logged in · Please run /login" })); process.exit(1); }
   const answer = { scenarios: [{ yaml: "name: x" }], suite: null, notes: "ok" };
   if (args[0] === "exec") writeFileSync(args[args.indexOf("--output-last-message") + 1], JSON.stringify(answer));
   else process.stdout.write(JSON.stringify({ type: "result", is_error: false, result: "", structured_output: answer }));
@@ -130,6 +131,8 @@ let input = ""; process.stdin.on("data", c => input += c); process.stdin.on("end
     assert.ok(claude.args.includes("Bash") && claude.args.includes("Write"));
     assert.equal(codex.args[codex.args.indexOf("--sandbox") + 1], "read-only");
     assert.equal(codex.input, "작성해줘");
+    // Claude reports failures as a JSON result on stdout with exit code 1.
+    await assert.rejects(runAiCli({ ...base, prompt: "fail", cli: "claude" }), /종료 코드 1\)\. Not logged in/);
     const controller = new AbortController();
     controller.abort();
     await assert.rejects(runAiCli({ ...base, cli: "claude", signal: controller.signal }), /취소/);
