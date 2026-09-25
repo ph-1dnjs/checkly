@@ -156,7 +156,7 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved, onProje
       </details>}
     </fieldset>
     <div className="api-actions">
-      {hasCli && <button className="api-primary" disabled={busy || !goal.trim()} onClick={() => void generate()}>AI로 시나리오 만들기</button>}
+      <button className="api-primary" disabled={busy || !hasCli || !goal.trim()} title={!hasCli ? (clis === null ? "AI 프로그램을 찾는 중입니다." : "Claude Code나 Codex가 필요합니다.") : !goal.trim() ? "무엇을 테스트할지 먼저 적으세요." : undefined} onClick={() => void generate()}>{clis === null ? "AI 프로그램 찾는 중…" : "AI로 시나리오 만들기"}</button>
       {running && <button type="button" onClick={() => void bridge.cancelAiAuthor({ projectId: scope.projectId })}>취소</button>}
       <button type="button" disabled={busy || !goal.trim()} onClick={async () => { setError(""); try { await bridge.copyAiPrompt(request()); setMessage("복사했습니다. 다른 AI에 붙여넣으세요."); } catch (e) { setError(errorText(e)); } }}>프롬프트 복사</button>
     </div>
