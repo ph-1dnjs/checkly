@@ -7,9 +7,8 @@ import { z } from "zod";
 import { ApiRunner } from "./execution";
 import { bindingUseLocations, pruneUnusedBrokenBindings, stringifyScenario, parseScenario, scenarioSchema, scenarioStepInputs, scenarioStepLabel, type Json, type Scenario, type ScenarioInputRequest } from "../shared/scenario";
 import { readOpenApi } from "./openapi";
-import { ApiRedactor } from "./redaction";
 import { CookieJar } from "./cookies";
-import { aiAnswerJsonSchema, aiCatalogDetails, createAiContext, createAuthorPrompt, createRepairPrompt } from "./ai-context";
+import { aiAnswerJsonSchema, aiCatalogDetails, createAuthorPrompt, createRepairPrompt } from "./ai-context";
 import { runAiCli, type AiCliRun } from "./ai-cli";
 
 export const scopeSchema = z.object({ projectId: z.string().uuid(), serverId: z.string().uuid(), environmentId: z.string().uuid() }).strict();
@@ -146,33 +145,6 @@ export class ApiWorkspace {
     return token;
   }
 
-  async buildAiContext(raw: unknown): Promise<string> {
-    const request = z.object({
-      scope: environmentScopeSchema,
-      selections: z.array(z.object({ serverId: z.string().uuid(), operationKey: z.string().max(1000) }).strict()).min(1).max(100),
-      goal: z.string().max(10_000),
-    }).strict().parse(raw);
-    const { scope, project } = await this.environment(request.scope);
-    const selected = [];
-    const seen = new Set<string>();
-    for (const selection of request.selections) {
-      const key = JSON.stringify(selection);
-      if (seen.has(key)) continue;
-      seen.add(key);
-      const server = project.servers.find(s => s.id === selection.serverId);
-      const operation = (await this.getCatalog({ ...scope, serverId: selection.serverId }))?.operations.find(o => o.key === selection.operationKey);
-      if (!server || !operation) throw new Error("선택한 API가 현재 프로젝트·환경의 명세에 없습니다");
-      if (operation.warnings.length) throw new Error("현재 실행을 지원하는 API만 선택하세요");
-      selected.push({ server: server.id, serverName: server.name, operation });
-    }
-    const redactor = new ApiRedactor();
-    redactor.add(this.runner.globals.snapshot(scope.projectId));
-    selected.forEach(({ operation }) => redactor.discover(operation.bodyExample));
-    const output = redactor.mask(createAiContext(request.goal, selected, await this.listGlobals({ projectId: scope.projectId }))) as string;
-    if (Buffer.byteLength(output) > 500_000) throw new Error("선택 정보가 너무 큽니다. API 수를 줄이세요");
-    return output;
-  }
-
   private async aiServers(scope: ApiEnvironmentScope, project: ApiProject, tags?: string[]) {
     const servers = [];
     for (const server of project.servers) {
@@ -185,15 +157,23 @@ export class ApiWorkspace {
     return servers;
   }
 
+  /** Masks string global values (tokens etc.) that a spec description or example might repeat. */
+  private aiRedact(projectId: string): (text: string) => string {
+    const secrets = Object.values(this.runner.globals.snapshot(projectId))
+      .filter((value): value is string => typeof value === "string" && value.length >= 6)
+      .sort((a, b) => b.length - a.length);
+    return text => secrets.reduce((masked, secret) => masked.split(secret).join("***"), text);
+  }
+
   /** Same prompt with the schemas inlined, for pasting into an external AI when no CLI is available. */
   async buildAiPrompt(raw: unknown): Promise<string> {
     const request = aiAuthorRequestSchema.parse(raw);
     const { scope, project } = await this.environment(request.scope);
-    const prompt = createAuthorPrompt({
+    const prompt = this.aiRedact(scope.projectId)(createAuthorPrompt({
       goal: request.goal, includeSuite: request.includeSuite, servers: await this.aiServers(scope, project, request.tags),
       globals: await this.listGlobals({ projectId: scope.projectId }),
       existing: (await this.listScenarios(scope.projectId)).map(({ id, name }) => ({ id, name })), backendAvailable: false,
-    });
+    }));
     if (Buffer.byteLength(prompt) > 1_000_000) throw new Error("API가 너무 많습니다. 태그로 범위를 좁히세요");
     return prompt;
   }
@@ -231,9 +211,10 @@ export class ApiWorkspace {
     const work = await mkdtemp(path.join(tmpdir(), "checkly-ai-"));
     try {
       const catalogFile = path.join(work, "checkly-api-catalog.json");
-      await writeFile(catalogFile, JSON.stringify(aiCatalogDetails(servers), null, 1));
+      const redact = this.aiRedact(scope.projectId);
+      await writeFile(catalogFile, redact(JSON.stringify(aiCatalogDetails(servers), null, 1)));
       const existing = (await this.listScenarios(scope.projectId)).map(({ id, name }) => ({ id, name }));
-      const base = createAuthorPrompt({ goal: request.goal, includeSuite: request.includeSuite, servers, globals: await this.listGlobals({ projectId: scope.projectId }), existing, catalogFile, backendAvailable: Boolean(backendDir) });
+      const base = redact(createAuthorPrompt({ goal: request.goal, includeSuite: request.includeSuite, servers, globals: await this.listGlobals({ projectId: scope.projectId }), existing, catalogFile, backendAvailable: Boolean(backendDir) }));
       let prompt = base;
       let result: ApiAiAuthorResult | undefined;
       for (let attempt = 1; attempt <= maxAttempts; attempt++) {

@@ -54,10 +54,6 @@ export function registerApiTesting() {
   ipcMain.handle("api-testing:delete-spec-account", (_event, scope) => sync.deleteAccount(scope));
   ipcMain.handle("api-testing:get-request-auth", (_event, scope) => workspace.getRequestAuth(scope));
   ipcMain.handle("api-testing:set-request-auth", (_event, scope, variable) => workspace.setRequestAuth(scope, variable));
-  ipcMain.handle("api-testing:ai-context", (_event, request) => workspace.buildAiContext(request));
-  ipcMain.handle("api-testing:copy-ai-context", async (_event, request) => {
-    clipboard.writeText(await workspace.buildAiContext(request));
-  });
   ipcMain.handle("api-testing:list-ai-clis", () => availableAiClis());
   ipcMain.handle("api-testing:author-with-ai", (_event, request) => workspace.authorWithAi(request));
   ipcMain.handle("api-testing:get-ai-progress", (_event, scope) => workspace.getAiProgress(scope));

@@ -5,10 +5,9 @@ import path from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { ApiWorkspace } from "../../src/app/api-testing/main/workspace";
-import { parseScenario } from "../../src/app/api-testing/shared/scenario";
 import { schemaForAi } from "../../src/app/api-testing/main/ai-context";
 
-test("AI context is selected, project-scoped, value-free and has importable YAML example", async () => {
+test("copyable AI prompt lists every API with schemas but no values, URLs or examples", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "checkly-ai-context-"));
   const serverId = randomUUID(), secondServerId = randomUUID(), environmentId = randomUUID();
   const projectId = randomUUID();
@@ -23,18 +22,19 @@ test("AI context is selected, project-scoped, value-free and has importable YAML
     await workspace.importSpec({ ...scope, serverId }, spec("/login"));
     await workspace.importSpec({ ...scope, serverId: secondServerId }, spec("/admin-login"));
     await workspace.setGlobal({ projectId }, "accessToken", "session-secret");
-    const request = { scope, goal: "회원과 관리자 로그인 흐름", selections: [{ serverId, operationKey: "POST /login" }, { serverId: secondServerId, operationKey: "POST /admin-login" }] };
-    const text = await workspace.buildAiContext(request);
-    for (const secret of ["session-secret", "example-secret", "default-secret", "body-secret", "response-secret", "private-server.example.com", "admin-private.example.com", "/not-selected"]) assert.equal(text.includes(secret), false, secret);
-    assert.ok(text.includes("/login") && text.includes("/admin-login"));
-    assert.ok(text.includes('"accessToken"') && text.includes('"type": "string"'));
-    const yaml = /```yaml\n([\s\S]*?)```/.exec(text)![1];
-    const parsed = parseScenario(yaml);
-    assert.equal(parsed.steps[0].server, "회원");
-    assert.deepEqual((await workspace.previewScenario(scope, yaml, {})).issues, []);
-    await assert.rejects(workspace.buildAiContext({ ...request, scope: { ...scope, environmentId: randomUUID() } }));
-    await assert.rejects(workspace.buildAiContext({ ...request, selections: [{ serverId, operationKey: "GET /missing" }] }));
-    await assert.rejects(workspace.buildAiContext({ ...request, selections: [] }));
+    const request = { scope, cli: "claude", goal: "회원과 관리자 로그인 흐름", includeSuite: true };
+    const text = await workspace.buildAiPrompt(request);
+    for (const secret of ["session-secret", "example-secret", "default-secret", "body-secret", "response-secret", "private-server.example.com", "admin-private.example.com"]) assert.equal(text.includes(secret), false, secret);
+    assert.ok(text.includes("POST /login — 로그인") && text.includes("POST /admin-login — 로그인") && text.includes("GET /not-selected"));
+    assert.ok(text.includes("### 서버: 회원") && text.includes("### 서버: 관리자"));
+    assert.ok(text.includes('"accessToken"') && text.includes('"type":"string"'));
+    assert.ok(text.includes("스위트 하나") && text.includes("{{steps.1.response.body./data/id}}"));
+    assert.equal(text.includes("valueBindings"), false);
+    assert.equal(text.includes("백엔드 소스입니다"), false);
+    const narrowed = await workspace.buildAiPrompt({ ...request, includeSuite: false, tags: ["missing-tag"] }).catch((error: Error) => error.message);
+    assert.match(String(narrowed), /API 명세가 없습니다/);
+    await assert.rejects(workspace.buildAiPrompt({ ...request, scope: { ...scope, environmentId: randomUUID() } }));
+    await assert.rejects(workspace.buildAiPrompt({ ...request, goal: " " }));
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 

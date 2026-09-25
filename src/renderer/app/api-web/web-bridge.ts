@@ -37,8 +37,8 @@ export const webBridge: ApiTestingBridge = new Proxy({} as ApiTestingBridge, {
       window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
       return filename;
     };
-    if (method === "copyAiContext") return async (request: unknown) =>
-      navigator.clipboard.writeText(await rpc("buildAiContext", [request]));
+    if (method === "copyAiPrompt") return async (request: unknown) =>
+      navigator.clipboard.writeText(await rpc("buildAiPrompt", [request]));
     if (method === "importSpec") return async (scope: unknown, source: { kind: string }) => {
       if (source.kind !== "file") return rpc(method, [scope, source]);
       const text = await pickText(".json,.yaml,.yml", 5_000_000);

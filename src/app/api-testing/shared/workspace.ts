@@ -73,14 +73,11 @@ export type ApiAiAuthorRequest = { scope: ApiEnvironmentScope; cli: ApiAiCli; go
 export type ApiAiDraft = { id: string; name: string; yaml: string; stepCount: number; issues: string[]; executionIssues: string[] };
 export type ApiAiAuthorResult = { drafts: ApiAiDraft[]; suite: { name: string; scenarioIds: string[]; problems: string[] } | null; notes: string; attempts: number };
 export type ApiAiProgress = { phase: "writing" | "checking" | "repairing"; attempt: number; maxAttempts: number };
-export type ApiAiContextRequest = { scope: ApiEnvironmentScope; selections: Array<{ serverId: string; operationKey: string }>; goal: string };
 export type ApiTestingBridge = {
   getSpecSync(scope: ApiScope): Promise<ApiSpecSync>;
   deleteSpecAccount(scope: ApiScope): Promise<void>;
   getRequestAuth(scope: ApiScope): Promise<string | null>;
   setRequestAuth(scope: ApiScope, variable: string | null): Promise<void>;
-  buildAiContext(request: ApiAiContextRequest): Promise<string>;
-  copyAiContext(request: ApiAiContextRequest): Promise<void>;
   /** Installed AI CLIs; desktop app only. */
   listAiClis(): Promise<ApiAiCli[]>;
   authorWithAi(request: ApiAiAuthorRequest): Promise<ApiAiAuthorResult>;

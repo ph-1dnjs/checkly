@@ -1,6 +1,6 @@
 import { _electron as electron, expect } from "@playwright/test";
 import { createServer } from "node:http";
-import { mkdtemp, rm, readdir, readFile } from "node:fs/promises";
+import { chmod, mkdtemp, rm, readdir, readFile, realpath, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { tmpdir } from "node:os";
 
@@ -24,7 +24,23 @@ async function main() {
   });
   await new Promise<void>(r => server.listen(0, "127.0.0.1", r));
   const url = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
-  const env = { ...process.env };
+  // A fake AI CLI answering in Claude Code's JSON format; it records how it was called.
+  const fakeCliDir = await mkdtemp(path.join(tmpdir(), "checkly-fake-ai-"));
+  const backendDir = await mkdtemp(path.join(tmpdir(), "checkly-backend-"));
+  const fakeCli = path.join(fakeCliDir, "fake-ai.mjs");
+  const aiAnswer = { notes: "가짜 AI", suite: { name: "AI 상점 흐름", scenarioIds: ["ai/login", "ai/item"] }, scenarios: [
+    { yaml: "id: ai/login\nname: AI 로그인\nserver: 기본 API\nsteps:\n  - name: 로그인\n    api: POST /login\n    body: { loginId: tester }\n    extract: [{ source: body, pointer: /accessToken, target: globals.accessToken, sensitive: true }]\n" },
+    { yaml: "id: ai/item\nname: AI 상품 조회\nserver: 기본 API\nsteps:\n  - name: 상품 조회\n    api: 'GET /items/{id}'\n    pathParams: { id: 7 }\n" },
+  ] };
+  await writeFile(fakeCli, `#!/usr/bin/env node
+import { writeFileSync } from "node:fs";
+let input = ""; process.stdin.on("data", chunk => input += chunk); process.stdin.on("end", () => {
+  writeFileSync(${JSON.stringify(path.join(fakeCliDir, "call.json"))}, JSON.stringify({ args: process.argv.slice(2), cwd: process.cwd(), input }));
+  process.stdout.write(JSON.stringify({ type: "result", is_error: false, result: "", structured_output: ${JSON.stringify(aiAnswer)} }));
+});
+`);
+  await chmod(fakeCli, 0o755);
+  const env = { ...process.env, CHECKLY_AI_CLI_PATH: fakeCli };
   delete env.ELECTRON_RUN_AS_NODE;
   let app: Awaited<ReturnType<typeof electron.launch>> | undefined;
   try {
@@ -39,6 +55,7 @@ async function main() {
     await page.getByRole("button", { name: "프로젝트 만들기", exact: true }).click();
     await page.getByLabel("프로젝트 이름").fill("쇼핑몰 QA");
     await page.getByLabel("기본 API 기본 주소").fill(url);
+    await page.getByLabel("백엔드 폴더 경로", { exact: true }).fill(backendDir);
     await page.getByRole("button", { name: "프로젝트 저장", exact: true }).click();
     await page.getByLabel("OpenAPI URL").fill(`${url}/openapi.json`);
     await page.getByRole("button", { name: "URL 가져오기", exact: true }).click();
@@ -104,17 +121,23 @@ async function main() {
     await expect(globals.getByRole("region", { name: "세션 쿠키" })).toContainText("저장된 쿠키가 없습니다.");
     await page.keyboard.press("Escape");
 
+    // AI authoring with a fake CLI: generate, review Checkly's checks, save scenarios and suite.
     await page.getByRole("tab", { name: "AI 작성 도우미", exact: true }).click();
-    await page.getByLabel("AI 시나리오 업무 목표", { exact: true }).fill("상품 상세 조회를 검증해줘");
-    await page.getByRole("checkbox", { name: /items/ }).check();
-    await page.getByRole("button", { name: "AI 전달 정보 미리보기", exact: true }).click();
-    await expect(page.getByLabel("AI 전달 정보", { exact: true })).toHaveValue(/sampleId/);
-    const context = await page.getByLabel("AI 전달 정보", { exact: true }).inputValue();
-    if (context.includes(url)) throw new Error("Actual base URL leaked into AI export");
-    await page.getByRole("button", { name: "AI 작성용 정보 복사", exact: true }).click();
-    await expect(page.getByText("AI 작성용 정보를 복사했습니다. 외부 AI에 붙여넣으세요.", { exact: true })).toBeVisible();
-    const copied = await app.evaluate(({ clipboard }) => clipboard.readText());
-    if (copied !== context) throw new Error("AI clipboard differs from preview");
+    await expect(page.getByLabel("AI 사용 도구", { exact: true })).toHaveValue("claude");
+    await page.getByLabel("AI 시나리오 업무 목표", { exact: true }).fill("로그인 후 상품 상세 조회");
+    await page.getByLabel("스위트도 함께 만들기").check();
+    await page.getByRole("button", { name: "AI로 시나리오 만들기", exact: true }).click();
+    const aiResult = page.getByRole("region", { name: "AI 작성 결과" });
+    await expect(aiResult).toContainText("AI 로그인");
+    await expect(aiResult).toContainText("AI 상품 조회");
+    await expect(aiResult).toContainText("검사 통과");
+    const aiCall = JSON.parse((await readFile(path.join(fakeCliDir, "call.json"), "utf8")));
+    if (aiCall.cwd !== await realpath(backendDir)) throw new Error(`AI CLI did not run in the backend folder: ${aiCall.cwd}`);
+    if (!aiCall.args.includes("--allowedTools") || aiCall.input.includes(url)) throw new Error("AI CLI call is not read-only or leaks the base URL");
+    await page.getByRole("button", { name: "선택한 항목 저장", exact: true }).click();
+    await expect(page.getByRole("tab", { name: "시나리오", exact: true })).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByRole("button", { name: /AI 로그인/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: /AI 상점 흐름/ })).toBeVisible();
 
     // Compose: login → item detail, linking the login response id into the path.
     await page.getByRole("tab", { name: "시나리오", exact: true }).click();
@@ -190,6 +213,8 @@ async function main() {
     server.closeAllConnections();
     await new Promise<void>(r => server.close(() => r()));
     await rm(dir, { recursive: true, force: true });
+    await rm(fakeCliDir, { recursive: true, force: true });
+    await rm(backendDir, { recursive: true, force: true });
   }
 }
 void main()
