@@ -83,7 +83,7 @@ async function main() {
     await page.getByLabel("API 인증 전역 변수", { exact: true }).selectOption(authVariable);
     await page.getByRole("button", { name: "인증에 연결", exact: true }).click();
     await expect(page.getByRole("dialog", { name: "API 요청 인증", exact: true })).toContainText(`연결: globals.${authVariable}`);
-    await page.screenshot({path:"/tmp/checkly-api-auth.png",fullPage:true});
+    await shot("api-auth");
     await page.keyboard.press("Escape");
     await page.getByRole("button", { name: "선택한 API 테스트 실행", exact: true }).click();
     await expect(page.getByRole("region", { name: "API 응답" })).toContainText("200");
@@ -196,7 +196,7 @@ async function main() {
     await expect(globals.getByRole("region", { name: "세션 쿠키" })).toContainText("SESSION");
     await expect(globals.getByRole("region", { name: "세션 쿠키" })).not.toContainText("desktop-session");
     await page.keyboard.press("Escape");
-    await page.screenshot({ path: "/tmp/checkly-api-testing-desktop.png", fullPage: true });
+    await shot("final");
     await app.close();
     app = await electron.launch({ args: [".", `--user-data-dir=${dir}`], env });
     const restored = await app.firstWindow();
