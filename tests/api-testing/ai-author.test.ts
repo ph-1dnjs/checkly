@@ -31,7 +31,7 @@ test("pasted AI output: fences and prose are ignored, --- splits scenarios, the 
   const bundle = splitAiBundle(chat);
   assert.equal(bundle.scenarios.length, 2);
   assert.match(bundle.scenarios[0], /^id: shop\/login/);
-  assert.deepEqual(bundle.suite, { name: "상점 흐름", scenarioIds: ["shop/login", "shop/read"] });
+  assert.deepEqual(bundle.suite, { name: "상점 흐름", scenarios: ["shop/login", "shop/read"] });
   // Bare YAML (e.g. from a file) works the same; a broken document is kept for its error.
   const bare = splitAiBundle(`${read}---\nname: [\n`);
   assert.equal(bare.scenarios.length, 2);
@@ -48,9 +48,28 @@ test("checking pasted scenarios reports problems per draft and for the suite wit
     assert.match(result.drafts[1].issues.join(), /API를 유일하게 찾을 수 없습니다/);
     assert.match(result.drafts[2].issues.join(), /id 'taken'가 기존 시나리오와 겹칩니다/);
     assert.match(result.drafts[3].issues[0], /^YAML 오류/);
-    assert.deepEqual(result.suite, { name: "상점 흐름", scenarioIds: ["shop/login", "ghost"], problems: ["스위트의 'ghost'가 생성한 시나리오 id에 없습니다"] });
+    assert.deepEqual(result.suite, { name: "상점 흐름", scenarioIds: ["shop/login", "ghost"], problems: ["스위트의 'ghost'가 이번 결과의 시나리오 이름에 없습니다"] });
     assert.deepEqual((await workspace.listScenarios(project.id)).map(item => item.id), ["taken"]);
     await assert.rejects(workspace.checkAiScenarios(scope, "AI가 아무것도 만들지 않았습니다"), /시나리오 YAML을 찾지 못했습니다/);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test("scenarios without an id get one, the suite follows names, and name clashes are reported", async () => {
+  const { dir, workspace, scope } = await setup();
+  try {
+    await workspace.saveScenario(scope, "name: 상품 조회\nserver: 상점\nsteps:\n  - { api: 'GET /items/{id}', pathParams: { id: 1 } }\n", {});
+    const noId = (yaml: string) => yaml.replace(/^id: .*\n/, "");
+    const text = [noId(login), noId(read), noId(read), "suite: { name: 상점 흐름, scenarios: [로그인, 상품 조회] }\n"].join("---\n");
+    const result = await workspace.checkAiScenarios(scope, text);
+    const [first, second, third] = result.drafts;
+    assert.match(first.id, /^scenario-[0-9a-f-]{36}$/);
+    assert.match(first.yaml, /^id: scenario-/);
+    assert.notEqual(second.id, third.id);
+    assert.deepEqual(first.issues, []);
+    assert.deepEqual(second.notices, ["같은 이름의 시나리오가 이미 있습니다"]);
+    assert.match(third.issues.join(), /이름 '상품 조회'이 이번 결과의 다른 시나리오와 겹칩니다/);
+    assert.deepEqual(result.suite?.scenarioIds, [first.id, second.id]);
+    assert.deepEqual(result.suite?.problems, []);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
@@ -62,7 +81,7 @@ test("the guide asks what to test, points at the schema and result files, and hi
     const catalogFile = path.join(aiDir, "api-catalog.json"), resultFile = path.join(aiDir, "scenarios.yaml");
     assert.ok(prompt.includes("먼저 사용자에게 무엇을 테스트할지 물어보세요"));
     assert.ok(prompt.includes(catalogFile) && prompt.includes(`결과를 파일 ${resultFile} 에 저장합니다`));
-    assert.ok(prompt.includes("- 상점 (API 1개)"));
+    assert.ok(prompt.includes("- 상점 (API 1개)") && prompt.includes("id는 쓰지 않습니다") && prompt.includes("시나리오 name]"));
     const catalog = await readFile(catalogFile, "utf8");
     assert.ok(catalog.includes("/items/{id}") && !catalog.includes('"loginId"'));
     for (const secret of ["global-secret-value", "private-base.example.com", "example-secret"]) {

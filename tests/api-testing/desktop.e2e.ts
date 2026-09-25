@@ -26,9 +26,9 @@ async function main() {
   const url = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
   // What the user's own AI would print in chat: prose around one fenced YAML block.
   const aiOutput = (itemApi: string) => "시나리오입니다.\n```yaml\n" + [
-    "id: ai/login\nname: AI 로그인\nserver: 기본 API\nsteps:\n  - name: 로그인\n    api: POST /login\n    body: { loginId: tester }\n    extract: [{ pointer: /accessToken, target: globals.accessToken, sensitive: true }]\n",
-    `id: ai/item\nname: AI 상품 조회\nserver: 기본 API\nsteps:\n  - name: 상품 조회\n    api: '${itemApi}'\n    pathParams: { id: 7 }\n`,
-    "suite: { name: AI 상점 흐름, scenarios: [ai/login, ai/item] }\n",
+    "name: AI 로그인\nserver: 기본 API\nsteps:\n  - name: 로그인\n    api: POST /login\n    body: { loginId: tester }\n    extract: [{ pointer: /accessToken, target: globals.accessToken, sensitive: true }]\n",
+    `name: AI 상품 조회\nserver: 기본 API\nsteps:\n  - name: 상품 조회\n    api: '${itemApi}'\n    pathParams: { id: 7 }\n`,
+    "suite: { name: AI 상점 흐름, scenarios: [AI 로그인, AI 상품 조회] }\n",
   ].join("---\n") + "```\n";
   const env = { ...process.env };
   delete env.ELECTRON_RUN_AS_NODE;

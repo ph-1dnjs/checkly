@@ -7,7 +7,7 @@ import { ApiRunner } from "./execution";
 import { bindingUseLocations, pruneUnusedBrokenBindings, stringifyScenario, parseScenario, ScenarioFormatError, scenarioSchema, scenarioStepInputs, scenarioStepLabel, type Json, type Scenario, type ScenarioInputRequest } from "../shared/scenario";
 import { readOpenApi } from "./openapi";
 import { CookieJar } from "./cookies";
-import { aiCatalogDetails, createAuthorPrompt, splitAiBundle, type AiBundle } from "./ai-context";
+import { aiCatalogDetails, createAuthorPrompt, splitAiBundle, withGeneratedId, type AiBundle } from "./ai-context";
 
 export const scopeSchema = z.object({ projectId: z.string().uuid(), serverId: z.string().uuid(), environmentId: z.string().uuid() }).strict();
 const projectScopeSchema = z.object({ projectId: z.string().uuid() }).strict();
@@ -179,7 +179,7 @@ export class ApiWorkspace {
     await writeFile(files.catalog, redact(JSON.stringify(aiCatalogDetails(servers), null, 1)), { mode: 0o600 });
     const prompt = redact(createAuthorPrompt({
       servers, globals: await this.listGlobals({ projectId: scope.projectId }),
-      existing: (await this.listScenarios(scope.projectId)).map(({ id, name }) => ({ id, name })),
+      existing: (await this.listScenarios(scope.projectId)).map(item => item.name),
       catalogFile: files.catalog, resultFile: files.result,
     }));
     if (Buffer.byteLength(prompt) > 1_000_000) throw new Error("API가 너무 많습니다. 태그로 범위를 좁히세요");
@@ -205,16 +205,16 @@ export class ApiWorkspace {
     const bundle = splitAiBundle(z.string().max(2_000_000).parse(rawText));
     if (!bundle.scenarios.length) throw new Error("시나리오 YAML을 찾지 못했습니다. AI가 출력한 YAML을 그대로 붙여넣으세요");
     if (bundle.scenarios.length > 30) throw new Error("시나리오는 한 번에 30개까지 가져올 수 있습니다");
-    const existing = new Set((await this.listScenarios(scope.projectId)).map(item => item.id));
-    return this.checkAiAnswer(scope, bundle, existing);
+    return this.checkAiAnswer(scope, bundle, (await this.listScenarios(scope.projectId)).map(({ id, name }) => ({ id, name })));
   }
 
-  private async checkAiAnswer(scope: ApiEnvironmentScope, answer: AiBundle, existingIds: Set<string>): Promise<ApiAiImportResult> {
-    const seen = new Set<string>();
+  private async checkAiAnswer(scope: ApiEnvironmentScope, answer: AiBundle, existing: Array<{ id: string; name: string }>): Promise<ApiAiImportResult> {
+    const existingIds = new Set(existing.map(item => item.id)), existingNames = new Set(existing.map(item => item.name));
     const drafts: ApiAiDraft[] = [];
-    for (const [index, yaml] of answer.scenarios.entries()) {
+    for (const [index, written] of answer.scenarios.entries()) {
+      const yaml = withGeneratedId(written);
       let id = `ai-draft-${index + 1}`, name = `AI 시나리오 ${index + 1}`, stepCount = 0;
-      const issues: string[] = [];
+      const issues: string[] = [], notices: string[] = [];
       let executionIssues: string[] = [];
       try {
         const preview = await this.previewScenario(scope, yaml, {});
@@ -225,19 +225,24 @@ export class ApiWorkspace {
       } catch (error) {
         issues.push(`YAML 오류: ${(error as Error).message}`);
       }
-      if (existingIds.has(id)) issues.push(`id '${id}'가 기존 시나리오와 겹칩니다. 다른 id를 쓰세요`);
-      if (seen.has(id)) issues.push(`id '${id}'가 다른 생성 시나리오와 겹칩니다`);
-      seen.add(id);
-      drafts.push({ id, name, yaml, stepCount, issues, executionIssues });
+      if (existingIds.has(id)) issues.push(`id '${id}'가 기존 시나리오와 겹칩니다. id를 지우면 Checkly가 새로 붙입니다`);
+      if (drafts.some(draft => draft.id === id)) issues.push(`id '${id}'가 이번 결과의 다른 시나리오와 겹칩니다`);
+      if (drafts.some(draft => draft.name === name)) issues.push(`이름 '${name}'이 이번 결과의 다른 시나리오와 겹칩니다. 스위트 순서를 알 수 없습니다`);
+      if (existingNames.has(name)) notices.push(`같은 이름의 시나리오가 이미 있습니다`);
+      drafts.push({ id, name, yaml, stepCount, issues, notices, executionIssues });
     }
-    const suite = answer.suite ? {
-      name: answer.suite.name.trim() || "AI 스위트",
-      scenarioIds: answer.suite.scenarioIds,
-      problems: [
-        ...answer.suite.scenarioIds.filter(id => !seen.has(id)).map(id => `스위트의 '${id}'가 생성한 시나리오 id에 없습니다`),
-        ...(answer.suite.scenarioIds.length ? [] : ["스위트에 시나리오가 없습니다"]),
-      ],
-    } : null;
+    let suite: ApiAiImportResult["suite"] = null;
+    if (answer.suite) {
+      const problems: string[] = [];
+      // Scenarios are referenced by name; an explicit id also works.
+      const scenarioIds = answer.suite.scenarios.map(ref => {
+        const draft = drafts.find(item => item.name === ref) ?? drafts.find(item => item.id === ref);
+        if (!draft) problems.push(`스위트의 '${ref}'가 이번 결과의 시나리오 이름에 없습니다`);
+        return draft?.id ?? ref;
+      });
+      if (!scenarioIds.length) problems.push("스위트에 시나리오가 없습니다");
+      suite = { name: answer.suite.name.trim() || "AI 스위트", scenarioIds, problems };
+    }
     return { drafts, suite };
   }
 
