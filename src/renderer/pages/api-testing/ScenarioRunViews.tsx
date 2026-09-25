@@ -101,7 +101,7 @@ export function ScenarioRunResult({ result, preview, catalogs, bindings, focusRe
     target.querySelector<HTMLElement>("summary")?.focus({ preventScroll: true });
   }, [focusRequest, result]);
   return <>
-    <header className="api-run-result-heading"><div className="api-run-result-title"><span className="api-run-result-dot" aria-hidden="true" /><h2>실행 결과 · {result.status}</h2></div><div className="api-run-result-meta"><span>{result.steps.length}개 API</span><strong className={`api-run-result-status is-${result.status.toLowerCase()}`}>{result.status.toUpperCase()}</strong></div></header>
+    <header className="api-run-result-heading"><div className="api-run-result-title"><span className={`api-run-result-dot is-${result.status.toLowerCase()}`} aria-hidden="true" /><h2>실행 결과 · {result.status}</h2></div><div className="api-run-result-meta"><span>{result.steps.length}개 API</span><strong className={`api-run-result-status is-${result.status.toLowerCase()}`}>{result.status.toUpperCase()}</strong></div></header>
     <div className="api-run-section-actions api-run-result-actions" role="group" aria-label="실행 결과 펼치기"><button type="button" onClick={() => setAllOpen(true)}>모두 펼치기</button><button type="button" onClick={() => setAllOpen(false)}>모두 접기</button></div>
     <div ref={stepsElement} className="api-run-result-steps">
       {result.steps.map((runStep, index) => {

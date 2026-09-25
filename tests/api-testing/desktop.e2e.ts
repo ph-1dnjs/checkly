@@ -48,6 +48,8 @@ let input = ""; process.stdin.on("data", chunk => input += chunk); process.stdin
     const page = await app.firstWindow();
     // Library-mode Playwright has no default timeout; fail instead of hanging.
     page.setDefaultTimeout(15_000);
+    // CHECKLY_E2E_SHOTS=<dir> saves screenshots of key screens for visual review.
+    const shot = async (name: string) => { if (process.env.CHECKLY_E2E_SHOTS) await page.screenshot({ path: path.join(process.env.CHECKLY_E2E_SHOTS, `${name}.png`) }); };
     page.on("dialog", dialog => {
       void (dialog.type() === "beforeunload" ? dialog.accept() : dialog.dismiss()).catch(() => undefined);
     });
@@ -72,6 +74,7 @@ let input = ""; process.stdin.on("data", chunk => input += chunk); process.stdin
     await page.getByRole("button", { name: /GET.*items/ }).click();
     await expect(page.getByText("상품 번호로 이름과 가격을 확인합니다.")).toBeVisible();
     await expect(page.getByRole("region", { name: "Responses 응답 명세" })).toContainText("200");
+    await shot("docs");
     await page.getByRole("button", { name: "Try it out", exact: true }).click();
     await page.getByLabel("path id", { exact: true }).fill("7");
     await page.getByRole("button", { name: "선택한 API 테스트 실행", exact: true }).click();
@@ -140,6 +143,7 @@ let input = ""; process.stdin.on("data", chunk => input += chunk); process.stdin
     const aiCall = JSON.parse((await readFile(path.join(fakeCliDir, "call.json"), "utf8")));
     if (aiCall.cwd !== await realpath(backendDir)) throw new Error(`AI CLI did not run in the backend folder: ${aiCall.cwd}`);
     if (!aiCall.args.includes("--allowedTools") || aiCall.input.includes(url)) throw new Error("AI CLI call is not read-only or leaks the base URL");
+    await shot("ai-result");
     await page.getByRole("button", { name: "선택한 것 저장", exact: true }).click();
     await expect(page.getByRole("tab", { name: "시나리오", exact: true })).toHaveAttribute("aria-selected", "true");
     await expect(page.getByRole("button", { name: /AI 로그인/ })).toBeVisible();
@@ -166,6 +170,7 @@ let input = ""; process.stdin.on("data", chunk => input += chunk); process.stdin
     await page.getByRole("button", { name: /^이전 단계 값 선택/ }).click();
     await page.getByRole("button", { name: "/id integer 값 선택", exact: true }).click();
     await page.getByRole("button", { name: "이 값으로 연결", exact: true }).click();
+    await shot("compose");
     await page.getByRole("button", { name: "시나리오 검사·저장", exact: true }).click();
     await expect(page.getByText("시나리오를 저장했습니다. 이 화면에서 계속 수정할 수 있습니다.", { exact: true })).toBeVisible();
 
@@ -175,6 +180,7 @@ let input = ""; process.stdin.on("data", chunk => input += chunk); process.stdin
     await page.getByRole("button", { name: "실행", exact: true }).click();
     const result = page.getByRole("region", { name: "시나리오 실행 결과" });
     await expect(result).toContainText("passed");
+    await shot("run-result");
     // The session cookie from login reaches the next request.
     await expect(result).toContainText("SESSION=desktop-session");
     // Raw values stay in the DOM; the default-on toggle hides only sensitive ones.
@@ -185,6 +191,7 @@ let input = ""; process.stdin.on("data", chunk => input += chunk); process.stdin
 
     // The extracted token and the session cookie are shared by the project.
     await page.getByRole("button", { name: "{ } 전역 변수", exact: true }).click();
+    await shot("globals");
     const tokenRow = globals.locator(".api-global-row").filter({ hasText: "accessToken" });
     await expect(tokenRow).toBeVisible();
     if (await tokenRow.locator(".api-global-value").evaluate(node => getComputedStyle(node).webkitTextSecurity) !== "disc") throw new Error("Token global is not masked");
