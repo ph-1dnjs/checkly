@@ -207,8 +207,13 @@ let input = ""; process.stdin.on("data", chunk => input += chunk); process.stdin
     await expect(restored.getByText("저장된 변수가 없습니다.", { exact: true })).toBeVisible();
   } finally {
     try {
-      const process = app?.process();
-      if (process && !process.killed) process.kill();
+      const electronProcess = app?.process();
+      if (electronProcess && electronProcess.exitCode === null) {
+        // SIGTERM alone can be refused by a beforeunload prompt (unsaved editor), leaving a window open.
+        electronProcess.kill();
+        await Promise.race([new Promise(resolve => electronProcess.once("exit", resolve)), new Promise(resolve => setTimeout(resolve, 3_000))]);
+        if (electronProcess.exitCode === null && electronProcess.signalCode === null) electronProcess.kill("SIGKILL");
+      }
     } catch (error) { console.error(`Electron cleanup failed: ${(error as Error).message}`); }
     server.closeAllConnections();
     await new Promise<void>(r => server.close(() => r()));
