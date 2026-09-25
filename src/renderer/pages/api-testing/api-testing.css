@@ -833,3 +833,5 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 .api-ai-cli-status li.is-missing span { color:#96690c; }
 .api-ai-cli-paths { margin:0 0 12px; }
 .api-ai-cli-paths > summary { color:var(--api-primary); font-size:12px; }
+.api-ai-backend { display:grid; gap:6px; margin:12px 0; padding:10px 12px; border:1px solid var(--api-border); border-radius:4px; background:#fafbfc; }
+.api-ai-backend .api-actions { margin:0; }

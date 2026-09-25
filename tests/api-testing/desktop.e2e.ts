@@ -55,7 +55,6 @@ let input = ""; process.stdin.on("data", chunk => input += chunk); process.stdin
     await page.getByRole("button", { name: "프로젝트 만들기", exact: true }).click();
     await page.getByLabel("프로젝트 이름").fill("쇼핑몰 QA");
     await page.getByLabel("기본 API 기본 주소").fill(url);
-    await page.getByLabel("백엔드 폴더 경로", { exact: true }).fill(backendDir);
     await page.getByRole("button", { name: "프로젝트 저장", exact: true }).click();
     await page.getByLabel("OpenAPI URL").fill(`${url}/openapi.json`);
     await page.getByRole("button", { name: "URL 가져오기", exact: true }).click();
@@ -126,6 +125,11 @@ let input = ""; process.stdin.on("data", chunk => input += chunk); process.stdin
     await expect(page.getByLabel("AI 사용 도구", { exact: true })).toHaveValue("claude");
     await expect(page.getByRole("list", { name: "AI CLI 상태" })).toContainText("Claude Code");
     await expect(page.getByRole("list", { name: "AI CLI 상태" })).toContainText("직접 지정");
+    // The backend folder is set right in the AI tab and saved on the project.
+    await page.getByLabel("AI 백엔드 폴더 경로", { exact: true }).fill(backendDir);
+    await page.getByRole("button", { name: "경로 저장", exact: true }).click();
+    await expect(page.getByText("백엔드 폴더를 저장했습니다.", { exact: true })).toBeVisible();
+    await expect(page.getByRole("region", { name: "AI 시나리오 작성" })).toContainText(`백엔드 소스 ${backendDir}`);
     await page.getByLabel("AI 시나리오 업무 목표", { exact: true }).fill("로그인 후 상품 상세 조회");
     await page.getByLabel("스위트도 함께 만들기").check();
     await page.getByRole("button", { name: "AI로 시나리오 만들기", exact: true }).click();

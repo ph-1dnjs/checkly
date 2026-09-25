@@ -15,9 +15,14 @@ const phaseText = (progress: ApiAiProgress | null) => !progress ? "AI 작성 준
  * Runs a local AI CLI (Claude Code / Codex) to write scenarios and an optional suite,
  * then lets the user review Checkly's check results and save the chosen drafts.
  */
-export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
+export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved, onProjectChange }: {
   project: ApiProject; scope: ApiEnvironmentScope; bridge: ApiTestingBridge; onBusy: (busy: boolean) => void; onSaved: () => void;
+  /** Persists a project edit (the backend folder) and refreshes the page's project list. */
+  onProjectChange: (project: ApiProject) => Promise<void>;
 }) {
+  const [backendDraft, setBackendDraft] = useState(project.backendPath ?? "");
+  const [backendSaving, setBackendSaving] = useState(false);
+  const [backendNotice, setBackendNotice] = useState("");
   const [statuses, setStatuses] = useState<ApiAiCliStatus[] | null>(null);
   const [pathDraft, setPathDraft] = useState<Record<ApiAiCli, string>>({ claude: "", codex: "" });
   const [checking, setChecking] = useState(false);
@@ -61,7 +66,17 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
     finally { if (live.current) setChecking(false); }
   }
   const request = (): ApiAiAuthorRequest => ({ scope, cli, ...(models[cli].trim() ? { model: models[cli].trim() } : {}), goal, includeSuite, ...(selectedTags.length ? { tags: selectedTags } : {}) });
-  const busy = running || saving;
+  const busy = running || saving || backendSaving;
+  const saveBackendPath = async (next: string) => {
+    setBackendSaving(true); setError(""); setBackendNotice("");
+    try {
+      const { backendPath: _previous, ...rest } = project;
+      await onProjectChange(next.trim() ? { ...rest, backendPath: next.trim() } : rest);
+      setBackendDraft(next.trim());
+      setBackendNotice(next.trim() ? "백엔드 폴더를 저장했습니다." : "백엔드 폴더 지정을 해제했습니다. 명세만 사용합니다.");
+    } catch (e) { setError(errorText(e)); }
+    finally { setBackendSaving(false); }
+  };
 
   const generate = async () => {
     setRunning(true); onBusy(true); setProgress(null); setResult(null); setMessage(""); setError("");
@@ -106,7 +121,16 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
   const hasCli = Boolean(clis?.length);
   return <section className="api-ai-author" aria-label="AI 시나리오 작성">
     <h2>AI 작성 도우미</h2>
-    <p>{project.backendPath ? <>백엔드 소스 <code>{project.backendPath}</code>와 현재 환경의 API 명세를 읽고 시나리오를 작성합니다.</> : <>현재 환경의 API 명세로 시나리오를 작성합니다. 프로젝트 설정에서 백엔드 폴더를 지정하면 소스 코드도 참고합니다.</>} AI는 파일을 읽기만 하고 API를 호출하지 않습니다. 전역변수 값·서버 주소는 전달하지 않습니다.</p>
+    <p>{project.backendPath ? <>백엔드 소스 <code>{project.backendPath}</code>와 현재 환경의 API 명세를 읽고 시나리오를 작성합니다.</> : <>현재 환경의 API 명세만으로 시나리오를 작성합니다. 아래에 백엔드 폴더를 지정하면 컨트롤러·DTO·검증 규칙도 참고합니다.</>} AI는 파일을 읽기만 하고 API를 호출하지 않습니다. 전역변수 값·서버 주소는 전달하지 않습니다.</p>
+    <section className="api-ai-backend" aria-label="백엔드 소스 폴더">
+      <label>백엔드 폴더 · 이 프로젝트에 저장<input aria-label="AI 백엔드 폴더 경로" value={backendDraft} disabled={busy} placeholder="지정 안 함 · 명세만 사용" onChange={e => { setBackendDraft(e.target.value); setBackendNotice(""); }} /></label>
+      <div className="api-actions">
+        <button type="button" disabled={busy} onClick={async () => { try { const chosen = await bridge.chooseDirectory(); if (chosen) { setBackendDraft(chosen); setBackendNotice(""); } } catch (e) { setError(errorText(e)); } }}>폴더 선택</button>
+        <button type="button" className="api-primary" disabled={busy || backendDraft.trim() === (project.backendPath ?? "")} onClick={() => void saveBackendPath(backendDraft)}>경로 저장</button>
+        {project.backendPath && <button type="button" disabled={busy} onClick={() => void saveBackendPath("")}>지정 해제</button>}
+      </div>
+      {backendNotice && <p role="status" className="api-field-help">{backendNotice}</p>}
+    </section>
     {statuses && <ul className="api-ai-cli-status" aria-label="AI CLI 상태">{statuses.map(status => <li key={status.cli} className={status.error ? "is-missing" : ""}>
       <strong>{cliNames[status.cli]}</strong>
       {status.error ? <span>{status.error}{status.path ? ` · ${shortPath(status.path)}` : ""}</span> : <span>{status.version} · <code title={status.path}>{shortPath(status.path!)}</code> · {status.custom ? "직접 지정" : "자동 탐색"}</span>}
