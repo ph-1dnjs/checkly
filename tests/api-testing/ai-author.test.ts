@@ -5,7 +5,7 @@ import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { ApiWorkspace } from "../../src/app/api-testing/main/workspace";
-import { availableAiClis, runAiCli, type AiCliRun } from "../../src/app/api-testing/main/ai-cli";
+import { describeAiClis, explainAiCliFailure, runAiCli, type AiCliRun } from "../../src/app/api-testing/main/ai-cli";
 import { aiAnswerJsonSchema } from "../../src/app/api-testing/main/ai-context";
 
 const spec = JSON.stringify({ openapi: "3.0.3", info: { title: "상점", version: "1" }, paths: {
@@ -120,7 +120,7 @@ let input = ""; process.stdin.on("data", c => input += c); process.stdin.on("end
 `);
     await chmod(fake, 0o755);
     process.env.CHECKLY_AI_CLI_PATH = fake;
-    assert.deepEqual(await availableAiClis(), ["claude", "codex"]);
+    assert.deepEqual((await describeAiClis()).map(status => [status.cli, status.path, status.error]), [["claude", fake, undefined], ["codex", fake, undefined]]);
     const base = { prompt: "작성해줘", cwd: dir, readDirs: [dir], schema: aiAnswerJsonSchema };
     assert.deepEqual(await runAiCli({ ...base, cli: "claude" }), { scenarios: [{ yaml: "name: x" }], suite: null, notes: "ok" });
     assert.deepEqual(await runAiCli({ ...base, cli: "codex", model: "gpt-test" }), { scenarios: [{ yaml: "name: x" }], suite: null, notes: "ok" });
@@ -134,10 +134,43 @@ let input = ""; process.stdin.on("data", c => input += c); process.stdin.on("end
     assert.equal(claude.args.includes("--model"), false);
     assert.equal(codex.input, "작성해줘");
     // Claude reports failures as a JSON result on stdout with exit code 1.
-    await assert.rejects(runAiCli({ ...base, prompt: "fail", cli: "claude" }), /종료 코드 1\)\. Not logged in/);
+    await assert.rejects(runAiCli({ ...base, prompt: "fail", cli: "claude" }), /종료 코드 1\)\. Not logged in[\s\S]*해결: 터미널에서 claude를 실행한 뒤 \/login/);
     const controller = new AbortController();
     controller.abort();
     await assert.rejects(runAiCli({ ...base, cli: "claude", signal: controller.signal }), /취소/);
+  } finally {
+    if (previous === undefined) delete process.env.CHECKLY_AI_CLI_PATH; else process.env.CHECKLY_AI_CLI_PATH = previous;
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("common CLI failures get a concrete fix", () => {
+  assert.match(explainAiCliFailure("codex", "ERROR: Model metadata for `gpt-x` not found"), /해결: 다른 모델을 지정하거나 CLI를 업그레이드하세요/);
+  assert.match(explainAiCliFailure("codex", "The 'gpt-x' model is not supported when using Codex with a ChatGPT account."), /brew upgrade --cask codex/);
+  assert.match(explainAiCliFailure("codex", "401 Unauthorized"), /codex login/);
+  assert.match(explainAiCliFailure("claude", "Invalid model name"), /claude update/);
+  assert.equal(explainAiCliFailure("claude", "AI 작성 시간이 초과되었습니다"), "AI 작성 시간이 초과되었습니다");
+});
+
+test("AI CLI paths are app settings: absolute only, persisted, and applied to detection", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "checkly-ai-settings-"));
+  const previous = process.env.CHECKLY_AI_CLI_PATH;
+  delete process.env.CHECKLY_AI_CLI_PATH;
+  try {
+    const good = path.join(dir, "claude-good");
+    await writeFile(good, "#!/bin/sh\necho '1.2.3 (Claude Code)'\n");
+    await chmod(good, 0o755);
+    const workspace = new ApiWorkspace(dir);
+    assert.deepEqual(await workspace.getAiSettings(), { paths: {} });
+    await assert.rejects(workspace.saveAiSettings({ paths: { claude: "relative/claude" } }), /절대 경로/);
+    const statuses = await workspace.saveAiSettings({ paths: { claude: good, codex: path.join(dir, "missing-codex") } });
+    assert.deepEqual(statuses.find(status => status.cli === "claude"), { cli: "claude", path: good, version: "1.2.3 (Claude Code)", custom: true });
+    assert.match(statuses.find(status => status.cli === "codex")!.error!, /실행되지 않습니다/);
+    // A fresh workspace (app restart) reads the saved paths before detecting.
+    assert.deepEqual(await new ApiWorkspace(dir).getAiSettings(), { paths: { claude: good, codex: path.join(dir, "missing-codex") } });
+    assert.equal((await new ApiWorkspace(dir).listAiClis()).find(status => status.cli === "claude")!.path, good);
+    await workspace.saveAiSettings({ paths: { claude: "", codex: "" } });
+    assert.deepEqual(await workspace.getAiSettings(), { paths: {} });
   } finally {
     if (previous === undefined) delete process.env.CHECKLY_AI_CLI_PATH; else process.env.CHECKLY_AI_CLI_PATH = previous;
     await rm(dir, { recursive: true, force: true });

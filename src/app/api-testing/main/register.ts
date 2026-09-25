@@ -6,7 +6,6 @@ import { ApiWorkspace, scopeSchema } from "./workspace";
 import { specSourceSchema } from "../shared/workspace";
 import { z } from "zod";
 import { SpecSync } from "./spec-sync";
-import { availableAiClis } from "./ai-cli";
 import { isProvidedScenarioInput, matchesScenarioInputType, type Json, type ScenarioInputRequest } from "../shared/scenario";
 import type { ApiScenarioInputRequest } from "../shared/workspace";
 
@@ -54,7 +53,9 @@ export function registerApiTesting() {
   ipcMain.handle("api-testing:delete-spec-account", (_event, scope) => sync.deleteAccount(scope));
   ipcMain.handle("api-testing:get-request-auth", (_event, scope) => workspace.getRequestAuth(scope));
   ipcMain.handle("api-testing:set-request-auth", (_event, scope, variable) => workspace.setRequestAuth(scope, variable));
-  ipcMain.handle("api-testing:list-ai-clis", () => availableAiClis());
+  ipcMain.handle("api-testing:list-ai-clis", (_event, refresh) => workspace.listAiClis(refresh === true));
+  ipcMain.handle("api-testing:get-ai-settings", () => workspace.getAiSettings());
+  ipcMain.handle("api-testing:save-ai-settings", (_event, settings) => workspace.saveAiSettings(settings));
   ipcMain.handle("api-testing:author-with-ai", (_event, request) => workspace.authorWithAi(request));
   ipcMain.handle("api-testing:get-ai-progress", (_event, scope) => workspace.getAiProgress(scope));
   ipcMain.handle("api-testing:cancel-ai-author", (_event, scope) => workspace.cancelAiAuthor(scope));

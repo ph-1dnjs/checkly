@@ -13,6 +13,7 @@
 | get-request-auth / set-request-auth | scope, 변수 이름 또는 null → 연결 이름/완료 |
 | list-globals / set-global / delete-global | 프로젝트, 이름·JSON 값 → 원문 값 목록/완료 |
 | list-ai-clis / author-with-ai / get-ai-progress / cancel-ai-author | 설치된 CLI 목록 / 작성 요청(프로젝트·환경, CLI, 목표, 스위트 여부, 태그) → 검사된 초안·스위트 / 진행 단계 폴링 / 취소. 저장하지 않음 |
+| get-ai-settings / save-ai-settings | CLI별 실행 파일 절대 경로(비우면 자동 탐색) → 설정 / 저장 후 다시 탐지한 상태 |
 | copy-ai-prompt / choose-directory | 스키마 포함 프롬프트를 클립보드로 / 백엔드 폴더 선택 대화상자 |
 | list-cookies / clear-cookies | 프로젝트 → 쿠키 이름·도메인·경로 목록(값 제외)/완료. 실행 중에는 비울 수 없음 |
 | execute | scope, operation key, request → 원문 ApiResponse (Swagger Try it out) |

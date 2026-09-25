@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import type { ApiAiAuthorRequest, ApiAiAuthorResult, ApiAiCli, ApiAiProgress, ApiEnvironmentScope, ApiProject, ApiTestingBridge } from "../../../app/api-testing/shared/workspace";
+import type { ApiAiAuthorRequest, ApiAiAuthorResult, ApiAiCli, ApiAiCliStatus, ApiAiProgress, ApiEnvironmentScope, ApiProject, ApiTestingBridge } from "../../../app/api-testing/shared/workspace";
 
 const errorText = (error: unknown) => (error as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, "");
 const cliNames: Record<ApiAiCli, string> = { claude: "Claude Code", codex: "Codex" };
+const shortPath = (value: string) => value.replace(/^\/Users\/[^/]+/, "~").replace(/^\/home\/[^/]+/, "~");
 // Claude Code aliases always point at the latest model of each tier; Codex takes any model name.
 const modelSuggestions: Record<ApiAiCli, string[]> = { claude: ["sonnet", "opus", "haiku"], codex: [] };
 const phaseText = (progress: ApiAiProgress | null) => !progress ? "AI 작성 준비 중…"
@@ -17,7 +18,10 @@ const phaseText = (progress: ApiAiProgress | null) => !progress ? "AI 작성 준
 export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
   project: ApiProject; scope: ApiEnvironmentScope; bridge: ApiTestingBridge; onBusy: (busy: boolean) => void; onSaved: () => void;
 }) {
-  const [clis, setClis] = useState<ApiAiCli[] | null>(null);
+  const [statuses, setStatuses] = useState<ApiAiCliStatus[] | null>(null);
+  const [pathDraft, setPathDraft] = useState<Record<ApiAiCli, string>>({ claude: "", codex: "" });
+  const [checking, setChecking] = useState(false);
+  const clis = statuses?.filter(status => !status.error).map(status => status.cli) ?? null;
   const [cli, setCli] = useState<ApiAiCli>("claude");
   const [models, setModels] = useState<Record<ApiAiCli, string>>({ claude: "", codex: "" });
   const [goal, setGoal] = useState("");
@@ -35,7 +39,8 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
   const live = useRef(true);
   useEffect(() => () => { live.current = false; }, []);
   useEffect(() => {
-    void bridge.listAiClis().then(found => { if (!live.current) return; setClis(found); if (found.length) setCli(found[0]); }).catch(() => { if (live.current) setClis([]); });
+    void applyStatuses(bridge.listAiClis());
+    void bridge.getAiSettings().then(settings => { if (live.current) setPathDraft({ claude: settings.paths.claude ?? "", codex: settings.paths.codex ?? "" }); }).catch(() => undefined);
     void Promise.all(project.servers.map(server => bridge.getCatalog({ ...scope, serverId: server.id }).catch(() => null)))
       .then(catalogs => { if (live.current) setTags([...new Set(catalogs.flatMap(catalog => catalog?.operations.flatMap(operation => [operation.tag, ...(operation.tags ?? [])]) ?? []))].filter(Boolean).sort()); });
   }, []);
@@ -44,6 +49,17 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
     const timer = setInterval(() => { void bridge.getAiProgress({ projectId: scope.projectId }).then(next => { if (live.current && next) setProgress(next); }).catch(() => undefined); }, 700);
     return () => clearInterval(timer);
   }, [running]);
+  async function applyStatuses(pending: Promise<ApiAiCliStatus[]>) {
+    setChecking(true);
+    try {
+      const next = await pending;
+      if (!live.current) return;
+      setStatuses(next);
+      const usable = next.filter(status => !status.error).map(status => status.cli);
+      if (usable.length && !usable.includes(cli)) setCli(usable[0]);
+    } catch (e) { if (live.current) { setStatuses([]); setError(errorText(e)); } }
+    finally { if (live.current) setChecking(false); }
+  }
   const request = (): ApiAiAuthorRequest => ({ scope, cli, ...(models[cli].trim() ? { model: models[cli].trim() } : {}), goal, includeSuite, ...(selectedTags.length ? { tags: selectedTags } : {}) });
   const busy = running || saving;
 
@@ -91,6 +107,18 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
   return <section className="api-ai-author" aria-label="AI 시나리오 작성">
     <h2>AI 작성 도우미</h2>
     <p>{project.backendPath ? <>백엔드 소스 <code>{project.backendPath}</code>와 현재 환경의 API 명세를 읽고 시나리오를 작성합니다.</> : <>현재 환경의 API 명세로 시나리오를 작성합니다. 프로젝트 설정에서 백엔드 폴더를 지정하면 소스 코드도 참고합니다.</>} AI는 파일을 읽기만 하고 API를 호출하지 않습니다. 전역변수 값·서버 주소는 전달하지 않습니다.</p>
+    {statuses && <ul className="api-ai-cli-status" aria-label="AI CLI 상태">{statuses.map(status => <li key={status.cli} className={status.error ? "is-missing" : ""}>
+      <strong>{cliNames[status.cli]}</strong>
+      {status.error ? <span>{status.error}{status.path ? ` · ${shortPath(status.path)}` : ""}</span> : <span>{status.version} · <code title={status.path}>{shortPath(status.path!)}</code> · {status.custom ? "직접 지정" : "자동 탐색"}</span>}
+    </li>)}</ul>}
+    <details className="api-ai-cli-paths"><summary>CLI 경로 설정</summary>
+      <p className="api-field-help">비워 두면 PATH와 흔한 설치 위치에서 실제로 실행되는 CLI를 찾습니다. 여러 버전이 설치되어 있거나 다른 위치에 설치했다면 실행 파일의 절대 경로를 입력하세요. 이 PC에만 저장됩니다.</p>
+      {(["claude", "codex"] as const).map(item => <label key={item}>{cliNames[item]} 실행 파일 경로<input value={pathDraft[item]} placeholder="자동 탐색" onChange={e => setPathDraft({ ...pathDraft, [item]: e.target.value })} /></label>)}
+      <div className="api-actions">
+        <button type="button" disabled={busy || checking} onClick={() => { setError(""); void applyStatuses(bridge.saveAiSettings({ paths: pathDraft })); }}>저장하고 다시 확인</button>
+        <button type="button" disabled={busy || checking} onClick={() => void applyStatuses(bridge.listAiClis(true))}>{checking ? "확인 중…" : "다시 찾기"}</button>
+      </div>
+    </details>
     {clis !== null && !hasCli && <p className="api-warning">Claude Code(claude) 또는 Codex(codex) CLI를 찾을 수 없습니다. 설치 후 다시 열거나, 아래 ‘프롬프트 복사’로 외부 AI를 사용하세요.</p>}
     <fieldset disabled={busy}>
       <label>만들고 싶은 시나리오<textarea aria-label="AI 시나리오 업무 목표" rows={4} maxLength={10000} value={goal} placeholder="예: 회원 로그인 후 상품을 장바구니에 담고 주문까지 확인. 재고가 없을 때 실패도 확인해줘" onChange={e => setGoal(e.target.value)} /></label>

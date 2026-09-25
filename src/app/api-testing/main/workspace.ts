@@ -2,14 +2,14 @@ import { mkdir, mkdtemp, readFile, rename, rm, stat, writeFile, unlink } from "n
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { projectSchema, type ApiCatalog, type ApiCookie, type ApiProject, type ApiScope, type ApiResponse, type ApiProjectScope, type ApiEnvironmentScope, type ApiGlobal, type SavedApiScenario, type SavedApiSuite, type ApiSidebarMetadata, type ApiScenarioPreview, type ApiScenarioResult, type ApiRequestTrace, type ApiAiAuthorResult, type ApiAiDraft, type ApiAiProgress } from "../shared/workspace";
+import { projectSchema, type ApiCatalog, type ApiCookie, type ApiProject, type ApiScope, type ApiResponse, type ApiProjectScope, type ApiEnvironmentScope, type ApiGlobal, type SavedApiScenario, type SavedApiSuite, type ApiSidebarMetadata, type ApiScenarioPreview, type ApiScenarioResult, type ApiRequestTrace, type ApiAiAuthorResult, type ApiAiDraft, type ApiAiProgress, type ApiAiCliStatus, type ApiAiSettings } from "../shared/workspace";
 import { z } from "zod";
 import { ApiRunner } from "./execution";
 import { bindingUseLocations, pruneUnusedBrokenBindings, stringifyScenario, parseScenario, scenarioSchema, scenarioStepInputs, scenarioStepLabel, type Json, type Scenario, type ScenarioInputRequest } from "../shared/scenario";
 import { readOpenApi } from "./openapi";
 import { CookieJar } from "./cookies";
 import { aiAnswerJsonSchema, aiCatalogDetails, createAuthorPrompt, createRepairPrompt } from "./ai-context";
-import { runAiCli, type AiCliRun } from "./ai-cli";
+import { describeAiClis, resetAiCliCache, runAiCli, setAiCliPaths, type AiCliRun } from "./ai-cli";
 
 export const scopeSchema = z.object({ projectId: z.string().uuid(), serverId: z.string().uuid(), environmentId: z.string().uuid() }).strict();
 const projectScopeSchema = z.object({ projectId: z.string().uuid() }).strict();
@@ -38,6 +38,9 @@ const aiAuthorRequestSchema = z.object({
   model: z.string().trim().regex(/^[A-Za-z0-9._:\/\[\]-]{1,100}$/, "모델 이름을 확인하세요").optional(), goal: z.string().trim().min(1, "만들 시나리오를 입력하세요").max(10_000),
   includeSuite: z.boolean(), tags: z.array(z.string().max(200)).max(100).optional(),
 }).strict();
+const cliPath = z.string().trim().max(4096).refine(value => !value || path.isAbsolute(value), "CLI 경로는 절대 경로로 입력하세요");
+const aiSettingsSchema = z.object({ paths: z.object({ claude: cliPath.optional(), codex: cliPath.optional() }).strict() }).strict()
+  .transform(({ paths }) => ({ paths: Object.fromEntries(Object.entries(paths).filter(([, value]) => value)) as ApiAiSettings["paths"] }));
 const aiAnswerSchema = z.object({
   scenarios: z.array(z.object({ yaml: z.string().max(200_000) })).min(1).max(30),
   suite: z.object({ name: z.string().max(100), scenarioIds: z.array(z.string().max(1000)).max(100) }).nullable(),
@@ -181,6 +184,31 @@ export class ApiWorkspace {
     return prompt;
   }
 
+  private aiSettingsApplied?: Promise<void>;
+  private applyAiSettings(): Promise<void> {
+    this.aiSettingsApplied ??= this.getAiSettings().then(settings => setAiCliPaths(settings.paths), () => undefined);
+    return this.aiSettingsApplied;
+  }
+
+  async getAiSettings(): Promise<ApiAiSettings> {
+    const parsed = aiSettingsSchema.safeParse(await this.read("ai-settings.json"));
+    return parsed.success ? parsed.data : { paths: {} };
+  }
+
+  async saveAiSettings(raw: unknown): Promise<ApiAiCliStatus[]> {
+    const settings = aiSettingsSchema.parse(raw);
+    await this.save("ai-settings.json", settings);
+    setAiCliPaths(settings.paths);
+    this.aiSettingsApplied = Promise.resolve();
+    return describeAiClis();
+  }
+
+  async listAiClis(refresh = false): Promise<ApiAiCliStatus[]> {
+    await this.applyAiSettings();
+    if (refresh) resetAiCliCache();
+    return describeAiClis();
+  }
+
   private aiRuns = new Map<string, { controller: AbortController; progress: ApiAiProgress }>();
 
   getAiProgress(input: ApiProjectScope): ApiAiProgress | null {
@@ -199,6 +227,7 @@ export class ApiWorkspace {
   async authorWithAi(raw: unknown, options: { run?: (run: AiCliRun) => Promise<unknown>; maxAttempts?: number } = {}): Promise<ApiAiAuthorResult> {
     const request = aiAuthorRequestSchema.parse(raw);
     const { scope, project } = await this.environment(request.scope);
+    await this.applyAiSettings();
     if (this.aiRuns.has(scope.projectId)) throw new Error("이 프로젝트에서 이미 AI 작성이 진행 중입니다");
     const servers = await this.aiServers(scope, project, request.tags);
     let backendDir: string | undefined;

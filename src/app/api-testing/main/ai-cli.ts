@@ -3,7 +3,7 @@ import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { constants } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
-import type { ApiAiCli } from "../shared/workspace";
+import type { ApiAiCli, ApiAiCliStatus } from "../shared/workspace";
 
 /**
  * Runs Claude Code or Codex headless, read-only, with a JSON schema for the final
@@ -31,42 +31,87 @@ async function combinedPath(): Promise<string> {
   return searchPath;
 }
 
-function runsVersion(command: string, env: NodeJS.ProcessEnv): Promise<boolean> {
+/** Version line when the command runs (`--version` exit 0), otherwise undefined. */
+function probeVersion(command: string, env: NodeJS.ProcessEnv): Promise<string | undefined> {
   return new Promise(resolve => {
     // A non-executable file (ENOEXEC) throws synchronously instead of calling back.
-    try { execFile(command, ["--version"], { timeout: 15_000, env }, error => resolve(!error)); }
-    catch { resolve(false); }
+    try { execFile(command, ["--version"], { timeout: 15_000, env }, (error, stdout) => resolve(error ? undefined : String(stdout).trim().split("\n")[0] || "버전 정보 없음")); }
+    catch { resolve(undefined); }
   });
 }
 
-const working = new Map<ApiAiCli, string>();
+async function probeEnv(): Promise<NodeJS.ProcessEnv> {
+  const env: NodeJS.ProcessEnv = { ...process.env, PATH: await combinedPath() };
+  delete env.ELECTRON_RUN_AS_NODE;
+  return env;
+}
+
+type Found = { path: string; version: string };
+const working = new Map<ApiAiCli, Found>();
+let customPaths: Partial<Record<ApiAiCli, string>> = {};
+
+/** Paths chosen in the app; an empty entry means auto-detect. Clears cached lookups. */
+export function setAiCliPaths(paths: Partial<Record<ApiAiCli, string>>): void {
+  customPaths = Object.fromEntries(Object.entries(paths).filter(([, value]) => value?.trim())) as Partial<Record<ApiAiCli, string>>;
+  working.clear();
+}
+
+export function resetAiCliCache(): void {
+  working.clear();
+}
 
 /**
  * First install that actually runs: a PATH entry can be a broken install
  * (e.g. an npm global package whose native binary is missing), so each
  * candidate is probed with --version. Only successes are cached.
  */
-async function findExecutable(cli: ApiAiCli): Promise<string | undefined> {
+async function findExecutable(cli: ApiAiCli): Promise<Found | undefined> {
   const cached = working.get(cli);
   if (cached) return cached;
-  const searchDirs = (await combinedPath()).split(path.delimiter);
-  const env: NodeJS.ProcessEnv = { ...process.env, PATH: searchDirs.join(path.delimiter) };
-  delete env.ELECTRON_RUN_AS_NODE;
-  for (const dir of searchDirs) {
+  const env = await probeEnv();
+  for (const dir of String(env.PATH).split(path.delimiter)) {
     const candidate = path.join(dir, cli);
     try { await access(candidate, constants.X_OK); } catch { continue; }
-    if (await runsVersion(candidate, env)) { working.set(cli, candidate); return candidate; }
+    const version = await probeVersion(candidate, env);
+    if (version) { const found = { path: candidate, version }; working.set(cli, found); return found; }
   }
   return undefined;
 }
 
-export async function resolveAiCli(cli: ApiAiCli): Promise<string | undefined> {
-  return process.env.CHECKLY_AI_CLI_PATH || findExecutable(cli);
+/** Where each CLI would run from, or why it cannot. */
+export async function describeAiCli(cli: ApiAiCli): Promise<ApiAiCliStatus> {
+  // Test hook: a fake CLI that does not implement --version.
+  if (process.env.CHECKLY_AI_CLI_PATH) return { cli, path: process.env.CHECKLY_AI_CLI_PATH, version: "test", custom: true };
+  const custom = customPaths[cli];
+  if (custom) {
+    const cached = working.get(cli);
+    if (cached?.path === custom) return { cli, ...cached, custom: true };
+    const version = await probeVersion(custom, await probeEnv());
+    if (!version) return { cli, path: custom, custom: true, error: "지정한 경로의 CLI가 실행되지 않습니다. 경로와 실행 권한을 확인하세요" };
+    working.set(cli, { path: custom, version });
+    return { cli, path: custom, version, custom: true };
+  }
+  const found = await findExecutable(cli);
+  return found ? { cli, ...found, custom: false } : { cli, custom: false, error: "설치된 CLI를 찾을 수 없습니다" };
 }
 
-export async function availableAiClis(): Promise<ApiAiCli[]> {
-  const found = await Promise.all((["claude", "codex"] as const).map(async cli => (await resolveAiCli(cli)) ? cli : undefined));
-  return found.filter((cli): cli is ApiAiCli => Boolean(cli));
+export async function describeAiClis(): Promise<ApiAiCliStatus[]> {
+  return Promise.all((["claude", "codex"] as const).map(describeAiCli));
+}
+
+export async function resolveAiCli(cli: ApiAiCli): Promise<string | undefined> {
+  const status = await describeAiCli(cli);
+  return status.error ? undefined : status.path;
+}
+
+const loginHint: Record<ApiAiCli, string> = { claude: "터미널에서 claude를 실행한 뒤 /login으로 로그인하세요", codex: "터미널에서 codex login으로 로그인하세요" };
+const upgradeHint: Record<ApiAiCli, string> = { claude: "다른 모델을 지정하거나 claude update로 CLI를 업데이트하세요", codex: "다른 모델을 지정하거나 CLI를 업그레이드하세요 (예: brew upgrade --cask codex)" };
+
+/** Adds the fix for common failures (login, unsupported model) to a CLI error message. */
+export function explainAiCliFailure(cli: ApiAiCli, message: string): string {
+  if (/not logged in|please run \/login|log ?in required|unauthori[sz]ed|401|authentication/i.test(message)) return `${message}\n해결: ${loginHint[cli]}`;
+  if (/model metadata .* not found|model .*not (supported|found|available)|unknown model|invalid model|does not exist or you do not have access/i.test(message)) return `${message}\n해결: ${upgradeHint[cli]}`;
+  return message;
 }
 
 /** Claude Code reports failures (e.g. "Not logged in") as a JSON result on stdout. */
@@ -129,10 +174,15 @@ export function parseCliAnswer(cli: ApiAiCli, text: string): unknown {
 }
 
 export async function runAiCli(run: AiCliRun): Promise<unknown> {
-  const command = await resolveAiCli(run.cli);
-  if (!command) throw new Error(`${run.cli === "claude" ? "Claude Code" : "Codex"} CLI를 찾을 수 없습니다. 설치 후 다시 시도하세요`);
-  const env: NodeJS.ProcessEnv = { ...process.env, PATH: await combinedPath() };
-  delete env.ELECTRON_RUN_AS_NODE;
+  try { return await runResolvedAiCli(run); }
+  catch (error) { throw new Error(explainAiCliFailure(run.cli, (error as Error).message)); }
+}
+
+async function runResolvedAiCli(run: AiCliRun): Promise<unknown> {
+  const status = await describeAiCli(run.cli);
+  if (status.error || !status.path) throw new Error(`${run.cli === "claude" ? "Claude Code" : "Codex"} CLI: ${status.error ?? "찾을 수 없습니다"}`);
+  const command = status.path;
+  const env = await probeEnv();
   const timeoutMs = run.timeoutMs ?? 600_000;
   if (run.cli === "claude") {
     const args = [

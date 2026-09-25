@@ -826,3 +826,10 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 .api-sidebar-add-button{display:inline-flex;align-items:center;justify-content:center;gap:3px;box-sizing:border-box;min-height:36px;padding:0 8px;border:1px solid var(--api-border);border-radius:4px;background:#fff;color:var(--api-primary);font-size:10px;white-space:nowrap}
 .api-sidebar-add-button:hover:not(:disabled){background:#eff7fb}
 .api-sidebar-add-button:disabled{cursor:not-allowed;opacity:.55}
+
+.api-ai-cli-status { display:grid; gap:4px; margin:12px 0; padding:0; list-style:none; font-size:12px; }
+.api-ai-cli-status li { display:flex; gap:8px; align-items:baseline; min-width:0; }
+.api-ai-cli-status li span { overflow:hidden; color:var(--api-muted); text-overflow:ellipsis; white-space:nowrap; }
+.api-ai-cli-status li.is-missing span { color:#96690c; }
+.api-ai-cli-paths { margin:0 0 12px; }
+.api-ai-cli-paths > summary { color:var(--api-primary); font-size:12px; }

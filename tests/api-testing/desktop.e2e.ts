@@ -124,6 +124,8 @@ let input = ""; process.stdin.on("data", chunk => input += chunk); process.stdin
     // AI authoring with a fake CLI: generate, review Checkly's checks, save scenarios and suite.
     await page.getByRole("tab", { name: "AI 작성 도우미", exact: true }).click();
     await expect(page.getByLabel("AI 사용 도구", { exact: true })).toHaveValue("claude");
+    await expect(page.getByRole("list", { name: "AI CLI 상태" })).toContainText("Claude Code");
+    await expect(page.getByRole("list", { name: "AI CLI 상태" })).toContainText("직접 지정");
     await page.getByLabel("AI 시나리오 업무 목표", { exact: true }).fill("로그인 후 상품 상세 조회");
     await page.getByLabel("스위트도 함께 만들기").check();
     await page.getByRole("button", { name: "AI로 시나리오 만들기", exact: true }).click();
