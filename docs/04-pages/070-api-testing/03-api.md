@@ -11,7 +11,7 @@
 | import | scope, 파일 또는 URL·Basic 인증 → 명세 또는 취소 시 null |
 | spec-sync / delete-spec-account | scope → 동기화·계정 저장 여부/완료 |
 | get-request-auth / set-request-auth | scope, 변수 이름 또는 null → 연결 이름/완료 |
-| list-globals / set-global / delete-global | 프로젝트·환경, 이름·JSON 값 → 마스킹된 목록/완료 |
+| list-globals / set-global / delete-global | 프로젝트, 이름·JSON 값 → 마스킹된 목록/완료 |
 | execute / execute-live | scope, operation key, request → ApiResponse |
 | cancel | scope → 현재 환경 실행 취소 |
 | list-scenarios / read-scenario-file | 프로젝트 ID/파일 선택 → 목록/YAML 또는 null |
@@ -29,7 +29,7 @@
 
 ## 실행 계약
 
-실행 직전에 현재 환경의 명세와 서버 연결을 재검증합니다. 시나리오 YAML은 `operationId` 또는 method/path로 명세의 엔드포인트를 가리키며, summary·description·파라미터·요청/응답 스키마는 저장된 OpenAPI 카탈로그에서 다시 읽습니다. JSON 본문과 단일 값 경로·쿼리·헤더·쿠키를 구성하며 기본 요청 시간 제한은 30초입니다. 쿠키는 `request.cookies`의 단순 문자열·숫자·불리언 값을 `Cookie` 헤더로 조합합니다. 리다이렉트·자동 재시도를 하지 않습니다.
+실행 직전에 현재 환경의 명세와 서버 연결을 재검증합니다. 시나리오 YAML은 `operationId` 또는 method/path로 명세의 엔드포인트를 가리키며, summary·description·파라미터·요청/응답 스키마는 저장된 OpenAPI 카탈로그에서 다시 읽습니다. JSON 본문과 경로·쿼리·헤더·쿠키를 구성하며, 쿼리는 OpenAPI `form`, `deepObject`, `spaceDelimited`, `pipeDelimited` 직렬화를 따릅니다. 기본 요청 시간 제한은 30초입니다. 쿠키는 `request.cookies`의 단순 문자열·숫자·불리언 값을 `Cookie` 헤더로 조합합니다. 리다이렉트·자동 재시도를 하지 않습니다.
 
 기본 실패 정책은 stop이며 이후 단계는 skipped입니다. continue이면 후속 단계를 시도하고 필요한 변수가 없으면 blocked입니다. 취소는 진행 요청을 중단하고 후속 호출을 막습니다.
 
@@ -40,6 +40,8 @@ API 단계에 `input`이 있고 같은 이름의 값이 없으면 `run-scenario`
 `valueBindings`는 `{name, step, source, area, pointer|header}` 구조입니다. `source: request`는 출처 단계의 실제 해석된 요청값을, `source: response`는 응답 본문 또는 헤더를 가리킵니다. 미리보기는 `{{vars.name}}` 사용 위치와 출처 단계의 순서를 검사하며, 출처가 이후이거나 같은 단계면 값 순서 오류를 반환합니다. 실행 결과에는 출처 원문을 별도 필드로 노출하지 않습니다.
 
 Bearer 연결은 프로젝트·환경·서버·기본 URL에 묶이며 요청 직전에 최신 변수값을 읽습니다. 수동 Authorization과 중복되거나 값이 없고 형식이 잘못되면 호출을 차단합니다. 문서용 Basic 인증은 API 호출에 재사용하지 않습니다.
+
+시나리오 YAML의 최상위 `auth: globals.memberToken`은 모든 단계의 Bearer 기본값입니다. 각 단계는 `auth: globals.adminToken`으로 다른 계정을 선택하거나 `auth: none`으로 기본 인증을 제외할 수 있습니다. 지정하지 않은 단계는 기본값을 상속합니다. 토큰은 YAML에 저장하지 않고 해당 요청 직전에 프로젝트 전역변수에서 읽습니다. 이전 단계가 같은 변수를 추출해 갱신했다면 이후 단계는 갱신된 값을 사용합니다. 필요한 값이 없으면 실행 전 확인에 표시하고 호출을 막으며, 수동 `Authorization` 헤더와 중복 설정된 경우에도 호출을 막습니다.
 
 ## 개발과 검증
 
