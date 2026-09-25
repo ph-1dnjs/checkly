@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { stringify } from "yaml";
 import { normalizeScenarioForStorage, parseScenario } from "../../src/app/api-testing/shared/scenario";
-import { apiReference, connectResponse, connectValue, moveStep } from "../../src/renderer/pages/api-testing/scenario-builder-model";
+import { apiReference, connectResponse, connectValue, linkVariableName, moveStep } from "../../src/renderer/pages/api-testing/scenario-builder-model";
 
 const sample = () => parseScenario(`version: 1
 id: imported
@@ -108,4 +108,23 @@ steps:
   assert.equal(generated.steps[0].name, undefined);
   assert.deepEqual(apiReference({ operationId: "listItems", method: "GET", path: "/items" }), { operationId: "listItems" });
   assert.deepEqual(apiReference({ method: "GET", path: "/items" }), { method: "GET", path: "/items" });
+});
+
+test("linked values get readable default names from the source field", () => {
+  assert.equal(linkVariableName("/data/challengeToken"), "challengeToken");
+  assert.equal(linkVariableName("/data/content/0/member-id"), "member_id");
+  assert.equal(linkVariableName("X-Request-Id"), "X_Request_Id");
+  assert.equal(linkVariableName("/data/items/0"), "linkedValue");
+  assert.equal(linkVariableName(""), "linkedValue");
+  assert.equal(linkVariableName("/2fa"), "v_2fa");
+  let scenario = sample();
+  scenario.steps[1].input = { name: "token", type: "string", required: true, sensitive: true };
+  scenario = connectValue(scenario, 0, 2, "response", "body", "/data/token", undefined, "", "body", "a");
+  scenario = connectValue(scenario, 0, 2, "response", "body", "/other/token", undefined, "", "body", "b");
+  const body = scenario.steps[2].request.body as Record<string, string>;
+  // "token" is taken by the step input, so numbering starts at _2.
+  assert.deepEqual([body.a, body.b], ["{{vars.token_2}}", "{{vars.token_3}}"]);
+  // The same source reuses its existing name.
+  scenario = connectValue(scenario, 0, 2, "response", "body", "/data/token", undefined, "", "body", "c");
+  assert.equal((scenario.steps[2].request.body as Record<string, string>).c, "{{vars.token_2}}");
 });

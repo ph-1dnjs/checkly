@@ -120,7 +120,9 @@ export function ValueActionModal({ index, field, current, state, globalNames, ha
 }) {
   const selectedGlobal = templateVariable(current, "globals") ?? "";
   const [globalCreateOpen, setGlobalCreateOpen] = useState(false);
-  const [directText, setDirectText] = useState(() => current === undefined ? "" : typeof current === "string" ? current : jsonText(current));
+  // A linked value (global, earlier step, user input) is shown under "현재 설정", not as raw {{…}} text.
+  const linked = state !== undefined && state.kind !== "cookie";
+  const [directText, setDirectText] = useState(() => linked || current === undefined ? "" : typeof current === "string" ? current : jsonText(current));
   const [directError, setDirectError] = useState("");
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };

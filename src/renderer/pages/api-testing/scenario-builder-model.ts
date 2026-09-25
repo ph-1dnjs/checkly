@@ -1,4 +1,4 @@
-import type { Json, Scenario, ValueBinding } from "../../../app/api-testing/shared/scenario";
+import { scenarioStepInputs, type Json, type Scenario, type ValueBinding } from "../../../app/api-testing/shared/scenario";
 import type { ApiOperation } from "../../../app/api-testing/shared/workspace";
 
 export type Step = Scenario["steps"][number];
@@ -38,6 +38,14 @@ export function connectResponse(scenario: Scenario, from: number, to: number, po
   return { ...scenario, steps };
 }
 
+/** Variable name for a linked value: the last pointer segment or header name, made identifier-safe. */
+export function linkVariableName(source: string): string {
+  const last = source.split("/").pop()!.replace(/~1/g, "/").replace(/~0/g, "~");
+  const name = last.replace(/[^A-Za-z0-9_]+/g, "_").replace(/^_+|_+$/g, "");
+  if (!name || /^\d+$/.test(name)) return "linkedValue";
+  return /^[A-Za-z]/.test(name) ? name : `v_${name}`;
+}
+
 /** Connects any captured request/response value to a later request template. */
 export function connectValue(scenario: Scenario, from: number, to: number, source: ValueBinding["source"], area: BindingArea, pointer: string | undefined, header: string | undefined, variable: string, targetArea: RequestArea, field: string, prefix = ""): Scenario {
   if (!Number.isInteger(from) || !Number.isInteger(to) || from < 0 || to < 0 || from >= scenario.steps.length || to >= scenario.steps.length || from === to)
@@ -48,10 +56,11 @@ export function connectValue(scenario: Scenario, from: number, to: number, sourc
   if (source === "response" && area === "header" && !header) throw new Error("응답 헤더 이름이 필요합니다");
   if (source === "response" && area === "header" && pointer !== undefined) throw new Error("응답 헤더에는 JSON Pointer를 사용할 수 없습니다");
   const sameSource = (binding: ValueBinding) => binding.step === scenario.steps[from].id && binding.source === source && binding.area === area && binding.pointer === pointer && (binding.header ?? "").toLowerCase() === (header ?? "").toLowerCase();
-  const occupied = (name: string) => Object.hasOwn(scenario.vars, name) || scenario.valueBindings.some(binding => binding.name === name) || scenario.steps.some(step => step.extract.some(extract => extract.target === `vars.${name}`));
+  const occupied = (name: string) => Object.hasOwn(scenario.vars, name) || scenario.valueBindings.some(binding => binding.name === name) || scenario.steps.some(step => step.extract.some(extract => extract.target === `vars.${name}`) || scenarioStepInputs(step).some(input => input.name === name));
   if (!variable) {
     const existing = scenario.valueBindings.find(sameSource);
-    const base = `link_${scenario.steps[from].id}_${source}_${area}_${header ?? pointer ?? "root"}`.replace(/[^A-Za-z0-9_]/g, "_");
+    // Readable default: the source field's own name (challengeToken), not step ids.
+    const base = linkVariableName(header ?? pointer ?? "");
     variable = existing?.name ?? base;
     if (!existing) {
       let suffix = 2;
