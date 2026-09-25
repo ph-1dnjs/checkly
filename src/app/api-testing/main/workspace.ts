@@ -36,7 +36,7 @@ const aiAuthorRequestSchema = z.object({
   scope: environmentScopeSchema, cli: z.enum(["claude", "codex"]),
   // Passed to the CLI as-is; empty uses the CLI's own default model.
   model: z.string().trim().regex(/^[A-Za-z0-9._:\/\[\]-]{1,100}$/, "모델 이름을 확인하세요").optional(), goal: z.string().trim().min(1, "만들 시나리오를 입력하세요").max(10_000),
-  includeSuite: z.boolean(), tags: z.array(z.string().max(200)).max(100).optional(),
+  tags: z.array(z.string().max(200)).max(100).optional(),
 }).strict();
 const cliPath = z.string().trim().max(4096).refine(value => !value || path.isAbsolute(value), "CLI 경로는 절대 경로로 입력하세요");
 const aiSettingsSchema = z.object({ paths: z.object({ claude: cliPath.optional(), codex: cliPath.optional() }).strict() }).strict()
@@ -176,7 +176,7 @@ export class ApiWorkspace {
     const request = aiAuthorRequestSchema.parse(raw);
     const { scope, project } = await this.environment(request.scope);
     const prompt = this.aiRedact(scope.projectId)(createAuthorPrompt({
-      goal: request.goal, includeSuite: request.includeSuite, servers: await this.aiServers(scope, project, request.tags),
+      goal: request.goal, servers: await this.aiServers(scope, project, request.tags),
       globals: await this.listGlobals({ projectId: scope.projectId }),
       existing: (await this.listScenarios(scope.projectId)).map(({ id, name }) => ({ id, name })), backendAvailable: false,
     }));
@@ -246,7 +246,7 @@ export class ApiWorkspace {
       const redact = this.aiRedact(scope.projectId);
       await writeFile(catalogFile, redact(JSON.stringify(aiCatalogDetails(servers), null, 1)));
       const existing = (await this.listScenarios(scope.projectId)).map(({ id, name }) => ({ id, name }));
-      const base = redact(createAuthorPrompt({ goal: request.goal, includeSuite: request.includeSuite, servers, globals: await this.listGlobals({ projectId: scope.projectId }), existing, catalogFile, backendAvailable: Boolean(backendDir) }));
+      const base = redact(createAuthorPrompt({ goal: request.goal, servers, globals: await this.listGlobals({ projectId: scope.projectId }), existing, catalogFile, backendAvailable: Boolean(backendDir) }));
       let prompt = base;
       let result: ApiAiAuthorResult | undefined;
       for (let attempt = 1; attempt <= maxAttempts; attempt++) {

@@ -126,6 +126,7 @@ let input = ""; process.stdin.on("data", chunk => input += chunk); process.stdin
     // AI authoring with a fake CLI: generate, review Checkly's checks, save scenarios and suite.
     await page.getByRole("tab", { name: "AI 작성 도우미", exact: true }).click();
     await expect(page.getByLabel("AI 사용 도구", { exact: true })).toHaveValue("claude");
+    await expect(page.getByText("명세를 다시 가져오세요")).toHaveCount(0);
     await expect(page.getByRole("list", { name: "AI 프로그램 상태" })).toContainText("Claude Code");
     await expect(page.getByRole("list", { name: "AI 프로그램 상태" })).toContainText("직접 지정한 위치");
     // The backend folder is set right in the AI tab and saved on the project.
@@ -134,7 +135,6 @@ let input = ""; process.stdin.on("data", chunk => input += chunk); process.stdin
     await expect(page.getByRole("region", { name: "백엔드 코드 폴더" })).toContainText("저장했습니다.");
     await expect(page.getByRole("region", { name: "AI 시나리오 작성" })).toContainText("API 문서와 백엔드 코드를 보고");
     await page.getByLabel("AI 시나리오 업무 목표", { exact: true }).fill("로그인 후 상품 상세 조회");
-    await page.getByLabel("스위트도 함께 만들기").check();
     await page.getByRole("button", { name: "AI로 시나리오 만들기", exact: true }).click();
     const aiResult = page.getByRole("region", { name: "AI 작성 결과" });
     await expect(aiResult).toContainText("AI 로그인");

@@ -72,7 +72,7 @@ export type ApiAiCli = "claude" | "codex";
 export type ApiAiCliStatus = { cli: ApiAiCli; path?: string; version?: string; custom: boolean; error?: string };
 /** App-wide (per machine) AI settings; an empty path means auto-detect. */
 export type ApiAiSettings = { paths: Partial<Record<ApiAiCli, string>> };
-export type ApiAiAuthorRequest = { scope: ApiEnvironmentScope; cli: ApiAiCli; model?: string; goal: string; includeSuite: boolean; tags?: string[] };
+export type ApiAiAuthorRequest = { scope: ApiEnvironmentScope; cli: ApiAiCli; model?: string; goal: string; tags?: string[] };
 /** One AI-written scenario after Checkly's own checks; issues block saving it as a runnable scenario. */
 export type ApiAiDraft = { id: string; name: string; yaml: string; stepCount: number; issues: string[]; executionIssues: string[] };
 export type ApiAiAuthorResult = { drafts: ApiAiDraft[]; suite: { name: string; scenarioIds: string[]; problems: string[] } | null; notes: string; attempts: number };

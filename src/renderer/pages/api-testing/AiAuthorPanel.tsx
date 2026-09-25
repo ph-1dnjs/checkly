@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { ApiAiAuthorRequest, ApiAiAuthorResult, ApiAiCli, ApiAiCliStatus, ApiAiProgress, ApiEnvironmentScope, ApiProject, ApiTestingBridge } from "../../../app/api-testing/shared/workspace";
+import type { ApiAiAuthorRequest, ApiAiAuthorResult, ApiAiCli, ApiAiCliStatus, ApiAiProgress, ApiCatalog, ApiEnvironmentScope, ApiProject, ApiTestingBridge } from "../../../app/api-testing/shared/workspace";
 
 const errorText = (error: unknown) => (error as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, "");
 const cliNames: Record<ApiAiCli, string> = { claude: "Claude Code", codex: "Codex" };
@@ -11,7 +11,7 @@ const phaseText = (progress: ApiAiProgress | null) => !progress ? "준비 중…
   : `검사에서 나온 문제를 AI가 고치는 중… (${progress.attempt - 1}번째)`;
 
 /**
- * Runs a local AI CLI (Claude Code / Codex) to write scenarios and an optional suite,
+ * Runs a local AI CLI (Claude Code / Codex) to write scenarios (and a suite when it splits the flow),
  * then lets the user review Checkly's check results and save the chosen drafts.
  */
 export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved, onProjectChange }: {
@@ -29,8 +29,8 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved, onProje
   const [cli, setCli] = useState<ApiAiCli>("claude");
   const [models, setModels] = useState<Record<ApiAiCli, string>>({ claude: "", codex: "" });
   const [goal, setGoal] = useState("");
-  const [includeSuite, setIncludeSuite] = useState(false);
   const [tags, setTags] = useState<string[]>([]);
+  const [specWarnings, setSpecWarnings] = useState<string[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState<ApiAiProgress | null>(null);
@@ -46,7 +46,7 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved, onProje
     void applyStatuses(bridge.listAiClis());
     void bridge.getAiSettings().then(settings => { if (live.current) setPathDraft({ claude: settings.paths.claude ?? "", codex: settings.paths.codex ?? "" }); }).catch(() => undefined);
     void Promise.all(project.servers.map(server => bridge.getCatalog({ ...scope, serverId: server.id }).catch(() => null)))
-      .then(catalogs => { if (live.current) setTags([...new Set(catalogs.flatMap(catalog => catalog?.operations.flatMap(operation => [operation.tag, ...(operation.tags ?? [])]) ?? []))].filter(Boolean).sort()); });
+      .then(catalogs => { if (live.current) { setSpecWarnings(specWarningsFor(project, catalogs)); setTags([...new Set(catalogs.flatMap(catalog => catalog?.operations.flatMap(operation => [operation.tag, ...(operation.tags ?? [])]) ?? []))].filter(Boolean).sort()); } });
   }, []);
   useEffect(() => {
     if (!running) return;
@@ -64,7 +64,7 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved, onProje
     } catch (e) { if (live.current) { setStatuses([]); setError(errorText(e)); } }
     finally { if (live.current) setChecking(false); }
   }
-  const request = (): ApiAiAuthorRequest => ({ scope, cli, ...(models[cli].trim() ? { model: models[cli].trim() } : {}), goal, includeSuite, ...(selectedTags.length ? { tags: selectedTags } : {}) });
+  const request = (): ApiAiAuthorRequest => ({ scope, cli, ...(models[cli].trim() ? { model: models[cli].trim() } : {}), goal, ...(selectedTags.length ? { tags: selectedTags } : {}) });
   const busy = running || saving || backendSaving;
   const saveBackendPath = async (next: string) => {
     setBackendSaving(true); setError(""); setBackendNotice("");
@@ -135,6 +135,7 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved, onProje
       <strong>{cliNames[status.cli]}</strong>
       <span title={status.path}>{status.error ? status.error : `사용 가능 · ${status.version}${status.custom ? " · 직접 지정한 위치" : ""}`}</span>
     </li>)}</ul>}
+    {specWarnings.length > 0 && <div className="api-warning" role="note"><strong>명세를 다시 가져오세요</strong><ul>{specWarnings.map(warning => <li key={warning}>{warning}</li>)}</ul>AI는 명세에 있는 API와 필드만 사용합니다. API 문서 탭에서 ‘명세 새로고침’이나 가져오기를 다시 하세요.</div>}
     {clis !== null && !hasCli && <p className="api-warning">Claude Code나 Codex가 설치되어 있지 않습니다. 설치 후 ‘다시 찾기’를 누르거나, ‘프롬프트 복사’로 다른 AI에 붙여넣으세요.</p>}
     <details className="api-ai-cli-paths"><summary>AI 프로그램 위치 바꾸기</summary>
       <p className="api-field-help">자동으로 찾지 못할 때만 실행 파일 위치를 입력하세요. 비워 두면 자동으로 찾습니다.</p>
@@ -149,7 +150,6 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved, onProje
       <div className="api-ai-author-options">
         {hasCli && <label>AI<select aria-label="AI 사용 도구" value={cli} onChange={e => setCli(e.target.value as ApiAiCli)}>{clis!.map(item => <option key={item} value={item}>{cliNames[item]}</option>)}</select></label>}
         {hasCli && <label>모델<input aria-label="AI 모델" list={`api-ai-models-${cli}`} value={models[cli]} placeholder="기본값" onChange={e => setModels({ ...models, [cli]: e.target.value })} /><datalist id={`api-ai-models-${cli}`}>{modelSuggestions[cli].map(model => <option key={model} value={model} />)}</datalist></label>}
-        <label className="api-check-row"><input type="checkbox" checked={includeSuite} onChange={e => setIncludeSuite(e.target.checked)} />스위트도 함께 만들기</label>
       </div>
       {tags.length > 0 && <details className="api-ai-author-tags"><summary>대상 API · {selectedTags.length ? `태그 ${selectedTags.length}개` : "전체"}</summary>
         <div>{tags.map(tag => <label key={tag} className="api-check-row"><input type="checkbox" checked={selectedTags.includes(tag)} onChange={e => setSelectedTags(e.target.checked ? [...selectedTags, tag] : selectedTags.filter(item => item !== tag))} />{tag}</label>)}</div>
@@ -180,4 +180,16 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved, onProje
       <div className="api-actions"><button className="api-primary" disabled={saving || !chosen.length} onClick={() => void save()}>{saving ? "저장 중…" : "선택한 것 저장"}</button></div>
     </section>}
   </section>;
+}
+
+const staleDays = 30;
+/** Servers whose spec is missing, lacks the original document (schemas unresolved) or is old. */
+function specWarningsFor(project: ApiProject, catalogs: Array<ApiCatalog | null>): string[] {
+  return project.servers.flatMap((server, index) => {
+    const catalog = catalogs[index];
+    if (!catalog) return [`${server.name}: 가져온 명세가 없습니다.`];
+    if (catalog.spec === undefined) return [`${server.name}: 예전 방식으로 저장된 명세라 요청·응답 구조를 AI에 전달하지 못합니다.`];
+    const days = Math.floor((Date.now() - Date.parse(catalog.importedAt)) / 86_400_000);
+    return days >= staleDays ? [`${server.name}: ${days}일 전에 가져온 명세입니다.`] : [];
+  });
 }

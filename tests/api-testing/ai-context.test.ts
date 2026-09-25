@@ -22,7 +22,7 @@ test("copyable AI prompt lists every API with schemas but no values, URLs or exa
     await workspace.importSpec({ ...scope, serverId }, spec("/login"));
     await workspace.importSpec({ ...scope, serverId: secondServerId }, spec("/admin-login"));
     await workspace.setGlobal({ projectId }, "accessToken", "session-secret");
-    const request = { scope, cli: "claude", goal: "회원과 관리자 로그인 흐름", includeSuite: true };
+    const request = { scope, cli: "claude", goal: "회원과 관리자 로그인 흐름" };
     const text = await workspace.buildAiPrompt(request);
     for (const secret of ["session-secret", "example-secret", "default-secret", "body-secret", "response-secret", "private-server.example.com", "admin-private.example.com"]) assert.equal(text.includes(secret), false, secret);
     assert.ok(text.includes("POST /login — 로그인") && text.includes("POST /admin-login — 로그인") && text.includes("GET /not-selected"));
@@ -33,7 +33,7 @@ test("copyable AI prompt lists every API with schemas but no values, URLs or exa
     assert.ok(text.includes("{{inputs.code}}") && text.includes("target: globals.accessToken"));
     for (const legacy of ["valueBindings", "{{vars.", "operationId", "request:"]) assert.equal(text.includes(legacy), false, legacy);
     assert.equal(text.includes("백엔드 소스입니다"), false);
-    const narrowed = await workspace.buildAiPrompt({ ...request, includeSuite: false, tags: ["missing-tag"] }).catch((error: Error) => error.message);
+    const narrowed = await workspace.buildAiPrompt({ ...request, tags: ["missing-tag"] }).catch((error: Error) => error.message);
     assert.match(String(narrowed), /API 명세가 없습니다/);
     await assert.rejects(workspace.buildAiPrompt({ ...request, scope: { ...scope, environmentId: randomUUID() } }));
     await assert.rejects(workspace.buildAiPrompt({ ...request, goal: " " }));

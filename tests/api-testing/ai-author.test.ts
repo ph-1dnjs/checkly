@@ -37,7 +37,7 @@ test("authoring checks each YAML, asks the AI to repair problems and returns rev
       { scenarios: [{ yaml: login }, { yaml: read.replace("GET /items/{id}", "GET /missing") }, { yaml: read.replace("shop/read", "taken") }], suite: { name: "상점 흐름", scenarioIds: ["shop/login", "shop/read"] }, notes: "첫 시도" },
       { scenarios: [{ yaml: login }, { yaml: read }], suite: { name: "상점 흐름", scenarioIds: ["shop/login", "shop/read"] }, notes: "수정함" },
     ];
-    const result = await workspace.authorWithAi({ scope, cli: "claude", goal: "로그인 후 상품 조회", includeSuite: true }, {
+    const result = await workspace.authorWithAi({ scope, cli: "claude", goal: "로그인 후 상품 조회" }, {
       run: async run => { runs.push(run); catalog = await readFile(path.join(run.readDirs[0], "checkly-api-catalog.json"), "utf8"); return answers[runs.length - 1]; },
     });
 
@@ -67,7 +67,7 @@ test("remaining problems after the last attempt stay on the drafts and suite", a
   const { dir, workspace, scope } = await setup();
   try {
     let calls = 0;
-    const result = await workspace.authorWithAi({ scope, cli: "codex", goal: "조회", includeSuite: true }, {
+    const result = await workspace.authorWithAi({ scope, cli: "codex", goal: "조회" }, {
       maxAttempts: 2,
       run: async () => { calls++; return { scenarios: [{ yaml: "name: [" }, { yaml: read }], suite: { name: "", scenarioIds: ["shop/read", "ghost"] }, notes: "" }; },
     });
@@ -83,7 +83,7 @@ test("tags narrow the APIs, the backend folder becomes the working directory, an
   const { dir, workspace, project, scope } = await setup(backend);
   try {
     let seen: AiCliRun | undefined;
-    const pending = workspace.authorWithAi({ scope, cli: "claude", goal: "상품", includeSuite: false, tags: ["item"] }, {
+    const pending = workspace.authorWithAi({ scope, cli: "claude", goal: "상품", tags: ["item"] }, {
       run: run => { seen = run; return new Promise((_, reject) => run.signal!.addEventListener("abort", () => reject(new Error("AI 작성을 취소했습니다")))); },
     });
     await new Promise(resolve => setTimeout(resolve, 50));
@@ -91,11 +91,11 @@ test("tags narrow the APIs, the backend folder becomes the working directory, an
     assert.ok(seen!.prompt.includes("GET /items/{id}") && !seen!.prompt.includes("POST /login"));
     assert.ok(seen!.prompt.includes("백엔드 소스입니다"));
     assert.deepEqual(workspace.getAiProgress({ projectId: project.id }), { phase: "writing", attempt: 1, maxAttempts: 3 });
-    await assert.rejects(workspace.authorWithAi({ scope, cli: "claude", goal: "중복", includeSuite: false }, { run: async () => ({}) }), /이미 AI 작성/);
+    await assert.rejects(workspace.authorWithAi({ scope, cli: "claude", goal: "중복" }, { run: async () => ({}) }), /이미 AI 작성/);
     workspace.cancelAiAuthor({ projectId: project.id });
     await assert.rejects(pending, /취소/);
     await workspace.saveProject({ ...project, backendPath: path.join(backend, "missing") });
-    await assert.rejects(workspace.authorWithAi({ scope, cli: "claude", goal: "상품", includeSuite: false }, { run: async () => ({}) }), /백엔드 폴더를 찾을 수 없습니다/);
+    await assert.rejects(workspace.authorWithAi({ scope, cli: "claude", goal: "상품" }, { run: async () => ({}) }), /백엔드 폴더를 찾을 수 없습니다/);
   } finally {
     await rm(dir, { recursive: true, force: true });
     await rm(backend, { recursive: true, force: true });

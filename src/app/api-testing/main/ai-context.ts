@@ -72,7 +72,6 @@ function responseForAi(value: Json, resolve?: RefResolver) {
 export type AiAuthorServer = { serverName: string; operations: ApiOperation[]; /** Original spec, for resolving $refs. */ spec?: Json };
 export type AiAuthorPromptInput = {
   goal: string;
-  includeSuite: boolean;
   servers: AiAuthorServer[];
   globals: ApiGlobal[];
   existing: Array<{ id: string; name: string }>;
@@ -132,9 +131,7 @@ export function createAuthorPrompt(input: AiAuthorPromptInput): string {
     "# Checkly API 시나리오 작성",
     "Checkly는 YAML 시나리오로 API를 순서대로 호출하는 QA 도구입니다. 아래 업무 목표에 맞는 시나리오를 작성하세요. API를 실제로 호출하지 말고, 파일을 만들거나 수정하지 마세요.",
     "## 업무 목표", input.goal.trim() || "주요 API 흐름을 검증하는 시나리오를 제안하세요.",
-    "## 만들 것", input.includeSuite
-      ? "업무 흐름별 시나리오 여러 개와, 그 시나리오들을 실행 순서대로 묶은 스위트 하나(suite.name 한국어, suite.scenarioIds는 시나리오 id 순서). 앞 시나리오가 전역변수에 저장한 값을 뒤 시나리오가 쓰도록 나눠도 됩니다."
-      : "목표를 검증하는 시나리오. 흐름이 여러 개면 시나리오를 나눠도 됩니다. suite는 null입니다.",
+    "## 만들 것", "목표를 검증하는 시나리오. 서로 독립적으로 실행·재사용할 수 있는 흐름(예: 로그인과 회원 조회)은 시나리오를 나누고, 앞 시나리오가 extract로 전역변수에 저장한 값을 뒤 시나리오가 {{globals.x}}로 씁니다. 한 흐름이면 시나리오 하나로 충분합니다. 시나리오가 2개 이상이면 실행 순서대로 묶은 스위트 하나(suite.name 한국어, suite.scenarioIds는 시나리오 id 순서)를 함께 만들고, 하나면 suite는 null입니다.",
     "## 참고 자료",
     input.backendAvailable
       ? "현재 작업 폴더는 이 API의 백엔드 소스입니다. 컨트롤러·DTO·검증 규칙·에러 코드를 읽어 요청값과 기대 결과를 정하세요. 읽기만 하세요."
