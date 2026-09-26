@@ -152,6 +152,10 @@ async function main() {
     // Compose: login → item detail, linking the login response id into the path.
     await page.getByRole("tab", { name: "시나리오", exact: true }).click();
     await page.getByRole("button", { name: "+ 새 시나리오", exact: true }).click();
+    // The composer toolbar replaces the locked header: tabs hide, environment and values stay.
+    await expect(page.getByRole("tab", { name: "시나리오", exact: true })).toBeHidden();
+    await expect(page.getByRole("group", { name: "시나리오 전체 호출 환경" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "{ } 전역변수", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "시나리오에 API 추가", exact: true }).nth(0).click();
     await page.getByRole("button", { name: "시나리오에 API 추가", exact: true }).nth(1).click();
     // Reorder by dragging the whole row, then back with the keyboard.
@@ -198,7 +202,7 @@ async function main() {
     await expect(page.getByText("시나리오 수정 · 로그인 후 상품 조회", { exact: true })).toBeVisible();
 
     // Run the saved scenario.
-    await page.getByRole("button", { name: "← 시나리오 목록", exact: true }).click();
+    await page.getByRole("button", { name: "시나리오 목록으로", exact: true }).click();
     await page.getByRole("button", { name: /로그인 후 상품 조회/ }).click();
     await page.getByRole("button", { name: "실행", exact: true }).click();
     const result = page.getByRole("region", { name: "시나리오 실행 결과" });

@@ -1,4 +1,4 @@
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentType } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from "react";
 import SwaggerUI from "swagger-ui-react";
 import "swagger-ui-react/swagger-ui.css";
 import { scenarioStepLabel, type Json, type Scenario } from "../../../app/api-testing/shared/scenario";
@@ -20,7 +20,7 @@ import { submitMethods, createSwaggerPlugin } from "./swagger-plugin";
 
 const StableSwaggerUI = memo(SwaggerUI);
 
-export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy, onRunAction, project, initialEdit, onEditConsumed, mode = "document", onCloseComposer, onSaved, onUnsavedChange, onExecuteSaved, sidebarGroupPath, sidebarGroupPaths = [], onSidebarGroupPathChange, onNewScenario, sidebarMetadata }: {
+export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy, onRunAction, project, initialEdit, onEditConsumed, mode = "document", onCloseComposer, onSaved, onUnsavedChange, onExecuteSaved, sidebarGroupPath, sidebarGroupPaths = [], onSidebarGroupPathChange, onNewScenario, sidebarMetadata, toolbarContext }: {
   catalog: ApiCatalog; scope: ApiScope; bridge: ApiTestingBridge; baseUrl: string; busy: boolean;
   onBusy: (value: boolean) => void; onRunAction: OnRunAction;
   project: ApiProject;
@@ -36,6 +36,7 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
   onSidebarGroupPathChange?: (value: string[]) => void;
   onNewScenario?: () => void;
   sidebarMetadata?: ApiSidebarMetadata;
+  toolbarContext?: ReactNode;
 }) {
   const composeOnly = mode === "compose";
   const ownsRunAction = !composeOnly && !initialEdit;
@@ -329,16 +330,17 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
           setComposing(true);
         }
         if (ownsRunAction) onRunAction(null);
-      }}>{composing ? "← 시나리오 목록" : "수정"}</button> : null}
-      {composing && saved && <button type="button" disabled={saving || dirty} onClick={newScenario}>이어서 새 시나리오</button>}
-      {composing && <strong className="api-compose-title">{saved ? `시나리오 수정 · ${saved.name}` : "새 시나리오"}</strong>}
-      {composing && <span role="status">{draft.steps.length ? `${draft.steps.length}개 단계` : "API를 선택하세요"}{draft.steps.length ? dirty ? " · 저장 안 됨" : saved ? saved.draft ? " · 초안 저장됨 (실행 불가)" : " · 저장됨" : "" : ""}</span>}
-      {composing && composeView === "select" && <span className="api-compose-legend"><Icon name="add" size={16} />추가 · <Icon name="expand_more" size={16} />상세 열기</span>}
+      }} aria-label={composing ? "시나리오 목록으로" : undefined} title={composing ? "시나리오 목록으로" : undefined}>{composing ? <>← <span className="api-compose-wide">시나리오 </span>목록</> : "수정"}</button> : null}
+      {composing && <div className="api-compose-heading">
+        <strong className="api-compose-title" title={saved ? `시나리오 수정 · ${saved.name}` : "새 시나리오"}>{saved ? `시나리오 수정 · ${saved.name}` : "새 시나리오"}</strong>
+        <span className="api-compose-status"><span role="status">{draft.steps.length ? `${draft.steps.length}개 단계` : "API를 선택하세요"}{draft.steps.length ? dirty ? " · 저장 안 됨" : saved ? saved.draft ? " · 초안 저장됨 (실행 불가)" : " · 저장됨" : "" : ""}</span>{saved && <button type="button" className="api-compose-link" disabled={saving || dirty} title={dirty ? "저장한 뒤 새 시나리오를 시작할 수 있습니다" : undefined} onClick={newScenario}>+ 이어서 새 시나리오</button>}</span>
+      </div>}
       {composing && <nav className="api-compose-steps" aria-label="시나리오 작성 단계">
-        <button type="button" aria-current={composeView === "select" ? "step" : undefined} disabled={saving} onClick={() => setComposeView("select")} title="API 추가·삭제 및 순서 설정"><span>1</span> API 선택·순서</button>
-        <span aria-hidden="true">→</span>
-        <button type="button" aria-current={composeView === "edit" ? "step" : undefined} disabled={saving || !draft.steps.length} onClick={() => setComposeView("edit")}><span>2</span> 값 설정·저장</button>
+        <button type="button" aria-current={composeView === "select" ? "step" : undefined} disabled={saving} onClick={() => setComposeView("select")} title="API 추가·삭제와 순서 정하기"><span>1</span>API 선택</button>
+        <Icon name="expand_more" size={14} className="api-compose-step-separator" />
+        <button type="button" aria-current={composeView === "edit" ? "step" : undefined} disabled={saving || !draft.steps.length} onClick={() => setComposeView("edit")} title="요청값·응답 연결·검증 설정 후 저장"><span>2</span>값 설정</button>
       </nav>}
+      {composing && toolbarContext}
     </div>
     {confirmClose && <div className="api-confirm-dialog-backdrop">
       <section className="api-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="api-compose-close-title">
@@ -383,7 +385,7 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
     </div>
     {composing && composeView === "select" && <aside className="api-selection-basket" aria-label="선택한 API" data-scroll="light">
       <h2>선택한 API · {draft.steps.length}개</h2>
-      {!draft.steps.length && <p>API 행의 + 버튼으로 추가하고, 행을 누르면 상세가 열립니다.</p>}
+      <p className="api-compose-legend"><Icon name="add" size={14} />로 추가 · <Icon name="expand_more" size={14} />로 상세 열기</p>
       <SelectedApiList scenario={draft} disabled={saving} onChange={changeDraft} onLocate={locateStep} getOperation={step => {
         const stepCatalog = step.server === composeServerId ? displayCatalog : composeCatalogs[step.server] ?? (step.server === scope.serverId ? catalog : null);
         return stepCatalog?.operations.find(operation => "operationId" in step.api ? operation.operationId === step.api.operationId : operation.path === step.api.path && operation.method.toUpperCase() === step.api.method);

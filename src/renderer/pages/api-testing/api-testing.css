@@ -1,6 +1,6 @@
 html:has(.api-diagram-dialog[open]) { overflow:hidden; }
 .api-context-value-actions { display:flex; align-items:center; gap:12px; margin-left:auto; flex:none; }
-.api-testing-page .api-context .api-value-visibility { display:inline-flex; align-items:center; gap:7px; padding:4px 0; margin:0; border:0; background:transparent; font-size:12px; white-space:nowrap; cursor:pointer; }
+.api-testing-page :is(.api-context,.api-compose-context) .api-value-visibility { display:inline-flex; align-items:center; gap:7px; padding:4px 0; margin:0; border:0; background:transparent; font-size:12px; white-space:nowrap; cursor:pointer; }
 .api-value-switch-track { display:block; position:relative; width:30px; height:18px; border-radius:var(--ck-dim-radius-pill); background:var(--ck-color-text-mute); transition:background .15s; }
 .api-value-switch-track::after { content:""; position:absolute; top:3px; left:3px; width:12px; height:12px; border-radius:50%; background:var(--ck-color-canvas); transition:transform .15s; }
 .api-value-visibility[aria-checked="true"] .api-value-switch-track { background:var(--ck-color-blue-action); }
@@ -695,27 +695,18 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 .api-testing-page:has(.api-compose-layout) { box-sizing:border-box; display:flex; flex-direction:column; height:100%; min-height:0; overflow:hidden; }
 .api-testing-page:has(.api-compose-layout) { padding-bottom:0; }
 .api-testing-page:has(.api-compose-layout) > .api-toolbar { display:none; }
-.api-testing-page:has(.api-compose-layout) > .api-tabs { display:flex; flex:none; overflow-x:auto; gap:24px; margin-bottom:8px; }
-.api-testing-page:has(.api-compose-layout) > .api-tabs button { flex:none; white-space:nowrap; }
-.api-testing-page:has(.api-compose-layout) > .api-context { flex:none; align-items:center; gap:8px; margin:0 0 8px; padding:0 0 8px; border-bottom:1px solid var(--api-border); }
+/* While composing, tabs and project/server controls are locked: the composer toolbar alone carries the header. */
+.api-testing-page:has(.api-compose-layout) > :is(.api-tabs,.api-context) { display:none; }
+.api-compose-context .api-context-value-actions { margin-left:0; gap:10px; }
 .api-testing-page:has(.api-compose-layout) .api-compose-meta { display:none; }
 .api-testing-page:has(.api-compose-layout) .api-documentation { display:flex; flex:1 1 auto; flex-direction:column; min-height:0; overflow:hidden; }
 .api-testing-page:has(.api-compose-layout) .api-documentation { margin-top:0; }
 .api-testing-page:has(.api-compose-layout) .api-compose-layout { flex:1 1 0; height:auto; min-height:0; margin-top:0; }
 .api-testing-page:has(.api-compose-layout) .api-compose-layout > :is(.api-swagger-renderer,.api-selection-basket,.api-compose-editor) { min-height:0; max-height:none; overflow-y:auto; overscroll-behavior:contain; scrollbar-gutter:stable; }
 .api-testing-page:has(.api-compose-layout) .api-selection-basket { position:static; }
-.api-compose-toolbar { flex:none; gap:6px; margin:0 0 6px; }
-.api-compose-toolbar > [role="status"] { color:var(--api-muted); font-size:11px; }
-.api-compose-toolbar .api-compose-legend { margin-left:8px; }
-.api-compose-toolbar .api-compose-title { margin:0 4px; color:var(--api-ink); font-size:14px; overflow-wrap:anywhere; }
 .api-step-toolbar { display:flex; align-items:flex-end; justify-content:space-between; gap:12px; margin:12px 0; }
 .api-step-toolbar > label { flex:1; min-width:0; }
 .api-step-toolbar > .api-danger-action { flex:none; color:var(--ck-color-fail-ink); }
-.api-compose-steps { display:flex; align-items:center; gap:6px; margin-left:auto; padding:4px; border:1px solid var(--ck-color-line-strong); border-radius:var(--ck-dim-radius-float); background:var(--ck-color-surface-hover); }
-.api-compose-steps button { display:flex; align-items:center; gap:6px; white-space:nowrap; border-color:transparent; background:transparent; }
-.api-compose-steps button > span { display:inline-grid; place-items:center; width:20px; height:20px; border-radius:50%; background:var(--ck-color-line); }
-.api-compose-steps button[aria-current=step] { background:var(--ck-color-blue-tint); color:var(--ck-color-blue-action-hover); border-color:var(--ck-color-blue-action); font-weight:700; }
-.api-compose-steps button[aria-current=step] > span { background:var(--ck-color-blue-action); color:var(--ck-color-canvas); }
 .api-compose-editor { padding-bottom:0; }
 .api-inline-flow svg { display:block; width:100%; height:auto; margin:8px auto; }
 .api-inline-flow g.node[role=button] { cursor:pointer; }
@@ -927,3 +918,35 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 .api-detail-heading > .api-actions { grid-column:2; grid-row:1; }
 /* Swagger auth dialog header: give the close button room from the edge. */
 .api-swagger-ui .modal-ux-header > button { flex:none; margin:0 20px 0 12px; padding:6px 12px; }
+
+/* Composer toolbar: one row when it fits; otherwise the step switch moves to its own row. */
+.api-testing-page:has(.api-compose-layout) .api-documentation { container:composer / inline-size; }
+.api-compose-toolbar { display:grid; flex:none; grid-template-columns:auto minmax(0,1fr) auto auto; grid-template-areas:"back heading steps context"; align-items:center; gap:8px 14px; margin:0 0 8px; }
+.api-compose-toolbar > button:first-child { grid-area:back; white-space:nowrap; }
+.api-compose-heading { grid-area:heading; display:grid; gap:1px; min-width:0; }
+.api-compose-title { overflow:hidden; color:var(--api-ink); font-size:14px; text-overflow:ellipsis; white-space:nowrap; }
+.api-compose-status { display:flex; flex-wrap:wrap; align-items:center; gap:4px 10px; color:var(--api-muted); font-size:11px; }
+.api-testing-page button.api-compose-link { min-height:0; padding:0; border:0; background:transparent; color:var(--api-primary); font-size:11px; }
+.api-testing-page button.api-compose-link:disabled { color:var(--api-muted); }
+.api-compose-toolbar > .api-compose-steps { grid-area:steps; margin:0; }
+.api-compose-context { grid-area:context; display:flex; align-items:center; gap:10px; white-space:nowrap; }
+.api-compose-context .api-context-value-actions { margin-left:0; gap:10px; }
+/* Narrower: stay on one row by dropping secondary words (full names stay in titles/aria-labels). */
+@container composer (max-width:1180px) {
+  .api-compose-wide { display:none; }
+  .api-compose-toolbar { gap:8px 10px; }
+  .api-compose-context .api-value-visibility > span:not(.api-value-switch-track) { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
+}
+@container composer (max-width:720px) {
+  .api-compose-toolbar { grid-template-columns:auto minmax(0,1fr); grid-template-areas:"back heading" "context context" "steps steps"; }
+  .api-compose-context { flex-wrap:wrap; }
+}
+.api-selection-basket .api-compose-legend { display:flex; align-items:center; gap:3px; margin:4px 0 0; color:var(--api-muted); font-size:11px; }
+/* Composer steps: one segmented control, the current step raised. */
+.api-compose-steps { display:inline-flex; align-items:center; gap:2px; padding:3px; border-radius:var(--ck-dim-radius-float); background:var(--ck-color-surface-hover); }
+.api-testing-page .api-compose-steps button { display:inline-flex; align-items:center; gap:6px; min-height:28px; padding:3px 12px 3px 6px; border:0; border-radius:calc(var(--ck-dim-radius-float) - 2px); background:transparent; color:var(--api-muted); font-size:12px; font-weight:500; white-space:nowrap; }
+.api-testing-page .api-compose-steps button:hover:not(:disabled):not([aria-current=step]) { color:var(--api-ink); background:rgb(255 255 255 / 55%); }
+.api-compose-steps button > span { display:inline-grid; place-items:center; width:18px; height:18px; border-radius:50%; background:var(--ck-color-line); color:var(--api-body); font-size:10.5px; font-weight:700; }
+.api-testing-page .api-compose-steps button[aria-current=step] { background:var(--ck-color-canvas); color:var(--api-ink); font-weight:600; box-shadow:0 1px 2px rgb(20 24 28 / 12%), 0 0 0 1px var(--ck-color-line); }
+.api-compose-steps button[aria-current=step] > span { background:var(--ck-color-blue-action); color:var(--ck-color-canvas); }
+.api-compose-step-separator { flex:none; color:var(--ck-color-text-mute); transform:rotate(-90deg); }

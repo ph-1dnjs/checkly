@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import type { ApiCatalog, ApiProject, ApiScope, ApiTestingBridge, ApiScenarioInputRequest, ApiScenarioPreview, ApiScenarioResult, SavedApiScenario, SavedApiSuite } from "../../../app/api-testing/shared/workspace";
 import { parseScenario, stringifyScenario, type Json, type Scenario } from "../../../app/api-testing/shared/scenario";
 import { useSensitiveValues } from "./sensitive-values";
@@ -45,9 +45,11 @@ export type ScenarioPanelProps = {
   runSaved?: SavedApiScenario | null;
   onRunSavedConsumed?: () => void;
   onBackToScenarios?: () => void;
+  /** Environment and value controls shown in the composer toolbar, which replaces the page header. */
+  composeContext?: ReactNode;
 };
 
-export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mode = "run", startCreateRequest = 0, editScenarioId, onCreateConsumed, onComposerOpenChange, onUnsavedChange, onCreateScenario, onEditScenario, onExecuteSaved, runSaved, onRunSavedConsumed, onBackToScenarios }: ScenarioPanelProps) {
+export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mode = "run", startCreateRequest = 0, editScenarioId, onCreateConsumed, onComposerOpenChange, onUnsavedChange, onCreateScenario, onEditScenario, onExecuteSaved, runSaved, onRunSavedConsumed, onBackToScenarios, composeContext }: ScenarioPanelProps) {
   const editorMode = mode === "editor";
   const globalAccess = useGlobalVariableAccess();
   const sensitiveValues = useSensitiveValues();
@@ -280,6 +282,7 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
       sidebarGroupPaths={availableGroupPaths}
       onSidebarGroupPathChange={value => { setScenarioGroupPath(value); setDirty(true); }}
       onNewScenario={() => { setScenarioGroupPath([]); }}
+      toolbarContext={composeContext}
       sidebarMetadata={{ groupPath: scenarioGroupPath }}
       onSaved={async item => {
         setCurrent(item);
