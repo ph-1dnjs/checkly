@@ -950,3 +950,30 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 .api-testing-page .api-compose-steps button[aria-current=step] { background:var(--ck-color-canvas); color:var(--api-ink); font-weight:600; box-shadow:0 1px 2px rgb(20 24 28 / 12%), 0 0 0 1px var(--ck-color-line); }
 .api-compose-steps button[aria-current=step] > span { background:var(--ck-color-blue-action); color:var(--ck-color-canvas); }
 .api-compose-step-separator { flex:none; color:var(--ck-color-text-mute); transform:rotate(-90deg); }
+
+/* Spacing: 4–8 inside a group, 12 between blocks of one group, 24 between sections. */
+.api-scenario-run .api-detail-heading { margin-bottom:16px; padding-bottom:16px; }
+.api-run-summary { display:grid; gap:12px; margin-top:0; }
+.api-run-summary > * { margin-top:0!important; margin-bottom:0!important; }
+.api-run-summary-heading { margin:0!important; }
+.api-run-view-switch { margin-top:12px; }
+.api-run-flow { margin-top:24px; padding-top:24px; }
+.api-scenario-run .api-response { margin-top:24px; }
+.api-run-summary fieldset { display:grid; gap:8px; }
+.api-swagger-shell .api-context { margin-bottom:16px; padding-bottom:16px; }
+.api-testing-page > .api-tabs { margin-bottom:16px; }
+.api-scenarios aside > input { margin-bottom:0; }
+.api-scenarios aside .api-sidebar-section { margin-top:16px; }
+.api-sidebar-section > header { padding-top:12px; margin-bottom:6px!important; }
+.api-suite-editor { gap:16px; padding:0 0 16px; }
+.api-suite-editor > *, .api-suite-editor fieldset > label { margin-top:0!important; margin-bottom:0!important; }
+.api-suite-editor fieldset { gap:8px; }
+/* Group picker reads as a normal form field (label above control), not a boxed panel. */
+.api-sidebar-metadata-fields { margin:0; padding:0; border:0; background:transparent; }
+.api-sidebar-group-field > .api-sidebar-field-label { color:inherit; font-size:inherit; font-weight:inherit; }
+/* Scenario form: one rhythm between fields (12px), help text tucked under its field. */
+.api-builder > fieldset { display:grid; gap:12px; }
+.api-builder > fieldset > * { margin-top:0; margin-bottom:0; }
+.api-builder > fieldset > label { display:grid; gap:6px; }
+.api-builder > fieldset > .api-field-help { margin-top:-6px; }
+.api-testing-page > .api-spec-tools { margin-bottom:12px; }
