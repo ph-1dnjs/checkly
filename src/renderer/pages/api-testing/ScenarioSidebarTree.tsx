@@ -1,4 +1,5 @@
-import { Fragment, useMemo, type CSSProperties } from "react";
+import { Fragment, useMemo } from "react";
+import { Icon } from "../../shared/ui/Icon";
 
 export type ScenarioSidebarEntry = {
   id: string;
@@ -12,6 +13,8 @@ type Props<T extends ScenarioSidebarEntry> = {
   selectedId?: string | null;
   disabled?: boolean;
   kind: "scenario" | "suite";
+  /** Open every folder, e.g. while filtering. */
+  expandAll?: boolean;
   onSelect: (item: T) => void;
 };
 
@@ -19,6 +22,10 @@ type Folder<T> = { name: string; path: string; children: Map<string, Folder<T>>;
 
 function countItems<T>(folder: Folder<T>): number {
   return folder.items.length + [...folder.children.values()].reduce((count, child) => count + countItems(child), 0);
+}
+
+function containsItem<T extends ScenarioSidebarEntry>(folder: Folder<T>, id: string | null | undefined): boolean {
+  return Boolean(id) && (folder.items.some(item => item.id === id) || [...folder.children.values()].some(child => containsItem(child, id)));
 }
 
 function makeTree<T extends ScenarioSidebarEntry>(items: T[]): Folder<T> {
@@ -40,7 +47,7 @@ function makeTree<T extends ScenarioSidebarEntry>(items: T[]): Folder<T> {
   return root;
 }
 
-export function ScenarioSidebarTree<T extends ScenarioSidebarEntry>({ items, selectedId, disabled = false, kind, onSelect }: Props<T>) {
+export function ScenarioSidebarTree<T extends ScenarioSidebarEntry>({ items, selectedId, disabled = false, kind, expandAll = false, onSelect }: Props<T>) {
   const tree = useMemo(() => makeTree(items), [items]);
   const renderRows = (folder: Folder<T>) => [...folder.items].sort((left, right) => left.name.localeCompare(right.name, "ko")).map(item =>
     <button type="button" key={item.id} disabled={disabled} className={`api-sidebar-entry${selectedId === item.id ? " selected" : ""}`} onClick={() => onSelect(item)}>
@@ -49,9 +56,9 @@ export function ScenarioSidebarTree<T extends ScenarioSidebarEntry>({ items, sel
     </button>);
   const renderFolder = (folder: Folder<T>, depth: number) => {
     const children = [...folder.children.values()].sort((left, right) => left.name.localeCompare(right.name, "ko"));
-    return <details className="api-sidebar-folder" key={folder.path} open={depth === 0}>
-      <summary style={{ "--folder-depth": depth } as CSSProperties}>
-        <span>{folder.name}</span><small>{countItems(folder)}</small>
+    return <details className="api-sidebar-folder" key={folder.path} open={expandAll || depth === 0 || containsItem(folder, selectedId)}>
+      <summary>
+        <Icon name="expand_more" size={16} className="api-sidebar-chevron" /><span>{folder.name}</span><small>{countItems(folder)}</small>
       </summary>
       <div className="api-sidebar-folder-content">
         {renderRows(folder)}
