@@ -20,7 +20,7 @@ import { submitMethods, createSwaggerPlugin } from "./swagger-plugin";
 
 const StableSwaggerUI = memo(SwaggerUI);
 
-export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy, onRunAction, project, initialEdit, onEditConsumed, mode = "document", onCloseComposer, onSaved, onStartScenario, onUnsavedChange, onExecuteSaved, sidebarGroupPath, sidebarGroupPaths = [], onSidebarGroupPathChange, onNewScenario, sidebarMetadata }: {
+export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy, onRunAction, project, initialEdit, onEditConsumed, mode = "document", onCloseComposer, onSaved, onUnsavedChange, onExecuteSaved, sidebarGroupPath, sidebarGroupPaths = [], onSidebarGroupPathChange, onNewScenario, sidebarMetadata }: {
   catalog: ApiCatalog; scope: ApiScope; bridge: ApiTestingBridge; baseUrl: string; busy: boolean;
   onBusy: (value: boolean) => void; onRunAction: OnRunAction;
   project: ApiProject;
@@ -30,7 +30,6 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
   onCloseComposer?: () => void;
   onSaved?: (item: SavedApiScenario) => void | Promise<void>;
   onExecuteSaved?: (item: SavedApiScenario) => void;
-  onStartScenario?: () => void;
   onUnsavedChange?: (dirty: boolean) => void;
   sidebarGroupPath?: string[];
   sidebarGroupPaths?: string[][];
@@ -334,8 +333,8 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
           setComposing(true);
         }
         if (ownsRunAction) onRunAction(null);
-      }}>{composing ? "← 시나리오 목록" : "시나리오 편집"}</button> : onStartScenario ? <button type="button" onClick={onStartScenario}>새 시나리오</button> : null}
-      {composing && saved && <button type="button" disabled={saving || dirty} onClick={newScenario}>새 시나리오</button>}
+      }}>{composing ? "← 시나리오 목록" : "시나리오 편집"}</button> : null}
+      {composing && saved && <button type="button" disabled={saving || dirty} onClick={newScenario}>이어서 새 시나리오</button>}
       {composing && <span role="status">{draft.steps.length ? `${draft.steps.length}개 단계` : "API를 선택하세요"}{draft.steps.length ? dirty ? " · 저장 안 됨" : saved ? " · 저장됨" : "" : ""}</span>}
       {composing && composeView === "select" && <span className="api-compose-legend"><Icon name="add_link" size={16} />추가 · <Icon name="expand_more" size={16} />상세 열기</span>}
       {composing && <nav className="api-compose-steps" aria-label="시나리오 작성 단계">

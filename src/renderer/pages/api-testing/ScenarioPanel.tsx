@@ -323,10 +323,10 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
         setSaved(await bridge.listScenarios(project.id)); setCurrent(null); setSource(""); setScenarioGroupPath([]); setDirty(false); setPreview(null); setResult(null); setBindings({}); setInputs({}); setEditing(editorMode); setNotice("시나리오를 삭제했습니다."); onRunAction(null);
       }} />}
       <header className="api-detail-heading"><div><h2>{preview?.scenario.name ?? current?.name ?? (editorMode ? "새 시나리오" : "시나리오를 선택하세요")}</h2><p className="api-description">{preview?.scenario.description ?? (editorMode ? "API 문서에서 호출 순서를 정하고 요청값·응답 연결을 설정하세요." : "")}</p></div>{current && <div className="api-actions"><button disabled={busy} aria-expanded={editorMode ? editing : undefined} onClick={() => editorMode ? setEditing(!editing) : onEditScenario?.(current)}>{editorMode ? editing ? "편집 닫기" : "편집" : "수정"}</button>{!editorMode && <><button type="button" ref={runButton} className="api-primary" disabled={busy || !canUse} onClick={() => void runScenario()}>{running ? "실행 중…" : result ? "다시 실행" : "실행"}</button>{running && <button type="button" onClick={() => void bridge.cancel(scope)}>취소</button>}</>}</div>}</header>
-      {!current && !editorMode && <div className="api-empty"><h3>실행할 시나리오를 선택하세요</h3><p>저장된 시나리오를 선택하면 실행·결과·리포트를 이곳에서 확인합니다.</p><button disabled={busy} onClick={onCreateScenario}>+ 새 시나리오 작성</button></div>}
-      {current && editorMode && preview && !editing && <button disabled={busy} onClick={() => openComposer(current, preview)}>Swagger 방식으로 편집</button>}
+      {!current && !editorMode && <div className="api-empty"><h3>실행할 시나리오를 선택하세요</h3><p>왼쪽 목록에서 고르거나 <strong>+ 새 시나리오</strong>로 만드세요. AI 작성 도우미로 만들 수도 있습니다.</p></div>}
+      {current && editorMode && preview && !editing && <button disabled={busy} onClick={() => openComposer(current, preview)}>API 문서에서 편집</button>}
       {editorMode && editing && <section className="api-source-editor" aria-label="시나리오 편집">
-      {<button type="button" className="api-primary" disabled={busy} onClick={openNewScenario}>Swagger 방식으로 작성</button>}
+      {<button type="button" className="api-primary" disabled={busy} onClick={openNewScenario}>API 문서에서 작성</button>}
       {<>
       <h3>YAML 편집 · 가져오기</h3><p>YAML을 붙여넣거나 파일로 가져온 뒤 검사하세요.</p>
       <SidebarMetadataFields key={current?.id ?? "new-scenario-yaml"} groupPath={scenarioGroupPath} existingGroupPaths={availableGroupPaths} disabled={busy} onGroupPathChange={path => { setScenarioGroupPath(path); setDirty(true); }} />
