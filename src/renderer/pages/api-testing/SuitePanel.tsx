@@ -5,6 +5,9 @@ import { producedGlobalNames, renderSuiteReport, reportScenario, usesInvalidated
 import { SidebarMetadataFields } from "./SidebarMetadataFields";
 import { useSensitiveValues } from "./sensitive-values";
 import { runStatusName } from "./ScenarioRunViews";
+import { DeleteAction } from "./DeleteAction";
+import { SortableList } from "./SortableList";
+import { Icon } from "../../shared/ui/Icon";
 
 type Props = { project: ApiProject; scope: ApiScope; bridge: ApiTestingBridge; scenarios: SavedApiScenario[]; suites: SavedApiSuite[]; selectedId: string; onSuitesChange: (suites: SavedApiSuite[]) => void; onSelectedIdChange: (id: string) => void; onBusy: (busy: boolean) => void };
 const message = (error: unknown) => (error as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, "");
@@ -54,13 +57,9 @@ export function SuitePanel({ project, scope, bridge, scenarios, suites, selected
     } catch (err) { setError(message(err)); }
   };
   const remove = async () => {
-    if (!selected || !window.confirm(`‘${selected.name}’ 스위트를 삭제할까요? 시나리오는 유지됩니다.`)) return;
+    if (!selected) return;
     setError("");
-    try { await bridge.deleteSuite(project.id, selected.id, selected.updatedAt); onSuitesChange(await bridge.listSuites(project.id)); onSelectedIdChange(""); }
-    catch (err) { setError(message(err)); }
-  };
-  const move = (index: number, offset: number) => {
-    const next = [...ids]; [next[index], next[index + offset]] = [next[index + offset], next[index]]; setIds(next);
+    await bridge.deleteSuite(project.id, selected.id, selected.updatedAt); onSuitesChange(await bridge.listSuites(project.id)); onSelectedIdChange("");
   };
   const cancel = async () => { cancelRequested.current = true; await bridge.cancel(scope); };
   const submitInput = async (event: FormEvent) => {
@@ -128,11 +127,22 @@ export function SuitePanel({ project, scope, bridge, scenarios, suites, selected
     try { await bridge.saveSuiteReport(`checkly-api-report-${new Date(report.startedAt).toISOString().replace(/[:.]/g, "-")}.html`, renderSuiteReport(report)); }
     catch (err) { setError(message(err)); }
   };
+  const unsaved = !selected || selected.name !== name.trim() || selected.onFailure !== onFailure || selected.scenarioIds.join("\0") !== ids.join("\0") || JSON.stringify(selected.groupPath ?? []) !== JSON.stringify(groupPath);
   return <article className="api-request-panel api-scenario-detail api-suite-panel">
-      <header className="api-detail-heading"><div><h2>{selected?.name ?? "새 스위트"}</h2><p className="api-description">시나리오를 지정한 순서대로 실행하고 HTML 리포트를 받습니다.</p></div></header>
-      <div className="api-suite-editor"><label>스위트 이름<input value={name} disabled={running} onChange={event => setName(event.target.value)} placeholder="예: 회원 가입부터 승인까지" /></label><SidebarMetadataFields groupPath={groupPath} existingGroupPaths={existingGroupPaths} disabled={running} onGroupPathChange={setGroupPath} /><fieldset disabled={running}><legend>실행 순서</legend>{ids.map((id, index) => { const item = scenarios.find(scenario => scenario.id === id); return <div className="api-suite-order" key={`${id}:${index}`}><span>{index + 1}. {item?.name ?? "삭제된 시나리오"}</span><button type="button" disabled={index === 0} onClick={() => move(index, -1)} aria-label={`${index + 1}번째 ${item?.name} 위로`}>↑</button><button type="button" disabled={index === ids.length - 1} onClick={() => move(index, 1)} aria-label={`${index + 1}번째 ${item?.name} 아래로`}>↓</button><button type="button" aria-label={`${index + 1}번째 ${item?.name} 제거`} onClick={() => setIds(ids.filter((_, position) => position !== index))}>제거</button></div>; })}<label>시나리오 추가<select value="" onChange={event => { if (event.target.value) setIds([...ids, event.target.value]); }}><option value="">선택하세요</option>{scenarios.filter(item => !item.draft).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><small>같은 시나리오를 여러 번 추가할 수 있습니다. 각 항목을 순서대로 다시 실행합니다.</small></fieldset><label>실패 시 동작<select value={onFailure} disabled={running} onChange={event => setOnFailure(event.target.value as "stop" | "continue") }><option value="stop">중단하고 나머지 건너뛰기</option><option value="continue">다음 시나리오 계속 실행</option></select></label><div className="api-actions"><button type="button" disabled={running || !name.trim() || !ids.length} onClick={() => void save()}>스위트 저장</button>{selected && <button type="button" disabled={running} onClick={() => void remove()}>스위트 삭제</button>}<button type="button" className="api-primary" disabled={running || !selected || selected.name !== name.trim() || selected.onFailure !== onFailure || selected.scenarioIds.join("\0") !== ids.join("\0") || JSON.stringify(selected.groupPath ?? []) !== JSON.stringify(groupPath)} onClick={() => void run()}>{running ? "실행 중…" : "스위트 실행"}</button>{running && <button type="button" onClick={() => void cancel()}>실행 취소</button>}</div></div>
+      <header className="api-detail-heading"><div><h2>{selected?.name ?? "새 스위트"}</h2><p className="api-description">시나리오를 지정한 순서대로 실행하고 HTML 리포트를 받습니다.</p></div>{selected && <div className="api-actions"><DeleteAction key={selected.id} label="스위트 삭제" disabled={running} description={`‘${selected.name}’ 스위트를 삭제합니다. 포함된 시나리오는 유지됩니다.`} onDelete={remove} /><button type="button" className="api-primary" disabled={running || unsaved} title={unsaved ? "변경사항을 저장한 뒤 실행할 수 있습니다" : undefined} onClick={() => void run()}>{running ? "실행 중…" : "실행"}</button>{running && <button type="button" onClick={() => void cancel()}>실행 중단</button>}</div>}</header>
+      {selected && unsaved && !running && <p className="api-run-notice">저장하지 않은 변경사항이 있습니다. <strong>스위트 저장</strong> 후 실행할 수 있습니다.</p>}
+      <div className="api-suite-editor"><label>스위트 이름<input value={name} disabled={running} onChange={event => setName(event.target.value)} placeholder="예: 회원 가입부터 승인까지" /></label><SidebarMetadataFields groupPath={groupPath} existingGroupPaths={existingGroupPaths} disabled={running} onGroupPathChange={setGroupPath} /><fieldset disabled={running}><legend>실행 순서</legend><SortableList items={ids} disabled={running} className="api-suite-orders"
+        itemKey={(id, index) => `${id}:${ids.slice(0, index).filter(other => other === id).length}`}
+        itemLabel={(id, index) => `${index + 1}번째 ${scenarios.find(scenario => scenario.id === id)?.name ?? "삭제된 시나리오"}`}
+        itemClassName={() => "api-suite-order"}
+        onMove={(from, to) => { const next = [...ids]; next.splice(to, 0, ...next.splice(from, 1)); setIds(next); }}
+        renderItem={(id, index, position) => { const item = scenarios.find(scenario => scenario.id === id); return <>
+          <span className="api-suite-order-number">{position + 1}</span>
+          <span className="api-suite-order-name">{item?.name ?? "삭제된 시나리오"}</span>
+          <button type="button" className="api-suite-order-remove" title="제거" aria-label={`${index + 1}번째 ${item?.name ?? "삭제된 시나리오"} 제거`} onClick={() => setIds(ids.filter((_, i) => i !== index))}><Icon name="close" size={16} /></button>
+        </>; }} /><label>시나리오 추가<select value="" onChange={event => { if (event.target.value) setIds([...ids, event.target.value]); }}><option value="">선택하세요</option>{scenarios.filter(item => !item.draft).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><small>같은 시나리오를 여러 번 추가할 수 있습니다. 각 항목을 순서대로 다시 실행합니다.</small></fieldset><label>실패 시 동작<select value={onFailure} disabled={running} onChange={event => setOnFailure(event.target.value as "stop" | "continue") }><option value="stop">중단하고 나머지 건너뛰기</option><option value="continue">다음 시나리오 계속 실행</option></select></label><div className="api-actions"><button type="button" className={unsaved ? "api-primary" : undefined} disabled={running || !name.trim() || !ids.length || !unsaved} onClick={() => void save()}>스위트 저장</button></div></div>
       {running && <p role="status">{progress || "스위트 실행 준비 중…"}</p>}
-      {pending && <form className="api-suite-input" onSubmit={event => void submitInput(event)}><strong>{pending.index + 1}단계 · {pending.label ?? pending.name} 입력</strong><label>{pending.name}{pending.required && " *"}<input autoComplete="off" data-value-visibility={pending.sensitive ? "sensitive" : undefined} type="text" value={inputValue} onChange={event => setInputValue(event.target.value)} /></label><button type="submit">입력하고 계속</button></form>}
+      {pending && <form className="api-suite-input" onSubmit={event => void submitInput(event)}><strong>{pending.index + 1}단계 · {pending.label ?? pending.name} 입력</strong><label>{pending.name}{pending.required && " *"}<input autoComplete="off" data-value-visibility={pending.sensitive ? "sensitive" : undefined} type="text" value={inputValue} onChange={event => setInputValue(event.target.value)} /></label><button type="submit" className="api-primary">입력 완료 · 계속</button></form>}
       {error && <p className="api-warning" role="alert">{error}</p>}
       {report && <section className="api-suite-results" aria-label="스위트 실행 결과"><header className="api-run-section-heading"><div><h3>실행 결과 · {statusName(report.status)}</h3><small>{report.scenarios.length}개 시나리오 · {new Date(report.completedAt).toLocaleString()}</small></div><button type="button" disabled={running} onClick={() => void download()}>HTML 리포트 받기</button></header>{report.scenarios.map((row, index) => <details key={`${row.id}:${index}`} open={row.status !== "passed"}><summary>{index + 1}. {row.name} · {statusName(row.status)} · {row.durationMs}ms</summary>{row.reason && <p>{row.reason}</p>}<ol>{row.steps.map((step, stepIndex) => <li key={stepIndex}>{step.reference} · {statusName(step.status)}{step.httpStatus !== undefined && ` · HTTP ${step.httpStatus}`}{step.reason && ` · ${step.reason}`}</li>)}</ol></details>)}</section>}
     </article>;

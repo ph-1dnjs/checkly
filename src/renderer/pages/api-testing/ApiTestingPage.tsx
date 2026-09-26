@@ -84,6 +84,7 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
     history.pushState(history.state, "", workspaceUrl(window.location.href, { tab: next, projectId, serverId, environmentId, scenarioId: targetScenarioId }, clearHash));
     setTab(next);
   };
+  const backToScenarios = () => { setScenarioDirty(false); setScenarioComposerOpen(false); setScenarioEditorScenarioId(null); setScenarioCreateRequest(0); setError(""); setTab("scenarios"); };
   const openScenarioEditor = (scenarioId?: string) => {
     const target = scenarioId ?? "";
     setScenarioEditorScenarioId(target || null);
@@ -154,6 +155,7 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
   const locked = busy || scenarioComposerOpen;
   return <GlobalVariableAccessProvider key={projectId}><SensitiveValuesProvider projectId={projectId} bridge={bridge}><section className={`api-testing-page api-swagger-shell${hideValues ? " api-hide-values" : ""}`}>
     <header className="api-toolbar"><h1>API 테스트</h1><div className="api-actions"><select aria-label="API 프로젝트" disabled={locked || loading} value={projectId} onChange={e => selectProject(projects.find(p => p.id === e.target.value)!)}><option value="" disabled>프로젝트 선택</option>{projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select><button disabled={locked || loading} onClick={() => setForm("new")}>+ 프로젝트</button>{project && <button disabled={locked || loading} onClick={() => setForm("edit")}>프로젝트 설정</button>}</div></header>
+    {error && <p className="api-warning" role="alert">{error}</p>}
     {form ? <ProjectForm key={`${form}:${projectId}`} initial={form === "edit" ? project : undefined} onCancel={() => setForm(null)} onDelete={async () => {
       setBusy(true);
       try {
@@ -166,13 +168,17 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
       {!project ? <div className="api-empty"><h2>API 테스트를 시작하세요</h2><p>프로젝트를 만든 뒤 API 명세(OpenAPI) 파일이나 URL을 가져오세요.</p><button className="api-primary" onClick={() => setForm("new")}>프로젝트 만들기</button></div> : <>
         <div className="api-context"><select aria-label="API 서버" value={serverId} disabled={locked || loading} onChange={e => { setServerId(e.target.value); setUrl(""); }}>{project.servers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select><div className="api-environments" role="group" aria-label={tab === "scenario-editor" ? "시나리오 전체 호출 환경" : "API 환경"}>{project.environments.map(e => <button key={e.id} aria-pressed={environmentId === e.id} disabled={busy || loading} title={tab === "scenario-editor" ? "이 시나리오의 전체 API 호출 환경" : undefined} onClick={() => { setEnvironmentId(e.id); setUrl(""); }}>{e.name}</button>)}</div><code>{project.environments.find(e => e.id === environmentId)?.baseUrls[serverId]}</code><div className="api-context-value-actions"><button type="button" role="switch" aria-checked={hideValues} aria-label="민감값 숨기기" className="api-value-visibility" title="토큰·비밀번호·인증 헤더 등 민감한 값만 화면에서 숨깁니다" onClick={() => setHideValues(value => !value)}><span className="api-value-switch-track" aria-hidden="true" /><span>민감값 숨기기</span></button><GlobalVariableMenu projectId={projectId} bridge={bridge} disabled={busy} /></div></div>
         <div className="api-tabs" role="tablist" aria-label="API 작업 영역">
-          <button role="tab" aria-selected={tab === "scenarios" || tab === "scenario-editor"} disabled={busy} onClick={() => { if (tab !== "scenario-editor") changeTab("scenarios"); }}>시나리오</button>
+          <button role="tab" aria-selected={tab === "scenarios" || tab === "scenario-editor"} disabled={busy} onClick={() => {
+            if (tab !== "scenario-editor") { changeTab("scenarios"); return; }
+            if (scenarioDirty) setError("저장하지 않은 변경사항이 있습니다. 저장하거나 ← 시나리오 목록에서 변경사항을 버리고 닫으세요.");
+            else backToScenarios();
+          }}>시나리오</button>
           <button role="tab" aria-selected={tab === "api"} disabled={locked} onClick={() => changeTab("api")}>API 문서{catalog ? <small className="api-tab-count" title={`API ${catalog.operations.length}개`}>{catalog.operations.length}</small> : null}</button>
           <button role="tab" aria-selected={tab === "ai"} disabled={locked} onClick={() => changeTab("ai")}>AI 작성 도우미</button>
         </div>
         {tab === "ai" && <AiAuthorPanel key={`${projectId}:${environmentId}`} project={project} scope={{ projectId, environmentId }} bridge={bridge} onBusy={setBusy} onSaved={() => { setBusy(false); setTab("scenarios"); }} />}
         {tab === "scenarios" && <ScenarioPanel key={`${projectId}:${environmentId}:${serverId}`} project={project} scope={scope} bridge={bridge} onBusy={setBusy} onRunAction={onRunAction} runSaved={runSaved} onRunSavedConsumed={() => setRunSaved(null)} onCreateScenario={() => openScenarioEditor()} onEditScenario={item => openScenarioEditor(item.id)} />}
-        {tab === "scenario-editor" && <ScenarioEditorPanel key={`${projectId}:${serverId}`} project={project} scope={scope} bridge={bridge} onBusy={setBusy} onRunAction={onRunAction} onBackToScenarios={() => { setScenarioDirty(false); setScenarioComposerOpen(false); setScenarioEditorScenarioId(null); setScenarioCreateRequest(0); setError(""); setTab("scenarios"); }} onExecuteSaved={executeSaved} startCreateRequest={scenarioCreateRequest} editScenarioId={scenarioEditorScenarioId} onCreateConsumed={() => setScenarioCreateRequest(0)} onComposerOpenChange={setScenarioComposerOpen} onUnsavedChange={setScenarioDirty} onCreateScenario={() => openScenarioEditor()} onEditScenario={item => openScenarioEditor(item.id)} />}
+        {tab === "scenario-editor" && <ScenarioEditorPanel key={`${projectId}:${serverId}`} project={project} scope={scope} bridge={bridge} onBusy={setBusy} onRunAction={onRunAction} onBackToScenarios={backToScenarios} onExecuteSaved={executeSaved} startCreateRequest={scenarioCreateRequest} editScenarioId={scenarioEditorScenarioId} onCreateConsumed={() => setScenarioCreateRequest(0)} onComposerOpenChange={setScenarioComposerOpen} onUnsavedChange={setScenarioDirty} onCreateScenario={() => openScenarioEditor()} onEditScenario={item => openScenarioEditor(item.id)} />}
         {tab === "api" && <>
         <div className="api-spec-tools">
         {catalog && <DeleteAction key={`${projectId}:${serverId}:${environmentId}:${catalog.importedAt}`} label="명세 삭제" disabled={busy || loading} description={`현재 서버·환경의 API ${catalog.operations.length}개와 명세 주소·저장 계정·인증 연결을 삭제합니다. 시나리오는 유지되지만 이 명세를 사용하는 단계는 명세를 다시 가져오기 전까지 실행할 수 없습니다.`} onDelete={async () => {
@@ -190,10 +196,9 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
         </>}
       </>}
     </>}
-    {error && <p className="api-warning" role="alert">{error}</p>}
-    {refreshConfirmOpen && <div className="api-refresh-dialog-backdrop">
-      <section className="api-refresh-dialog" role="dialog" aria-modal="true" aria-labelledby="api-refresh-dialog-title">
-        <h2 id="api-refresh-dialog-title">저장하지 않은 변경사항</h2>
+    {refreshConfirmOpen && <div className="api-confirm-dialog-backdrop">
+      <section className="api-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="api-confirm-dialog-title">
+        <h2 id="api-confirm-dialog-title">저장하지 않은 변경사항</h2>
         <p>현재 시나리오 수정 내용이 저장되지 않았습니다. 새로고침하면 수정 내용이 사라집니다.</p>
         <div className="api-actions">
           <button type="button" onClick={() => setRefreshConfirmOpen(false)}>새로고침 취소</button>

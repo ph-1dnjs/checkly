@@ -154,6 +154,24 @@ async function main() {
     await page.getByRole("button", { name: "+ 새 시나리오", exact: true }).click();
     await page.getByRole("button", { name: "시나리오에 API 추가", exact: true }).nth(0).click();
     await page.getByRole("button", { name: "시나리오에 API 추가", exact: true }).nth(1).click();
+    // Reorder by dragging the whole row, then back with the keyboard.
+    const selectedRows = page.locator(".api-selected-row");
+    await expect(selectedRows.nth(0)).toContainText("/login");
+    await page.getByRole("button", { name: /^2단계 .* 순서 변경$/ }).hover();
+    await page.mouse.down();
+    const firstRow = await selectedRows.nth(0).boundingBox();
+    if (!firstRow) throw new Error("Selected API row is not visible");
+    await page.mouse.move(firstRow.x + firstRow.width / 2, firstRow.y + 4, { steps: 12 });
+    await expect(page.locator(".api-sortable-item.is-dragging")).toHaveCount(1);
+    // Holding still before the drop must not lose it.
+    await page.waitForTimeout(300);
+    await shot("dragging");
+    await page.mouse.up();
+    await expect(selectedRows.nth(0)).toContainText("/items/{id}");
+    await shot("reordered");
+    await page.getByRole("button", { name: /^1단계 .* 순서 변경$/ }).press("ArrowDown");
+    await expect(selectedRows.nth(0)).toContainText("/login");
+    await expect(page.getByRole("button", { name: /^2단계 .* 순서 변경$/ })).toBeFocused();
     await page.getByRole("button", { name: "선택 및 순서 설정 완료", exact: true }).click();
     await page.locator('details[aria-label="편집 단계 1"] > summary').click();
     await page.locator('details[aria-label="편집 단계 2"] > summary').click();
@@ -173,6 +191,7 @@ async function main() {
     await shot("compose");
     await page.getByRole("button", { name: "시나리오 검사·저장", exact: true }).click();
     await expect(page.getByText("시나리오를 저장했습니다. 이 화면에서 계속 수정할 수 있습니다.", { exact: true })).toBeVisible();
+    await expect(page.getByText("시나리오 수정 · 로그인 후 상품 조회", { exact: true })).toBeVisible();
 
     // Run the saved scenario.
     await page.getByRole("button", { name: "← 시나리오 목록", exact: true }).click();
@@ -198,6 +217,22 @@ async function main() {
     await expect(globals.getByRole("region", { name: "세션 쿠키" })).toContainText("SESSION");
     await expect(globals.getByRole("region", { name: "세션 쿠키" })).not.toContainText("desktop-session");
     await page.keyboard.press("Escape");
+    // A copy opens in place and is deleted from its detail view.
+    await page.getByRole("button", { name: "복제", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "로그인 후 상품 조회 사본", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "시나리오 삭제", exact: true }).click();
+    await page.getByRole("button", { name: "시나리오 삭제 확인", exact: true }).click();
+    await expect(page.getByRole("button", { name: /로그인 후 상품 조회 사본/ })).toHaveCount(0);
+    // Suites keep their run action in the header, like scenarios.
+    await page.getByRole("button", { name: /AI 상점 흐름/ }).click();
+    await expect(page.getByRole("button", { name: "실행", exact: true })).toBeEnabled();
+    await shot("suite");
+    // Suite order uses the same sortable list; an unsaved order blocks running.
+    await page.getByRole("button", { name: /^1번째 AI 로그인 순서 변경$/ }).press("ArrowDown");
+    await expect(page.locator(".api-suite-order").nth(0)).toContainText("AI 상품 조회");
+    await expect(page.getByRole("button", { name: "실행", exact: true })).toBeDisabled();
+    await page.getByRole("button", { name: /^2번째 AI 로그인 순서 변경$/ }).press("ArrowUp");
+    await expect(page.getByRole("button", { name: "실행", exact: true })).toBeEnabled();
     // Scenarios are deleted from their detail view.
     await page.getByRole("button", { name: "AI 상품 조회", exact: true }).click();
     await page.getByRole("button", { name: "시나리오 삭제", exact: true }).click();

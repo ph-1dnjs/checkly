@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { ApiCatalog, ApiProject, ApiScope, ApiTestingBridge, ApiScenarioInputRequest, ApiScenarioPreview, ApiScenarioResult, SavedApiScenario, SavedApiSuite } from "../../../app/api-testing/shared/workspace";
-import { parseScenario, type Json, type Scenario } from "../../../app/api-testing/shared/scenario";
+import { parseScenario, stringifyScenario, type Json, type Scenario } from "../../../app/api-testing/shared/scenario";
 import { useSensitiveValues } from "./sensitive-values";
 import { useRunAction } from "./useRunAction";
 import type { OnRunAction } from "./useRunAction";
@@ -51,7 +51,6 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
   const globalAccess = useGlobalVariableAccess();
   const sensitiveValues = useSensitiveValues();
   const checkedGlobalRevision = useRef(globalAccess.revision);
-  const [editing, setEditing] = useState(editorMode);
   const [query, setQuery] = useState("");
   const [scenariosExpanded, setScenariosExpanded] = useState(true);
   const [suitesExpanded, setSuitesExpanded] = useState(true);
@@ -152,7 +151,7 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
     }
     const url = new URL(window.location.href);
     if (url.hash) { url.hash = ""; window.history.replaceState(window.history.state, "", url.href); }
-    setEditing(true); setCurrent(null); setSource(""); setScenarioGroupPath([]); setDirty(false); setPreview(null); setResult(null); setBindings({}); setInputs({}); setNotice(""); setError("");
+    setCurrent(null); setSource(""); setScenarioGroupPath([]); setDirty(false); setPreview(null); setResult(null); setBindings({}); setInputs({}); setNotice(""); setError("");
     setComposer({});
   };
   useEffect(() => {
@@ -160,12 +159,16 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
     openNewScenario();
     onCreateConsumed?.();
   }, [editorMode, startCreateRequest]);
+  useEffect(() => {
+    // Reopened editor URL without a scenario (e.g. after a reload): start a new one.
+    if (editorMode && !editScenarioId && !startCreateRequest) openNewScenario();
+  }, []);
   const openComposer = (item: SavedApiScenario, data: ApiScenarioPreview, mapping = bindings) => {
     const steps = data.scenario.steps.map(step => ({ ...step, server: mapping[step.server] ?? step.server }));
     setComposer({ saved: item, scenario: { ...data.scenario, steps } });
   };
   const load = async (item: SavedApiScenario) => {
-    setComposer(null); setEditing(false); setCurrent(item); setSource(item.source); setScenarioGroupPath(item.groupPath ?? []); setDirty(false); setBindings(item.bindings); setInputs({}); setResult(null); setPreview(null); setError(""); setNotice(""); working(true);
+    setComposer(null); setCurrent(item); setSource(item.source); setScenarioGroupPath(item.groupPath ?? []); setDirty(false); setBindings(item.bindings); setInputs({}); setResult(null); setPreview(null); setError(""); setNotice(""); working(true);
     const previous = readLastRun(scope.projectId, scope.environmentId, item.id);
     setRunView(previous ? "result" : "preview"); setFocusRequest(null); setResultFocusRequest(null);
     setLastRun(previous); setResult(previous?.result ?? null);
@@ -271,7 +274,7 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
       onRunAction={onRunAction}
       onExecuteSaved={onExecuteSaved}
       onUnsavedChange={onUnsavedChange}
-      onCloseComposer={() => { setComposer(null); setEditing(current !== null ? false : true); setDirty(false); setResult(null); onBackToScenarios?.(); }}
+      onCloseComposer={() => { setComposer(null); setDirty(false); setResult(null); onBackToScenarios?.(); }}
       sidebarGroupPath={scenarioGroupPath}
       sidebarGroupPaths={availableGroupPaths}
       onSidebarGroupPathChange={value => { setScenarioGroupPath(value); setDirty(true); }}
@@ -293,32 +296,51 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
       }}
     />;
   }
+  if (editorMode) return <section className="api-scenario-composer-loading" aria-label="시나리오 작성">
+    {error ? <><p className="api-warning" role="alert">{error}</p><button type="button" onClick={onBackToScenarios}>← 시나리오 목록</button></> : <LoadingSpinner label="시나리오를 여는 중…" />}
+  </section>;
+  const duplicate = async (item: SavedApiScenario) => {
+    if (!preview) return;
+    working(true); setError(""); setNotice("");
+    try {
+      const steps = preview.scenario.steps.map(step => ({ ...step, server: bindings[step.server] ?? step.server }));
+      const copy = { ...preview.scenario, steps, id: `scenario-${crypto.randomUUID()}`, name: `${preview.scenario.name} 사본` };
+      const save = item.draft || preview.issues.length ? bridge.saveScenarioDraft : bridge.saveScenario;
+      const created = await save(scenarioScope, stringifyScenario(copy, true), {}, undefined, { groupPath: item.groupPath ?? [] });
+      const next = await bridge.listScenarios(project.id);
+      if (!live.current) return;
+      setSaved(next);
+      working(false);
+      await load(created);
+      setNotice(`‘${created.name}’으로 복제했습니다. 수정에서 이름과 값을 바꾸세요.`);
+    } catch (e) { if (live.current) setError(errorText(e)); }
+    finally { if (live.current) working(false); }
+  };
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const matchesSidebarItem = (item: SavedApiScenario | SavedApiSuite) => sidebarSearchText(item).includes(normalizedQuery);
   const sidebarScenarios = saved.filter(matchesSidebarItem);
   const sidebarSuites = suites.filter(matchesSidebarItem);
 
-  return <div className={`api-columns api-scenarios${editorMode ? " api-scenario-editor" : " api-scenario-run"}`}>
+  return <div className="api-columns api-scenarios api-scenario-run">
     <aside aria-label="저장된 시나리오와 스위트">
-      <input data-value-visibility="public" aria-label={editorMode ? "시나리오 검색" : "시나리오·스위트 검색"} placeholder="이름·설명·그룹 검색" value={query} onChange={event => setQuery(event.target.value)} />
+      <input data-value-visibility="public" aria-label="시나리오·스위트 검색" placeholder="이름·설명·그룹 검색" value={query} onChange={event => setQuery(event.target.value)} />
       <section className="api-sidebar-section">
         <header><button type="button" className="api-sidebar-section-toggle" aria-expanded={scenariosExpanded} onClick={() => setScenariosExpanded(value => !value)}><span>{scenariosExpanded ? "▾" : "▸"} 시나리오</span><small>{sidebarScenarios.length}{sidebarScenarios.length !== saved.length ? ` / ${saved.length}` : ""}</small></button><button type="button" className="api-sidebar-add" disabled={busy} onClick={openNewScenario}>+ 새 시나리오</button></header>
         {scenariosExpanded && <ScenarioSidebarTree kind="scenario" items={sidebarScenarios} selectedId={suiteSelection === null ? current?.id : null} disabled={busy} onSelect={item => { setSuiteSelection(null); void load(item); }} />}
       </section>
-      {!editorMode && <section className="api-sidebar-section api-sidebar-suite-section">
+      <section className="api-sidebar-section api-sidebar-suite-section">
         <header><button type="button" className="api-sidebar-section-toggle" aria-expanded={suitesExpanded} onClick={() => setSuitesExpanded(value => !value)}><span>{suitesExpanded ? "▾" : "▸"} 스위트</span><small>{sidebarSuites.length}{sidebarSuites.length !== suites.length ? ` / ${suites.length}` : ""}</small></button><button type="button" className="api-sidebar-add" disabled={busy} onClick={() => setSuiteSelection("")}>+ 새 스위트</button></header>
         {suitesExpanded && <ScenarioSidebarTree kind="suite" items={sidebarSuites} selectedId={suiteSelection || null} disabled={busy} onSelect={item => setSuiteSelection(item.id)} />}
-      </section>}
+      </section>
     </aside>
-    {suiteSelection !== null && !editorMode ? <SuitePanel key={suiteSelection} project={project} scope={scope} bridge={bridge} scenarios={saved} suites={suites} selectedId={suiteSelection} onSuitesChange={setSuites} onSelectedIdChange={setSuiteSelection} onBusy={working} /> : <>
+    {suiteSelection !== null ? <SuitePanel key={suiteSelection} project={project} scope={scope} bridge={bridge} scenarios={saved} suites={suites} selectedId={suiteSelection} onSuitesChange={setSuites} onSelectedIdChange={setSuiteSelection} onBusy={working} /> : <>
     <article className="api-request-panel api-scenario-detail">
-      <header className="api-detail-heading"><div><h2>{preview?.scenario.name ?? current?.name ?? (editorMode ? "새 시나리오" : "시나리오를 선택하세요")}</h2><p className="api-description">{preview?.scenario.description ?? (editorMode ? "API 문서에서 호출 순서를 정하고 요청값·응답 연결을 설정하세요." : "")}</p></div>{current && <div className="api-actions"><button disabled={busy} aria-expanded={editorMode ? editing : undefined} onClick={() => editorMode ? setEditing(!editing) : onEditScenario?.(current)}>{editorMode ? editing ? "편집 닫기" : "편집" : "수정"}</button>{!editorMode && <DeleteAction key={current.id} label="시나리오 삭제" disabled={busy} description={`‘${current.name}’${current.draft ? " 초안" : ""}을 프로젝트에서 삭제합니다. 현재 편집 내용도 닫힙니다. API 명세와 전역변수는 유지됩니다.`} onDelete={async () => {
+      <header className="api-detail-heading"><div><h2>{preview?.scenario.name ?? current?.name ?? "시나리오를 선택하세요"}</h2><p className="api-description">{preview?.scenario.description ?? ""}</p></div>{current && <div className="api-actions"><button type="button" disabled={busy} onClick={() => onEditScenario?.(current)}>수정</button><button type="button" disabled={busy || !preview} title="이 시나리오를 복사해 새 시나리오로 저장합니다" onClick={() => void duplicate(current)}>복제</button><DeleteAction key={current.id} label="시나리오 삭제" disabled={busy} description={`‘${current.name}’${current.draft ? " 초안" : ""}을 프로젝트에서 삭제합니다. API 명세와 전역변수는 유지됩니다.`} onDelete={async () => {
         await bridge.deleteScenario(project.id, current.id, current.updatedAt);
-        setSaved(await bridge.listScenarios(project.id)); setCurrent(null); setSource(""); setScenarioGroupPath([]); setDirty(false); setPreview(null); setResult(null); setBindings({}); setInputs({}); setEditing(editorMode); setNotice("시나리오를 삭제했습니다."); onRunAction(null);
-      }} />}{!editorMode && <><button type="button" ref={runButton} className="api-primary" disabled={busy || !canUse} onClick={() => void runScenario()}>{running ? "실행 중…" : result ? "다시 실행" : "실행"}</button>{running && <button type="button" onClick={() => void bridge.cancel(scope)}>취소</button>}</>}</div>}</header>
-      {!current && !editorMode && <div className="api-empty"><h3>실행할 시나리오를 선택하세요</h3><p>왼쪽 목록에서 고르거나 <strong>+ 새 시나리오</strong>로 만드세요. AI 작성 도우미로 만들 수도 있습니다.</p></div>}
-      {editorMode && <div className="api-empty"><h3>시나리오 작성</h3><p>API 문서에서 호출 순서와 요청값을 설정합니다.</p><button type="button" className="api-primary" disabled={busy} onClick={openNewScenario}>API 문서에서 작성</button></div>}
-      {preview && !editorMode && <>
+        setSaved(await bridge.listScenarios(project.id)); setCurrent(null); setSource(""); setScenarioGroupPath([]); setDirty(false); setPreview(null); setResult(null); setBindings({}); setInputs({}); setNotice("시나리오를 삭제했습니다."); onRunAction(null);
+      }} /><button type="button" ref={runButton} className="api-primary" disabled={busy || !canUse} onClick={() => void runScenario()}>{running ? "실행 중…" : result ? "다시 실행" : "실행"}</button>{running && <button type="button" onClick={() => void bridge.cancel(scope)}>실행 중단</button>}</div>}</header>
+      {!current && <div className="api-empty"><h3>실행할 시나리오를 선택하세요</h3><p>왼쪽 목록에서 고르거나 <strong>+ 새 시나리오</strong>로 만드세요. AI 작성 도우미로 만들 수도 있습니다.</p></div>}
+      {preview && <>
         <section className="api-run-summary" aria-label="시나리오 실행 준비">
           {!!preview.executionIssues?.length && <div role="alert" className="api-warning"><strong>실행 전 설정 필요</strong><ul>{preview.executionIssues.map(issue => {
             const variable = /전역변수 '([A-Za-z][A-Za-z0-9_]*)' 값이 없습니다/.exec(issue)?.[1];
@@ -337,7 +359,7 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
         <div hidden={runView === "result" && Boolean(result)}><ScenarioRunFlow key={current?.id} preview={preview} catalogs={catalogs} bindings={bindings} focusRequest={focusRequest} /></div>
       </>}
       {notice && <p role="status">{notice}</p>}{error && <p className="api-warning" role="alert">{error}</p>}
-      {(running || result) && <section hidden={!editorMode && !running && runView === "preview"} className={`api-response${running ? " api-response-running" : ""}`} aria-label={running ? "시나리오 실행 중" : "시나리오 실행 결과"}>
+      {(running || result) && <section hidden={!running && runView === "preview"} className={`api-response${running ? " api-response-running" : ""}`} aria-label={running ? "시나리오 실행 중" : "시나리오 실행 결과"}>
         {running ? <><h2>실행 중</h2><ProgressBar label={pendingInput ? "입력 대기 중" : "시나리오 실행 중"} detail={pendingInput ? `${pendingInput.index + 1}/${pendingInput.totalSteps}단계 · ${pendingInput.label ?? pendingInput.name}` : preview ? `${preview.scenario.steps.length}개 API · 순서대로 실행 중` : "순서대로 실행 중"} /></> : result && <>{lastRun && <p className="api-spec-meta">마지막 실행 {new Date(lastRun.completedAt).toLocaleString()} · 새로고침하면 사라집니다</p>}<ScenarioRunResult result={result} preview={lastRun?.preview ?? preview} catalogs={catalogs} bindings={lastRun?.bindings ?? bindings} focusRequest={resultFocusRequest} /></>}
       </section>}
     </article>
@@ -347,7 +369,7 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
       <p className="api-input-note">입력값은 이번 실행의 <code>vars.{pendingInput.name}</code>으로만 전달되며 YAML이나 실행 결과에 원문으로 저장되지 않습니다.</p>
       <label>{pendingInput.name}{pendingInput.required ? " *" : ""}<input autoFocus data-value-visibility={pendingInput.sensitive ? "sensitive" : undefined} type={pendingInput.type === "number" ? "number" : "text"} value={inputValue} disabled={inputSubmitting} placeholder={pendingInput.type === "string" ? "값 입력" : `${pendingInput.type} JSON 입력`} onChange={event => setInputValue(event.target.value)} /></label>
       {inputError && <p className="api-warning" role="alert">{inputError}</p>}
-      <footer className="api-actions"><button type="button" disabled={inputSubmitting} onClick={() => { setPendingInput(null); void bridge.cancel(scope); }}>실행 취소</button><button type="submit" className="api-primary" disabled={inputSubmitting}>{inputSubmitting ? "전달 중…" : "입력 완료 · 계속"}</button></footer>
+      <footer className="api-actions"><button type="button" disabled={inputSubmitting} onClick={() => { setPendingInput(null); void bridge.cancel(scope); }}>실행 중단</button><button type="submit" className="api-primary" disabled={inputSubmitting}>{inputSubmitting ? "전달 중…" : "입력 완료 · 계속"}</button></footer>
     </form></div>}</>}
   </div>;
 }

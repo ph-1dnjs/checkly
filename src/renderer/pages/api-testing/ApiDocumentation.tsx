@@ -74,19 +74,20 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
     const frame = requestAnimationFrame(() => composeToolbar.current?.scrollIntoView({ block: "start" }));
     return () => cancelAnimationFrame(frame);
   }, [composing]);
-  const [draft, setDraft] = useState<Scenario>(() => initialEdit?.scenario ?? ({ version: 1, id: `scenario-${crypto.randomUUID()}`, name: "새 시나리오", onFailure: "stop", inputs: {}, vars: {}, valueBindings: [], steps: [] }));
+  const [draft, setDraft] = useState<Scenario>(() => initialEdit?.scenario ?? ({ version: 1, id: `scenario-${crypto.randomUUID()}`, name: "", onFailure: "stop", inputs: {}, vars: {}, valueBindings: [], steps: [] }));
   const [saved, setSaved] = useState<SavedApiScenario | null>(initialEdit?.saved ?? null);
   const [saving, setSaving] = useState(false);
   const runAfterSave = useRef(false);
   const editorFormHost = useRef<HTMLDivElement>(null);
   const ignoreRunAction = useRef<OnRunAction>(() => {});
-  useRunAction(composeOnly ? onRunAction : ignoreRunAction.current, () => {
+  const saveAndRun = () => {
     const form = editorFormHost.current?.querySelector("form");
     if (!form || !form.reportValidity()) return;
     runAfterSave.current = true;
     form.requestSubmit();
     runAfterSave.current = false;
-  }, saving || composeView !== "edit" || !draft.steps.length || !onExecuteSaved, "시나리오 실행");
+  };
+  useRunAction(composeOnly ? onRunAction : ignoreRunAction.current, saveAndRun, saving || composeView !== "edit" || !draft.steps.length || !onExecuteSaved, "시나리오 실행");
   const [notice, setNotice] = useState("");
   const [issues, setIssues] = useState<string[]>([]);
   const [producerScenarios, setProducerScenarios] = useState<SavedApiScenario[]>([]);
@@ -105,7 +106,7 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
     if (url.hash) { url.hash = ""; window.history.replaceState(window.history.state, "", url.href); }
     setActiveStepId(null); rawBodies.current.clear();
     setComposeView("select");
-    setDraft({ version: 1, id: `scenario-${crypto.randomUUID()}`, name: "새 시나리오", onFailure: "stop", inputs: {}, vars: {}, valueBindings: [], steps: [] });
+    setDraft({ version: 1, id: `scenario-${crypto.randomUUID()}`, name: "", onFailure: "stop", inputs: {}, vars: {}, valueBindings: [], steps: [] });
     setSaved(null); setDirty(false); setIssues([]); setNotice(""); setConfirmClose(false);
     setEditorVersion(version => version + 1);
   };
@@ -262,12 +263,7 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
       icon.setAttribute("focusable", "false");
       icon.setAttribute("viewBox", "0 0 24 24");
       icon.setAttribute("fill", "currentColor");
-      icon.innerHTML = `
-        <path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1Z" />
-        <path d="M8 13h8v-2H8v2Z" />
-        <path d="M17 7h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5Z" />
-        <path d="M17 1h-2v3h-3v2h3v3h2V6h3V4h-3V1Z" />
-      `;
+      icon.innerHTML = `<path d="M11 5h2v14h-2zM5 11h14v2H5z" />`;
       button.append(icon);
       host.append(button);
       created.add(button);
@@ -333,21 +329,28 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
           setComposing(true);
         }
         if (ownsRunAction) onRunAction(null);
-      }}>{composing ? "← 시나리오 목록" : "시나리오 편집"}</button> : null}
+      }}>{composing ? "← 시나리오 목록" : "수정"}</button> : null}
       {composing && saved && <button type="button" disabled={saving || dirty} onClick={newScenario}>이어서 새 시나리오</button>}
-      {composing && <span role="status">{draft.steps.length ? `${draft.steps.length}개 단계` : "API를 선택하세요"}{draft.steps.length ? dirty ? " · 저장 안 됨" : saved ? " · 저장됨" : "" : ""}</span>}
-      {composing && composeView === "select" && <span className="api-compose-legend"><Icon name="add_link" size={16} />추가 · <Icon name="expand_more" size={16} />상세 열기</span>}
+      {composing && <strong className="api-compose-title">{saved ? `시나리오 수정 · ${saved.name}` : "새 시나리오"}</strong>}
+      {composing && <span role="status">{draft.steps.length ? `${draft.steps.length}개 단계` : "API를 선택하세요"}{draft.steps.length ? dirty ? " · 저장 안 됨" : saved ? saved.draft ? " · 초안 저장됨 (실행 불가)" : " · 저장됨" : "" : ""}</span>}
+      {composing && composeView === "select" && <span className="api-compose-legend"><Icon name="add" size={16} />추가 · <Icon name="expand_more" size={16} />상세 열기</span>}
       {composing && <nav className="api-compose-steps" aria-label="시나리오 작성 단계">
         <button type="button" aria-current={composeView === "select" ? "step" : undefined} disabled={saving} onClick={() => setComposeView("select")} title="API 추가·삭제 및 순서 설정"><span>1</span> API 선택·순서</button>
         <span aria-hidden="true">→</span>
         <button type="button" aria-current={composeView === "edit" ? "step" : undefined} disabled={saving || !draft.steps.length} onClick={() => setComposeView("edit")}><span>2</span> 값 설정·저장</button>
       </nav>}
     </div>
-    {confirmClose && <div role="alert" className="api-warning">저장하지 않은 변경사항이 있습니다. 계속 작성해서 저장하거나 변경사항을 버리고 닫으세요.
-      <button type="button" onClick={() => setConfirmClose(false)}>계속 작성</button>
-      <button type="button" onClick={() => { newScenario(); setComposing(false); onCloseComposer?.(); }}>변경사항 버리고 닫기</button>
+    {confirmClose && <div className="api-confirm-dialog-backdrop">
+      <section className="api-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="api-compose-close-title">
+        <h2 id="api-compose-close-title">저장하지 않은 변경사항</h2>
+        <p>현재 시나리오 수정 내용이 저장되지 않았습니다. 닫으면 수정 내용이 사라집니다.</p>
+        <div className="api-actions">
+          <button type="button" autoFocus onClick={() => setConfirmClose(false)}>계속 작성</button>
+          <button type="button" className="api-danger-action" onClick={() => { newScenario(); setComposing(false); onCloseComposer?.(); }}>변경사항 버리고 닫기</button>
+        </div>
+      </section>
     </div>}
-    <p className={`api-spec-meta${composing ? " api-compose-meta" : ""}`}>API 문서의 응답은 원문 그대로 보이고 저장되지 않습니다. 화면 공유에 주의하세요.</p>
+    {!(composing && composeView === "edit") && <p className={`api-spec-meta${composing ? " api-compose-meta" : ""}`}>API 문서의 응답은 원문 그대로 보이고 저장되지 않습니다. 화면 공유에 주의하세요.</p>}
     <div className={composing ? `api-compose-layout${composeView === "select" ? " api-selection-layout" : " api-edit-layout"}` : undefined}>
     <div className="api-swagger-renderer" hidden={composing && composeView === "edit"} data-scroll="light">
       {composing && project.servers.length > 1 && <div className="api-compose-server-switch">
@@ -380,34 +383,21 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
     </div>
     {composing && composeView === "select" && <aside className="api-selection-basket" aria-label="선택한 API" data-scroll="light">
       <h2>선택한 API · {draft.steps.length}개</h2>
-      {!draft.steps.length && <p>API 행의 체인 아이콘으로 추가하고, 행을 누르면 상세가 열립니다.</p>}
+      {!draft.steps.length && <p>API 행의 + 버튼으로 추가하고, 행을 누르면 상세가 열립니다.</p>}
       <SelectedApiList scenario={draft} disabled={saving} onChange={changeDraft} onLocate={locateStep} getOperation={step => {
         const stepCatalog = step.server === composeServerId ? displayCatalog : composeCatalogs[step.server] ?? (step.server === scope.serverId ? catalog : null);
         return stepCatalog?.operations.find(operation => "operationId" in step.api ? operation.operationId === step.api.operationId : operation.path === step.api.path && operation.method.toUpperCase() === step.api.method);
       }} />
+      {activeStepId && draft.steps.some(step => step.id === activeStepId) && <p className="api-field-help">{draft.steps.findIndex(step => step.id === activeStepId) + 1}단계를 문서에서 보는 중입니다. 문서에서 입력한 요청값도 이 단계에 반영됩니다.</p>}
       {notice && <p role="status">{notice}</p>}
       <button type="button" className="api-primary" disabled={saving || !draft.steps.length} onClick={() => setComposeView("edit")}>선택 및 순서 설정 완료</button>
     </aside>}
     {composing && composeView === "edit" && <ScenarioSettingsSummary scenario={draft} catalogs={composeCatalogs} projectId={scope.projectId} bridge={bridge} onSelect={setActiveStepId} />}
     {composing && <aside hidden={composeView !== "edit"} className="api-compose-editor" aria-label="Swagger 시나리오 작성" data-scroll="light" onChangeCapture={() => { setDirty(true); setNotice(""); }}>
-      <header><h2>시나리오 작성</h2></header>
-      {onSidebarGroupPathChange && <SidebarMetadataFields groupPath={sidebarGroupPath ?? []} existingGroupPaths={sidebarGroupPaths} disabled={saving} onGroupPathChange={value => { onSidebarGroupPathChange(value); setDirty(true); setNotice(""); }} />}
-      <nav className="api-step-jump" aria-label="API 단계 이동">{draft.steps.map((step, index) => {
-        const stepCatalog = composeCatalogs[step.server] ?? (step.server === scope.serverId ? catalog : null);
-        const operation = stepCatalog?.operations.find(item => "operationId" in step.api ? item.operationId === step.api.operationId : item.path === step.api.path && item.method.toUpperCase() === step.api.method);
-        const method = operation?.method ?? ("method" in step.api ? step.api.method : "API");
-        const path = operation?.path ?? ("path" in step.api ? step.api.path : step.api.operationId);
-        return <button type="button" key={step.id} aria-current={activeStepId === step.id ? "step" : undefined} title={`${index + 1}. ${method} ${path}`} onClick={() => {
-          setActiveStepId(step.id);
-          const element = document.getElementById(`scenario-editor-step-${step.id}`);
-          if (element instanceof HTMLDetailsElement) {
-            element.open = true;
-            element.scrollIntoView({ block: "start", behavior: "smooth" });
-            element.querySelector("summary")?.focus({ preventScroll: true });
-          }
-        }}><span>{index + 1}</span><span className="api-method" data-method={method}>{method}</span><code>{path}</code></button>;
-      })}</nav>
-      <div ref={editorFormHost}><ScenarioBuilder key={editorVersion} suppliedCatalogs={composeCatalogs} source="" value={draft} onChange={changeDraft} Markdown={Markdown} onStepFocus={step => setActiveStepId(step.id)} embedded saving={saving} bindings={{}} project={project} scope={scope} bridge={bridge} onCancel={() => {}} onApply={async yaml => {
+      <div ref={editorFormHost}><ScenarioBuilder key={editorVersion} suppliedCatalogs={composeCatalogs} value={draft} onChange={changeDraft} Markdown={Markdown} onStepFocus={step => setActiveStepId(step.id)} saving={saving} bindings={{}} project={project} scope={scope} bridge={bridge}
+        metadata={onSidebarGroupPathChange && <SidebarMetadataFields groupPath={sidebarGroupPath ?? []} existingGroupPaths={sidebarGroupPaths} disabled={saving} onGroupPathChange={value => { onSidebarGroupPathChange(value); setDirty(true); setNotice(""); }} />}
+        actions={onExecuteSaved && <button type="button" disabled={saving || !draft.steps.length} onClick={saveAndRun}>저장 후 실행</button>}
+        onApply={async yaml => {
         const execute = runAfterSave.current;
         runAfterSave.current = false;
         setSaving(true); setNotice(""); setIssues([]); setProducerScenarios([]);
@@ -422,7 +412,7 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
           if (checks.some(issue => /전역변수 '[A-Za-z][A-Za-z0-9_]*'/.test(issue))) {
             void bridge.listScenarios(scope.projectId).then(setProducerScenarios).catch(() => setProducerScenarios([]));
           }
-          if (execute && checks.length) return;
+          if (execute && checks.length) { setNotice("아래 항목을 먼저 해결해야 실행할 수 있어 저장하지 않았습니다."); return; }
           const item = await (preview.issues.length ? bridge.saveScenarioDraft : bridge.saveScenario)(scope, yaml, {}, saved?.id === preview.scenario.id ? saved.updatedAt : undefined, sidebarMetadata);
           setSaved(item); await onSaved?.(item); setDirty(false);
           setNotice(preview.issues.length ? "초안으로 저장했습니다. 아래 항목을 보완하세요." : preview.executionIssues?.length ? "저장됨 · 실행 전 설정 필요. 아래 항목을 설정한 뒤 다시 검사하세요." : "시나리오를 저장했습니다. 이 화면에서 계속 수정할 수 있습니다.");

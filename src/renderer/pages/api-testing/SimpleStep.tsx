@@ -8,7 +8,7 @@ import { ScenarioValueLink } from "./ScenarioValueLink";
 import { GlobalVariableSetupLink, useGlobalVariableAccess } from "./global-variable-access";
 import { isSensitiveKey } from "../../../app/api-testing/shared/sensitive";
 import { DraftInput, DraftTextarea } from "./DraftFields";
-import { type RequestField, type VerificationOperator, type FieldState, suggestedInputName, inputTypeForField, isStructuredRequestField, requestFieldValueMatches, templateVariable, variableReferenceInValue, fieldState, jsonText, requestToken } from "./step-request-model";
+import { type RequestField, type VerificationOperator, type FieldState, suggestedInputName, inputTypeForField, isStructuredRequestField, requestFieldValueMatches, templateVariable, variableReferenceInValue, fieldState, jsonText, requestToken, verificationOperatorLabels, verificationSourceLabels, parseExpectedValue, expectedValueText } from "./step-request-model";
 import { type ResponseBadge } from "./step-response-model";
 import { ResponseGlobalNameField, ResponsePicker } from "./StepResponseViews";
 import { RequestBodyEditor, ValueActionModal, ScenarioInputSettingsModal } from "./StepValueModals";
@@ -73,11 +73,14 @@ export function SimpleStep({ scenario, index, catalogs, bindings, scope, bridge,
   const updateInput = (name: string, patch: Partial<ScenarioInput>) => {
     updateInputs(runtimeInputs.map(input => input.name === name ? { ...input, ...patch } : input));
   };
+  const existingVerificationIndex = (pointer: string | null) => pointer === null ? -1 : (step.expect ?? []).findIndex(expectation => expectation.source === "body" && (expectation.pointer ?? "") === pointer);
+  const updateExpectations = (next: NonNullable<typeof step.expect>) => update({ expect: next.length ? next : undefined });
   const openResponseAction = (next: "verify" | "global") => {
     setAction(next);
     setVerificationPointer(responsePointer);
-    setVerificationOperator("exists");
-    setVerificationValue("");
+    const existing = (step.expect ?? [])[existingVerificationIndex(responsePointer)];
+    setVerificationOperator(existing?.operator ?? "exists");
+    setVerificationValue(existing ? expectedValueText(existing.value) : "");
     if (next === "global") setGlobalName(current => current || existingGlobalExtraction(responsePointer)?.target.slice("globals.".length) || responseNameSuggestions[0]?.name || "response");
     setError("");
   };
@@ -105,7 +108,7 @@ export function SimpleStep({ scenario, index, catalogs, bindings, scope, bridge,
   };
   const setValue = (area: RequestArea, name: string, value: Json | undefined, clearInput = false) => {
     const request = requestWithValue(area, name, value);
-    if (!request) { setError("기존 본문을 유지하기 위해 고급 설정에서 편집하세요."); return; }
+    if (!request) { setError("요청 본문이 객체가 아니어서 필드별로 설정할 수 없습니다. 요청 본문 JSON 편집에서 수정하세요."); return; }
     const current = objectValue(step.request[area])[name];
     const boundInput = runtimeInputs.find(input => current === `{{vars.${input.name}}}`);
     const replacingUserInput = boundInput && value !== `{{vars.${boundInput.name}}}`;
@@ -121,7 +124,7 @@ export function SimpleStep({ scenario, index, catalogs, bindings, scope, bridge,
     const currentInput = runtimeInputs.find(input => current === `{{vars.${input.name}}}`);
     if (currentInput) {
       const request = requestWithValue(field.area, field.name, undefined);
-      if (!request) { setError("기존 본문을 유지하기 위해 고급 설정에서 편집하세요."); return; }
+      if (!request) { setError("요청 본문이 객체가 아니어서 필드별로 설정할 수 없습니다. 요청 본문 JSON 편집에서 수정하세요."); return; }
       const nextInputs = runtimeInputs.filter(input => input.name !== currentInput.name);
       update({ request, input: undefined, inputs: nextInputs.length ? nextInputs : undefined });
       setValueMenu(null);
@@ -133,7 +136,7 @@ export function SimpleStep({ scenario, index, catalogs, bindings, scope, bridge,
     let suffix = 2;
     while (usedNames.has(name)) name = `${baseName}_${suffix++}`;
     const request = requestWithValue(field.area, field.name, `{{vars.${name}}}`);
-    if (!request) { setError("기존 본문을 유지하기 위해 고급 설정에서 편집하세요."); return; }
+    if (!request) { setError("요청 본문이 객체가 아니어서 필드별로 설정할 수 없습니다. 요청 본문 JSON 편집에서 수정하세요."); return; }
     const currentVariable = templateVariable(current, "vars");
     const bindingInUseElsewhere = currentVariable && scenario.steps.some((otherStep, otherIndex) => otherIndex !== index && variableReferenceInValue(otherStep.request, currentVariable));
     const nextBindings = currentVariable && !bindingInUseElsewhere ? scenario.valueBindings.filter(binding => binding.name !== currentVariable) : scenario.valueBindings;
@@ -142,7 +145,7 @@ export function SimpleStep({ scenario, index, catalogs, bindings, scope, bridge,
       label: `${field.name} 입력`,
       type: inputTypeForField(field.type),
       required: field.required,
-      sensitive: /token|password|secret|code|인증|비밀번호/i.test(field.name),
+      sensitive: isSensitiveKey(field.name),
     };
     update({
       request,
@@ -165,7 +168,7 @@ export function SimpleStep({ scenario, index, catalogs, bindings, scope, bridge,
     const valueModal = valueMenu === fieldKey && <ValueActionModal index={index} field={field} current={current} state={state} globalNames={availableGlobalNames} hasUserInput={hasUserInput} scope={scope} bridge={bridge} onClose={() => setValueMenu(null)} onDirect={value => { setValue(field.area, field.name, value); setValueMenu(null); setTarget(null); setInputTarget(null); setError(""); }} onScenario={() => { setValueMenu(null); setInputTarget(null); setTarget(field); }} onGlobalCreated={(name, type) => { setGlobals(current => { const next = { name, type, displayValue: "***" }; const found = current.findIndex(global => global.name === name); return found < 0 ? [...current, next] : current.map((global, index) => index === found ? next : global); }); }} onGlobal={name => { setValue(field.area, field.name, `{{globals.${name}}}`); setValueMenu(null); setTarget(null); setInputTarget(null); }} onUserInput={() => { setValueMenu(null); setTarget(null); setInputTarget(fieldKey); if (!hasUserInput) toggleUserInput(field); }} />;
     const inputSettings = inputTarget === fieldKey && userInput && <ScenarioInputSettingsModal index={index} field={field} userInput={userInput} onChange={patch => updateInput(userInput.name, patch)} onRemove={() => {
       const request = requestWithValue(field.area, field.name, undefined);
-      if (!request) { setError("기존 본문을 유지하기 위해 고급 설정에서 편집하세요."); return; }
+      if (!request) { setError("요청 본문이 객체가 아니어서 필드별로 설정할 수 없습니다. 요청 본문 JSON 편집에서 수정하세요."); return; }
       const nextInputs = runtimeInputs.filter(input => input.name !== userInput.name);
       update({ request, input: undefined, inputs: nextInputs.length ? nextInputs : undefined });
       setInputTarget(null);
@@ -218,7 +221,7 @@ export function SimpleStep({ scenario, index, catalogs, bindings, scope, bridge,
   const spec = catalogs[bindings[step.server] ?? step.server]?.spec;
   return <div className="api-simple-step">
     <header className="api-simple-section-heading"><h3>요청</h3></header>
-    {!operation ? <p>명세를 확인할 수 없습니다. 고급 설정을 사용하세요.</p> : <>
+    {!operation ? <p>현재 API 명세에서 이 API를 찾을 수 없습니다. 명세를 다시 가져오거나 이 단계를 제거하세요.</p> : <>
       {fields.filter(field => field.area !== "body").length > 0 ? <div className="api-request-fields">{fields.filter(field => field.area !== "body").map(field => renderField(field))}</div> : !hasRequestBody && <p>입력 가능한 요청 파라미터가 없습니다.</p>}
       {hasRequestBody && <RequestBodyEditor operation={operation} step={step} update={update} bodyFields={fields.filter(field => field.area === "body")} renderField={renderField} />}
     </>}
@@ -248,33 +251,38 @@ export function SimpleStep({ scenario, index, catalogs, bindings, scope, bridge,
           {verificationPointer !== null && <button type="button" className="api-primary" onClick={() => {
             if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(globalName) || ["constructor", "prototype"].includes(globalName)) { setError("전역변수 이름은 영문으로 시작하는 영문·숫자·밑줄을 사용하세요."); return; }
             const previous = existingGlobalExtraction(verificationPointer);
-            update({ extract: [...step.extract.filter(e => e !== previous && e.target !== `globals.${globalName}`), { source: "body", pointer: verificationPointer, target: `globals.${globalName}`, sensitive: /token|password|secret|code/i.test(globalName) }] }); closeResponseModal();
+            update({ extract: [...step.extract.filter(e => e !== previous && e.target !== `globals.${globalName}`), { source: "body", pointer: verificationPointer, target: `globals.${globalName}`, sensitive: isSensitiveKey(globalName) }] }); closeResponseModal();
           }}>저장 설정 적용</button>}
           {existingGlobalExtraction(verificationPointer) && <button type="button" className="api-danger-action" onClick={() => { const existing = existingGlobalExtraction(verificationPointer); if (existing) update({ extract: step.extract.filter(extract => extract !== existing) }); closeResponseModal(); }}>전역변수 저장 해제</button>}
         </section>}
         {action === "verify" && verificationPointer !== null && <section className="api-verification-form" aria-label="응답 검증 설정">
           <p><strong>선택한 응답 필드</strong> · <code>{verificationPointer || "전체 응답"}</code></p>
-          <label>검증 방식<select aria-label="응답 검증 방식" value={verificationOperator} onChange={e => setVerificationOperator(e.target.value as VerificationOperator)}><option value="exists">존재하는지</option><option value="equals">기대값과 같은지</option><option value="contains">문자열·배열에 포함되는지</option></select></label>
-          {verificationOperator !== "exists" && <label>기대값<input aria-label="응답 검증 기대값" value={verificationValue} placeholder="예: success 또는 200" onChange={e => setVerificationValue(e.target.value)} /></label>}
+          <label>검증 방식<select aria-label="응답 검증 방식" value={verificationOperator} onChange={e => setVerificationOperator(e.target.value as VerificationOperator)}>{(Object.keys(verificationOperatorLabels) as VerificationOperator[]).map(operator => <option key={operator} value={operator}>{verificationOperatorLabels[operator]}</option>)}</select></label>
+          {verificationOperator !== "exists" && <label>기대값<input aria-label="응답 검증 기대값" value={verificationValue} placeholder="예: success 또는 200" onChange={e => setVerificationValue(e.target.value)} /><small className="api-field-help">숫자·true/false·JSON은 그 형식으로 비교합니다. 문자열 "200"은 따옴표를 붙여 입력하세요.</small></label>}
           <div className="api-actions"><button type="button" className="api-primary" onClick={() => {
             if (verificationOperator !== "exists" && !verificationValue.trim()) { setError("검증할 기대값을 입력하세요."); return; }
-            let value: Json | undefined;
-            if (verificationOperator !== "exists") { try { value = JSON.parse(verificationValue) as Json; } catch { value = verificationValue; } }
-            const expectation = verificationOperator === "exists" ? { source: "body" as const, pointer: verificationPointer, operator: verificationOperator } : { source: "body" as const, pointer: verificationPointer, operator: verificationOperator, value };
-            update({ expect: [...(step.expect ?? []), expectation] }); closeResponseModal();
-          }}>검증 추가</button></div>
+            const expectation = verificationOperator === "exists" ? { source: "body" as const, pointer: verificationPointer, operator: verificationOperator } : { source: "body" as const, pointer: verificationPointer, operator: verificationOperator, value: parseExpectedValue(verificationValue) };
+            const found = existingVerificationIndex(verificationPointer);
+            const current = step.expect ?? [];
+            updateExpectations(found < 0 ? [...current, expectation] : current.map((item, i) => i === found ? expectation : item)); closeResponseModal();
+          }}>{existingVerificationIndex(verificationPointer) < 0 ? "검증 추가" : "검증 수정"}</button>{existingVerificationIndex(verificationPointer) >= 0 && <button type="button" className="api-danger-action" onClick={() => { const found = existingVerificationIndex(verificationPointer); updateExpectations((step.expect ?? []).filter((_, i) => i !== found)); closeResponseModal(); }}>검증 제거</button>}</div>
         </section>}
         {error && <p className="api-field-menu-error" role="alert">{error}</p>}
         <footer><button type="button" onClick={closeResponseModal}>닫기</button></footer>
       </section>
     </div>}
-    {(step.expect ?? []).map((expectation, n) => <details key={n}><summary>검증 {n + 1} · {expectation.source} {expectation.pointer ?? expectation.header} · {expectation.operator}</summary>
-      <label>검증 대상<select value={expectation.source} onChange={e => update({ expect: step.expect!.map((v, i) => i === n ? { ...v, source: e.target.value as typeof v.source, pointer: e.target.value === "body" ? "" : undefined, header: e.target.value === "header" ? "content-type" : undefined } : v) })}><option value="body">응답 본문</option><option value="status">HTTP 상태</option><option value="header">응답 헤더</option></select></label>
-      {expectation.source !== "status" && <label>응답 경로·헤더<input value={expectation.pointer ?? expectation.header ?? ""} onChange={e => update({ expect: step.expect!.map((v, i) => i === n ? { ...v, ...(v.source === "body" ? { pointer: e.target.value } : { header: e.target.value }) } : v) })} /></label>}
-      <label>검증 방식<select value={expectation.operator} onChange={e => update({ expect: step.expect!.map((v, i) => i === n ? { ...v, operator: e.target.value as typeof v.operator } : v) })}><option value="exists">존재</option><option value="equals">같음</option><option value="contains">포함</option></select></label>
-      {expectation.operator !== "exists" && <label>기대값 JSON<DraftInput value={jsonText(expectation.value)} onChange={e => { try { const value = JSON.parse(e.target.value) as Json; e.target.setCustomValidity(""); update({ expect: step.expect!.map((v, i) => i === n ? { ...v, value } : v) }); } catch { e.target.setCustomValidity('JSON 형식으로 입력하세요. 문자열 예: "success"'); } }} /></label>}
-      <button type="button" onClick={() => update({ expect: step.expect!.length === 1 ? undefined : step.expect!.filter((_, i) => i !== n) })}>검증 삭제</button>
-    </details>)}
-    {error && <p role="alert">{error}</p>}
+    <header className="api-simple-section-heading"><h3>검증</h3><button type="button" onClick={() => updateExpectations([...(step.expect ?? []), { source: "status", operator: "equals", value: 200 }])}>+ HTTP 상태 검증</button></header>
+    {!(step.expect ?? []).length && <p className="api-field-help">응답 항목의 ‘설정’에서 값 검증을, 위 버튼으로 HTTP 상태 검증을 추가하세요.</p>}
+    {(step.expect ?? []).map((expectation, n) => {
+      const change = (patch: Partial<typeof expectation>) => updateExpectations(step.expect!.map((v, i) => i === n ? { ...v, ...patch } : v));
+      const target = expectation.source === "status" ? "" : ` ${expectation.pointer || expectation.header || "전체 응답"}`;
+      return <details key={n} className="api-verification-item"><summary>검증 {n + 1} · {verificationSourceLabels[expectation.source]}{target} · {verificationOperatorLabels[expectation.operator]}{expectation.operator !== "exists" ? ` ${expectedValueText(expectation.value)}` : ""}</summary>
+      <label>검증 대상<select value={expectation.source} onChange={e => { const source = e.target.value as typeof expectation.source; change(source === "status" ? { source, pointer: undefined, header: undefined, operator: "equals", value: expectation.value ?? 200 } : { source, pointer: source === "body" ? "" : undefined, header: source === "header" ? "content-type" : undefined }); }}>{(Object.keys(verificationSourceLabels) as (keyof typeof verificationSourceLabels)[]).map(source => <option key={source} value={source}>{verificationSourceLabels[source]}</option>)}</select></label>
+      {expectation.source !== "status" && <label>{expectation.source === "body" ? "응답 경로 (JSON Pointer)" : "헤더 이름"}<input value={expectation.pointer ?? expectation.header ?? ""} onChange={e => change(expectation.source === "body" ? { pointer: e.target.value } : { header: e.target.value })} /></label>}
+      <label>검증 방식<select value={expectation.operator} onChange={e => change({ operator: e.target.value as VerificationOperator })}>{(Object.keys(verificationOperatorLabels) as VerificationOperator[]).filter(operator => expectation.source !== "status" || operator !== "exists").map(operator => <option key={operator} value={operator}>{verificationOperatorLabels[operator]}</option>)}</select></label>
+      {expectation.operator !== "exists" && <label>기대값<DraftInput value={expectedValueText(expectation.value)} placeholder="예: success 또는 200" onChange={e => change({ value: parseExpectedValue(e.target.value) })} /></label>}
+      <button type="button" className="api-danger-action" onClick={() => updateExpectations(step.expect!.filter((_, i) => i !== n))}>검증 제거</button>
+    </details>; })}
+    {error && <p role="alert" className="api-warning">{error}</p>}
   </div>;
 }
