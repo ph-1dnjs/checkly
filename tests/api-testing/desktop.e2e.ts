@@ -166,7 +166,11 @@ async function main() {
     // Holding still before the drop must not lose it.
     await page.waitForTimeout(300);
     await shot("dragging");
+    const previewTop = await selectedRows.filter({ hasText: "/items/{id}" }).evaluate(row => row.getBoundingClientRect().top);
     await page.mouse.up();
+    // The dropped row stays where the preview showed it instead of jumping back first.
+    const droppedTop = await selectedRows.filter({ hasText: "/items/{id}" }).evaluate(row => new Promise<number>(resolve => requestAnimationFrame(() => resolve(row.getBoundingClientRect().top))));
+    if (Math.abs(droppedTop - previewTop) > 2) throw new Error(`Dropped row jumped from ${previewTop} to ${droppedTop}`);
     await expect(selectedRows.nth(0)).toContainText("/items/{id}");
     await shot("reordered");
     await page.getByRole("button", { name: /^1단계 .* 순서 변경$/ }).press("ArrowDown");

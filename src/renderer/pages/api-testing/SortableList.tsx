@@ -52,14 +52,22 @@ export function SortableList<T>({ items, itemKey, itemLabel, disabled = false, o
     return 0;
   };
 
+  // Where each row is on screen now, relative to the list (includes drag-preview transforms).
+  const measure = () => {
+    const root = list.current;
+    const next = new Map<string, number>();
+    if (!root) return next;
+    const top = root.getBoundingClientRect().top;
+    for (const row of root.querySelectorAll<HTMLElement>(":scope > [data-sort-key]")) next.set(row.dataset.sortKey!, row.getBoundingClientRect().top - top);
+    return next;
+  };
+
   // FLIP: rows that changed position slide from where they were.
   useLayoutEffect(() => {
     const root = list.current;
     if (!root) return;
-    const top = root.getBoundingClientRect().top;
-    const next = new Map<string, number>();
+    const next = measure();
     const rows = [...root.querySelectorAll<HTMLElement>(":scope > [data-sort-key]")];
-    for (const row of rows) next.set(row.dataset.sortKey!, row.getBoundingClientRect().top - top);
     const orderKey = keys.join("\0");
     if (orderKey !== previousOrder.current && previousOrder.current && !reducedMotion()) {
       for (const row of rows) {
@@ -95,6 +103,8 @@ export function SortableList<T>({ items, itemKey, itemLabel, disabled = false, o
         const current = dragRef.current;
         if (!current) return;
         event.preventDefault();
+        // The preview transforms may still be mid-transition; start the settle animation from what is on screen.
+        offsets.current = measure();
         commit(current.from, current.to, itemKey(items[current.from], current.from));
         updateDrag(null);
       }}>
