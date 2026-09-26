@@ -33,6 +33,12 @@ function migrateSidebarMetadata<T extends Record<string, unknown>>(item: T): T &
 const aiGuideRequestSchema = z.object({
   scope: environmentScopeSchema, tags: z.array(z.string().max(200)).max(100).optional(),
 }).strict();
+/** "회원/인증" → ["회원", "인증"], checked with the same rules as the sidebar folders. */
+function aiGroupPath(group?: string): { path?: string[]; error?: string } {
+  if (!group) return {};
+  const parsed = sidebarMetadataSchema.safeParse({ groupPath: group.split("/").map(part => part.trim()).filter(Boolean) });
+  return parsed.success ? { path: parsed.data.groupPath } : { error: `그룹 '${group}'을 쓸 수 없습니다: ${parsed.error.issues[0]?.message ?? "형식 오류"}` };
+}
 export type ApiScenarioRunOptions = {
   runId?: string;
   requestInput?: (request: ScenarioInputRequest) => Promise<Json | undefined>;
@@ -165,6 +171,28 @@ export class ApiWorkspace {
     return { dir, catalog: path.join(dir, "api-catalog.json"), result: path.join(dir, "scenarios.yaml") };
   }
 
+  /** What the guide tells the AI about saved work: globals with producers/consumers, groups, scenarios. */
+  private async aiProjectSummary(projectId: string) {
+    const saved = await this.listScenarios(projectId);
+    const suites = await this.listSuites(projectId);
+    const summary = new Map<string, { type?: string; producers: string[]; consumers: string[] }>();
+    const entry = (name: string) => { let item = summary.get(name); if (!item) summary.set(name, item = { producers: [], consumers: [] }); return item; };
+    for (const global of await this.listGlobals({ projectId })) entry(global.name).type = global.type;
+    for (const item of saved) {
+      let produced: string[] = [];
+      try { produced = parseScenario(item.source).steps.flatMap(step => step.extract.map(extract => extract.target)).filter(target => target.startsWith("globals.")).map(target => target.slice(8)); } catch { /* broken drafts only list their uses */ }
+      for (const name of new Set(produced)) entry(name).producers.push(item.name);
+      const used = new Set([...item.source.matchAll(/\{\{\s*globals\.([A-Za-z_][A-Za-z0-9_]*)\s*\}\}|auth:\s*['"]?globals\.([A-Za-z_][A-Za-z0-9_]*)/g)].map(match => match[1] ?? match[2]));
+      for (const name of used) entry(name).consumers.push(item.name);
+    }
+    const groupOf = (path?: string[]) => (path ?? []).join("/");
+    return {
+      globals: [...summary.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([name, item]) => ({ name, ...item })),
+      groups: [...new Set([...saved, ...suites].map(item => groupOf(item.groupPath)).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ko")),
+      existing: saved.map(item => ({ name: item.name, group: groupOf(item.groupPath) })),
+    };
+  }
+
   /**
    * Guide the user pastes into their own AI (Claude Code, Codex…) in the backend project.
    * Writes the current detailed schemas next to the result file so the prompt stays short.
@@ -178,8 +206,7 @@ export class ApiWorkspace {
     await mkdir(files.dir, { recursive: true });
     await writeFile(files.catalog, redact(JSON.stringify(aiCatalogDetails(servers), null, 1)), { mode: 0o600 });
     const prompt = redact(createAuthorPrompt({
-      servers, globals: await this.listGlobals({ projectId: scope.projectId }),
-      existing: (await this.listScenarios(scope.projectId)).map(item => item.name),
+      servers, ...await this.aiProjectSummary(scope.projectId),
       catalogFile: files.catalog, resultFile: files.result,
     }));
     if (Buffer.byteLength(prompt) > 1_000_000) throw new Error("API가 너무 많습니다. 태그로 범위를 좁히세요");
@@ -212,7 +239,7 @@ export class ApiWorkspace {
     const existingIds = new Set(existing.map(item => item.id)), existingNames = new Set(existing.map(item => item.name));
     const drafts: ApiAiDraft[] = [];
     for (const [index, written] of answer.scenarios.entries()) {
-      const yaml = withGeneratedId(written);
+      const yaml = withGeneratedId(written.yaml);
       let id = `ai-draft-${index + 1}`, name = `AI 시나리오 ${index + 1}`, stepCount = 0;
       const issues: string[] = [], notices: string[] = [];
       let executionIssues: string[] = [];
@@ -229,7 +256,9 @@ export class ApiWorkspace {
       if (drafts.some(draft => draft.id === id)) issues.push(`id '${id}'가 이번 결과의 다른 시나리오와 겹칩니다`);
       if (drafts.some(draft => draft.name === name)) issues.push(`이름 '${name}'이 이번 결과의 다른 시나리오와 겹칩니다. 스위트 순서를 알 수 없습니다`);
       if (existingNames.has(name)) notices.push(`같은 이름의 시나리오가 이미 있습니다`);
-      drafts.push({ id, name, yaml, stepCount, issues, notices, executionIssues });
+      const group = aiGroupPath(written.group);
+      if (group.error) issues.push(group.error);
+      drafts.push({ id, name, yaml, stepCount, issues, notices, executionIssues, ...(group.path ? { groupPath: group.path } : {}) });
     }
     let suite: ApiAiImportResult["suite"] = null;
     if (answer.suite) {
@@ -241,7 +270,9 @@ export class ApiWorkspace {
         return draft?.id ?? ref;
       });
       if (!scenarioIds.length) problems.push("스위트에 시나리오가 없습니다");
-      suite = { name: answer.suite.name.trim() || "AI 스위트", scenarioIds, problems };
+      const group = aiGroupPath(answer.suite.group);
+      if (group.error) problems.push(group.error);
+      suite = { name: answer.suite.name.trim() || "AI 스위트", scenarioIds, problems, ...(group.path ? { groupPath: group.path } : {}) };
     }
     return { drafts, suite };
   }

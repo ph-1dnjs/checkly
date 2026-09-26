@@ -68,8 +68,8 @@ export type ApiScenarioInputSubmission = {
 /** Guide for the user's own AI; tags narrow the APIs it may use. */
 export type ApiAiGuideRequest = { scope: ApiEnvironmentScope; tags?: string[] };
 /** issues keep a draft from running; notices are warnings only (e.g. a saved scenario has the same name). */
-export type ApiAiDraft = { id: string; name: string; yaml: string; stepCount: number; issues: string[]; notices: string[]; executionIssues: string[] };
-export type ApiAiImportResult = { drafts: ApiAiDraft[]; suite: { name: string; scenarioIds: string[]; problems: string[] } | null };
+export type ApiAiDraft = { id: string; name: string; yaml: string; stepCount: number; issues: string[]; notices: string[]; executionIssues: string[]; groupPath?: string[] };
+export type ApiAiImportResult = { drafts: ApiAiDraft[]; suite: { name: string; scenarioIds: string[]; problems: string[]; groupPath?: string[] } | null };
 export type ApiTestingBridge = {
   getSpecSync(scope: ApiScope): Promise<ApiSpecSync>;
   deleteSpecAccount(scope: ApiScope): Promise<void>;

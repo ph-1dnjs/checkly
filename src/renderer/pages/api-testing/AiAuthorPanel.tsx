@@ -62,8 +62,9 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
     try {
       for (const draft of result.drafts.filter(item => chosen.includes(item.id))) {
         try {
-          if (draft.issues.length) await bridge.saveScenarioDraft(scope, draft.yaml, {});
-          else { await bridge.saveScenario(scope, draft.yaml, {}); runnable.add(draft.id); }
+          const metadata = draft.groupPath ? { groupPath: draft.groupPath } : undefined;
+          if (draft.issues.length) await bridge.saveScenarioDraft(scope, draft.yaml, {}, undefined, metadata);
+          else { await bridge.saveScenario(scope, draft.yaml, {}, undefined, metadata); runnable.add(draft.id); }
         } catch (e) { failures.push(`${draft.name}: ${errorText(e)}`); }
       }
       let suiteNote = "";
@@ -72,7 +73,7 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
         const skipped = result.suite.scenarioIds.length - ids.length;
         if (ids.length) {
           try {
-            await bridge.saveSuite(scope.projectId, { id: crypto.randomUUID(), name: result.suite.name, scenarioIds: ids, onFailure: "stop" });
+            await bridge.saveSuite(scope.projectId, { id: crypto.randomUUID(), name: result.suite.name, scenarioIds: ids, onFailure: "stop", ...(result.suite.groupPath ? { groupPath: result.suite.groupPath } : {}) });
             suiteNote = ` 스위트 '${result.suite.name}'를 저장했습니다${skipped ? ` (수정이 필요한 ${skipped}개 제외)` : ""}.`;
           } catch (e) { failures.push(`스위트: ${errorText(e)}`); }
         } else suiteNote = " 바로 실행할 수 있는 시나리오가 없어 스위트는 저장하지 않았습니다.";
@@ -112,14 +113,14 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
         <div className="api-actions"><button type="button" onClick={() => void act(async () => { await navigator.clipboard.writeText(problems); setMessage("문제를 복사했습니다. AI에 붙여넣으세요."); })}>문제 복사</button></div>
       </div>}
       <ul>{result.drafts.map(draft => <li key={draft.id} className={draft.issues.length ? "has-issues" : ""}>
-        <label className="api-check-row"><input type="checkbox" aria-label={`${draft.name} 저장`} checked={chosen.includes(draft.id)} disabled={saving} onChange={e => setChosen(e.target.checked ? [...chosen, draft.id] : chosen.filter(id => id !== draft.id))} /><strong>{draft.name}</strong><small>{draft.stepCount}단계 · {draft.issues.length ? "수정 필요 (초안으로 저장)" : "바로 실행 가능"}</small></label>
+        <label className="api-check-row"><input type="checkbox" aria-label={`${draft.name} 저장`} checked={chosen.includes(draft.id)} disabled={saving} onChange={e => setChosen(e.target.checked ? [...chosen, draft.id] : chosen.filter(id => id !== draft.id))} /><strong>{draft.name}</strong><small>{draft.stepCount}단계{draft.groupPath ? ` · ${draft.groupPath.join(" › ")}` : ""} · {draft.issues.length ? "수정 필요 (초안으로 저장)" : "바로 실행 가능"}</small></label>
         {draft.notices.length > 0 && <p className="api-field-help">{draft.notices.join(" · ")}</p>}
         {draft.issues.length > 0 && <ul className="api-ai-author-issues">{draft.issues.map(issue => <li key={issue}>{issue}</li>)}</ul>}
         {draft.executionIssues.length > 0 && <p className="api-field-help">실행 전에 필요: {draft.executionIssues.join(" · ")}</p>}
         <details><summary>내용 보기</summary><pre>{draft.yaml}</pre></details>
       </li>)}</ul>
       {result.suite && <div className="api-ai-author-suite">
-        <label className="api-check-row"><input type="checkbox" checked={saveSuite} disabled={saving} onChange={e => setSaveSuite(e.target.checked)} />스위트 ‘{result.suite.name}’도 저장</label>
+        <label className="api-check-row"><input type="checkbox" checked={saveSuite} disabled={saving} onChange={e => setSaveSuite(e.target.checked)} />스위트 ‘{result.suite.name}’{result.suite.groupPath ? ` (${result.suite.groupPath.join(" › ")})` : ""}도 저장</label>
         <ol>{result.suite.scenarioIds.map(id => <li key={id}>{nameOf(id)}{result.drafts.find(draft => draft.id === id)?.issues.length ? " · 수정 필요라 제외" : ""}</li>)}</ol>
         {result.suite.problems.map(problem => <p key={problem} className="api-field-help">{problem}</p>)}
       </div>}

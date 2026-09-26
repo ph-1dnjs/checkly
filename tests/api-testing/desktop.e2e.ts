@@ -26,9 +26,9 @@ async function main() {
   const url = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
   // What the user's own AI would print in chat: prose around one fenced YAML block.
   const aiOutput = (itemApi: string) => "시나리오입니다.\n```yaml\n" + [
-    "name: AI 로그인\nserver: 기본 API\nsteps:\n  - name: 로그인\n    api: POST /login\n    body: { loginId: tester }\n    extract: [{ pointer: /accessToken, target: globals.accessToken, sensitive: true }]\n",
+    "group: AI/인증\nname: AI 로그인\nserver: 기본 API\nsteps:\n  - name: 로그인\n    api: POST /login\n    body: { loginId: tester }\n    extract: [{ pointer: /accessToken, target: globals.accessToken, sensitive: true }]\n",
     `name: AI 상품 조회\nserver: 기본 API\nsteps:\n  - name: 상품 조회\n    api: '${itemApi}'\n    pathParams: { id: 7 }\n`,
-    "suite: { name: AI 상점 흐름, scenarios: [AI 로그인, AI 상품 조회] }\n",
+    "suite: { name: AI 상점 흐름, group: AI, scenarios: [AI 로그인, AI 상품 조회] }\n",
   ].join("---\n") + "```\n";
   const env = { ...process.env };
   delete env.ELECTRON_RUN_AS_NODE;
@@ -144,6 +144,8 @@ async function main() {
     await shot("ai-result");
     await page.getByRole("button", { name: "선택한 것 저장", exact: true }).click();
     await expect(page.getByRole("tab", { name: "시나리오", exact: true })).toHaveAttribute("aria-selected", "true");
+    // The AI's group became a folder: AI › 인증.
+    await page.locator(".api-sidebar-folder > summary").filter({ hasText: "인증" }).click();
     await expect(page.getByRole("button", { name: /AI 로그인/ })).toBeVisible();
     await expect(page.getByRole("button", { name: /AI 상점 흐름/ })).toBeVisible();
 

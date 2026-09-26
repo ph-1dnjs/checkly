@@ -30,8 +30,13 @@ test("pasted AI output: fences and prose are ignored, --- splits scenarios, the 
   const chat = `시나리오를 만들었습니다.\n\n\`\`\`yaml\n${login}---\n${read}---\nsuite:\n  name: 상점 흐름\n  scenarios: [shop/login, shop/read]\n\`\`\`\n\n확인이 필요한 점: 상품 id는 7로 가정했습니다.`;
   const bundle = splitAiBundle(chat);
   assert.equal(bundle.scenarios.length, 2);
-  assert.match(bundle.scenarios[0], /^id: shop\/login/);
+  assert.match(bundle.scenarios[0].yaml, /^id: shop\/login/);
   assert.deepEqual(bundle.suite, { name: "상점 흐름", scenarios: ["shop/login", "shop/read"] });
+  // group is taken out of the scenario so the scenario syntax stays strict.
+  const grouped = splitAiBundle(`group: 상점/인증\n${login}---\nsuite: { name: 흐름, group: 상점, scenarios: [로그인] }\n`);
+  assert.equal(grouped.scenarios[0].group, "상점/인증");
+  assert.doesNotMatch(grouped.scenarios[0].yaml, /group:/);
+  assert.equal(grouped.suite?.group, "상점");
   // Bare YAML (e.g. from a file) works the same; a broken document is kept for its error.
   const bare = splitAiBundle(`${read}---\nname: [\n`);
   assert.equal(bare.scenarios.length, 2);
@@ -70,6 +75,22 @@ test("scenarios without an id get one, the suite follows names, and name clashes
     assert.match(third.issues.join(), /이름 '상품 조회'이 이번 결과의 다른 시나리오와 겹칩니다/);
     assert.deepEqual(result.suite?.scenarioIds, [first.id, second.id]);
     assert.deepEqual(result.suite?.problems, []);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test("groups from the AI become folders; the guide lists groups and who makes and uses each global", async () => {
+  const { dir, workspace, scope } = await setup();
+  try {
+    await workspace.saveScenario(scope, login, {}, undefined, { groupPath: ["상점", "인증"] });
+    await workspace.saveScenario(scope, read, {});
+    const prompt = await workspace.buildAiPrompt({ scope });
+    assert.ok(prompt.includes("- accessToken (string) ← 만듦: 로그인 / 사용: 상품 조회"));
+    assert.ok(prompt.includes("- 상점/인증") && prompt.includes("- 로그인 [상점/인증]"));
+    const noId = (yaml: string) => yaml.replace(/^id: .*\n/, "").replace("name: 로그인", "name: 관리자 로그인").replace("name: 상품 조회", "name: 상품 다시 조회");
+    const result = await workspace.checkAiScenarios(scope, [`group: 상점/인증\n${noId(login)}`, `group: "a/${"b/".repeat(10)}c"\n${noId(read)}`, "suite: { name: 흐름, group: 상점, scenarios: [관리자 로그인] }\n"].join("---\n"));
+    assert.deepEqual(result.drafts[0].groupPath, ["상점", "인증"]);
+    assert.match(result.drafts[1].issues.join(), /그룹 .*을 쓸 수 없습니다/);
+    assert.deepEqual(result.suite?.groupPath, ["상점"]);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
