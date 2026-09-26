@@ -128,7 +128,7 @@ async function main() {
     await page.getByRole("button", { name: "AI 결과 불러오기", exact: true }).click();
     await expect(page.getByRole("alert")).toContainText("아직 AI 결과가 없습니다");
     // Pasting what the AI printed in chat works too.
-    await page.getByText("AI 답을 직접 붙여넣기", { exact: true }).click();
+    await page.getByText("YAML 직접 붙여넣기·파일 가져오기", { exact: true }).click();
     await page.getByLabel("AI가 만든 YAML", { exact: true }).fill(aiOutput("GET /missing"));
     await page.getByRole("button", { name: "검사", exact: true }).click();
     const aiResult = page.getByRole("region", { name: "AI 작성 결과" });
@@ -196,6 +196,11 @@ async function main() {
     await expect(globals.getByRole("region", { name: "세션 쿠키" })).toContainText("SESSION");
     await expect(globals.getByRole("region", { name: "세션 쿠키" })).not.toContainText("desktop-session");
     await page.keyboard.press("Escape");
+    // Scenarios are deleted from their detail view.
+    await page.getByRole("button", { name: "AI 상품 조회", exact: true }).click();
+    await page.getByRole("button", { name: "시나리오 삭제", exact: true }).click();
+    await page.getByRole("button", { name: "시나리오 삭제 확인", exact: true }).click();
+    await expect(page.getByRole("button", { name: "AI 상품 조회", exact: true })).toHaveCount(0);
     await shot("final");
     await app.close();
     app = await electron.launch({ args: [".", `--user-data-dir=${dir}`], env });
@@ -214,6 +219,7 @@ async function main() {
     await expect(restored.getByRole("button", { name: /GET.*items/ })).toBeVisible();
     await restored.getByRole("tab", { name: "시나리오", exact: true }).click();
     await expect(restored.getByRole("button", { name: /로그인 후 상품 조회/ })).toBeVisible();
+    await expect(restored.getByRole("button", { name: "AI 상품 조회", exact: true })).toHaveCount(0);
     await restored.getByRole("button", { name: "{ } 전역변수", exact: true }).click();
     await expect(restored.getByText("저장된 변수가 없습니다.", { exact: true })).toBeVisible();
   } finally {

@@ -2,8 +2,8 @@ import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import type { Json, Scenario, ValueBinding } from "../../../app/api-testing/shared/scenario";
 import type { ApiCatalog, ApiOperation } from "../../../app/api-testing/shared/workspace";
-import { connectValue, type BindingArea, type RequestArea } from "./scenario-builder-model";
-import { objectValue, responseFields } from "./response-fields";
+import { connectValue, type RequestArea } from "./scenario-builder-model";
+import { responseFields } from "./response-fields";
 
 type RequestValueOption = { pointer: string; type: string };
 export type ScenarioValueTarget = { area: RequestArea; name: string };

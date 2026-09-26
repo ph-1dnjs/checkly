@@ -8,18 +8,12 @@ import { ApiDocumentation } from "./ApiDocumentation";
 import { DeleteAction } from "./DeleteAction";
 import { ProgressBar } from "../../shared/ui/ProgressBar";
 import { LoadingSpinner } from "../../shared/ui/LoadingSpinner";
-import DOMPurify from "dompurify";
-import { Remarkable } from "remarkable";
 import { GlobalVariableSetupLink, useGlobalVariableAccess } from "./global-variable-access";
 import { readLastRun, writeLastRun, type ScenarioLastRun } from "./scenario-last-run";
-import { JsonCode } from "./JsonCode";
 import { SuitePanel } from "./SuitePanel";
 import { globalProducerScenarios } from "./global-options";
 import { ScenarioSidebarTree } from "./ScenarioSidebarTree";
-import { SidebarMetadataFields } from "./SidebarMetadataFields";
-import { operationForStep, runStatusName, ScenarioRunFlow, ScenarioRunResult } from "./ScenarioRunViews";
-
-const descriptionMarkdown = new Remarkable({ html: true, breaks: true });
+import { runStatusName, ScenarioRunFlow, ScenarioRunResult } from "./ScenarioRunViews";
 
 const errorText = (e: unknown) => (e as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, "");
 
@@ -318,62 +312,12 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
     </aside>
     {suiteSelection !== null && !editorMode ? <SuitePanel key={suiteSelection} project={project} scope={scope} bridge={bridge} scenarios={saved} suites={suites} selectedId={suiteSelection} onSuitesChange={setSuites} onSelectedIdChange={setSuiteSelection} onBusy={working} /> : <>
     <article className="api-request-panel api-scenario-detail">
-      {editorMode && current && <DeleteAction key={current.id} label="시나리오 삭제" disabled={busy} description={`‘${current.name}’${current.draft ? " 초안" : ""}을 프로젝트에서 삭제합니다. 현재 편집 내용도 닫힙니다. API 명세와 전역변수는 유지됩니다.`} onDelete={async () => {
+      <header className="api-detail-heading"><div><h2>{preview?.scenario.name ?? current?.name ?? (editorMode ? "새 시나리오" : "시나리오를 선택하세요")}</h2><p className="api-description">{preview?.scenario.description ?? (editorMode ? "API 문서에서 호출 순서를 정하고 요청값·응답 연결을 설정하세요." : "")}</p></div>{current && <div className="api-actions"><button disabled={busy} aria-expanded={editorMode ? editing : undefined} onClick={() => editorMode ? setEditing(!editing) : onEditScenario?.(current)}>{editorMode ? editing ? "편집 닫기" : "편집" : "수정"}</button>{!editorMode && <DeleteAction key={current.id} label="시나리오 삭제" disabled={busy} description={`‘${current.name}’${current.draft ? " 초안" : ""}을 프로젝트에서 삭제합니다. 현재 편집 내용도 닫힙니다. API 명세와 전역변수는 유지됩니다.`} onDelete={async () => {
         await bridge.deleteScenario(project.id, current.id, current.updatedAt);
         setSaved(await bridge.listScenarios(project.id)); setCurrent(null); setSource(""); setScenarioGroupPath([]); setDirty(false); setPreview(null); setResult(null); setBindings({}); setInputs({}); setEditing(editorMode); setNotice("시나리오를 삭제했습니다."); onRunAction(null);
-      }} />}
-      <header className="api-detail-heading"><div><h2>{preview?.scenario.name ?? current?.name ?? (editorMode ? "새 시나리오" : "시나리오를 선택하세요")}</h2><p className="api-description">{preview?.scenario.description ?? (editorMode ? "API 문서에서 호출 순서를 정하고 요청값·응답 연결을 설정하세요." : "")}</p></div>{current && <div className="api-actions"><button disabled={busy} aria-expanded={editorMode ? editing : undefined} onClick={() => editorMode ? setEditing(!editing) : onEditScenario?.(current)}>{editorMode ? editing ? "편집 닫기" : "편집" : "수정"}</button>{!editorMode && <><button type="button" ref={runButton} className="api-primary" disabled={busy || !canUse} onClick={() => void runScenario()}>{running ? "실행 중…" : result ? "다시 실행" : "실행"}</button>{running && <button type="button" onClick={() => void bridge.cancel(scope)}>취소</button>}</>}</div>}</header>
+      }} />}{!editorMode && <><button type="button" ref={runButton} className="api-primary" disabled={busy || !canUse} onClick={() => void runScenario()}>{running ? "실행 중…" : result ? "다시 실행" : "실행"}</button>{running && <button type="button" onClick={() => void bridge.cancel(scope)}>취소</button>}</>}</div>}</header>
       {!current && !editorMode && <div className="api-empty"><h3>실행할 시나리오를 선택하세요</h3><p>왼쪽 목록에서 고르거나 <strong>+ 새 시나리오</strong>로 만드세요. AI 작성 도우미로 만들 수도 있습니다.</p></div>}
-      {current && editorMode && preview && !editing && <button disabled={busy} onClick={() => openComposer(current, preview)}>API 문서에서 편집</button>}
-      {editorMode && editing && <section className="api-source-editor" aria-label="시나리오 편집">
-      {<button type="button" className="api-primary" disabled={busy} onClick={openNewScenario}>API 문서에서 작성</button>}
-      {<>
-      <h3>YAML 편집 · 가져오기</h3><p>YAML을 붙여넣거나 파일로 가져온 뒤 검사하세요.</p>
-      <SidebarMetadataFields key={current?.id ?? "new-scenario-yaml"} groupPath={scenarioGroupPath} existingGroupPaths={availableGroupPaths} disabled={busy} onGroupPathChange={path => { setScenarioGroupPath(path); setDirty(true); }} />
-      <p>비밀번호·토큰은 YAML에 직접 넣지 말고 <code>inputs</code> 또는 <code>globals</code>를 참조하세요.</p>
-      <details><summary>지원 문법 예시</summary><pre>{`id: product/read\nname: 로그인 후 상품 조회\nserver: member\nsteps:\n  - name: 로그인\n    api: POST /login\n    inputs:\n      - { name: password, label: 비밀번호 }\n    body: { loginId: tester, password: "{{inputs.password}}" }\n    extract:\n      - { pointer: /accessToken, target: globals.accessToken, sensitive: true }\n  - name: 상품 상세 조회\n    api: 'GET /items/{id}'\n    auth: globals.accessToken\n    pathParams:\n      id: "{{steps.1.response.body./itemId}}"\n    expect:\n      - { source: status, operator: equals, value: 200 }`}</pre></details>
-      <label>시나리오 YAML<textarea aria-label="시나리오 YAML" rows={14} spellCheck={false} value={source} disabled={busy} onChange={e => { setSource(e.target.value); setDirty(true); setPreview(null); setResult(null); setNotice(""); }} /></label>
-      <div className="api-actions"><button disabled={busy} onClick={async () => { working(true); setError(""); try { const text = await bridge.readScenarioFile(); if (text !== null) { setSource(text); setScenarioGroupPath([]); setDirty(true); setPreview(null); setResult(null); setCurrent(null); setInputs({}); setNotice(""); } } catch (e) { setError(errorText(e)); } finally { working(false); } }}>YAML 파일 가져오기</button><button disabled={busy || !source.trim()} onClick={async () => { working(true); setError(""); setNotice(""); try { await check(); } catch (e) { setError(errorText(e)); setPreview(null); } finally { working(false); } }}>검사·미리보기</button></div>
-      {preview && <>        <fieldset disabled={busy}><legend>시나리오의 서버 연결</legend>{[...new Set(preview.scenario.steps.map(s => s.server))].map(key => <label key={key}>{key}<select aria-label={`서버 연결 ${key}`} value={bindings[key] ?? (project.servers.some(s => s.id === key) ? key : "")} onChange={async e => {
-          const mapping = { ...bindings, [key]: e.target.value }; setBindings(mapping); setDirty(true); setPreview(null); working(true);
-          try { await check(source, mapping); } catch (err) { setError(errorText(err)); } finally { working(false); }
-        }}><option value="" disabled>프로젝트 서버 선택</option>{project.servers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>)}</fieldset></>}
-      </>}
-      </section>}
-      {preview && editorMode && <>
-        {Object.keys(preview.scenario.inputs).length > 0 && <fieldset disabled={busy}><legend>이번 실행의 입력값</legend>{Object.entries(preview.scenario.inputs).map(([key, definition]) => <label key={key}>{key}{definition.required ? " *" : ""} · {definition.type}<input aria-label={`시나리오 입력 ${key}`} data-value-visibility={definition.sensitive ? "sensitive" : undefined} autoComplete="off" type="text" value={inputs[key] ?? ""} onChange={e => setInputs({ ...inputs, [key]: e.target.value })} /></label>)}</fieldset>}
-        <div className="api-actions">{editorMode && <button disabled={busy || checkedSource !== source} onClick={async () => {
-          working(true); setError(""); setNotice("");
-          try { const item = await (canSave ? bridge.saveScenario : bridge.saveScenarioDraft)(scope, source, bindings, current?.id === preview.scenario.id ? current.updatedAt : undefined, { groupPath: scenarioGroupPath }); setCurrent(item); setScenarioGroupPath(item.groupPath ?? []); setDirty(false); setEditing(false); setSaved(await bridge.listScenarios(project.id)); setNotice(canSave ? "시나리오를 저장했습니다." : "초안으로 저장했습니다. 아래 항목을 보완하세요."); } catch (e) { setError(errorText(e)); } finally { working(false); }
-        }}>{canSave ? "시나리오 저장" : "초안 저장"}</button>}<button ref={runButton} className="api-primary" disabled={busy || !canUse} onClick={async () => {
-          working(true); setRunning(true); setError(""); setNotice("");
-          try {
-            const parsed = Object.fromEntries(Object.entries(preview.scenario.inputs).filter(([key, d]) => d.required || inputs[key] !== undefined && inputs[key] !== "").map(([key, d]) => [key, d.type === "string" ? inputs[key] ?? "" : JSON.parse(inputs[key] ?? "")]));
-            const response = await bridge.runScenario(scenarioScope, source, bindings, parsed as Record<string, Json>);
-            rememberResult(response);
-          } catch (e) { if (live.current) { setResult(null); setError(e instanceof SyntaxError ? "숫자·불리언·객체·배열 입력은 JSON 형식으로 입력하세요" : errorText(e)); } }
-          finally { if (live.current) { working(false); setRunning(false); } }
-        }}>{running ? "실행 중…" : result ? "다시 실행" : "시나리오 실행"}</button>{running && <button onClick={() => void bridge.cancel(scope)}>실행 취소</button>}</div>
-
-        {preview.issues.map(issue => <p className="api-warning" key={issue}>{issue}</p>)}
-        <h3 className="api-section-title">호출 단계</h3>
-        <ol className="api-step-preview api-accordion-editor">{preview.scenario.steps.map((s, index) => {
-          const operation = operationForStep(s, catalogs, bindings);
-          const method = (operation?.method ?? ("method" in s.api ? s.api.method : "API")).toUpperCase();
-          const path = operation?.path ?? ("path" in s.api ? s.api.path : s.api.operationId);
-          return <li key={s.id}>
-            <details className={`api-step-accordion api-selected-${method.toLowerCase()}`}>
-              <summary className="api-step-summary"><span>{index + 1}</span><span className="api-selected-method">{method}</span><code>{path}</code><span className="api-step-summary-name">{s.name || operation?.summary || s.id}</span></summary>
-              <div className="api-step-body">
-            {operation?.description && <details className="api-step-description swagger-ui"><summary>API 설명 보기</summary><div className="renderedMarkdown" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(descriptionMarkdown.render(operation.description)) }} /></details>}
-            <details><summary>요청·검증·값 연결</summary><JsonCode value={{ request: s.request, expect: s.expect, extract: s.extract, valueBindings: preview.scenario.valueBindings }} /></details>
-            {s.extract.map(e => <p key={e.target}>응답 {e.pointer ?? e.header} → <code>{e.target}</code></p>)}
-              </div>
-            </details>
-          </li>;
-        })}</ol>
-
-      </>}
+      {editorMode && <div className="api-empty"><h3>시나리오 작성</h3><p>API 문서에서 호출 순서와 요청값을 설정합니다.</p><button type="button" className="api-primary" disabled={busy} onClick={openNewScenario}>API 문서에서 작성</button></div>}
       {preview && !editorMode && <>
         <section className="api-run-summary" aria-label="시나리오 실행 준비">
           {!!preview.executionIssues?.length && <div role="alert" className="api-warning"><strong>실행 전 설정 필요</strong><ul>{preview.executionIssues.map(issue => {

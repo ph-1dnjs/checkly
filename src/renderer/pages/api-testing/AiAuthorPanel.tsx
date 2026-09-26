@@ -97,8 +97,8 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
     {tags.length > 0 && <details className="api-ai-author-tags"><summary>AI가 쓸 API · {selectedTags.length ? `태그 ${selectedTags.length}개` : "전체"}</summary>
       <div>{tags.map(tag => <label key={tag} className="api-check-row"><input type="checkbox" checked={selectedTags.includes(tag)} disabled={busy} onChange={e => { setGuide(null); setSelectedTags(e.target.checked ? [...selectedTags, tag] : selectedTags.filter(item => item !== tag)); }} />{tag}</label>)}</div>
     </details>}
-    <details className="api-ai-author-paste"><summary>AI 답을 직접 붙여넣기</summary>
-      <textarea aria-label="AI가 만든 YAML" rows={10} value={answer} disabled={busy} placeholder="AI가 파일 대신 대화에 출력한 YAML을 그대로 붙여넣으세요." onChange={e => { setAnswer(e.target.value); setResult(null); }} />
+    <details className="api-ai-author-paste"><summary>YAML 직접 붙여넣기·파일 가져오기</summary>
+      <textarea aria-label="AI가 만든 YAML" rows={10} value={answer} disabled={busy} placeholder="AI가 대화에 출력한 답이나 시나리오 YAML을 그대로 붙여넣으세요." onChange={e => { setAnswer(e.target.value); setResult(null); }} />
       <div className="api-actions">
         <button type="button" disabled={busy || !answer.trim()} onClick={() => void check()}>검사</button>
         <button type="button" disabled={busy} onClick={() => void act(async () => { const text = await bridge.readScenarioFile(); if (text !== null && live.current) { setAnswer(text); setResult(null); } })}>YAML 파일 가져오기</button>

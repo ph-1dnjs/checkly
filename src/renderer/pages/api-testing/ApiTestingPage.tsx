@@ -3,7 +3,6 @@ import type { ApiCatalog, ApiProject, ApiSpecSync, ApiTestingBridge, SavedApiSce
 import { ProjectForm } from "./ProjectForm";
 import { DeleteAction } from "./DeleteAction";
 import { ApiDocumentation } from "./ApiDocumentation";
-import { Popover } from "../../shared/ui/Popover";
 import { LoadingSpinner } from "../../shared/ui/LoadingSpinner";
 import { GlobalVariableAccessProvider, GlobalVariableMenu } from "./global-variable-access";
 import { SensitiveValuesProvider } from "./sensitive-values";

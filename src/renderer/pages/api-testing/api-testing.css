@@ -211,8 +211,6 @@ html:has(.api-diagram-dialog[open]) { overflow:hidden; }
 .api-environments button { border:0; padding:4px 12px; }
 .api-environments button[aria-pressed="true"] { background:var(--api-ink); color:var(--ck-color-canvas); }
 .api-masking { font-size:11px; color:var(--api-muted); margin-left:auto; }
-.api-source-editor { border-bottom:1px solid var(--api-border); padding-bottom:12px; }
-.api-source-editor > summary { color:var(--api-primary); font-weight:600; }
 .api-globals-disclosure { border:1px solid var(--api-border); padding:0 12px; margin-bottom:12px; }
 .api-globals-disclosure > summary { color:var(--api-primary); }
 .api-operation-list { display:grid; gap:8px; }
@@ -256,7 +254,6 @@ html:has(.api-diagram-dialog[open]) { overflow:hidden; }
 .api-response-definitions { margin-top:28px; }
 .api-response-definitions p { margin:0 0 10px; }
 .api-section-title { margin-top:28px!important; }
-.api-source-editor { padding:20px; border:1px solid var(--api-border); background:var(--api-surface); border-radius:var(--ck-dim-radius-base); margin-bottom:20px; }
 .api-scenario-detail .api-step-preview { list-style:none; padding:0; counter-reset:step; }
 .api-step-preview li { counter-increment:step; padding:14px 12px; border:0; border-bottom:1px solid var(--ck-color-line-soft); border-radius:0; margin:0; }
 .api-step-preview li > strong::before { content:counter(step) ". "; color:var(--api-muted); }

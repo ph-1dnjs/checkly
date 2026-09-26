@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { Json, Scenario, ScenarioInput, ScenarioInputRequest } from "./scenario";
+import type { Json, Scenario, ScenarioInputRequest } from "./scenario";
 
 export const httpUrl = z.string().url().refine((value) => {
   const url = new URL(value);
