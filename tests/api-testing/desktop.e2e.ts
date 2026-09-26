@@ -77,10 +77,10 @@ async function main() {
     await page.getByRole("button", { name: "세션 변수로 등록 · 연결", exact: true }).click();
     await expect(page.getByRole("dialog", { name: "API 요청 인증", exact: true })).toContainText("연결: globals.apiToken_");
     await expect(page.getByLabel("새 API 인증 토큰", { exact: true })).toHaveValue("");
-    const authVariable = await page.getByLabel("API 인증 전역 변수", { exact: true }).inputValue();
+    const authVariable = await page.getByLabel("API 인증 전역변수", { exact: true }).inputValue();
     await page.getByRole("button", { name: "인증 해제", exact: true }).click();
     await expect(page.getByRole("dialog", { name: "API 요청 인증", exact: true })).toContainText("연결된 인증 없음");
-    await page.getByLabel("API 인증 전역 변수", { exact: true }).selectOption(authVariable);
+    await page.getByLabel("API 인증 전역변수", { exact: true }).selectOption(authVariable);
     await page.getByRole("button", { name: "인증에 연결", exact: true }).click();
     await expect(page.getByRole("dialog", { name: "API 요청 인증", exact: true })).toContainText(`연결: globals.${authVariable}`);
     await shot("api-auth");
@@ -96,14 +96,14 @@ async function main() {
       const data = await readFile(path.join(dir, "api-testing", file), "utf8");
       if (data.includes("docs-test-password") || data.includes(docsAuth) || data.includes("desktop-api-token")) throw new Error("Credentials persisted");
     }
-    await page.getByRole("button", { name: "{ } 전역 변수", exact: true }).click();
-    await expect(page.getByRole("dialog", { name: "{ } 전역 변수", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "{ } 전역변수", exact: true }).click();
+    await expect(page.getByRole("dialog", { name: "{ } 전역변수", exact: true })).toBeVisible();
     await page.keyboard.press("Escape");
-    await expect(page.getByRole("dialog", { name: "{ } 전역 변수", exact: true })).not.toBeVisible();
-    await expect(page.getByRole("button", { name: "{ } 전역 변수", exact: true })).toBeFocused();
+    await expect(page.getByRole("dialog", { name: "{ } 전역변수", exact: true })).not.toBeVisible();
+    await expect(page.getByRole("button", { name: "{ } 전역변수", exact: true })).toBeFocused();
     // Globals: the add form lives in a collapsed "변수 추가" section.
-    const globals = page.getByRole("dialog", { name: "{ } 전역 변수", exact: true });
-    await page.getByRole("button", { name: "{ } 전역 변수", exact: true }).click();
+    const globals = page.getByRole("dialog", { name: "{ } 전역변수", exact: true });
+    await page.getByRole("button", { name: "{ } 전역변수", exact: true }).click();
     await globals.getByText("변수 추가", { exact: true }).click();
     await page.getByLabel("전역변수 이름", { exact: true }).fill("sampleId");
     await page.getByLabel("전역변수 형식", { exact: true }).selectOption("json");
@@ -177,7 +177,7 @@ async function main() {
     await page.getByRole("button", { name: /로그인 후 상품 조회/ }).click();
     await page.getByRole("button", { name: "실행", exact: true }).click();
     const result = page.getByRole("region", { name: "시나리오 실행 결과" });
-    await expect(result).toContainText("passed");
+    await expect(result).toContainText("통과");
     await shot("run-result");
     // The session cookie from login reaches the next request.
     await expect(result).toContainText("SESSION=desktop-session");
@@ -188,7 +188,7 @@ async function main() {
     if (await masking("테스트 상품") === "disc") throw new Error("Ordinary response value is masked");
 
     // The extracted token and the session cookie are shared by the project.
-    await page.getByRole("button", { name: "{ } 전역 변수", exact: true }).click();
+    await page.getByRole("button", { name: "{ } 전역변수", exact: true }).click();
     await shot("globals");
     const tokenRow = globals.locator(".api-global-row").filter({ hasText: "accessToken" });
     await expect(tokenRow).toBeVisible();
@@ -214,7 +214,7 @@ async function main() {
     await expect(restored.getByRole("button", { name: /GET.*items/ })).toBeVisible();
     await restored.getByRole("tab", { name: "시나리오", exact: true }).click();
     await expect(restored.getByRole("button", { name: /로그인 후 상품 조회/ })).toBeVisible();
-    await restored.getByRole("button", { name: "{ } 전역 변수", exact: true }).click();
+    await restored.getByRole("button", { name: "{ } 전역변수", exact: true }).click();
     await expect(restored.getByText("저장된 변수가 없습니다.", { exact: true })).toBeVisible();
   } finally {
     try {

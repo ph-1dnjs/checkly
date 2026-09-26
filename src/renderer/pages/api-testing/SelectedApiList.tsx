@@ -27,11 +27,11 @@ export function SelectedApiList({ scenario, disabled, onChange, onLocate, getLab
         onKeyDown={event => { if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return; event.preventDefault(); const target = scenario.steps[index + (event.key === "ArrowUp" ? -1 : 1)]; if (target) move(step.id, target.id); }}><Icon name="drag_indicator" size={16} /></button>
       <span className="api-selected-number">{index + 1}</span>
       <span className="api-selected-method">{method}</span>
-      <button type="button" className="api-selected-content" title="Swagger에서 위치 보기" aria-label={`${index + 1}단계 ${path} 문서로 이동`} onClick={() => onLocate(step)}>
+      <button type="button" className="api-selected-content" title="API 문서에서 위치 보기" aria-label={`${index + 1}단계 ${path} 문서로 이동`} onClick={() => onLocate(step)}>
         <code className="api-selected-path">{path}</code>
         <span className="api-selected-description">{getLabel(step)}</span>
       </button>
-      <button type="button" className="api-selected-locate" disabled={disabled} title="Swagger에서 위치 보기" aria-label={`${index + 1}단계 API 문서로 이동`} onClick={() => onLocate(step)}><Icon name="link" size={16} /></button>
+      <button type="button" className="api-selected-locate" disabled={disabled} title="API 문서에서 위치 보기" aria-label={`${index + 1}단계 API 문서로 이동`} onClick={() => onLocate(step)}><Icon name="link" size={16} /></button>
       <button type="button" className="api-selected-remove" disabled={disabled} title="선택 취소" aria-label={`${index + 1}단계 선택 취소`} onClick={() => onChange({ ...scenario, steps: scenario.steps.filter(s => s.id !== step.id) })}><Icon name="close" size={16} /></button>
     </li>;
   })}</ol><span role="status" className="api-selected-announcement">{announcement}</span></>;

@@ -4,10 +4,11 @@ import { type Json } from "../../../app/api-testing/shared/scenario";
 import { producedGlobalNames, renderSuiteReport, reportScenario, usesInvalidatedGlobal, type SuiteReport, type SuiteReportScenario } from "../../../app/api-testing/shared/suite-report";
 import { SidebarMetadataFields } from "./SidebarMetadataFields";
 import { useSensitiveValues } from "./sensitive-values";
+import { runStatusName } from "./ScenarioRunViews";
 
 type Props = { project: ApiProject; scope: ApiScope; bridge: ApiTestingBridge; scenarios: SavedApiScenario[]; suites: SavedApiSuite[]; selectedId: string; onSuitesChange: (suites: SavedApiSuite[]) => void; onSelectedIdChange: (id: string) => void; onBusy: (busy: boolean) => void };
 const message = (error: unknown) => (error as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, "");
-const statusName = (status: string) => ({ passed: "통과", failed: "실패", blocked: "설정 필요", cancelled: "취소", skipped: "건너뜀" })[status as "passed"] ?? status;
+const statusName = runStatusName;
 class SuiteDependencyError extends Error {}
 
 export function SuitePanel({ project, scope, bridge, scenarios, suites, selectedId, onSuitesChange, onSelectedIdChange, onBusy }: Props) {
@@ -81,7 +82,7 @@ export function SuitePanel({ project, scope, bridge, scenarios, suites, selected
       const current = await bridge.listScenarios(project.id);
       for (const [index, id] of selected.scenarioIds.entries()) {
         const item = current.find(scenario => scenario.id === id);
-        if (cancelRequested.current) { rows.push({ id, name: item?.name ?? "삭제된 시나리오", status: rows.some(row => row.status === "cancelled") ? "skipped" : "cancelled", durationMs: 0, steps: [], reason: "묶음 실행이 취소되어 호출하지 않았습니다." }); continue; }
+        if (cancelRequested.current) { rows.push({ id, name: item?.name ?? "삭제된 시나리오", status: rows.some(row => row.status === "cancelled") ? "skipped" : "cancelled", durationMs: 0, steps: [], reason: "스위트 실행이 취소되어 호출하지 않았습니다." }); continue; }
         if (rows.some(row => row.status !== "passed") && selected.onFailure === "stop") {
           rows.push({ id, name: item?.name ?? "삭제된 시나리오", status: "skipped", durationMs: 0, steps: [], reason: "앞 시나리오가 통과하지 않아 호출하지 않았습니다." }); continue;
         }
@@ -133,6 +134,6 @@ export function SuitePanel({ project, scope, bridge, scenarios, suites, selected
       {running && <p role="status">{progress || "스위트 실행 준비 중…"}</p>}
       {pending && <form className="api-suite-input" onSubmit={event => void submitInput(event)}><strong>{pending.index + 1}단계 · {pending.label ?? pending.name} 입력</strong><label>{pending.name}{pending.required && " *"}<input autoComplete="off" data-value-visibility={pending.sensitive ? "sensitive" : undefined} type="text" value={inputValue} onChange={event => setInputValue(event.target.value)} /></label><button type="submit">입력하고 계속</button></form>}
       {error && <p className="api-warning" role="alert">{error}</p>}
-      {report && <section className="api-suite-results" aria-label="묶음 실행 결과"><header className="api-run-section-heading"><div><h3>실행 결과 · {statusName(report.status)}</h3><small>{report.scenarios.length}개 시나리오 · {new Date(report.completedAt).toLocaleString()}</small></div><button type="button" disabled={running} onClick={() => void download()}>HTML 리포트 받기</button></header>{report.scenarios.map((row, index) => <details key={`${row.id}:${index}`} open={row.status !== "passed"}><summary>{index + 1}. {row.name} · {statusName(row.status)} · {row.durationMs}ms</summary>{row.reason && <p>{row.reason}</p>}<ol>{row.steps.map((step, stepIndex) => <li key={stepIndex}>{step.reference} · {statusName(step.status)}{step.httpStatus !== undefined && ` · HTTP ${step.httpStatus}`}{step.reason && ` · ${step.reason}`}</li>)}</ol></details>)}</section>}
+      {report && <section className="api-suite-results" aria-label="스위트 실행 결과"><header className="api-run-section-heading"><div><h3>실행 결과 · {statusName(report.status)}</h3><small>{report.scenarios.length}개 시나리오 · {new Date(report.completedAt).toLocaleString()}</small></div><button type="button" disabled={running} onClick={() => void download()}>HTML 리포트 받기</button></header>{report.scenarios.map((row, index) => <details key={`${row.id}:${index}`} open={row.status !== "passed"}><summary>{index + 1}. {row.name} · {statusName(row.status)} · {row.durationMs}ms</summary>{row.reason && <p>{row.reason}</p>}<ol>{row.steps.map((step, stepIndex) => <li key={stepIndex}>{step.reference} · {statusName(step.status)}{step.httpStatus !== undefined && ` · HTTP ${step.httpStatus}`}{step.reason && ` · ${step.reason}`}</li>)}</ol></details>)}</section>}
     </article>;
 }

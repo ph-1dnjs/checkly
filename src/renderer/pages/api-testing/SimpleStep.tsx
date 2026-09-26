@@ -217,12 +217,12 @@ export function SimpleStep({ scenario, index, catalogs, bindings, scope, bridge,
   const hasRequestBody = Boolean(operation && (operation.bodySchema !== undefined || operation.bodyExample !== undefined || operation.bodyRequired));
   const spec = catalogs[bindings[step.server] ?? step.server]?.spec;
   return <div className="api-simple-step">
-    <header className="api-simple-section-heading"><h3>요청</h3><small>Swagger 입력값</small></header>
+    <header className="api-simple-section-heading"><h3>요청</h3></header>
     {!operation ? <p>명세를 확인할 수 없습니다. 고급 설정을 사용하세요.</p> : <>
       {fields.filter(field => field.area !== "body").length > 0 ? <div className="api-request-fields">{fields.filter(field => field.area !== "body").map(field => renderField(field))}</div> : !hasRequestBody && <p>입력 가능한 요청 파라미터가 없습니다.</p>}
       {hasRequestBody && <RequestBodyEditor operation={operation} step={step} update={update} bodyFields={fields.filter(field => field.area === "body")} renderField={renderField} />}
     </>}
-    <header className="api-simple-section-heading"><h3>응답 · 명세 구조</h3><small>선택해서 검증·연결</small></header>
+    <header className="api-simple-section-heading"><h3>응답</h3></header>
     <ResponsePicker operation={operation} spec={spec} actionLabel="설정" selectedPointer={responsePointer} showPreview={false} badges={responseBadges} onSelect={pointer => { setResponsePointer(pointer); setAction(null); setVerificationPointer(pointer); setGlobalName(existingGlobalExtraction(pointer)?.target.slice("globals.".length) || responseGlobalNameSuggestions(operation, pointer)[0]?.name || "response"); setError(""); }} />
     {responsePointer !== null && <div className="api-value-modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) closeResponseModal(); }}>
       <section className="api-value-modal api-response-action-modal" role="dialog" aria-modal="true" aria-label="응답값 사용 설정" onMouseDown={event => event.stopPropagation()}>

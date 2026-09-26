@@ -25,10 +25,10 @@ export function RequestAuthPanel({ scope, bridge }: { scope: ApiScope; bridge: A
     finally { setToken(""); setBusy(false); }
   };
   return <section className="api-auth-panel"><h2>API 요청 인증</h2>
-    <p>현재 프로젝트·환경·서버의 <strong>모든 개별 API 요청</strong>에 Bearer 토큰을 적용합니다. 시나리오와 Swagger 문서용 Basic 인증에는 적용하지 않습니다.</p>
+    <p>현재 프로젝트·환경·서버의 <strong>모든 개별 API 요청</strong>에 Bearer 토큰을 적용합니다. 시나리오와 API 명세 가져오기용 Basic 인증에는 적용하지 않습니다.</p>
     <p role="status">{active ? `연결: globals.${active}` : "연결된 인증 없음"}</p>
     {active && !variables.some(v => v.name === active && v.type === "string") && <p className="api-warning">연결된 변수가 없거나 문자열이 아닙니다. 요청이 차단됩니다.</p>}
-    <fieldset disabled={busy}><legend>기존 전역 변수 사용</legend><label>토큰 변수<select aria-label="API 인증 전역 변수" value={selected} onChange={e => setSelected(e.target.value)}><option value="">변수 선택</option>{variables.filter(v => v.type === "string").map(v => <option key={v.name} value={v.name}>{v.name}</option>)}</select></label>
+    <fieldset disabled={busy}><legend>기존 전역변수 사용</legend><label>토큰 변수<select aria-label="API 인증 전역변수" value={selected} onChange={e => setSelected(e.target.value)}><option value="">변수 선택</option>{variables.filter(v => v.type === "string").map(v => <option key={v.name} value={v.name}>{v.name}</option>)}</select></label>
       <div className="api-actions"><button disabled={!selected} onClick={() => void perform(() => bridge.setRequestAuth(scope, selected))}>인증에 연결</button><button onClick={() => void perform(() => bridge.setRequestAuth(scope, null))}>인증 해제</button><button onClick={() => void perform(async () => {})}>목록 새로고침</button></div>
     </fieldset>
     <form onSubmit={e => { e.preventDefault(); void perform(async () => {

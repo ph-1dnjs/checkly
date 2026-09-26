@@ -169,12 +169,12 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
       }
       setComposeServerId(step.server);
       setActiveStepId(step.id);
-      setNotice("왼쪽 Swagger를 이 단계의 서버로 전환했습니다.");
+      setNotice("왼쪽 API 문서를 이 단계의 서버로 전환했습니다.");
       return;
     }
     const system = systemRef.current;
     const operation = displayCatalog?.operations.find(op => "operationId" in step.api ? op.operationId === step.api.operationId : op.path === step.api.path && op.method.toUpperCase() === step.api.method);
-    if (!system || !operation) { setNotice("현재 Swagger 명세에서 이 API를 찾을 수 없습니다."); return; }
+    if (!system || !operation) { setNotice("현재 API 명세에서 이 API를 찾을 수 없습니다."); return; }
     setActiveStepId(step.id);
     const restoreRequest = () => {
       restoring.current = true;
@@ -336,9 +336,8 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
         if (ownsRunAction) onRunAction(null);
       }}>{composing ? "← 시나리오 목록" : "시나리오 편집"}</button> : onStartScenario ? <button type="button" onClick={onStartScenario}>새 시나리오</button> : null}
       {composing && saved && <button type="button" disabled={saving || dirty} onClick={newScenario}>새 시나리오</button>}
-      {composing && <span role="status">{draft.steps.length}개 단계 · {dirty ? "저장 전" : saved ? "저장됨" : "API를 선택하세요"}</span>}
+      {composing && <span role="status">{draft.steps.length ? `${draft.steps.length}개 단계` : "API를 선택하세요"}{draft.steps.length ? dirty ? " · 저장 안 됨" : saved ? " · 저장됨" : "" : ""}</span>}
       {composing && composeView === "select" && <span className="api-compose-legend"><Icon name="add_link" size={16} />추가 · <Icon name="expand_more" size={16} />상세 열기</span>}
-      {composing && activeStepId && <span role="status">현재 확인: {draft.steps.findIndex(s => s.id === activeStepId) + 1}단계 · 값 설정은 오른쪽 시나리오 편집기에서 진행합니다.</span>}
       {composing && <nav className="api-compose-steps" aria-label="시나리오 작성 단계">
         <button type="button" aria-current={composeView === "select" ? "step" : undefined} disabled={saving} onClick={() => setComposeView("select")} title="API 추가·삭제 및 순서 설정"><span>1</span> API 선택·순서</button>
         <span aria-hidden="true">→</span>
@@ -349,11 +348,11 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
       <button type="button" onClick={() => setConfirmClose(false)}>계속 작성</button>
       <button type="button" onClick={() => { newScenario(); setComposing(false); onCloseComposer?.(); }}>변경사항 버리고 닫기</button>
     </div>}
-    <p className={`api-spec-meta${composing ? " api-compose-meta" : ""}`}>실시간 응답은 원문으로 표시됩니다. 토큰·개인정보가 포함될 수 있으니 복사·화면 공유에 주의하세요. 응답은 자동 저장하지 않습니다.</p>
+    <p className={`api-spec-meta${composing ? " api-compose-meta" : ""}`}>API 문서의 응답은 원문 그대로 보이고 저장되지 않습니다. 화면 공유에 주의하세요.</p>
     <div className={composing ? `api-compose-layout${composeView === "select" ? " api-selection-layout" : " api-edit-layout"}` : undefined}>
     <div className="api-swagger-renderer" hidden={composing && composeView === "edit"} data-scroll="light">
       {composing && project.servers.length > 1 && <div className="api-compose-server-switch">
-        <label>Swagger 서버<select aria-label="Swagger 서버" value={composeServerId} disabled={saving || composeCatalogLoading} onChange={event => {
+        <label>API 문서 서버<select aria-label="Swagger 서버" value={composeServerId} disabled={saving || composeCatalogLoading} onChange={event => {
           const nextServerId = event.target.value;
           setComposeServerId(nextServerId);
           setActiveStepId(null);
@@ -378,11 +377,11 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
         supportedSubmitMethods={submitMethods}
         showExtensions={false}
         showCommonExtensions={false}
-      /> : <div className="api-empty api-compose-server-empty"><h2>Swagger를 가져오세요</h2><p>선택한 서버·환경에 API 명세가 없습니다.</p></div>}
+      /> : <div className="api-empty api-compose-server-empty"><h2>API 명세를 가져오세요</h2><p>선택한 서버·환경에 API 명세가 없습니다.</p></div>}
     </div>
     {composing && composeView === "select" && <aside className="api-selection-basket" aria-label="선택한 API" data-scroll="light">
       <h2>선택한 API · {draft.steps.length}개</h2>
-      {!draft.steps.length && <p>Swagger 행의 체인 아이콘으로 엔드포인트를 추가하세요. 행 본문은 상세 열기입니다.</p>}
+      {!draft.steps.length && <p>API 행의 체인 아이콘으로 추가하고, 행을 누르면 상세가 열립니다.</p>}
       <SelectedApiList scenario={draft} disabled={saving} onChange={changeDraft} onLocate={locateStep} getOperation={step => {
         const stepCatalog = step.server === composeServerId ? displayCatalog : composeCatalogs[step.server] ?? (step.server === scope.serverId ? catalog : null);
         return stepCatalog?.operations.find(operation => "operationId" in step.api ? operation.operationId === step.api.operationId : operation.path === step.api.path && operation.method.toUpperCase() === step.api.method);
@@ -392,7 +391,7 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
     </aside>}
     {composing && composeView === "edit" && <ScenarioSettingsSummary scenario={draft} catalogs={composeCatalogs} projectId={scope.projectId} bridge={bridge} onSelect={setActiveStepId} />}
     {composing && <aside hidden={composeView !== "edit"} className="api-compose-editor" aria-label="Swagger 시나리오 작성" data-scroll="light" onChangeCapture={() => { setDirty(true); setNotice(""); }}>
-      <header><h2>시나리오 작성</h2><span>2단계 · 값 설정·저장</span></header>
+      <header><h2>시나리오 작성</h2></header>
       {onSidebarGroupPathChange && <SidebarMetadataFields groupPath={sidebarGroupPath ?? []} existingGroupPaths={sidebarGroupPaths} disabled={saving} onGroupPathChange={value => { onSidebarGroupPathChange(value); setDirty(true); setNotice(""); }} />}
       <nav className="api-step-jump" aria-label="API 단계 이동">{draft.steps.map((step, index) => {
         const stepCatalog = composeCatalogs[step.server] ?? (step.server === scope.serverId ? catalog : null);

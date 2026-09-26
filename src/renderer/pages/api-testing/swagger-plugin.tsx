@@ -88,7 +88,7 @@ export function createSwaggerPlugin(options: {
           <div className="backdrop-ux" onClick={() => props.authActions.showDefinitions(false)} />
           <div className="modal-ux" role="dialog" aria-label="API 요청 인증">
             <div className="modal-dialog-ux"><div className="modal-ux-inner">
-              <div className="modal-ux-header"><h3>전역 변수 토큰 연결</h3>
+              <div className="modal-ux-header"><h3>전역변수 토큰 연결</h3>
                 <button ref={closeButton} onClick={() => props.authActions.showDefinitions(false)} aria-label="인증 설정 닫기">닫기</button>
               </div>
               <div className="modal-ux-content"><RequestAuthPanel scope={options.scopeRef.current} bridge={options.bridgeRef.current} /></div>

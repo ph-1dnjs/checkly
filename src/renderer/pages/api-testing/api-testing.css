@@ -84,7 +84,7 @@ html:has(.api-diagram-dialog[open]) { overflow:hidden; }
 .api-compose-layout .swagger-ui .opblock-summary-description { font-size:11.5px; }
 .api-compose-layout .swagger-ui .opblock-summary:hover { outline:1px solid var(--ck-color-blue-action); outline-offset:-1px; }
 @media(max-width:900px) { .api-compose-layout,.api-compose-layout.api-selection-layout { grid-template-columns:1fr; grid-template-rows:minmax(0,38%) minmax(0,62%); align-items:stretch; height:auto; } .api-compose-layout.api-selection-layout > .api-selection-basket { grid-column:1; grid-row:1; } .api-compose-layout.api-selection-layout > .api-swagger-renderer { grid-column:1; grid-row:2; } .api-compose-layout > .api-swagger-renderer { max-height:none; padding-bottom:12px; border-bottom:1px solid var(--ck-color-line-strong); } .api-compose-editor { max-height:none; border-left:0; padding:0 12px 32px; } }
-.api-testing-page { --api-badge-warn-tint:#fdf7e9; --api-badge-warn-line:#e0cfa4; --api-badge-assert-tint:#e7f0ea; --api-badge-assert-line:#b9d7c3; --api-badge-assert-ink:#1e7a4a; --api-surface:var(--ck-color-canvas); --api-ink:var(--ck-color-text-ink); --api-body:var(--ck-color-text-body); --api-muted:var(--ck-color-text-mute); --api-border:var(--ck-color-line); --api-primary:var(--ck-color-blue-action); background:transparent; color:inherit; min-width:0; padding:0; font-size:12.5px; }
+.api-testing-page { --api-badge-warn-tint:#fdf7e9; --api-badge-warn-line:#e0cfa4; --api-badge-assert-tint:#e7f0ea; --api-badge-assert-line:#b9d7c3; --api-badge-assert-ink:#1e7a4a; --api-surface:var(--ck-color-canvas); --api-ink:var(--ck-color-text-ink); --api-body:var(--ck-color-text-body); --api-muted:var(--ck-color-text-mute); --api-border:var(--ck-color-line); --api-primary:var(--ck-color-blue-action); background:transparent; color:inherit; min-width:0; padding:0 0 96px; font-size:12.5px; }
 .api-testing-page h1,.api-testing-page h2,.api-testing-page h3 { color:var(--api-ink); margin:0 0 16px; }
 .api-testing-page h1 { font-size:20px; }
 .api-testing-page h2 { font-size:16px; }
@@ -265,14 +265,14 @@ html:has(.api-diagram-dialog[open]) { overflow:hidden; }
 .api-scenario-run .api-request-panel { max-width:980px; }
 .api-scenario-run .api-detail-heading { margin-bottom:24px; padding-bottom:20px; border-bottom:1px solid var(--api-border); }
 .api-scenario-run .api-detail-heading h2 { color:var(--api-ink); }
-.api-run-summary { margin-top:20px; padding:20px 24px 24px; border:1px solid var(--api-border); border-radius:var(--ck-dim-radius-base); background:var(--ck-color-canvas); }
-.api-run-summary-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin:0 0 6px!important; padding:0 0 14px; border-bottom:1px solid var(--ck-color-line-soft); }
+.api-run-summary { margin-top:12px; }
+.api-run-summary-heading { display:flex; align-items:center; justify-content:flex-start; gap:10px; margin:0 0 8px!important; padding:0; }
 .api-run-summary-heading h3 { margin:0; color:var(--api-ink); }
 .api-run-kicker { margin:0 0 5px; color:var(--api-primary); font-size:11px; font-weight:700; letter-spacing:.02em; }
 .api-run-status { flex:none; padding:5px 9px; border:1px solid var(--api-border); border-radius:var(--ck-dim-radius-pill); color:var(--api-muted); font-size:11px; font-weight:700; }
 .api-run-status.is-ready { border-color:var(--ck-color-pass-line); background:var(--ck-color-pass-tint); color:var(--ck-color-pass); }
 .api-run-status.is-draft,.api-run-status.is-review { border-color:color-mix(in srgb, var(--ck-color-wait) 32%, var(--ck-color-canvas)); background:var(--ck-color-surface-hover); color:var(--ck-color-wait-ink); }
-.api-run-summary .api-spec-meta { margin:14px 0; }
+.api-run-summary .api-spec-meta { margin:0; }
 .api-run-notice { margin:16px 0; padding:12px 14px; border-left:3px solid var(--ck-color-wait); background:var(--ck-color-line-faint); color:var(--ck-color-wait-ink); line-height:1.6; }
 .api-run-notice strong { color:var(--ck-color-wait-ink); }
 .api-run-issues { margin:16px 0; padding:0 12px; border:1px solid color-mix(in srgb, var(--ck-color-wait) 32%, var(--ck-color-canvas)); background:var(--ck-color-surface-subtle); }
@@ -318,10 +318,6 @@ html:has(.api-diagram-dialog[open]) { overflow:hidden; }
 .api-run-result-title { display:flex; align-items:center; gap:10px; }
 .api-run-result-title h2 { margin:0; }
 /* Status is an 8px square dot (DESIGN.md). */
-.api-run-result-dot { width:8px; height:8px; border-radius:0; background:var(--ck-color-idle); }
-.api-run-result-dot.is-passed { background:var(--ck-color-pass); }
-.api-run-result-dot.is-failed { background:var(--ck-color-fail); }
-.api-run-result-dot.is-blocked { background:var(--ck-color-wait); }
 .api-run-result-meta { display:flex; align-items:center; gap:12px; color:var(--api-muted); }
 .api-run-result-status { padding:5px 9px; border-radius:var(--ck-dim-radius-pill); font-size:11px; letter-spacing:.04em; }
 .api-run-result-status.is-passed { color:var(--ck-color-pass); background:var(--ck-color-pass-tint); }
@@ -785,6 +781,7 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 .api-sidebar-folder>summary small{flex:none;font-weight:400}
 .api-sidebar-folder-content{display:grid;gap:0;padding:3px 6px 5px 10px;border-top:1px solid var(--ck-color-line-soft)}
 .api-sidebar-folder-content>.api-sidebar-folder{margin:3px 0 3px 8px}
+.api-sidebar-flat{padding:0;border-top:0}
 .api-columns aside button.api-sidebar-entry{display:flex;flex-direction:row;align-items:center;justify-content:space-between;gap:8px;min-width:0;min-height:34px;padding:7px 6px;border:0;border-bottom:1px solid var(--ck-color-line-soft);border-left:3px solid transparent;background:var(--ck-color-canvas)}
 .api-columns aside button.api-sidebar-entry.selected{border-left-color:var(--api-primary)}
 .api-sidebar-entry>strong{min-width:0;overflow-wrap:anywhere;font-size:11px}
@@ -873,3 +870,4 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 .api-swagger-renderer .swagger-ui .btn.authorize svg { fill:var(--ck-color-blue-action); }
 .api-swagger-renderer .swagger-ui :is(input[type=text], input[type=password], textarea, select) { border-color:var(--ck-color-line-strong); }
 .api-swagger-renderer .swagger-ui :is(input[type=text], input[type=password], textarea, select):focus { border-color:var(--ck-color-blue-action); }
+.api-tab-count { margin-left:6px; color:var(--ck-color-text-mute); font-family:var(--ck-font-mono); font-size:10.5px; font-weight:500; }

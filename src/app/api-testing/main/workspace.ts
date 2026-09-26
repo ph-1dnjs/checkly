@@ -512,7 +512,7 @@ export class ApiWorkspace {
       if (auth) {
         const variable = auth.slice("globals.".length);
         if (Object.keys(step.request.headers ?? {}).some(name => name.toLowerCase() === "authorization")) issues.push(`${executionLabel}: 단계 인증과 Authorization 헤더가 중복됩니다`);
-        if (!availableGlobals.has(variable)) executionIssues.push(`${executionLabel}: 인증 전역변수 '${variable}' 값이 없습니다. 전역 변수에서 설정하세요`);
+        if (!availableGlobals.has(variable)) executionIssues.push(`${executionLabel}: 인증 전역변수 '${variable}' 값이 없습니다. 전역변수에서 설정하세요`);
         else {
           const token = this.runner.globals.snapshot(scope.projectId)[variable];
           if (typeof token !== "string" || !/^[A-Za-z0-9._~+/-]+=*$/.test(token)) executionIssues.push(`${executionLabel}: 인증 전역변수 '${variable}'는 Bearer 접두사 없는 토큰 문자열이어야 합니다`);
@@ -546,7 +546,7 @@ export class ApiWorkspace {
       const check = (v: unknown) => {
         if (typeof v === "string") {
           for (const match of v.matchAll(/\{\{globals\.([A-Za-z][A-Za-z0-9_]*)\}\}/g)) {
-            if (!availableGlobals.has(match[1])) executionIssues.push(`${executionLabel}: 전역변수 '${match[1]}' 값이 없습니다. 전역 변수에서 설정하세요`);
+            if (!availableGlobals.has(match[1])) executionIssues.push(`${executionLabel}: 전역변수 '${match[1]}' 값이 없습니다. 전역변수에서 설정하세요`);
           }
           for (const match of v.matchAll(/\{\{(vars|inputs)\.([A-Za-z][A-Za-z0-9_]*)\}\}/g)) {
             const declaredByBinding = match[1] === "vars" && bindingNames.has(match[2]);

@@ -20,7 +20,7 @@ export function ProjectForm({ initial, onSave, onCancel, onDelete }: {
     try { await onSave(parsed.data); } catch (e) { setError((e as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, "")); } finally { setSaving(false); }
   }}>
     <h2>{initial ? "프로젝트 설정" : "새 API 프로젝트"}</h2>
-    <p>서버마다 Swagger를 등록하고, 환경에 맞는 기본 주소로 호출합니다.</p>
+    <p>서버마다 API 명세를 등록하고, 환경에 맞는 기본 주소로 호출합니다.</p>
     <label>프로젝트 이름<input required value={draft.name} onChange={e => setDraft({ ...draft, name: e.target.value })} placeholder="예: 쇼핑몰 QA" /></label>
     <h3>API 서버</h3>
     <p>서버·환경 제거는 저장할 때 적용됩니다. 관련 명세·저장 계정·인증 연결도 삭제됩니다. 시나리오에서 사용하는 서버와, 시나리오가 있는 프로젝트의 환경은 제거할 수 없습니다.</p>
@@ -38,8 +38,8 @@ export function ProjectForm({ initial, onSave, onCancel, onDelete }: {
     </fieldset>)}
     <button type="button" onClick={() => setDraft({ ...draft, environments: [...draft.environments, { id: crypto.randomUUID(), name: "", baseUrls: Object.fromEntries(draft.servers.map(s => [s.id, ""])) }] })}>+ 환경 추가</button>
     {error && <p role="alert">{error}</p>}
-    {!!removed.length && <label key={removed.join(",")}><input type="checkbox" required />{removed.join(", ")} 및 관련 저장 데이터 삭제를 확인했습니다. 환경 삭제 시 해당 전역 변수도 삭제됩니다. 저장 후에는 되돌릴 수 없습니다.</label>}
-    {initial && onDelete && <DeleteAction label="프로젝트 삭제" disabled={saving} description={`‘${initial.name}’의 모든 서버·환경, API 명세, 시나리오·초안, 저장된 문서 계정과 전역 변수를 삭제합니다. 실제 API 서버의 데이터는 삭제하지 않습니다.`} onDelete={onDelete} />}
+    {!!removed.length && <label key={removed.join(",")}><input type="checkbox" required />{removed.join(", ")} 및 관련 저장 데이터 삭제를 확인했습니다. 환경 삭제 시 해당 전역변수도 삭제됩니다. 저장 후에는 되돌릴 수 없습니다.</label>}
+    {initial && onDelete && <DeleteAction label="프로젝트 삭제" disabled={saving} description={`‘${initial.name}’의 모든 서버·환경, API 명세, 시나리오·초안, 저장된 문서 계정과 전역변수를 삭제합니다. 실제 API 서버의 데이터는 삭제하지 않습니다.`} onDelete={onDelete} />}
     <footer><button type="button" disabled={saving} onClick={onCancel}>취소</button><button className="api-primary" disabled={saving}>{saving ? "저장 중…" : "프로젝트 저장"}</button></footer>
   </form>;
 }

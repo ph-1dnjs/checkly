@@ -72,12 +72,12 @@ export function ScenarioBuilder({ source, bindings, project, scope, bridge, onAp
       {(!embedded || visitedSteps.has(step.id)) && <div className="api-step-body">
       {embedded && operation?.description && <details className="api-step-description swagger-ui" aria-label="API 설명"><summary>API 설명 보기</summary>{Markdown ? <Markdown source={operation.description} /> : <p style={{ whiteSpace: "pre-wrap" }}>{operation.description}</p>}</details>}
       <header className="api-actions"><strong>{index + 1}. {method} {path}</strong>{!embedded && <><button type="button" disabled={!index} onClick={() => setDraft(moveStep(draft, index, -1))}>위로</button><button type="button" disabled={index === draft.steps.length - 1} onClick={() => setDraft(moveStep(draft, index, 1))}>아래로</button><button type="button" onClick={() => setDraft({ ...draft, steps: draft.steps.filter((_, i) => i !== index) })}>단계 삭제</button></>}</header>
-      <label>이 단계의 인증<select aria-label={`${index + 1}단계 인증`} value={step.auth ?? ""} onChange={event => updateStep(index, { auth: event.target.value ? event.target.value as typeof step.auth : undefined })}><option value="">기본 인증 사용{draft.auth ? ` · ${draft.auth.slice(8)}` : " · 없음"}</option><option value="none">인증 없음</option>{authNames.map(name => <option key={name} value={`globals.${name}`}>전역변수 · {name}</option>)}</select></label>
+      <label>이 단계의 인증<select aria-label={`${index + 1}단계 인증`} value={step.auth ?? ""} onChange={event => updateStep(index, { auth: event.target.value ? event.target.value as typeof step.auth : undefined })}><option value="">{draft.auth ? `시나리오 인증 따름 · ${draft.auth.slice(8)}` : "시나리오 인증 따름 (없음)"}</option><option value="none">인증 없음</option>{authNames.map(name => <option key={name} value={`globals.${name}`}>전역변수 · {name}</option>)}</select></label>
       {embedded && <SimpleStep scenario={draft} index={index} catalogs={catalogs} bindings={bindings} scope={scope} bridge={bridge} onChange={setDraft} />}
       </div>}
     </details>; })}
     </div></div>
-    {!draft.steps.length && <p>{embedded ? "Swagger 목록에서 첫 API를 클릭하세요." : "위 목록에서 첫 API를 추가하세요."}</p>}
+    {!draft.steps.length && <p>{embedded ? "API 문서 목록에서 첫 API를 클릭하세요." : "위 목록에서 첫 API를 추가하세요."}</p>}
     {error && <p role="alert" className="api-warning">{error}</p>}
     </fieldset>
     {embedded && <details onToggle={event => setYamlOpen(event.currentTarget.open)}><summary>간단한 YAML 보기</summary>{yamlOpen && <pre aria-label="작성 중인 시나리오 YAML">{stringifyScenario(draft, false, step => operationForStep(step, catalogs, bindings), Object.fromEntries(project.servers.map(server => [server.id, server.name])))}</pre>}</details>}

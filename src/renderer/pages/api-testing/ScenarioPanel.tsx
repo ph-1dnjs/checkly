@@ -17,7 +17,7 @@ import { SuitePanel } from "./SuitePanel";
 import { globalProducerScenarios } from "./global-options";
 import { ScenarioSidebarTree } from "./ScenarioSidebarTree";
 import { SidebarMetadataFields } from "./SidebarMetadataFields";
-import { operationForStep, ScenarioRunFlow, ScenarioRunResult } from "./ScenarioRunViews";
+import { operationForStep, runStatusName, ScenarioRunFlow, ScenarioRunResult } from "./ScenarioRunViews";
 
 const descriptionMarkdown = new Remarkable({ html: true, breaks: true });
 
@@ -318,7 +318,7 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
     </aside>
     {suiteSelection !== null && !editorMode ? <SuitePanel key={suiteSelection} project={project} scope={scope} bridge={bridge} scenarios={saved} suites={suites} selectedId={suiteSelection} onSuitesChange={setSuites} onSelectedIdChange={setSuiteSelection} onBusy={working} /> : <>
     <article className="api-request-panel api-scenario-detail">
-      {editorMode && current && <DeleteAction key={current.id} label="시나리오 삭제" disabled={busy} description={`‘${current.name}’${current.draft ? " 초안" : ""}을 프로젝트에서 삭제합니다. 현재 편집 내용도 닫힙니다. API 명세와 전역 변수는 유지됩니다.`} onDelete={async () => {
+      {editorMode && current && <DeleteAction key={current.id} label="시나리오 삭제" disabled={busy} description={`‘${current.name}’${current.draft ? " 초안" : ""}을 프로젝트에서 삭제합니다. 현재 편집 내용도 닫힙니다. API 명세와 전역변수는 유지됩니다.`} onDelete={async () => {
         await bridge.deleteScenario(project.id, current.id, current.updatedAt);
         setSaved(await bridge.listScenarios(project.id)); setCurrent(null); setSource(""); setScenarioGroupPath([]); setDirty(false); setPreview(null); setResult(null); setBindings({}); setInputs({}); setEditing(editorMode); setNotice("시나리오를 삭제했습니다."); onRunAction(null);
       }} />}
@@ -328,7 +328,7 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
       {editorMode && editing && <section className="api-source-editor" aria-label="시나리오 편집">
       {<button type="button" className="api-primary" disabled={busy} onClick={openNewScenario}>Swagger 방식으로 작성</button>}
       {<>
-      <h3>YAML 편집 · 가져오기</h3><p>YAML을 붙여넣거나 파일로 가져온 뒤 서버 연결과 호출 순서를 확인하세요. 엔드포인트 설명과 요청·응답 구조는 연결된 OpenAPI 명세에서 표시합니다. 저장과 실행은 별도 작업입니다.</p>
+      <h3>YAML 편집 · 가져오기</h3><p>YAML을 붙여넣거나 파일로 가져온 뒤 검사하세요.</p>
       <SidebarMetadataFields key={current?.id ?? "new-scenario-yaml"} groupPath={scenarioGroupPath} existingGroupPaths={availableGroupPaths} disabled={busy} onGroupPathChange={path => { setScenarioGroupPath(path); setDirty(true); }} />
       <p>비밀번호·토큰은 YAML에 직접 넣지 말고 <code>inputs</code> 또는 <code>globals</code>를 참조하세요.</p>
       <details><summary>지원 문법 예시</summary><pre>{`id: product/read\nname: 로그인 후 상품 조회\nserver: member\nsteps:\n  - name: 로그인\n    api: POST /login\n    inputs:\n      - { name: password, label: 비밀번호 }\n    body: { loginId: tester, password: "{{inputs.password}}" }\n    extract:\n      - { pointer: /accessToken, target: globals.accessToken, sensitive: true }\n  - name: 상품 상세 조회\n    api: 'GET /items/{id}'\n    auth: globals.accessToken\n    pathParams:\n      id: "{{steps.1.response.body./itemId}}"\n    expect:\n      - { source: status, operator: equals, value: 200 }`}</pre></details>
@@ -382,19 +382,19 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
             const producers = variable ? globalProducerScenarios(variable, saved, preview.scenario.id, scope.environmentId) : [];
             return <li key={issue}>{variable ? <>{stepNumber && Number(stepNumber) <= preview.scenario.steps.length && <><button type="button" className="api-issue-step-link" onClick={() => focusPreview(Number(stepNumber) - 1)}>{stepNumber}단계</button> · </>}<code>{variable}</code> 값 없음 <GlobalVariableSetupLink name={variable} />{producers.length > 0 && <span> · 이 값을 추출하는 시나리오: {producers.join(", ")}. 먼저 실행한 뒤 다시 확인하세요.</span>}</> : issue}</li>;
           })}</ul><button type="button" disabled={busy} onClick={() => void check().catch(e => setError(errorText(e)))}>설정 다시 확인</button></div>}
-          {result && result.status !== "passed" && <div role="alert" className="api-warning"><strong>최근 실행 · {result.status}</strong><ul>{result.steps.map((step, index) => step.error && <li key={step.id}><button type="button" className="api-result-error-link" disabled={running} onClick={() => focusResult(step.id)}>{index + 1}단계 · {step.name}: {step.error}</button></li>)}</ul></div>}
+          {result && result.status !== "passed" && <div role="alert" className="api-warning"><strong>최근 실행 · {runStatusName(result.status)}</strong><ul>{result.steps.map((step, index) => step.error && <li key={step.id}><button type="button" className="api-result-error-link" disabled={running} onClick={() => focusResult(step.id)}>{index + 1}단계 · {step.name}: {step.error}</button></li>)}</ul></div>}
           <header className="api-run-summary-heading"><p className="api-spec-meta">{preview.scenario.steps.length}개 API · {project.environments.find(e => e.id === scope.environmentId)?.name}</p><span className={`api-run-status${current?.draft ? " is-draft" : canUse ? " is-ready" : " is-review"}`}>{current?.draft ? "초안" : canUse ? "실행 가능" : "설정 필요"}</span></header>
           {current?.draft && <p className="api-run-notice">초안은 아직 실행할 수 없습니다. <strong>수정</strong>에서 요청값과 검증을 보완한 뒤 <strong>저장</strong>을 누르세요.</p>}
           {preview.issues.length > 0 && <details className="api-run-issues" open={Boolean(current?.draft)}><summary>보완이 필요한 항목 {preview.issues.length}개</summary><ul>{preview.issues.map(issue => <li key={issue}>{issue}</li>)}</ul></details>}
           {current?.draft && preview.issues.length === 0 && <p className="api-run-notice">현재 검사는 통과했지만 아직 초안으로 저장되어 있습니다. <strong>수정</strong>에서 <strong>저장</strong>을 누르면 실행할 수 있습니다.</p>}
           {Object.keys(preview.scenario.inputs).length > 0 && <fieldset disabled={busy}><legend>실행 입력</legend><p className="api-field-help">실행할 때만 사용하는 값입니다. 저장된 시나리오에는 원문이 남지 않습니다.</p>{Object.entries(preview.scenario.inputs).map(([key, definition]) => <label key={key}>{key}{definition.required ? " *" : ""} · {definition.type}<input aria-label={`시나리오 입력 ${key}`} data-value-visibility={definition.sensitive ? "sensitive" : undefined} autoComplete="off" type="text" value={inputs[key] ?? ""} onChange={e => setInputs({ ...inputs, [key]: e.target.value })} /></label>)}</fieldset>}
         </section>
-        <div className="api-run-view-switch" role="group" aria-label="시나리오 보기"><button type="button" aria-pressed={runView === "preview" || !result} onClick={() => setRunView("preview")}>설정 미리보기</button><button type="button" aria-pressed={runView === "result" && Boolean(result)} disabled={!result || running} onClick={() => setRunView("result")}>최근 실행</button></div>
+        <div className="api-run-view-switch" role="group" aria-label="시나리오 보기"><button type="button" aria-pressed={runView === "preview" || !result} onClick={() => setRunView("preview")}>실행 흐름</button><button type="button" aria-pressed={runView === "result" && Boolean(result)} disabled={!result || running} onClick={() => setRunView("result")}>최근 실행</button></div>
         <div hidden={runView === "result" && Boolean(result)}><ScenarioRunFlow key={current?.id} preview={preview} catalogs={catalogs} bindings={bindings} focusRequest={focusRequest} /></div>
       </>}
       {notice && <p role="status">{notice}</p>}{error && <p className="api-warning" role="alert">{error}</p>}
       {(running || result) && <section hidden={!editorMode && !running && runView === "preview"} className={`api-response${running ? " api-response-running" : ""}`} aria-label={running ? "시나리오 실행 중" : "시나리오 실행 결과"}>
-        {running ? <><h2>실행 중</h2><ProgressBar label={pendingInput ? "입력 대기 중" : "시나리오 실행 중"} detail={pendingInput ? `${pendingInput.index + 1}/${pendingInput.totalSteps}단계 · ${pendingInput.label ?? pendingInput.name}` : preview ? `${preview.scenario.steps.length}개 API · 순서대로 실행 중` : "순서대로 실행 중"} /></> : result && <>{lastRun && <p className="api-spec-meta">마지막 실행 · {new Date(lastRun.completedAt).toLocaleString()} · 실행 당시 요청·응답 · 새로고침하면 결과가 사라집니다</p>}<ScenarioRunResult result={result} preview={lastRun?.preview ?? preview} catalogs={catalogs} bindings={lastRun?.bindings ?? bindings} focusRequest={resultFocusRequest} /></>}
+        {running ? <><h2>실행 중</h2><ProgressBar label={pendingInput ? "입력 대기 중" : "시나리오 실행 중"} detail={pendingInput ? `${pendingInput.index + 1}/${pendingInput.totalSteps}단계 · ${pendingInput.label ?? pendingInput.name}` : preview ? `${preview.scenario.steps.length}개 API · 순서대로 실행 중` : "순서대로 실행 중"} /></> : result && <>{lastRun && <p className="api-spec-meta">마지막 실행 {new Date(lastRun.completedAt).toLocaleString()} · 새로고침하면 사라집니다</p>}<ScenarioRunResult result={result} preview={lastRun?.preview ?? preview} catalogs={catalogs} bindings={lastRun?.bindings ?? bindings} focusRequest={resultFocusRequest} /></>}
       </section>}
     </article>
     {pendingInput && <div className="api-input-modal-backdrop" role="presentation"><form className="api-input-modal" role="dialog" aria-modal="true" aria-labelledby="api-input-title" onSubmit={event => void submitPendingInput(event)}>
