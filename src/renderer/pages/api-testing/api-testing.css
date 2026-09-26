@@ -911,3 +911,19 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 .api-verification-item > summary { cursor:pointer; overflow-wrap:anywhere; }
 .api-verification-item > label { display:grid; gap:4px; margin-top:10px; }
 .api-verification-item > button { margin-top:10px; }
+
+/* Korean text wraps at word boundaries (not mid-word); long tokens like URLs still break. */
+.api-testing-page,.shared-popover-panel { word-break:keep-all; overflow-wrap:break-word; }
+/* Delete confirmation: keep the first line clear of the close button. */
+.api-delete-confirm > p:first-of-type { margin-top:4px; padding-right:36px; }
+.api-delete-confirm > p { line-height:1.6; }
+.api-testing-page .api-delete-confirm button.shared-popover-close { border:0; background:transparent; }
+/* Detail header: the description spans the full width below the title and actions. */
+.api-request-panel header.api-detail-heading { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; column-gap:16px; }
+.api-detail-heading > div:first-child { display:contents; }
+.api-detail-heading > div:first-child > h2 { grid-column:1; grid-row:1; align-self:center; margin-bottom:0; }
+.api-detail-heading > div:first-child > .api-description { grid-column:1 / -1; grid-row:2; margin-top:8px; }
+.api-detail-heading > div:first-child > .api-description:empty { display:none; }
+.api-detail-heading > .api-actions { grid-column:2; grid-row:1; }
+/* Swagger auth dialog header: give the close button room from the edge. */
+.api-swagger-ui .modal-ux-header > button { flex:none; margin:0 20px 0 12px; padding:6px 12px; }

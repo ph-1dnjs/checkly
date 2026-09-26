@@ -7,10 +7,10 @@ export function DeleteAction({ label, description, disabled, onDelete }: {
 }) {
   const [working, setWorking] = useState(false);
   const [error, setError] = useState("");
-  return <Popover label={label} disabled={disabled}>
+  return <Popover label={label} disabled={disabled} panelClassName="api-delete-confirm">
     <p>{description}</p><p>삭제하면 되돌릴 수 없습니다.</p>
     {error && <p role="alert">{error}</p>}
-    <button type="button" disabled={working} onClick={async () => {
+    <button type="button" className="api-danger-action" disabled={working} onClick={async () => {
       setWorking(true); setError("");
       try { await onDelete(); }
       catch (e) { setError((e as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, "")); }
