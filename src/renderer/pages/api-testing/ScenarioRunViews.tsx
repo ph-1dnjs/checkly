@@ -44,8 +44,8 @@ export function ScenarioRunFlow({ preview, catalogs, bindings, focusRequest }: {
           : "operationId" in step.api ? step.api.operationId : `${step.api.method} ${step.api.path}`;
         const [method, ...pathParts] = reference.split(" ");
         const counts = [
-          { area: "request", label: "입력", title: "입력 연결", count: configuredFields(preview.scenario, index).filter(field => !field.direct).length },
-          { area: "response", label: "저장", title: "응답 저장", count: step.extract.length },
+          { area: "request", label: "요청", title: "요청값", count: configuredFields(preview.scenario, index).length },
+          { area: "response", label: "저장", title: "응답에서 저장", count: step.extract.length },
           { area: "expect", label: "검증", title: "검증", count: step.expect?.length ?? 0 },
         ];
         const missingGlobals = new Set((preview.executionIssues ?? []).flatMap(issue => /전역변수 '([A-Za-z][A-Za-z0-9_]*)'/.exec(issue)?.[1] ?? []));
@@ -69,7 +69,7 @@ export function ScenarioRunFlow({ preview, catalogs, bindings, focusRequest }: {
             }}>{item.label} {item.count}</button>)}</span>
           </summary>
           <div className="api-run-step-preview-body">
-            <div className="api-summary-card api-run-step-preview-summary"><ScenarioStepSummary scenario={preview.scenario} stepIndex={index} operation={operation} catalog={catalogs[bindings[step.server] ?? step.server]} missingGlobals={missingGlobals} /></div>
+            <div className="api-step-summary-view"><ScenarioStepSummary scenario={preview.scenario} stepIndex={index} operation={operation} catalog={catalogs[bindings[step.server] ?? step.server]} missingGlobals={missingGlobals} /></div>
           </div>
         </details>;
       })}
@@ -118,8 +118,8 @@ export function ScenarioRunResult({ result, preview, catalogs, bindings, focusRe
           <summary><span className="api-run-result-chevron" aria-hidden="true">▸</span><span className="api-run-result-index">{index + 1}.</span><span className="api-method" data-method={method}>{method}</span><code>{pathParts.join(" ")}</code><small>{runStep.name}</small><strong className="api-run-result-step-status">{runStep.httpStatus ? `HTTP ${runStep.httpStatus}` : runStep.status.toUpperCase()}</strong><span className="api-run-result-duration">{runStep.durationMs}ms</span></summary>
           <div className="api-run-result-step-body">
             {runStep.error && <p className="api-warning">{runStep.error}</p>}
-            <details className="api-run-payload" open><summary>요청</summary>{runStep.request ? <JsonCode value={runStep.request} known={knownSecrets} /> : <p className="api-run-payload-empty">이 단계는 요청을 전송하지 않았습니다.</p>}</details>
-            <details className="api-run-payload" open><summary>응답 {runStep.inputs ? `· 입력 ${runStep.inputs.filter(input => input.provided).length}/${runStep.inputs.length}` : runStep.input ? `· 입력 ${runStep.input.provided ? "완료" : "없음"}` : ""}</summary>{runStep.headers !== undefined || runStep.body !== undefined ? <JsonCode value={{ headers: runStep.headers, body: runStep.body }} known={knownSecrets} /> : <p className="api-run-payload-empty">응답이 없습니다.</p>}</details>
+            <details className="api-run-payload" open><summary>요청{runStep.request && <span className="api-run-payload-meta"><strong>{runStep.request.method.toUpperCase()}</strong> <code>{runStep.request.url}</code></span>}</summary>{runStep.request ? <JsonCode value={{ body: runStep.request.body, headers: runStep.request.headers }} known={knownSecrets} /> : <p className="api-run-payload-empty">이 단계는 요청을 전송하지 않았습니다.</p>}</details>
+            <details className="api-run-payload" open><summary>응답<span className="api-run-payload-meta">{runStep.httpStatus !== undefined && <strong className={runStep.httpStatus < 400 ? "is-ok" : "is-error"}>HTTP {runStep.httpStatus}</strong>}<span>{runStep.durationMs}ms</span>{runStep.inputs ? <span>입력 {runStep.inputs.filter(input => input.provided).length}/{runStep.inputs.length}</span> : runStep.input ? <span>입력 {runStep.input.provided ? "완료" : "없음"}</span> : null}</span></summary>{runStep.headers !== undefined || runStep.body !== undefined ? <JsonCode value={{ body: runStep.body, headers: runStep.headers }} known={knownSecrets} /> : <p className="api-run-payload-empty">응답이 없습니다.</p>}</details>
           </div>
         </details>;
       })}

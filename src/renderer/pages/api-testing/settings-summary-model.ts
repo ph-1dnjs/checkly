@@ -25,7 +25,7 @@ export function configuredFields(scenario: Scenario, index: number) {
         if (from < 0) warning = "출처 삭제됨";
         else if (from >= index) warning = "출처가 앞선 단계여야 합니다";
       }
-      return { key: `${area}:${key}`, path, field: path.join("."), label, global, warning, direct: !global && !variable && !text?.includes("{{") };
+      return { key: `${area}:${key}`, path, field: path.join("."), value, label, global, warning, direct: !global && !variable && !text?.includes("{{") };
     });
   });
 }

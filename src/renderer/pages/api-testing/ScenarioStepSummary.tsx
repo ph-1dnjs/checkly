@@ -6,6 +6,9 @@ import { SummaryJson } from "./SummaryJson";
 import { responseFields } from "./response-fields";
 import { GlobalVariableSetupLink } from "./global-variable-access";
 import { isSensitiveKey } from "../../../app/api-testing/shared/sensitive";
+import { expectedValueText, verificationOperatorLabels, verificationSourceLabels } from "./step-request-model";
+
+const jsonKind = (value: unknown) => value === null ? "null" : typeof value === "string" ? "string" : typeof value === "number" ? "number" : typeof value === "boolean" ? "boolean" : "string";
 
 type ApiOperation = ApiCatalog["operations"][number];
 
@@ -40,7 +43,7 @@ export function ScenarioStepSummary({ scenario, stepIndex, operation, catalog, g
     : <span className={className}>{content}</span>;
   const fieldContent = (field: typeof fields[number]) => {
     const value = field.direct
-      ? <span className={`api-json-value-token${isSensitiveKey(field.field) ? " api-sensitive-value" : ""}`}>{field.label}</span>
+      ? <span className={`api-json-syntax-${jsonKind(field.value)}${isSensitiveKey(field.field) ? " api-sensitive-value" : ""}`}>{JSON.stringify(field.value) ?? "null"}</span>
       : <span className={`api-field-state api-field-state-${field.global ? "global" : field.label === "실행 중 입력" ? "user-input" : "scenario"}`}><strong>{field.global ? "전역변수" : field.label === "실행 중 입력" ? "사용자 입력" : "값 연결"}</strong>{field.label !== "실행 중 입력" && <code>{field.global ?? field.label}</code>}</span>;
     return <>{action(value, "api-json-token api-summary-value", onSelect ? () => onSelect(step.id, field.key) : undefined, `${field.field} 설정`)}{isMissingGlobal(field) ? <GlobalVariableSetupLink name={field.global!} /> : field.warning && <span className="api-response-json-badge is-verify" role="status">{field.warning}</span>}</>;
   };
@@ -51,7 +54,7 @@ export function ScenarioStepSummary({ scenario, stepIndex, operation, catalog, g
       ...Object.keys(operation?.bodyExample && typeof operation.bodyExample === "object" && !Array.isArray(operation.bodyExample) ? operation.bodyExample : {}).map(key => ["body", key]),
       ...(operation?.parameters ?? []).map(parameter => [parameter.location, parameter.name]),
     ]} entries={fields.map(field => ({ path: field.path, content: fieldContent(field) }))} /></>}
-    {!!step.extract.length && <><h4 data-summary-area="response" tabIndex={-1}>응답</h4><SummaryJson knownPaths={operation ? responseFields(operation.responses, catalog?.spec).filter(field => /^2/.test(field.status)).map(field => field.pointer.split("/").slice(1).map(part => part.replace(/~1/g, "/").replace(/~0/g, "~"))) : []} entries={step.extract.map(extract => {
+    {!!step.extract.length && <><h4 data-summary-area="response" tabIndex={-1}>응답에서 저장</h4><SummaryJson knownPaths={operation ? responseFields(operation.responses, catalog?.spec).filter(field => /^2/.test(field.status)).map(field => field.pointer.split("/").slice(1).map(part => part.replace(/~1/g, "/").replace(/~0/g, "~"))) : []} entries={step.extract.map(extract => {
       const isGlobal = extract.target.startsWith("globals.");
       const target = isGlobal ? extract.target.slice(8) : extract.target.replace(/^vars\./, "");
       const responseField = extract.pointer !== undefined ? `response:${extract.source ?? "body"}:${extract.pointer}` : `response:header:${extract.header ?? "응답"}`;
@@ -62,6 +65,10 @@ export function ScenarioStepSummary({ scenario, stepIndex, operation, catalog, g
         : <span className={badgeClass} title={`${badgeLabel} → ${target}`}>{badgeLabel} → <code>{target}</code></span>;
       return { path: extract.pointer !== undefined ? extract.pointer.split("/").slice(1).map(part => part.replace(/~1/g, "/").replace(/~0/g, "~")) : [extract.header ?? "응답"], content };
     })} /></>}
-    {!!step.expect?.length && <><h4 data-summary-area="expect" tabIndex={-1}>검증</h4>{step.expect.map((expect, index) => <div className="api-summary-entry" key={index}>{action(<>{expect.pointer ?? expect.header ?? expect.source} · {expect.operator} <span className="api-json-value-token">{JSON.stringify(expect.value)}</span></>, "api-summary-entry-value", onSelect ? () => onSelect(step.id) : undefined, "검증 설정")}</div>)}</>}
+    {!!step.expect?.length && <><h4 data-summary-area="expect" tabIndex={-1}>검증</h4><ul className="api-summary-checks">{step.expect.map((expect, index) => <li key={index}>{action(<>
+      <span className="api-summary-check-target">{expect.source === "status" ? verificationSourceLabels.status : <code>{expect.source === "header" ? expect.header : expect.pointer || "전체 응답"}</code>}</span>
+      <span className="api-summary-check-operator">{verificationOperatorLabels[expect.operator]}</span>
+      {expect.operator !== "exists" && <code className={`api-json-syntax-${jsonKind(expect.value)}`}>{expectedValueText(expect.value)}</code>}
+    </>, "api-summary-check", onSelect ? () => onSelect(step.id) : undefined, "검증 설정")}</li>)}</ul></>}
   </>;
 }
