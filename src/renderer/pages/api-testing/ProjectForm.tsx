@@ -30,6 +30,7 @@ export function ProjectForm({ initial, onSave, onCancel, onDelete }: {
     try { await onSave(parsed.data); } catch (e) { setError((e as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, "")); } finally { setSaving(false); }
   }}>
     <header className="api-project-form-heading">
+      <button type="button" className="api-project-back" disabled={saving} onClick={onCancel}>← 돌아가기</button>
       <h2>{initial ? "프로젝트 설정" : "새 API 프로젝트"}</h2>
       <p>서버마다 API 명세를 등록하고, 실행할 때 고른 환경의 기본 주소로 호출합니다.</p>
     </header>

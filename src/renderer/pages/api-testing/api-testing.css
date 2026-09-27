@@ -1034,3 +1034,5 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 .api-project-form-footer .shared-popover > button { color:var(--ck-color-fail-ink); }
 .api-project-form-actions { display:flex; gap:8px; margin-left:auto; }
 .api-project-section > h3 { margin:0!important; }
+.api-project-form-heading { display:grid; justify-items:start; gap:4px; }
+.api-project-form-heading > .api-project-back { margin-bottom:8px; }
