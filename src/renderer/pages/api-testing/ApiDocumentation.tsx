@@ -1,7 +1,7 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from "react";
 import SwaggerUI from "swagger-ui-react";
 import "swagger-ui-react/swagger-ui.css";
-import { scenarioStepLabel, type Json, type Scenario } from "../../../app/api-testing/shared/scenario";
+import type { Scenario } from "../../../app/api-testing/shared/scenario";
 import type { ApiCatalog, ApiScope, ApiTestingBridge, ApiSidebarMetadata } from "../../../app/api-testing/shared/workspace";
 import { SelectedApiList } from "./SelectedApiList";
 import { useRunAction, type OnRunAction } from "./useRunAction";
@@ -66,9 +66,6 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
   const [composeView, setComposeView] = useState<"select" | "edit">("select");
   const [activeStepId, setActiveStepId] = useState<string | null>(null);
   const [Markdown, setMarkdown] = useState<ComponentType<any> | undefined>();
-  const restoring = useRef(false);
-  const rawBodies = useRef(new Map<string, string>());
-  const editRef = useRef<(pathMethod: string[], area: string, name: string, value: unknown) => void>(() => {});
   const composeToolbar = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!composing) return;
@@ -105,7 +102,7 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
     onNewScenario?.();
     const url = new URL(window.location.href);
     if (url.hash) { url.hash = ""; window.history.replaceState(window.history.state, "", url.href); }
-    setActiveStepId(null); rawBodies.current.clear();
+    setActiveStepId(null);
     setComposeView("select");
     setDraft({ version: 1, id: `scenario-${crypto.randomUUID()}`, name: "", onFailure: "stop", inputs: {}, vars: {}, valueBindings: [], steps: [] });
     setSaved(null); setDirty(false); setIssues([]); setNotice(""); setConfirmClose(false);
@@ -131,34 +128,6 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
   const bridgeRef = useRef(bridge);
   const scopeRef = useRef(scope);
   const systemRef = useRef<SwaggerSystem | null>(null);
-  editRef.current = (pathMethod, area, name, value) => {
-    if (restoring.current || !composing || !activeStepId || !pathMethod) return;
-    const current = draft.steps.find(s => s.id === activeStepId);
-    if (!current) return;
-    const op = displayCatalog?.operations.find(o => "operationId" in current.api ? o.operationId === current.api.operationId : o.path === current.api.path && o.method.toUpperCase() === current.api.method);
-    if (!op || op.path !== pathMethod[0] || op.method.toLowerCase() !== pathMethod[1]?.toLowerCase()) return;
-    const request = { ...current.request };
-    if (area === "body") {
-      if (typeof value !== "string") return;
-      rawBodies.current.set(current.id, value);
-      try {
-        const trimmed = value.trim();
-        request.body = trimmed ? /^\{\{(?:inputs|vars|globals)\.[A-Za-z][A-Za-z0-9_]*\}\}$/.test(trimmed) ? trimmed : JSON.parse(trimmed) : undefined;
-      }
-      catch { setDirty(true); setNotice("본문 JSON 문법을 확인하세요. 입력 내용은 이 단계에 유지됩니다."); return; }
-    } else {
-      const key = area === "path" ? "pathParams" : area === "query" ? "query" : area === "header" ? "headers" : area === "cookie" ? "cookies" : null;
-      if (!key || !name) return;
-      const values: Record<string, Json> = { ...request[key] };
-      const plain = value && typeof (value as any).toJS === "function" ? (value as any).toJS() : value;
-      if (plain === undefined) delete values[name]; else values[name] = plain as Json & string;
-      if (key === "headers") request.headers = Object.fromEntries(Object.entries(values).map(([key, value]) => [key, String(value)]));
-      else if (key === "cookies") request.cookies = values;
-      else request[key] = values;
-    }
-    setDraft(previous => ({ ...previous, steps: previous.steps.map(s => s.id === current.id ? { ...s, request } : s) }));
-    setDirty(true);
-  };
   const locateCleanup = useRef<(() => void) | null>(null);
   useEffect(() => () => locateCleanup.current?.(), []);
   const locateStep = (step: Scenario["steps"][number]) => {
@@ -177,16 +146,6 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
     const operation = displayCatalog?.operations.find(op => "operationId" in step.api ? op.operationId === step.api.operationId : op.path === step.api.path && op.method.toUpperCase() === step.api.method);
     if (!system || !operation) { setNotice("현재 API 명세에서 이 API를 찾을 수 없습니다."); return; }
     setActiveStepId(step.id);
-    const restoreRequest = () => {
-      restoring.current = true;
-      try {
-        for (const param of operation.parameters) {
-          const area = param.location === "path" ? "pathParams" : param.location === "query" ? "query" : param.location === "header" ? "headers" : param.location === "cookie" ? "cookies" : null;
-          if (area) system.specActions.changeParam([operation.path, operation.method.toLowerCase()], param.name, param.location, step.request[area]?.[param.name]);
-        }
-        system.oas3Actions?.setRequestBodyValue({ pathMethod: [operation.path, operation.method.toLowerCase()], value: rawBodies.current.get(step.id) ?? (step.request.body === undefined ? "" : JSON.stringify(step.request.body, null, 2)) });
-      } finally { restoring.current = false; }
-    };
     system.layoutActions.updateFilter("");
     for (const tag of operation.tags?.length ? operation.tags : [operation.tag]) system.layoutActions.show(["operations-tag", tag], true);
     const root = document.querySelector(".api-swagger-renderer");
@@ -198,9 +157,6 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
       highlighted = target;
       const tag = target.dataset.checklyDeepLinkTag, id = target.dataset.checklyDeepLinkOperation;
       if (tag && id) { system.layoutActions.show(["operations", tag, id], true); updateDeepLinkHash(["operations", tag, id], true); }
-      // Swagger mounts the request editor only after the operation opens. Restoring
-      // before that mount gets replaced by the example value on first selection.
-      requestAnimationFrame(restoreRequest);
       target.scrollIntoView({ block: "center" });
       target.classList.add("api-located-operation");
       return true;
@@ -235,7 +191,7 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
       },
     });
   };
-  const plugin = useMemo(() => createSwaggerPlugin({ catalogRef, baseUrlRef, bridgeRef, scopeRef, systemRef, selectedRef, busyRef, publishSelection, setBusy: onBusy, composingRef, editRef }), []);
+  const plugin = useMemo(() => createSwaggerPlugin({ catalogRef, baseUrlRef, bridgeRef, scopeRef, systemRef, selectedRef, busyRef, publishSelection, setBusy: onBusy, composingRef }), []);
   const plugins = useMemo(() => [plugin], [plugin]);
   const onComplete = useMemo(() => (value: unknown) => {
     systemRef.current = value as SwaggerSystem;
@@ -378,19 +334,20 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
         validatorUrl={null}
         defaultModelsExpandDepth={-1}
         defaultModelExpandDepth={1}
-        supportedSubmitMethods={submitMethods}
+        // While composing the docs are for reading and adding APIs; values are set in step 2.
+        supportedSubmitMethods={composing ? [] : submitMethods}
         showExtensions={false}
         showCommonExtensions={false}
       /> : <div className="api-empty api-compose-server-empty"><h2>API 명세를 가져오세요</h2><p>선택한 서버·환경에 API 명세가 없습니다.</p></div>}
     </div>
     {composing && composeView === "select" && <aside className="api-selection-basket" aria-label="선택한 API" data-scroll="light">
       <h2>선택한 API · {draft.steps.length}개</h2>
-      <p className="api-compose-legend"><Icon name="add" size={14} />로 추가 · <Icon name="expand_more" size={14} />로 상세 열기</p>
+      <p className="api-compose-legend"><Icon name="add" size={14} />로 추가 · <Icon name="expand_more" size={14} />로 상세 열기 · 요청값은 2단계에서 설정</p>
       <SelectedApiList scenario={draft} disabled={saving} onChange={changeDraft} onLocate={locateStep} getOperation={step => {
         const stepCatalog = step.server === composeServerId ? displayCatalog : composeCatalogs[step.server] ?? (step.server === scope.serverId ? catalog : null);
         return stepCatalog?.operations.find(operation => "operationId" in step.api ? operation.operationId === step.api.operationId : operation.path === step.api.path && operation.method.toUpperCase() === step.api.method);
       }} />
-      {activeStepId && draft.steps.some(step => step.id === activeStepId) && <p className="api-field-help">{draft.steps.findIndex(step => step.id === activeStepId) + 1}단계를 문서에서 보는 중입니다. 문서에서 입력한 요청값도 이 단계에 반영됩니다.</p>}
+      {activeStepId && draft.steps.some(step => step.id === activeStepId) && <p className="api-field-help">{draft.steps.findIndex(step => step.id === activeStepId) + 1}단계를 문서에서 보는 중입니다.</p>}
       {notice && <p role="status">{notice}</p>}
       <button type="button" className="api-primary" disabled={saving || !draft.steps.length} onClick={() => setComposeView("edit")}>선택 및 순서 설정 완료</button>
     </aside>}
@@ -404,10 +361,6 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
         runAfterSave.current = false;
         setSaving(true); setNotice(""); setIssues([]); setProducerScenarios([]);
         try {
-          for (const step of draft.steps) {
-            const raw = rawBodies.current.get(step.id);
-            if (raw?.trim() && !/^\{\{(?:inputs|vars|globals)\.[A-Za-z][A-Za-z0-9_]*\}\}$/.test(raw.trim())) { try { JSON.parse(raw); } catch { throw new Error(`${scenarioStepLabel(step)}: Swagger에서 입력한 본문 JSON 문법을 확인하세요.`); } }
-          }
           const preview = await bridge.previewScenario(scope, yaml, {});
           const checks = [...preview.issues, ...(preview.executionIssues ?? [])];
           setIssues(checks);

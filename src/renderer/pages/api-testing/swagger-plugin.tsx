@@ -18,7 +18,6 @@ export function createSwaggerPlugin(options: {
   publishSelection: (selection: Selection | null) => void;
   setBusy: (busy: boolean) => void;
   composingRef: MutableRef<boolean>;
-  editRef: MutableRef<(pathMethod: string[], area: string, name: string, value: unknown) => void>;
 }) {
   return () => ({
     fn: {
@@ -161,12 +160,6 @@ export function createSwaggerPlugin(options: {
       },
       spec: {
         wrapActions: {
-          changeParamByIdentity: (original: (...args: any[]) => unknown) => (...args: any[]) => {
-            const result = original(...args);
-            const param = args[1];
-            options.editRef.current(args[0], textValue(mapValue(param, "in")), textValue(mapValue(param, "name")), args[2]);
-            return result;
-          },
           execute: (original: (args: Record<string, unknown>) => unknown, system: SwaggerSystem) => (args: Record<string, unknown> = {}) => {
             if (options.composingRef.current) return;
             const path = textValue(args.path);
@@ -199,13 +192,6 @@ export function createSwaggerPlugin(options: {
           },
         },
       },
-      oas3: { wrapActions: {
-        setRequestBodyValue: (original: (args: any) => unknown) => (args: any) => {
-          const result = original(args);
-          options.editRef.current(args.pathMethod, "body", "", args.value);
-          return result;
-        },
-      } },
     },
   });
 }

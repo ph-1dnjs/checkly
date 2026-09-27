@@ -158,6 +158,10 @@ async function main() {
     await expect(page.getByRole("button", { name: "{ } 전역변수", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "시나리오에 API 추가", exact: true }).nth(0).click();
     await page.getByRole("button", { name: "시나리오에 API 추가", exact: true }).nth(1).click();
+    // Step 1 docs are for reading and adding: no Try it out that would silently rewrite step values.
+    await page.locator(".api-selected-content").first().click();
+    await expect(page.locator(".api-swagger-renderer .opblock.is-open")).toHaveCount(1);
+    await expect(page.getByRole("button", { name: "Try it out", exact: true })).toHaveCount(0);
     // Reorder by dragging the whole row, then back with the keyboard.
     const selectedRows = page.locator(".api-selected-row");
     await expect(selectedRows.nth(0)).toContainText("/login");
