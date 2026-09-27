@@ -16,9 +16,12 @@ API 테스트 기능 문서는 이 디렉터리에서 관리합니다. 디자인
 
 | 구분 | 위치 | 책임 |
 | --- | --- | --- |
-| 페이지 | `src/renderer/pages/api-testing/ApiTestingPage.tsx` | 프로젝트·환경·탭·명세 |
-| API 문서 | `src/renderer/pages/api-testing/ApiDocumentation.tsx` | Swagger UI·검색·인증·개별 호출 |
-| 시나리오 | `src/renderer/pages/api-testing/ScenarioPanel.tsx`, `ScenarioBuilder.tsx` | YAML·시각 편집·결과 |
+| 페이지 | `src/renderer/pages/api-testing/ApiTestingPage.tsx` | 프로젝트·환경·탭 |
+| 명세 가져오기 | `SpecSourcePanel.tsx` | 명세 요약 한 줄·설정 폼·동기화 후 시나리오 영향(사라진 API·바뀐 제목) |
+| API 문서 | `ApiDocumentation.tsx` | Swagger UI·검색·인증·개별 호출, 시나리오 작성 1단계(보기·API 추가) |
+| 시나리오 | `ScenarioPanel.tsx`, `ScenarioBuilder.tsx`, `SimpleStep.tsx` | 목록·상세·실행, 작성 2단계(값·연결·검증) |
+| 실행 결과 | `ScenarioRunViews.tsx`, `SummaryJson.tsx`, `YamlCode.tsx` | 실행 흐름·설정 요약·검증별 결과·YAML 보기 |
+| 공용 조각 | `SortableList.tsx`, `ApiPicker.tsx`, `ApiReplaceModal.tsx`, `RunInputModal.tsx` | 드래그 정렬·API 선택·API 바꾸기·실행 중 입력 |
 | 설명 | `src/renderer/pages/api-testing/DescriptionMarkdown.tsx` | 설명 토글·Mermaid 모달 |
 | 웹 개발 진입점 | `src/renderer/app/api-web/` | 개발용 앱 조립·웹 브리지 |
 | 공통 UI | `src/renderer/shared/ui/` | Popover·ProgressBar·LoadingSpinner |
