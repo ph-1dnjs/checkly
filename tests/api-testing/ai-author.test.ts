@@ -105,6 +105,11 @@ test("the guide asks what to test, points at the schema and result files, and hi
     assert.ok(prompt.includes("- 상점 (API 1개)") && prompt.includes("id는 쓰지 않습니다") && prompt.includes("시나리오 name]"));
     const catalog = await readFile(catalogFile, "utf8");
     assert.ok(catalog.includes("/items/{id}") && !catalog.includes('"loginId"'));
+    // Picking single operations ("<serverId> <METHOD path>") narrows the same way.
+    await workspace.buildAiPrompt({ scope, operations: [`${project.servers[0].id} POST /login`] });
+    const picked = await readFile(catalogFile, "utf8");
+    assert.ok(picked.includes('"loginId"') && !picked.includes("/items/{id}"));
+    await workspace.buildAiPrompt({ scope, tags: ["item"] });
     for (const secret of ["global-secret-value", "private-base.example.com", "example-secret"]) {
       assert.equal(prompt.includes(secret), false, secret);
       assert.equal(catalog.includes(secret), false, secret);

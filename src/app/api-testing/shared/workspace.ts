@@ -65,8 +65,8 @@ export type ApiScenarioInputSubmission = {
   name: string;
   value: Json;
 };
-/** Guide for the user's own AI; tags narrow the APIs it may use. */
-export type ApiAiGuideRequest = { scope: ApiEnvironmentScope; tags?: string[] };
+/** Guide for the user's own AI; tags or picked operations ("<serverId> <METHOD path>") narrow the APIs it may use. */
+export type ApiAiGuideRequest = { scope: ApiEnvironmentScope; tags?: string[]; operations?: string[] };
 /** issues keep a draft from running; notices are warnings only (e.g. a saved scenario has the same name). */
 export type ApiAiDraft = { id: string; name: string; yaml: string; stepCount: number; issues: string[]; notices: string[]; executionIssues: string[]; groupPath?: string[] };
 export type ApiAiImportResult = { drafts: ApiAiDraft[]; suite: { name: string; scenarioIds: string[]; problems: string[]; groupPath?: string[] } | null };

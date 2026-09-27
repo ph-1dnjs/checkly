@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { YamlCode } from "./YamlCode";
+import { ApiPicker, type PickableOperation } from "./ApiPicker";
 import type { ApiAiImportResult, ApiCatalog, ApiEnvironmentScope, ApiProject, ApiTestingBridge, SavedApiScenario } from "../../../app/api-testing/shared/workspace";
 
 const errorText = (error: unknown) => (error as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, "");
@@ -12,9 +13,10 @@ const errorText = (error: unknown) => (error as Error).message.replace(/^Error i
 export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
   project: ApiProject; scope: ApiEnvironmentScope; bridge: ApiTestingBridge; onBusy: (busy: boolean) => void; onSaved: (first?: SavedApiScenario) => void;
 }) {
-  const [tags, setTags] = useState<string[]>([]);
+  // Every operation the AI could use, and the ones picked for it (empty = all).
+  const [operations, setOperations] = useState<PickableOperation[]>([]);
+  const [picked, setPicked] = useState<string[]>([]);
   const [specWarnings, setSpecWarnings] = useState<string[]>([]);
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [guide, setGuide] = useState<string | null>(null);
   const [answer, setAnswer] = useState("");
   const [checking, setChecking] = useState(false);
@@ -29,10 +31,18 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
   useEffect(() => { live.current = true; return () => { live.current = false; }; }, []);
   useEffect(() => {
     void Promise.all(project.servers.map(server => bridge.getCatalog({ ...scope, serverId: server.id }).catch(() => null)))
-      .then(catalogs => { if (live.current) { setSpecWarnings(specWarningsFor(project, catalogs)); setTags([...new Set(catalogs.flatMap(catalog => catalog?.operations.flatMap(operation => [operation.tag, ...(operation.tags ?? [])]) ?? []))].filter(Boolean).sort()); } });
+      .then(catalogs => {
+        if (!live.current) return;
+        setSpecWarnings(specWarningsFor(project, catalogs));
+        setOperations(project.servers.flatMap((server, index) => (catalogs[index]?.operations ?? []).map(operation => ({
+          id: `${server.id} ${operation.key}`, method: operation.method, path: operation.path, summary: operation.summary,
+          tags: [...new Set([operation.tag, ...(operation.tags ?? [])].filter(Boolean))],
+          ...(operation.warnings.length ? { unavailable: operation.warnings.join(" · ") } : {}),
+        }))));
+      });
   }, []);
   const busy = checking || saving;
-  const guideRequest = () => ({ scope, ...(selectedTags.length ? { tags: selectedTags } : {}) });
+  const guideRequest = () => ({ scope, ...(picked.length ? { operations: picked } : {}) });
   const act = async (task: () => Promise<void>) => { setError(""); setMessage(""); try { await task(); } catch (e) { if (live.current) setError(errorText(e)); } };
 
   const check = async (load?: () => Promise<string | null>) => {
@@ -98,8 +108,8 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
       <button type="button" disabled={busy} onClick={() => void loadResult()}>{checking ? "검사 중…" : "AI 결과 불러오기"}</button>
     </div>
     {guide !== null && <pre className="api-ai-author-guide" aria-label="AI 가이드 내용">{guide}</pre>}
-    {tags.length > 0 && <details className="api-ai-author-tags"><summary>AI가 쓸 API · {selectedTags.length ? `태그 ${selectedTags.length}개` : "전체"}</summary>
-      <div>{tags.map(tag => <label key={tag} className="api-check-row"><input type="checkbox" checked={selectedTags.includes(tag)} disabled={busy} onChange={e => { setGuide(null); setSelectedTags(e.target.checked ? [...selectedTags, tag] : selectedTags.filter(item => item !== tag)); }} />{tag}</label>)}</div>
+    {operations.length > 0 && <details className="api-ai-author-tags"><summary>AI가 쓸 API · {picked.length ? `${picked.length}개 선택` : `전체 ${operations.filter(operation => !operation.unavailable).length}개`}</summary>
+      <ApiPicker operations={operations} picked={picked} disabled={busy} onChange={next => { setGuide(null); setPicked(next); }} />
     </details>}
     <details className="api-ai-author-paste"><summary>YAML 직접 붙여넣기·파일 가져오기</summary>
       <textarea aria-label="AI가 만든 YAML" rows={10} value={answer} disabled={busy} placeholder="AI가 대화에 출력한 답이나 시나리오 YAML을 그대로 붙여넣으세요." onChange={e => { setAnswer(e.target.value); setResult(null); }} />

@@ -32,6 +32,7 @@ function migrateSidebarMetadata<T extends Record<string, unknown>>(item: T): T &
 }
 const aiGuideRequestSchema = z.object({
   scope: environmentScopeSchema, tags: z.array(z.string().max(200)).max(100).optional(),
+  operations: z.array(z.string().max(400)).max(2000).optional(),
 }).strict();
 /** "회원/인증" → ["회원", "인증"], checked with the same rules as the sidebar folders. */
 function aiGroupPath(group?: string): { path?: string[]; error?: string } {
@@ -144,13 +145,16 @@ export class ApiWorkspace {
     return token;
   }
 
-  private async aiServers(scope: ApiEnvironmentScope, project: ApiProject, tags?: string[]) {
+  /** `operations` are "<serverId> <METHOD path>"; with neither filter every API is offered. */
+  private async aiServers(scope: ApiEnvironmentScope, project: ApiProject, tags?: string[], picked?: string[]) {
     const servers = [];
     for (const server of project.servers) {
       const catalog = await this.getCatalog({ ...scope, serverId: server.id });
       const operations = (catalog?.operations ?? [])
         .filter(operation => !operation.warnings.length)
-        .filter(operation => !tags?.length || tags.some(tag => operation.tag === tag || operation.tags?.includes(tag)));
+        .filter(operation => (!tags?.length && !picked?.length)
+          || Boolean(tags?.some(tag => operation.tag === tag || operation.tags?.includes(tag)))
+          || Boolean(picked?.includes(`${server.id} ${operation.key}`)));
       if (operations.length) servers.push({ serverName: server.name, operations, spec: catalog?.spec });
     }
     if (!servers.length) throw new Error("현재 환경에 AI가 사용할 API 명세가 없습니다. API 문서 탭에서 명세를 가져오세요");
@@ -200,7 +204,7 @@ export class ApiWorkspace {
   async buildAiPrompt(raw: unknown): Promise<string> {
     const request = aiGuideRequestSchema.parse(raw);
     const { scope, project } = await this.environment(request.scope);
-    const servers = await this.aiServers(scope, project, request.tags);
+    const servers = await this.aiServers(scope, project, request.tags, request.operations);
     const redact = this.aiRedact(scope.projectId);
     const files = this.aiFiles(scope.projectId);
     await mkdir(files.dir, { recursive: true });
