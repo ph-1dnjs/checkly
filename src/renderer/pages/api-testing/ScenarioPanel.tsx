@@ -45,12 +45,14 @@ export type ScenarioPanelProps = {
   onExecuteSaved?: (item: SavedApiScenario) => void;
   runSaved?: SavedApiScenario | null;
   onRunSavedConsumed?: () => void;
+  openSaved?: SavedApiScenario | null;
+  onOpenSavedConsumed?: () => void;
   onBackToScenarios?: () => void;
   /** Environment and value controls shown in the composer toolbar, which replaces the page header. */
   composeContext?: ReactNode;
 };
 
-export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mode = "run", startCreateRequest = 0, editScenarioId, onCreateConsumed, onComposerOpenChange, onUnsavedChange, onCreateScenario, onEditScenario, onExecuteSaved, runSaved, onRunSavedConsumed, onBackToScenarios, composeContext }: ScenarioPanelProps) {
+export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mode = "run", startCreateRequest = 0, editScenarioId, onCreateConsumed, onComposerOpenChange, onUnsavedChange, onCreateScenario, onEditScenario, onExecuteSaved, runSaved, onRunSavedConsumed, openSaved, onOpenSavedConsumed, onBackToScenarios, composeContext }: ScenarioPanelProps) {
   const editorMode = mode === "editor";
   const globalAccess = useGlobalVariableAccess();
   const sensitiveValues = useSensitiveValues();
@@ -61,6 +63,7 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
   const [suiteSelection, setSuiteSelection] = useState<string | null>(null);
   const [suites, setSuites] = useState<SavedApiSuite[]>([]);
   const [saved, setSaved] = useState<SavedApiScenario[]>([]);
+  const [savedLoaded, setSavedLoaded] = useState(false);
   const [current, setCurrent] = useState<SavedApiScenario | null>(null);
   const [source, setSource] = useState("");
   const [scenarioGroupPath, setScenarioGroupPath] = useState<string[]>([]);
@@ -101,7 +104,7 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
   }, [dirty, onUnsavedChange]);
   useEffect(() => {
     live.current = true;
-    void bridge.listScenarios(project.id).then(v => { if (live.current) setSaved(v); }).catch(e => { if (live.current) setError(errorText(e)); });
+    void bridge.listScenarios(project.id).then(v => { if (live.current) { setSaved(v); setSavedLoaded(true); } }).catch(e => { if (live.current) setError(errorText(e)); });
     void bridge.listSuites(project.id).then(v => { if (live.current) setSuites(v); }).catch(e => { if (live.current) setError(errorText(e)); });
     return () => { live.current = false; void bridge.cancel(scope); };
   }, []);
@@ -174,12 +177,13 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
   };
   const openedEditId = useRef<string | null>(null);
   useEffect(() => {
-    if (!editorMode || !editScenarioId || !saved.length) return;
+    // Wait for the first list load; an empty list still means "not found".
+    if (!editorMode || !editScenarioId || !savedLoaded) return;
     if (openedEditId.current === editScenarioId) return;
     const item = saved.find(candidate => candidate.id === editScenarioId);
     if (item) { openedEditId.current = editScenarioId; void load(item); }
     else setError("수정할 시나리오를 찾지 못했습니다.");
-  }, [editorMode, editScenarioId, saved]);
+  }, [editorMode, editScenarioId, saved, savedLoaded]);
   const canSave = Boolean(preview && checkedSource === source && preview.issues.length === 0);
   useEffect(() => {
     if (checkedGlobalRevision.current === globalAccess.revision) return;
@@ -212,6 +216,11 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
   useEffect(() => {
     if (!editorMode && runSaved) void load(runSaved);
   }, [runSaved]);
+  useEffect(() => {
+    if (editorMode || !openSaved) return;
+    onOpenSavedConsumed?.();
+    void load(openSaved);
+  }, [openSaved]);
   useEffect(() => {
     if (!runSaved || editorMode || !canUse || busy || autoRunStarted.current) return;
     autoRunStarted.current = true;
@@ -278,7 +287,11 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
     working(true); setError(""); setNotice("");
     try {
       const steps = preview.scenario.steps.map(step => ({ ...step, server: bindings[step.server] ?? step.server }));
-      const copy = { ...preview.scenario, steps, id: `scenario-${crypto.randomUUID()}`, name: `${preview.scenario.name} 사본` };
+      const base = `${preview.scenario.name.replace(/ 사본(?: \d+)?$/, "")} 사본`;
+      const names = new Set(saved.map(scenario => scenario.name));
+      let name = base;
+      for (let n = 2; names.has(name); n++) name = `${base} ${n}`;
+      const copy = { ...preview.scenario, steps, id: `scenario-${crypto.randomUUID()}`, name };
       const save = item.draft || preview.issues.length ? bridge.saveScenarioDraft : bridge.saveScenario;
       const created = await save(scenarioScope, stringifyScenario(copy, true), {}, undefined, { groupPath: item.groupPath ?? [] });
       const next = await bridge.listScenarios(project.id);

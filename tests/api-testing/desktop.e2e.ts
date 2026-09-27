@@ -144,8 +144,8 @@ async function main() {
     await shot("ai-result");
     await page.getByRole("button", { name: "선택한 것 저장", exact: true }).click();
     await expect(page.getByRole("tab", { name: "시나리오", exact: true })).toHaveAttribute("aria-selected", "true");
-    // The AI's group became a folder: AI › 인증.
-    await page.locator(".api-sidebar-folder > summary").filter({ hasText: "인증" }).click();
+    // The first saved scenario opens, so its folder (the AI's group AI › 인증) is expanded.
+    await expect(page.getByRole("heading", { name: "AI 로그인", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: /AI 로그인/ })).toBeVisible();
     await expect(page.getByRole("button", { name: /AI 상점 흐름/ })).toBeVisible();
 
@@ -243,6 +243,13 @@ async function main() {
     await expect(flow).toContainText("존재하는지");
     // A copy opens in place and is deleted from its detail view.
     await page.getByRole("button", { name: "복제", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "로그인 후 상품 조회 사본", exact: true })).toBeVisible();
+    // Copying again (even a copy) numbers the name instead of repeating it.
+    await page.getByRole("button", { name: "복제", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "로그인 후 상품 조회 사본 2", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "시나리오 삭제", exact: true }).click();
+    await page.getByRole("button", { name: "시나리오 삭제 확인", exact: true }).click();
+    await page.getByRole("button", { name: "로그인 후 상품 조회 사본", exact: true }).click();
     await expect(page.getByRole("heading", { name: "로그인 후 상품 조회 사본", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "시나리오 삭제", exact: true }).click();
     await page.getByRole("button", { name: "시나리오 삭제 확인", exact: true }).click();

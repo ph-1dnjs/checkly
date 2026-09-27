@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { ApiAiImportResult, ApiCatalog, ApiEnvironmentScope, ApiProject, ApiTestingBridge } from "../../../app/api-testing/shared/workspace";
+import type { ApiAiImportResult, ApiCatalog, ApiEnvironmentScope, ApiProject, ApiTestingBridge, SavedApiScenario } from "../../../app/api-testing/shared/workspace";
 
 const errorText = (error: unknown) => (error as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, "");
 
@@ -9,7 +9,7 @@ const errorText = (error: unknown) => (error as Error).message.replace(/^Error i
  * result file, and Checkly checks it and saves the chosen scenarios and suite.
  */
 export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
-  project: ApiProject; scope: ApiEnvironmentScope; bridge: ApiTestingBridge; onBusy: (busy: boolean) => void; onSaved: () => void;
+  project: ApiProject; scope: ApiEnvironmentScope; bridge: ApiTestingBridge; onBusy: (busy: boolean) => void; onSaved: (first?: SavedApiScenario) => void;
 }) {
   const [tags, setTags] = useState<string[]>([]);
   const [specWarnings, setSpecWarnings] = useState<string[]>([]);
@@ -59,12 +59,14 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
     setSaving(true); onBusy(true); setError(""); setMessage("");
     const runnable = new Set<string>();
     const failures: string[] = [];
+    let first: SavedApiScenario | undefined;
     try {
       for (const draft of result.drafts.filter(item => chosen.includes(item.id))) {
         try {
           const metadata = draft.groupPath ? { groupPath: draft.groupPath } : undefined;
-          if (draft.issues.length) await bridge.saveScenarioDraft(scope, draft.yaml, {}, undefined, metadata);
-          else { await bridge.saveScenario(scope, draft.yaml, {}, undefined, metadata); runnable.add(draft.id); }
+          const item = draft.issues.length ? await bridge.saveScenarioDraft(scope, draft.yaml, {}, undefined, metadata) : await bridge.saveScenario(scope, draft.yaml, {}, undefined, metadata);
+          if (!draft.issues.length) runnable.add(draft.id);
+          first ??= item;
         } catch (e) { failures.push(`${draft.name}: ${errorText(e)}`); }
       }
       let suiteNote = "";
@@ -79,7 +81,7 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
         } else suiteNote = " 바로 실행할 수 있는 시나리오가 없어 스위트는 저장하지 않았습니다.";
       }
       if (failures.length) { setError(failures.join("\n")); setMessage(`일부만 저장했습니다.${suiteNote}`); return; }
-      onSaved();
+      onSaved(first);
     } finally { if (live.current) setSaving(false); onBusy(false); }
   };
 
