@@ -215,7 +215,6 @@ html:has(.api-diagram-dialog[open]) { overflow:hidden; }
 .api-warning { background:var(--ck-color-line-faint); color:var(--ck-color-wait-ink); border-left:3px solid var(--ck-color-wait); padding:12px; border-radius:0; white-space:pre-wrap; overflow-wrap:anywhere; }
 .api-empty { padding:64px 24px; text-align:center; }
 .api-project-form { max-width:760px; margin:32px auto; }
-.api-project-form footer { display:flex; justify-content:flex-end; gap:12px; margin-top:24px; }
 @media(max-width:800px) { .api-columns { grid-template-columns:1fr; } .api-columns aside { border-right:0; max-height:280px; overflow:auto; } .api-request-panel { padding:24px 0; } }
 .api-environments { display:flex; gap:3px; border:1px solid var(--api-border); padding:3px; }
 .api-environments button { border:0; padding:4px 12px; }
@@ -1009,3 +1008,29 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 .api-spec-form-row > label.api-remember { align-self:flex-end; height:28px; align-items:center; gap:6px; }
 .api-spec-delete { margin-left:auto; align-self:flex-end; }
 .api-spec-delete .shared-popover > button { color:var(--ck-color-fail-ink); }
+
+/* Project settings form */
+.api-project-form { display:grid; gap:24px; }
+.api-project-form > fieldset { display:grid; gap:24px; margin:0; padding:0; border:0; min-width:0; }
+.api-project-form-heading h2 { margin:0 0 4px; }
+.api-project-form-heading p { margin:0; color:var(--api-muted); }
+.api-project-form label.api-project-field { display:grid; gap:6px; margin:0; font-weight:600; }
+.api-project-section { display:grid; gap:8px; justify-items:start; }
+.api-project-section > * { margin:0; }
+.api-project-section > h3 { font-size:14px; }
+.api-project-rows { display:grid; gap:6px; width:100%; margin:0; padding:0; list-style:none; }
+.api-project-rows li { display:grid; grid-template-columns:minmax(0,1fr) 32px; gap:6px; align-items:center; }
+.api-testing-page button.api-project-remove { display:inline-grid; place-items:center; width:32px; min-width:0; height:32px; padding:0; border:0; background:transparent; color:var(--api-muted); }
+.api-testing-page button.api-project-remove:hover:not(:disabled) { background:var(--ck-color-surface-hover); color:var(--ck-color-fail-ink); }
+.api-testing-page button.api-project-remove:disabled { opacity:.35; cursor:not-allowed; }
+.api-env-table { display:grid; gap:6px; width:100%; }
+.api-env-row { display:grid; grid-template-columns:var(--api-env-columns); gap:6px; align-items:center; }
+.api-env-row > input { min-width:0; width:100%; box-sizing:border-box; }
+.api-env-head { color:var(--api-muted); font-size:11px; font-weight:600; }
+.api-project-removal { display:flex!important; flex-direction:row!important; align-items:flex-start; gap:8px; margin:0; padding:12px; border-left:3px solid var(--ck-color-wait); background:var(--ck-color-line-faint); color:var(--ck-color-wait-ink); font-size:12px; line-height:1.6; }
+.api-project-removal input { flex:none; margin-top:3px; }
+.api-project-form-footer { position:sticky; bottom:96px; display:flex; align-items:center; gap:12px; padding:12px 0; border-top:1px solid var(--api-border); background:var(--api-surface); }
+.api-project-form-footer .shared-popover { margin-left:0; }
+.api-project-form-footer .shared-popover > button { color:var(--ck-color-fail-ink); }
+.api-project-form-actions { display:flex; gap:8px; margin-left:auto; }
+.api-project-section > h3 { margin:0!important; }

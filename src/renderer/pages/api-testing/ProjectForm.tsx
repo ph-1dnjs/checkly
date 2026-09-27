@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { projectSchema, type ApiProject } from "../../../app/api-testing/shared/workspace";
+import { Icon } from "../../shared/ui/Icon";
 import { DeleteAction } from "./DeleteAction";
 
 export function ProjectForm({ initial, onSave, onCancel, onDelete }: {
@@ -12,6 +13,15 @@ export function ProjectForm({ initial, onSave, onCancel, onDelete }: {
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const removed = initial ? [...initial.servers.filter(s => !draft.servers.some(n => n.id === s.id)).map(s => `서버 ${s.name}`), ...initial.environments.filter(e => !draft.environments.some(n => n.id === e.id)).map(e => `환경 ${e.name}`)] : [];
+  const setServerName = (id: string, name: string) => setDraft({ ...draft, servers: draft.servers.map(s => s.id === id ? { ...s, name } : s) });
+  const removeServer = (id: string) => setDraft({ ...draft, servers: draft.servers.filter(s => s.id !== id), environments: draft.environments.map(e => ({ ...e, baseUrls: Object.fromEntries(Object.entries(e.baseUrls).filter(([key]) => key !== id)) })) });
+  const addServer = () => {
+    const id = crypto.randomUUID();
+    setDraft({ ...draft, servers: [...draft.servers, { id, name: "" }], environments: draft.environments.map(e => ({ ...e, baseUrls: { ...e.baseUrls, [id]: "" } })) });
+  };
+  const setEnvironment = (id: string, patch: Partial<ApiProject["environments"][number]>) => setDraft({ ...draft, environments: draft.environments.map(e => e.id === id ? { ...e, ...patch } : e) });
+  const addEnvironment = () => setDraft({ ...draft, environments: [...draft.environments, { id: crypto.randomUUID(), name: "", baseUrls: Object.fromEntries(draft.servers.map(s => [s.id, ""])) }] });
+  const columns = { "--api-env-columns": `minmax(96px,160px) repeat(${draft.servers.length}, minmax(0,1fr)) 32px` } as CSSProperties;
   return <form className="api-project-form" onSubmit={async event => {
     event.preventDefault();
     const parsed = projectSchema.safeParse(draft);
@@ -19,27 +29,43 @@ export function ProjectForm({ initial, onSave, onCancel, onDelete }: {
     setSaving(true);
     try { await onSave(parsed.data); } catch (e) { setError((e as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, "")); } finally { setSaving(false); }
   }}>
-    <h2>{initial ? "프로젝트 설정" : "새 API 프로젝트"}</h2>
-    <p>서버마다 API 명세를 등록하고, 환경에 맞는 기본 주소로 호출합니다.</p>
-    <label>프로젝트 이름<input required value={draft.name} onChange={e => setDraft({ ...draft, name: e.target.value })} placeholder="예: 쇼핑몰 QA" /></label>
-    <h3>API 서버</h3>
-    <p>서버·환경 제거는 저장할 때 적용됩니다. 관련 명세·저장 계정·인증 연결도 삭제됩니다. 시나리오에서 사용하는 서버와, 시나리오가 있는 프로젝트의 환경은 제거할 수 없습니다.</p>
-    <div className="api-actions">{draft.servers.map(server => <button key={server.id} type="button" disabled={saving || draft.servers.length === 1} onClick={() => setDraft({ ...draft, servers: draft.servers.filter(s => s.id !== server.id), environments: draft.environments.map(e => ({ ...e, baseUrls: Object.fromEntries(Object.entries(e.baseUrls).filter(([id]) => id !== server.id)) })) })}>{server.name || "새 서버"} 서버 제거</button>)}</div>
-    {draft.servers.map((server, index) => <label key={server.id}>서버 {index + 1} 이름<input required value={server.name} onChange={e => setDraft({ ...draft, servers: draft.servers.map(s => s.id === server.id ? { ...s, name: e.target.value } : s) })} /></label>)}
-    <button type="button" onClick={() => {
-      const id = crypto.randomUUID();
-      setDraft({ ...draft, servers: [...draft.servers, { id, name: "" }], environments: draft.environments.map(e => ({ ...e, baseUrls: { ...e.baseUrls, [id]: "" } })) });
-    }}>+ 서버 추가</button>
-    <h3>환경별 호출 주소</h3>
-    {draft.environments.map(env => <fieldset key={env.id}>
-      <button type="button" disabled={saving || draft.environments.length === 1} onClick={() => setDraft({ ...draft, environments: draft.environments.filter(e => e.id !== env.id) })}>{env.name || "새 환경"} 환경 제거</button>
-      <label>환경 이름<input required value={env.name} onChange={e => setDraft({ ...draft, environments: draft.environments.map(v => v.id === env.id ? { ...v, name: e.target.value } : v) })} /></label>
-      {draft.servers.map(server => <label key={server.id}>{server.name || "새 서버"} 기본 주소<input type="url" required placeholder="https://api.example.com" value={env.baseUrls[server.id]} onChange={e => setDraft({ ...draft, environments: draft.environments.map(v => v.id === env.id ? { ...v, baseUrls: { ...v.baseUrls, [server.id]: e.target.value } } : v) })} /></label>)}
-    </fieldset>)}
-    <button type="button" onClick={() => setDraft({ ...draft, environments: [...draft.environments, { id: crypto.randomUUID(), name: "", baseUrls: Object.fromEntries(draft.servers.map(s => [s.id, ""])) }] })}>+ 환경 추가</button>
-    {error && <p role="alert">{error}</p>}
-    {!!removed.length && <label key={removed.join(",")}><input type="checkbox" required />{removed.join(", ")} 및 관련 저장 데이터 삭제를 확인했습니다. 환경 삭제 시 해당 전역변수도 삭제됩니다. 저장 후에는 되돌릴 수 없습니다.</label>}
-    {initial && onDelete && <DeleteAction label="프로젝트 삭제" disabled={saving} description={`‘${initial.name}’의 모든 서버·환경, API 명세, 시나리오·초안, 저장된 문서 계정과 전역변수를 삭제합니다. 실제 API 서버의 데이터는 삭제하지 않습니다.`} onDelete={onDelete} />}
-    <footer><button type="button" disabled={saving} onClick={onCancel}>취소</button><button className="api-primary" disabled={saving}>{saving ? "저장 중…" : "프로젝트 저장"}</button></footer>
+    <header className="api-project-form-heading">
+      <h2>{initial ? "프로젝트 설정" : "새 API 프로젝트"}</h2>
+      <p>서버마다 API 명세를 등록하고, 실행할 때 고른 환경의 기본 주소로 호출합니다.</p>
+    </header>
+    <fieldset disabled={saving}>
+      <label className="api-project-field">프로젝트 이름<input required value={draft.name} onChange={e => setDraft({ ...draft, name: e.target.value })} placeholder="예: 쇼핑몰 QA" /></label>
+
+      <section className="api-project-section" aria-labelledby="api-project-servers">
+        <h3 id="api-project-servers">API 서버</h3>
+        <p className="api-field-help">백엔드·인증 서버처럼 명세가 따로 있는 서버마다 하나씩 둡니다.</p>
+        <ul className="api-project-rows">{draft.servers.map((server, index) => <li key={server.id}>
+          <input aria-label={`서버 ${index + 1} 이름`} required placeholder="예: 백엔드" value={server.name} onChange={e => setServerName(server.id, e.target.value)} />
+          <button type="button" className="api-project-remove" disabled={draft.servers.length === 1} title={draft.servers.length === 1 ? "서버는 최소 1개 필요합니다" : `${server.name || "새 서버"} 서버 제거`} aria-label={`${server.name || "새 서버"} 서버 제거`} onClick={() => removeServer(server.id)}><Icon name="close" size={16} /></button>
+        </li>)}</ul>
+        <button type="button" className="api-compose-link" onClick={addServer}>+ 서버 추가</button>
+      </section>
+
+      <section className="api-project-section" aria-labelledby="api-project-environments">
+        <h3 id="api-project-environments">환경별 기본 주소</h3>
+        <p className="api-field-help">local·dev·prod처럼 환경마다 각 서버의 주소를 적습니다.</p>
+        <div className="api-env-table" role="table" aria-label="환경별 기본 주소" style={columns}>
+          <div className="api-env-row api-env-head" role="row"><span role="columnheader">환경</span>{draft.servers.map(server => <span role="columnheader" key={server.id}>{server.name || "새 서버"}</span>)}<span role="columnheader" aria-label="제거" /></div>
+          {draft.environments.map(env => <div className="api-env-row" role="row" key={env.id}>
+            <input role="cell" aria-label="환경 이름" required placeholder="dev" value={env.name} onChange={e => setEnvironment(env.id, { name: e.target.value })} />
+            {draft.servers.map(server => <input role="cell" key={server.id} type="url" required aria-label={`${env.name || "새 환경"} ${server.name || "새 서버"} 기본 주소`} placeholder="https://api.example.com" value={env.baseUrls[server.id]} onChange={e => setEnvironment(env.id, { baseUrls: { ...env.baseUrls, [server.id]: e.target.value } })} />)}
+            <button type="button" className="api-project-remove" disabled={draft.environments.length === 1} title={draft.environments.length === 1 ? "환경은 최소 1개 필요합니다" : `${env.name || "새 환경"} 환경 제거`} aria-label={`${env.name || "새 환경"} 환경 제거`} onClick={() => setDraft({ ...draft, environments: draft.environments.filter(e => e.id !== env.id) })}><Icon name="close" size={16} /></button>
+          </div>)}
+        </div>
+        <button type="button" className="api-compose-link" onClick={addEnvironment}>+ 환경 추가</button>
+      </section>
+
+      {!!removed.length && <label className="api-project-removal" key={removed.join(",")}><input type="checkbox" required /><span><strong>{removed.join(", ")}</strong>을(를) 저장할 때 삭제합니다. 관련 API 명세·저장 계정·인증 연결도 지워지고, 환경을 지우면 그 환경의 전역변수도 삭제됩니다. 시나리오가 쓰는 서버·환경은 저장 단계에서 거부됩니다. 확인했습니다.</span></label>}
+      {error && <p role="alert" className="api-warning">{error}</p>}
+    </fieldset>
+    <footer className="api-project-form-footer">
+      {initial && onDelete && <DeleteAction label="프로젝트 삭제" disabled={saving} description={`‘${initial.name}’의 모든 서버·환경, API 명세, 시나리오·초안, 저장된 문서 계정과 전역변수를 삭제합니다. 실제 API 서버의 데이터는 삭제하지 않습니다.`} onDelete={onDelete} />}
+      <span className="api-project-form-actions"><button type="button" disabled={saving} onClick={onCancel}>취소</button><button className="api-primary" disabled={saving}>{saving ? "저장 중…" : "프로젝트 저장"}</button></span>
+    </footer>
   </form>;
 }
