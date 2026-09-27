@@ -980,3 +980,8 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 .api-summary-json-value { display:inline-flex; align-items:baseline; gap:0; max-width:100%; min-width:0; vertical-align:top; }
 .api-summary-json-value > span { min-width:0; }
 .api-summary-json-value :is(.api-field-state,.api-response-json-badge) { white-space:normal; }
+.api-auth-panel fieldset { display:grid; gap:12px; }
+.api-auth-panel label { display:grid; gap:6px; }
+.api-auth-panel label small { color:var(--api-muted); font-size:11px; }
+.api-auth-panel fieldset > button { justify-self:start; }
+.api-swagger-ui .api-auth-panel button.api-primary { background:var(--ck-color-blue-action); border-color:var(--ck-color-blue-action); color:var(--ck-color-canvas); }

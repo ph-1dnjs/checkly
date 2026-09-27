@@ -74,8 +74,8 @@ async function main() {
     if (leakedAuth) throw new Error("Documentation credentials forwarded to API");
     await page.getByRole("button", { name: "Authorize", exact: true }).click();
     await page.getByLabel("새 API 인증 토큰", { exact: true }).fill("desktop-api-token");
-    await page.getByRole("button", { name: "세션 변수로 등록 · 연결", exact: true }).click();
-    await expect(page.getByRole("dialog", { name: "API 요청 인증", exact: true })).toContainText("연결: globals.apiToken_");
+    await page.getByRole("button", { name: "토큰 저장 후 연결", exact: true }).click();
+    await expect(page.getByRole("dialog", { name: "API 요청 인증", exact: true })).toContainText("연결: globals.docsToken");
     await expect(page.getByLabel("새 API 인증 토큰", { exact: true })).toHaveValue("");
     const authVariable = await page.getByLabel("API 인증 전역변수", { exact: true }).inputValue();
     await page.getByRole("button", { name: "인증 해제", exact: true }).click();
