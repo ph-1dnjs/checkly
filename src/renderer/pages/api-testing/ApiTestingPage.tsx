@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { ApiCatalog, ApiProject, ApiSpecSync, ApiTestingBridge, SavedApiScenario } from "../../../app/api-testing/shared/workspace";
 import { ProjectForm } from "./ProjectForm";
-import { DeleteAction } from "./DeleteAction";
 import { ApiDocumentation } from "./ApiDocumentation";
 import { LoadingSpinner } from "../../shared/ui/LoadingSpinner";
 import { GlobalVariableAccessProvider, GlobalVariableMenu } from "./global-variable-access";
@@ -9,6 +8,7 @@ import { SensitiveValuesProvider } from "./sensitive-values";
 import { ScenarioPanel } from "./ScenarioPanel";
 import { ScenarioEditorPanel } from "./ScenarioEditorPanel";
 import { AiAuthorPanel } from "./AiAuthorPanel";
+import { SpecSourcePanel } from "./SpecSourcePanel";
 import "./api-testing.css";
 import type { OnRunAction } from "./useRunAction";
 import { readWorkspaceUrl, workspaceUrl, type ApiTab } from "./workspace-url";
@@ -144,13 +144,15 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
     }
     return () => { live = false; };
   }, [projectId, serverId, environmentId]);
-  const importSpec = async (kind: "file" | "url") => {
+  const importSpec = async (kind: "file" | "url", targetUrl = url): Promise<boolean> => {
     setLoading(true); setError("");
     try {
-      const useSavedAuth = authKind === "basic" && remember && sync?.hasSavedAccount && sync.url === url && sync.username === docsUsername && !docsPassword;
-      const next = await bridge.importSpec(scope, kind === "file" ? { kind } : { kind, url, ...(authKind === "basic" ? useSavedAuth ? { useSavedAuth: true } : { remember, auth: { kind: "basic" as const, username: docsUsername, password: docsPassword } } : {}) });
-      if (next) { setCatalog(next); }
-    } catch (e) { setError((e as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, "")); }
+      if (targetUrl !== url) setUrl(targetUrl);
+      const useSavedAuth = authKind === "basic" && remember && sync?.hasSavedAccount && sync.url === targetUrl && sync.username === docsUsername && !docsPassword;
+      const next = await bridge.importSpec(scope, kind === "file" ? { kind } : { kind, url: targetUrl, ...(authKind === "basic" ? useSavedAuth ? { useSavedAuth: true } : { remember, auth: { kind: "basic" as const, username: docsUsername, password: docsPassword } } : {}) });
+      if (next) { setCatalog(next); return true; }
+      return false;
+    } catch (e) { setError((e as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, "")); return false; }
     finally { try { setSync(await bridge.getSpecSync(scope)); } catch { /* Keep the original import error visible. */ } setLoading(false); setDocsPassword(""); }
   };
   if (!bridge) return <section className="api-testing-page api-swagger-shell"><h1>API 테스트</h1><p>프로젝트 저장과 실제 API 호출은 Checkly 데스크톱 앱에서 사용할 수 있습니다.</p></section>;
@@ -184,17 +186,21 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
         {tab === "scenarios" && <ScenarioPanel key={`${projectId}:${environmentId}:${serverId}`} project={project} scope={scope} bridge={bridge} onBusy={setBusy} onRunAction={onRunAction} runSaved={runSaved} onRunSavedConsumed={() => setRunSaved(null)} openSaved={openSaved} onOpenSavedConsumed={() => setOpenSaved(null)} onCreateScenario={() => openScenarioEditor()} onEditScenario={item => openScenarioEditor(item.id)} />}
         {tab === "scenario-editor" && <ScenarioEditorPanel key={`${projectId}:${serverId}`} project={project} scope={scope} bridge={bridge} onBusy={setBusy} onRunAction={onRunAction} onBackToScenarios={backToScenarios} onExecuteSaved={executeSaved} startCreateRequest={scenarioCreateRequest} editScenarioId={scenarioEditorScenarioId} onCreateConsumed={() => setScenarioCreateRequest(0)} onComposerOpenChange={setScenarioComposerOpen} onUnsavedChange={setScenarioDirty} onCreateScenario={() => openScenarioEditor()} onEditScenario={item => openScenarioEditor(item.id)} composeContext={<div className="api-compose-context">{environmentPicker}{valueActions}</div>} />}
         {tab === "api" && <>
-        <div className="api-spec-tools">
-        {catalog && <DeleteAction key={`${projectId}:${serverId}:${environmentId}:${catalog.importedAt}`} label="명세 삭제" disabled={busy || loading} description={`현재 서버·환경의 API ${catalog.operations.length}개와 명세 주소·저장 계정·인증 연결을 삭제합니다. 시나리오는 유지되지만 이 명세를 사용하는 단계는 명세를 다시 가져오기 전까지 실행할 수 없습니다.`} onDelete={async () => {
-          setLoading(true);
-          try { await bridge.deleteCatalog(scope); setCatalog(null); setSync(null); setUrl(""); setRemember(false); setDocsUsername(""); setDocsPassword(""); setAuthKind("none"); onRunAction(null); }
-          finally { setLoading(false); }
-        }} />}
-        <div className="api-import"><input aria-label="OpenAPI URL" type="url" placeholder="OpenAPI JSON/YAML URL" value={url} disabled={busy || loading} onChange={e => { setUrl(e.target.value); setDocsPassword(""); setDocsUsername(""); setRemember(false); setAuthKind("none"); }} /><button disabled={busy || loading || !url.trim()} onClick={() => void importSpec("url")}>URL 가져오기</button><button disabled={busy || loading} onClick={() => void importSpec("file")}>파일 가져오기</button><button disabled={busy || loading || !sync?.url || url !== sync.url} onClick={() => void importSpec("url")}>명세 새로고침</button></div>
-        </div>
-        <div className="api-context"><label>문서 인증<select aria-label="Swagger 인증 방식" value={authKind} disabled={busy || loading} onChange={e => { setAuthKind(e.target.value); setDocsPassword(""); }}><option value="none">인증 없음</option><option value="basic">Basic 인증</option></select></label>{authKind === "basic" && <><label>문서 아이디<input aria-label="Swagger 아이디" autoComplete="off" value={docsUsername} disabled={busy || loading} onChange={e => setDocsUsername(e.target.value)} /></label><label>문서 비밀번호<input aria-label="Swagger 비밀번호" data-value-visibility="sensitive" type="text" autoComplete="off" value={docsPassword} disabled={busy || loading} onChange={e => setDocsPassword(e.target.value)} /></label><label className="api-remember"><input type="checkbox" aria-label="이 기기에 계정 기억" disabled={busy || loading || !sync?.secureStorageAvailable} checked={remember} onChange={e => setRemember(e.target.checked)} />이 기기에 계정 기억</label><small>{sync?.secureStorageAvailable ? "기억을 선택하면 비밀번호를 OS 보안 기능으로 암호화해 저장합니다." : "OS 보안 저장소를 사용할 수 없어 계정 저장이 비활성화되었습니다."} HTTPS 사용을 권장합니다.</small></>}</div>
-        {sync?.hasSavedAccount && <div className="api-actions"><small>{sync.url === url && sync.username === docsUsername && remember ? "비밀번호를 비워두면 저장된 계정을 사용합니다." : "저장된 계정은 기존 명세 주소에만 연결되어 있습니다."}</small><button disabled={busy || loading} onClick={async () => { setLoading(true); try { await bridge.deleteSpecAccount(scope); setSync(await bridge.getSpecSync(scope)); setRemember(false); setDocsPassword(""); setDocsUsername(""); } catch { setError("저장된 계정을 삭제하지 못했습니다."); } finally { setLoading(false); } }}>저장된 계정 삭제</button></div>}
-        {sync?.lastAttemptAt && <p role="status">최근 동기화 {sync.status === "success" ? "성공" : "실패 · 기존 문서 유지"} · {new Date(sync.lastAttemptAt).toLocaleString()}</p>}
+        {(catalog || sync || !loading) && <SpecSourcePanel key={`${projectId}:${serverId}:${environmentId}:${catalog ? "loaded" : "empty"}`}
+          scopeLabel={`${project.servers.find(s => s.id === serverId)?.name ?? ""} · ${project.environments.find(e => e.id === environmentId)?.name ?? ""}`}
+          catalog={catalog} sync={sync} disabled={busy || loading}
+          url={url} onUrlChange={setUrl}
+          authKind={authKind} onAuthKindChange={kind => { setAuthKind(kind); setDocsPassword(""); }}
+          username={docsUsername} onUsernameChange={setDocsUsername}
+          password={docsPassword} onPasswordChange={setDocsPassword}
+          remember={remember} onRememberChange={setRemember}
+          onImport={importSpec}
+          onDeleteCatalog={async () => {
+            setLoading(true);
+            try { await bridge.deleteCatalog(scope); setCatalog(null); setSync(null); setUrl(""); setRemember(false); setDocsUsername(""); setDocsPassword(""); setAuthKind("none"); onRunAction(null); }
+            finally { setLoading(false); }
+          }}
+          onDeleteSavedAccount={async () => { setLoading(true); try { await bridge.deleteSpecAccount(scope); setSync(await bridge.getSpecSync(scope)); setRemember(false); setDocsPassword(""); setDocsUsername(""); } catch { setError("저장된 계정을 삭제하지 못했습니다."); } finally { setLoading(false); } }} />}
         {loading && <LoadingSpinner label="명세를 불러오는 중…" />}
         {catalog ? <ApiDocumentation project={project} key={`${projectId}:${serverId}:${environmentId}:${catalog.importedAt}`} catalog={catalog} scope={scope} bridge={bridge} baseUrl={project.environments.find(e => e.id === environmentId)?.baseUrls[serverId] ?? ""} busy={busy} onBusy={setBusy} onRunAction={onRunAction} /> : !loading && <div className="api-empty"><h2>API 명세를 가져오세요</h2><p>선택한 서버·환경에 OpenAPI 3.0 / 3.1 명세를 등록합니다.</p></div>}
         </>}

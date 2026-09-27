@@ -48,16 +48,21 @@ async function main() {
     await page.getByLabel("프로젝트 이름").fill("쇼핑몰 QA");
     await page.getByLabel("기본 API 기본 주소").fill(url);
     await page.getByRole("button", { name: "프로젝트 저장", exact: true }).click();
+    // No spec yet: the import form is open by itself.
+    const specSource = page.getByRole("region", { name: "API 명세 가져오기" });
+    const importButton = specSource.getByRole("button", { name: /^(가져오기|새로고침)$/ });
     await page.getByLabel("OpenAPI URL").fill(`${url}/openapi.json`);
-    await page.getByRole("button", { name: "URL 가져오기", exact: true }).click();
+    await importButton.click();
     await expect(page.getByRole("alert")).toContainText("명세 인증 실패: HTTP 401");
     await page.getByLabel("Swagger 인증 방식").selectOption("basic");
     await page.getByLabel("Swagger 아이디", { exact: true }).fill("docs-user");
     await page.getByLabel("Swagger 비밀번호", { exact: true }).fill("docs-test-password");
     const canRemember = await page.getByLabel("이 기기에 계정 기억", { exact: true }).isEnabled();
     if (canRemember) await page.getByLabel("이 기기에 계정 기억", { exact: true }).check();
-    await page.getByRole("button", { name: "URL 가져오기", exact: true }).click();
-    await expect(page.getByLabel("Swagger 비밀번호", { exact: true })).toHaveValue("");
+    await importButton.click();
+    // Imported: the form folds into one summary line.
+    await expect(specSource).toContainText("최근 동기화 성공");
+    await expect(page.getByLabel("OpenAPI URL")).toHaveCount(0);
     await page.getByRole("button", { name: "태그 모두 접기", exact: true }).click();
     await expect(page.getByRole("button", { name: /GET.*items/ })).not.toBeVisible();
     await page.getByRole("button", { name: "태그 모두 펼치기", exact: true }).click();
@@ -291,6 +296,7 @@ async function main() {
     restored.setDefaultTimeout(15_000);
     await restored.getByRole("button", { name: "API 테스트", exact: true }).click();
     await expect(restored.getByLabel("API 프로젝트")).toContainText("쇼핑몰 QA");
+    await restored.getByRole("button", { name: "명세 설정", exact: true }).click();
     await expect(restored.getByLabel("OpenAPI URL", { exact: true })).toHaveValue(`${url}/openapi.json`);
     if (canRemember) {
       await expect(restored.getByLabel("Swagger 비밀번호", { exact: true })).toHaveValue("");

@@ -150,9 +150,6 @@ html:has(.api-diagram-dialog[open]) { overflow:hidden; }
 .api-step-preview { padding-left:24px; }
 .api-step-preview li { padding:16px 0; border-bottom:1px solid var(--api-border); }
 .api-import input { flex:1; }
-.api-spec-tools { display:flex; flex-wrap:wrap; align-items:center; gap:12px; }
-.api-spec-tools > .api-import { flex:1; min-width:280px; }
-.api-spec-tools > .shared-popover { order:2; }
 .api-doc-search-tools { display:flex; flex-wrap:wrap; align-items:center; gap:12px; padding:0 20px; margin-bottom:20px; }
 .api-doc-search-tools > div:first-child { flex:1; min-width:260px; }
 .api-doc-search-tools .filter-container { padding:0; }
@@ -976,7 +973,6 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 .api-builder > fieldset > * { margin-top:0; margin-bottom:0; }
 .api-builder > fieldset > label { display:grid; gap:6px; }
 .api-builder > fieldset > .api-field-help { margin-top:-6px; }
-.api-testing-page > .api-spec-tools { margin-bottom:12px; }
 .api-summary-json-value { display:inline-flex; align-items:baseline; gap:0; max-width:100%; min-width:0; vertical-align:top; }
 .api-summary-json-value > span { min-width:0; }
 .api-summary-json-value :is(.api-field-state,.api-response-json-badge) { white-space:normal; }
@@ -985,3 +981,31 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 .api-auth-panel label small { color:var(--api-muted); font-size:11px; }
 .api-auth-panel fieldset > button { justify-self:start; }
 .api-swagger-ui .api-auth-panel button.api-primary { background:var(--ck-color-blue-action); border-color:var(--ck-color-blue-action); color:var(--ck-color-canvas); }
+
+/* Spec source: one summary line once loaded; the form opens under it. */
+.api-spec-source { margin:0 0 16px; border:1px solid var(--api-border); border-radius:var(--ck-dim-radius-base); background:var(--ck-color-canvas); }
+.api-spec-summary { display:flex; flex-wrap:wrap; align-items:center; gap:6px 12px; padding:8px 12px; }
+.api-spec-summary-label { color:var(--api-ink); font-weight:600; }
+.api-spec-scope { padding:1px 6px; border-radius:var(--ck-dim-radius-base); background:var(--ck-color-surface-hover); color:var(--api-body); font-size:11px; }
+.api-spec-summary-source { display:flex; flex:1 1 280px; flex-wrap:wrap; align-items:baseline; gap:4px 10px; min-width:0; color:var(--api-muted); font-size:11.5px; }
+.api-spec-summary-source code { overflow:hidden; max-width:100%; color:var(--api-body); font-size:11.5px; text-overflow:ellipsis; white-space:nowrap; }
+.api-spec-summary-source .is-failed { color:var(--ck-color-wait-ink); font-weight:600; }
+.api-spec-summary-actions { display:flex; gap:6px; margin-left:auto; }
+.api-spec-summary-actions button[aria-expanded] { display:inline-flex; align-items:center; gap:2px; }
+.api-spec-settings-chevron { transition:transform .15s; }
+.api-spec-summary-actions button[aria-expanded=true] .api-spec-settings-chevron { transform:rotate(180deg); }
+.api-spec-form { display:grid; gap:12px; padding:12px; border-top:1px solid var(--api-border); background:var(--ck-color-surface-subtle); }
+.api-spec-form-row { display:flex; flex-wrap:wrap; align-items:flex-end; gap:8px 12px; }
+.api-spec-form-row > label { display:grid; gap:4px; color:var(--api-body); font-size:11px; font-weight:600; }
+.api-spec-form-row > label.api-spec-url { flex:1 1 360px; }
+.api-spec-form-row > label.api-remember { display:flex; align-self:center; font-weight:400; font-size:12px; }
+.api-spec-or { align-self:flex-end; line-height:30px; color:var(--api-muted); font-size:11px; }
+.api-spec-form .api-field-help { margin:0; }
+.api-spec-saved-account { display:flex; flex-wrap:wrap; gap:4px 10px; }
+.api-spec-source ~ .api-documentation { margin-top:0; }
+.api-spec-source ~ .api-documentation > .api-spec-meta { margin:0 0 12px; }
+.api-spec-form .api-spec-http-warning { color:var(--ck-color-wait-ink); }
+.api-spec-form-row > label { margin:0!important; }
+.api-spec-form-row > label.api-remember { align-self:flex-end; height:28px; align-items:center; gap:6px; }
+.api-spec-delete { margin-left:auto; align-self:flex-end; }
+.api-spec-delete .shared-popover > button { color:var(--ck-color-fail-ink); }
