@@ -6,6 +6,14 @@ import { DeleteAction } from "./DeleteAction";
 type Props = {
   scopeLabel: string;
   catalog: ApiCatalog | null;
+  /** Saved scenarios with steps whose API is gone from the current specs. */
+  missingApis?: Array<{ scenarioId: string; scenario: string; steps: string[] }>;
+  /** Saved scenarios with steps still named after an API title the spec has changed. */
+  renamedTitles?: Array<{ scenarioId: string; scenario: string; steps: Array<{ from: string; to: string }> }>;
+  /** Renames them; resolves to a short result message. */
+  onApplyRenames?: () => Promise<string>;
+  checkingMissing?: boolean;
+  onRecheckMissing?: () => void;
   sync: ApiSpecSync | null;
   disabled: boolean;
   url: string; onUrlChange: (url: string) => void;
@@ -26,6 +34,9 @@ type Props = {
 export function SpecSourcePanel(props: Props) {
   const { catalog, sync, disabled, url } = props;
   const [open, setOpen] = useState(!catalog);
+  const [renaming, setRenaming] = useState(false);
+  const [renameResult, setRenameResult] = useState("");
+  const renamedSteps = props.renamedTitles?.reduce((sum, item) => sum + item.steps.length, 0) ?? 0;
   const failed = sync?.status === "failed";
   const sameUrl = Boolean(sync?.url) && url.trim() === sync?.url;
   const importUrl = async () => { if (await props.onImport("url")) setOpen(false); };
@@ -38,6 +49,7 @@ export function SpecSourcePanel(props: Props) {
       {catalog || sync?.url ? <span className="api-spec-summary-source">
         <code title={sync?.url ?? "파일에서 가져온 명세"}>{sync?.url ?? "파일에서 가져옴"}</code>
         {sync?.username && <span>Basic · {sync.username}</span>}
+        {props.checkingMissing && <span className="api-spec-checking">시나리오 확인 중…</span>}
         {syncedAt && <span role="status" className={failed ? "is-failed" : undefined}>{failed ? `최근 동기화 실패 · 기존 문서 유지 · ${syncedAt}` : `최근 동기화 성공 · ${syncedAt}`}</span>}
       </span> : <span className="api-spec-summary-source">아직 가져온 명세가 없습니다.</span>}
       <span className="api-spec-summary-actions">
@@ -45,6 +57,21 @@ export function SpecSourcePanel(props: Props) {
         <button type="button" aria-label="명세 설정" aria-expanded={open} disabled={disabled && !open} onClick={() => setOpen(value => !value)}>설정<Icon name="expand_more" size={16} className="api-spec-settings-chevron" /></button>
       </span>
     </div>
+    {!!props.missingApis?.length && <details className="api-spec-missing" role="alert">
+      <summary>시나리오 {props.missingApis.length}개가 명세에 없는 API를 씁니다. 경로가 바뀌었다면 해당 단계를 새 API로 다시 추가하세요.</summary>
+      <ul>{props.missingApis.map(item => <li key={item.scenarioId}><strong>{item.scenario}</strong> · {item.steps.join(", ")}</li>)}</ul>
+      {props.onRecheckMissing && <button type="button" className="api-compose-link" disabled={props.checkingMissing} onClick={props.onRecheckMissing}>다시 확인</button>}
+    </details>}
+    {!!props.renamedTitles?.length && <div className="api-spec-missing api-spec-renamed">
+      <div className="api-spec-notice-row">
+        <span>API 제목이 바뀌었습니다 · 시나리오 {props.renamedTitles.length}개의 단계 {renamedSteps}개가 이전 제목을 이름으로 씁니다.</span>
+        {props.onApplyRenames && <button type="button" className="api-primary" disabled={renaming || disabled} onClick={async () => { setRenaming(true); setRenameResult(""); try { setRenameResult(await props.onApplyRenames!()); } catch (error) { setRenameResult((error as Error).message); } finally { setRenaming(false); } }}>{renaming ? "바꾸는 중…" : "새 제목으로 바꾸기"}</button>}
+      </div>
+      <details><summary>바뀔 내용 보기</summary>
+        <ul>{props.renamedTitles.map(item => <li key={item.scenarioId}><strong>{item.scenario}</strong> · {item.steps.map(step => `“${step.from}” → “${step.to}”`).join(", ")}</li>)}</ul>
+      </details>
+    </div>}
+    {renameResult && <p role="status" className="api-spec-rename-result">{renameResult}</p>}
     {open && <div className="api-spec-form">
       <div className="api-spec-form-row">
         <label className="api-spec-url">명세 URL<input aria-label="OpenAPI URL" type="url" placeholder="https://…/v3/api-docs (OpenAPI JSON/YAML)" value={url} disabled={disabled} onChange={event => props.onUrlChange(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && url.trim() && !event.nativeEvent.isComposing) void importUrl(); }} /></label>

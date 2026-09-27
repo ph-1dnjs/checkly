@@ -1,7 +1,7 @@
 import { mkdir, readFile, rename, rm, stat, writeFile, unlink } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { projectSchema, type ApiCatalog, type ApiCookie, type ApiProject, type ApiScope, type ApiResponse, type ApiProjectScope, type ApiEnvironmentScope, type ApiGlobal, type SavedApiScenario, type SavedApiSuite, type ApiSidebarMetadata, type ApiScenarioPreview, type ApiScenarioResult, type ApiRequestTrace, type ApiAiImportResult, type ApiAiDraft } from "../shared/workspace";
+import { projectSchema, type ApiCatalog, type ApiCookie, type ApiProject, type ApiScope, type ApiResponse, type ApiProjectScope, type ApiEnvironmentScope, type ApiGlobal, type SavedApiScenario, type SavedApiSuite, type ApiSidebarMetadata, type ApiScenarioPreview, type ApiScenarioResult, type ApiRequestTrace, type ApiAiImportResult, type ApiAiDraft, type ApiMissingApi, type ApiTitleRename, type ApiSpecImpact } from "../shared/workspace";
 import { z } from "zod";
 import { ApiRunner } from "./execution";
 import { bindingUseLocations, pruneUnusedBrokenBindings, stringifyScenario, parseScenario, ScenarioFormatError, scenarioSchema, scenarioStepInputs, scenarioStepLabel, type Json, type Scenario, type ScenarioInputRequest } from "../shared/scenario";
@@ -379,7 +379,18 @@ export class ApiWorkspace {
     const release = this.beginSpecSync(input);
     try {
       const { scope } = await this.scope(input);
-      const catalog = readOpenApi(source);
+      const previous = await this.readCatalog(scope).catch(() => null);
+      const catalog: ApiCatalog = readOpenApi(source);
+      // Remember titles that changed since the last import, so steps named after the old
+      // title can be offered the new one. Pending older titles are kept until renamed.
+      const titleChanges: NonNullable<ApiCatalog["titleChanges"]> = {};
+      for (const operation of catalog.operations) {
+        const before = previous?.operations.find(candidate => candidate.key === operation.key);
+        const pending = previous?.titleChanges?.[operation.key]?.from ?? [];
+        const from = [...new Set([...pending, ...(before && before.summary !== operation.summary && before.summary ? [before.summary] : [])])].filter(title => title !== operation.summary);
+        if (from.length) titleChanges[operation.key] = { from, to: operation.summary };
+      }
+      if (Object.keys(titleChanges).length) catalog.titleChanges = titleChanges;
       await this.save(this.filename(scope), catalog);
       this.catalogCache.set(this.filename(scope), catalog);
       return catalog;
@@ -495,6 +506,67 @@ export class ApiWorkspace {
       if (e instanceof ScenarioFormatError) throw new Error(e.message);
       throw new Error("YAML 문법이 올바르지 않습니다. 들여쓰기와 중복 키를 확인하세요");
     }
+  }
+
+  /**
+   * How the current environment's specs affect saved scenarios: steps whose API is gone
+   * (e.g. a renamed path) and steps still named after a title the spec has since changed.
+   * Reads each server's catalog once for all scenarios.
+   */
+  async checkScenarioSpecs(input: ApiEnvironmentScope): Promise<ApiSpecImpact> {
+    const { scope, project } = await this.environment(input);
+    const catalogs = new Map<string, ApiCatalog | null>();
+    for (const server of project.servers) catalogs.set(server.id, await this.readCatalog({ ...scope, serverId: server.id }));
+    const missing: ApiMissingApi[] = [];
+    const renamed: ApiTitleRename[] = [];
+    for (const item of await this.listScenarios(scope.projectId)) {
+      let scenario: Scenario;
+      try { scenario = this.parseSource(item.source); } catch { continue; }
+      const gone: string[] = [];
+      const titles: Array<{ from: string; to: string }> = [];
+      for (const step of scenario.steps) {
+        const key = item.bindings[step.server] ?? step.server;
+        const server = project.servers.find(candidate => candidate.id === key) ?? project.servers.find(candidate => candidate.name === key);
+        const catalog = server ? catalogs.get(server.id) : undefined;
+        if (!catalog) continue; // No spec for that server is a different problem, reported elsewhere.
+        const api = step.api;
+        const matches = catalog.operations.filter(o => "operationId" in api ? o.operationId === api.operationId : o.method === api.method && o.path === api.path);
+        if (matches.length !== 1) { gone.push(`${scenarioStepLabel(step)} (${"operationId" in api ? api.operationId : `${api.method} ${api.path}`})`); continue; }
+        const change = catalog.titleChanges?.[matches[0].key];
+        if (step.name && change && change.from.includes(step.name) && step.name !== change.to) titles.push({ from: step.name, to: change.to });
+      }
+      if (gone.length) missing.push({ scenarioId: item.id, scenario: item.name, steps: gone });
+      if (titles.length) renamed.push({ scenarioId: item.id, scenario: item.name, steps: titles });
+    }
+    return { missing, renamed };
+  }
+
+  /** Renames steps still named after an old spec title; each scenario is saved as before (draft stays draft). */
+  async applyTitleRenames(input: ApiEnvironmentScope): Promise<{ updated: string[]; skipped: string[] }> {
+    const { scope, project } = await this.environment(input);
+    const { renamed } = await this.checkScenarioSpecs(scope);
+    const updated: string[] = [], skipped: string[] = [];
+    const saved = await this.listScenarios(scope.projectId);
+    for (const target of renamed) {
+      const item = saved.find(candidate => candidate.id === target.scenarioId);
+      if (!item) continue;
+      try {
+        const scenario = this.parseSource(item.source);
+        const catalogs = new Map<string, ApiCatalog | null>();
+        for (const server of project.servers) catalogs.set(server.id, await this.readCatalog({ ...scope, serverId: server.id }));
+        for (const step of scenario.steps) {
+          const key = item.bindings[step.server] ?? step.server;
+          const server = project.servers.find(candidate => candidate.id === key) ?? project.servers.find(candidate => candidate.name === key);
+          const api = step.api;
+          const operation = server && catalogs.get(server.id)?.operations.find(o => "operationId" in api ? o.operationId === api.operationId : o.method === api.method && o.path === api.path);
+          const change = operation ? catalogs.get(server!.id)?.titleChanges?.[operation.key] : undefined;
+          if (step.name && change?.from.includes(step.name)) step.name = change.to;
+        }
+        await (item.draft ? this.saveScenarioDraft : this.saveScenario).call(this, scope, stringifyScenario(scenario, true), item.bindings, item.updatedAt);
+        updated.push(item.name);
+      } catch { skipped.push(item.name); }
+    }
+    return { updated, skipped };
   }
 
   async previewScenario(input: ApiEnvironmentScope, source: string, rawBindings: Record<string, string>): Promise<ApiScenarioPreview> {

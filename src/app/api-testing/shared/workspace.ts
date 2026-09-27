@@ -43,7 +43,8 @@ export type ApiOperation = {
   parameters: ApiParameter[]; bodyRequired: boolean; bodyExample?: Json;
   bodySchema?: Json; responses: Json; warnings: string[];
 };
-export type ApiCatalog = { title: string; version: string; importedAt: string; spec?: Json; operations: ApiOperation[]; tags?: Array<{ name: string; description: string }> };
+/** `titleChanges`: per operation key, earlier summaries (still possibly used as step names) and the current one. */
+export type ApiCatalog = { title: string; version: string; importedAt: string; spec?: Json; operations: ApiOperation[]; tags?: Array<{ name: string; description: string }>; titleChanges?: Record<string, { from: string[]; to: string }> };
 export type ApiRequestTrace = { method: string; url: string; headers: Record<string, string>; body?: Json };
 export type ApiResponse = { status: string; httpStatus?: number; durationMs: number; request?: ApiRequestTrace; headers?: Record<string, string>; body?: Json; error?: string; failure?: { kind: "http" | "assertion" | "extraction" | "request" | "input" | "other"; source?: "status" | "header" | "body"; operator?: "exists" | "equals" | "contains" | "includes" }; input?: { name: string; provided: boolean }; inputs?: Array<{ name: string; provided: boolean }> };
 export type ApiScope = { projectId: string; serverId: string; environmentId: string };
@@ -56,6 +57,11 @@ export type SavedApiScenario = { id: string; name: string; source: string; bindi
 export type SavedApiSuite = { id: string; name: string; scenarioIds: string[]; onFailure: "stop" | "continue"; updatedAt: string; groupPath?: string[]; tags?: string[] };
 export type ApiSidebarMetadata = { groupPath?: string[]; tags?: string[] };
 export type ApiScenarioPreview = { scenario: Scenario; issues: string[]; executionIssues?: string[] };
+/** A saved scenario with steps whose API is gone from the current specs; steps read "label (METHOD path)". */
+export type ApiMissingApi = { scenarioId: string; scenario: string; steps: string[] };
+/** A saved scenario with steps still named after an API title the spec has since changed. */
+export type ApiTitleRename = { scenarioId: string; scenario: string; steps: Array<{ from: string; to: string }> };
+export type ApiSpecImpact = { missing: ApiMissingApi[]; renamed: ApiTitleRename[] };
 export type ApiScenarioResult = { status: string; steps: Array<ApiResponse & { id: string; name: string }>; variables: Record<string, Json> };
 export type ApiScenarioInputRequest = ScenarioInputRequest & { requestId: string };
 export type ApiScenarioInputSubmission = {
@@ -99,6 +105,8 @@ export type ApiTestingBridge = {
   listCookies(scope: ApiProjectScope): Promise<ApiCookie[]>;
   clearCookies(scope: ApiProjectScope): Promise<void>;
   listScenarios(projectId: string): Promise<SavedApiScenario[]>;
+  checkScenarioSpecs(scope: ApiEnvironmentScope): Promise<ApiSpecImpact>;
+  applyTitleRenames(scope: ApiEnvironmentScope): Promise<{ updated: string[]; skipped: string[] }>;
   listSuites(projectId: string): Promise<SavedApiSuite[]>;
   saveSuite(projectId: string, suite: Omit<SavedApiSuite, "updatedAt">, expectedUpdatedAt?: string): Promise<SavedApiSuite>;
   deleteSuite(projectId: string, id: string, expectedUpdatedAt: string): Promise<void>;

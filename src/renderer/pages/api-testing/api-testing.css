@@ -1072,3 +1072,13 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 .api-scenario-yaml-tools { display:flex; align-items:center; gap:12px; margin-top:12px; }
 .api-scenario-yaml-tools small { flex:1; color:var(--api-muted); }
 .api-testing-page pre.api-yaml { max-height:none; overflow:visible; }
+.api-spec-missing { padding:8px 12px; border-top:1px solid var(--api-border); border-left:3px solid var(--ck-color-wait); background:var(--ck-color-line-faint); color:var(--ck-color-wait-ink); font-size:12px; }
+.api-spec-missing > summary { cursor:pointer; font-weight:600; }
+.api-spec-missing ul { margin:6px 0 0; padding-left:18px; line-height:1.7; }
+.api-spec-checking { color:var(--api-muted); font-size:11px; }
+.api-spec-missing > button { margin-top:6px; }
+.api-spec-renamed { border-left-color:var(--ck-color-blue-action); background:var(--ck-color-blue-tint-soft); color:var(--ck-color-blue-action-hover); }
+.api-spec-notice-row { display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; font-weight:600; }
+.api-spec-notice-row > span { flex:1 1 240px; }
+.api-spec-renamed details > summary { margin-top:4px; cursor:pointer; font-size:11.5px; }
+.api-spec-rename-result { margin:0; padding:6px 12px; border-top:1px solid var(--api-border); color:var(--api-body); font-size:12px; }

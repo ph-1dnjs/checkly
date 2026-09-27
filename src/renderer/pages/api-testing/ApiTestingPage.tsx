@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { ApiCatalog, ApiProject, ApiSpecSync, ApiTestingBridge, SavedApiScenario } from "../../../app/api-testing/shared/workspace";
+import type { ApiCatalog, ApiSpecImpact, ApiProject, ApiSpecSync, ApiTestingBridge, SavedApiScenario } from "../../../app/api-testing/shared/workspace";
 import { ProjectForm } from "./ProjectForm";
 import { ApiDocumentation } from "./ApiDocumentation";
 import { LoadingSpinner } from "../../shared/ui/LoadingSpinner";
@@ -33,6 +33,8 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
   const [form, setForm] = useState<"new" | "edit" | null>(null);
   const [catalog, setCatalog] = useState<ApiCatalog | null>(null);
   const [sync, setSync] = useState<ApiSpecSync | null>(null);
+  // Saved scenarios whose steps no longer find their API in the current environment's specs.
+  const [specImpact, setSpecImpact] = useState<ApiSpecImpact>({ missing: [], renamed: [] });
   const [remember, setRemember] = useState(false);
   const [url, setUrl] = useState("");
   const [authKind, setAuthKind] = useState("none");
@@ -144,6 +146,19 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
     }
     return () => { live = false; };
   }, [projectId, serverId, environmentId]);
+  // Checked only on the API tab, after a spec (re)load, or on request — never blocks the sync itself.
+  const [missingCheck, setMissingCheck] = useState(0);
+  const [checkingMissing, setCheckingMissing] = useState(false);
+  useEffect(() => {
+    let live = true;
+    if (tab !== "api" || !bridge || !projectId || !environmentId || !catalog) { setSpecImpact({ missing: [], renamed: [] }); return; }
+    setCheckingMissing(true);
+    void bridge.checkScenarioSpecs({ projectId, environmentId })
+      .then(found => { if (live) setSpecImpact(found); })
+      .catch(() => { if (live) setSpecImpact({ missing: [], renamed: [] }); })
+      .finally(() => { if (live) setCheckingMissing(false); });
+    return () => { live = false; };
+  }, [tab, projectId, environmentId, catalog?.importedAt, missingCheck]);
   const importSpec = async (kind: "file" | "url", targetUrl = url): Promise<boolean> => {
     setLoading(true); setError("");
     try {
@@ -188,7 +203,12 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
         {tab === "api" && <>
         {(catalog || sync || !loading) && <SpecSourcePanel key={`${projectId}:${serverId}:${environmentId}:${catalog ? "loaded" : "empty"}`}
           scopeLabel={`${project.servers.find(s => s.id === serverId)?.name ?? ""} · ${project.environments.find(e => e.id === environmentId)?.name ?? ""}`}
-          catalog={catalog} sync={sync} disabled={busy || loading}
+          catalog={catalog} sync={sync} disabled={busy || loading} missingApis={specImpact.missing} renamedTitles={specImpact.renamed} checkingMissing={checkingMissing} onRecheckMissing={() => setMissingCheck(count => count + 1)}
+          onApplyRenames={async () => {
+            const { updated, skipped } = await bridge.applyTitleRenames({ projectId, environmentId });
+            setMissingCheck(count => count + 1);
+            return skipped.length ? `시나리오 ${updated.length}개를 바꿨습니다. 다른 곳에서 먼저 바뀐 ${skipped.join(", ")}은(는) 건너뛰었습니다.` : `시나리오 ${updated.length}개의 단계 이름을 새 제목으로 바꿨습니다.`;
+          }}
           url={url} onUrlChange={setUrl}
           authKind={authKind} onAuthKindChange={kind => { setAuthKind(kind); setDocsPassword(""); }}
           username={docsUsername} onUsernameChange={setDocsUsername}

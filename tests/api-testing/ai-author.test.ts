@@ -125,3 +125,27 @@ test("the guide asks what to test, points at the schema and result files, and hi
     await assert.rejects(readFile(catalogFile));
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
+
+test("after a spec refresh: steps whose API is gone are listed, and steps named after an old title can take the new one", async () => {
+  const { dir, workspace, project, scope } = await setup();
+  const specScope = { ...scope, serverId: project.servers[0].id };
+  try {
+    await workspace.saveScenario(scope, read, {});
+    // A step the user named themselves is never renamed.
+    await workspace.saveScenario(scope, read.replace("id: shop/read", "id: shop/custom").replace("name: 상품 조회\nserver", "name: 내 조회\nserver").replace("  - name: 상품 조회", "  - name: 내가 붙인 이름"), {});
+    assert.deepEqual(await workspace.checkScenarioSpecs(scope), { missing: [], renamed: [] });
+    // Title changed, path kept.
+    await workspace.importSpec(specScope, spec.replace('summary: "상품 조회"', 'summary: "상품 상세 조회"').replace('"summary":"상품 조회"', '"summary":"상품 상세 조회"'));
+    const impact = await workspace.checkScenarioSpecs(scope);
+    assert.deepEqual(impact.missing, []);
+    assert.deepEqual(impact.renamed.map(item => [item.scenario, item.steps]), [["상품 조회", [{ from: "상품 조회", to: "상품 상세 조회" }]]]);
+    assert.deepEqual(await workspace.applyTitleRenames(scope), { updated: ["상품 조회"], skipped: [] });
+    assert.deepEqual((await workspace.checkScenarioSpecs(scope)).renamed, []);
+    const saved = (await workspace.listScenarios(project.id)).find(item => item.id === "shop/read");
+    assert.match(saved!.source, /name: 상품 상세 조회/);
+    // Path renamed: the saved steps point at an API that is gone.
+    await workspace.importSpec(specScope, spec.replace("/items/{id}", "/products/{id}"));
+    const missing = (await workspace.checkScenarioSpecs(scope)).missing;
+    assert.deepEqual(missing.map(item => item.steps), [["상품 상세 조회 (GET /items/{id})"], ["내가 붙인 이름 (GET /items/{id})"]]);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});

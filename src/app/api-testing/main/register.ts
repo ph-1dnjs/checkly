@@ -76,6 +76,8 @@ export function registerApiTesting() {
   ipcMain.handle("api-testing:list-cookies", (_event, scope) => workspace.listCookies(scope));
   ipcMain.handle("api-testing:clear-cookies", (_event, scope) => workspace.clearCookies(scope));
   ipcMain.handle("api-testing:list-scenarios", (_event, projectId) => workspace.listScenarios(projectId));
+  ipcMain.handle("api-testing:check-scenario-specs", (_event, scope) => workspace.checkScenarioSpecs(scope));
+  ipcMain.handle("api-testing:apply-title-renames", (_event, scope) => workspace.applyTitleRenames(scope));
   ipcMain.handle("api-testing:list-suites", (_event, projectId) => workspace.listSuites(projectId));
   ipcMain.handle("api-testing:save-suite", (_event, projectId, suite, revision) => workspace.saveSuite(projectId, suite, revision));
   ipcMain.handle("api-testing:delete-suite", (_event, projectId, id, revision) => workspace.deleteSuite(projectId, id, revision));

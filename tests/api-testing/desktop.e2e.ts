@@ -9,6 +9,9 @@ async function main() {
   const docsAuth = `Basic ${Buffer.from("docs-user:docs-test-password").toString("base64")}`;
   let leakedAuth = false;
   let lastApiAuth: string | undefined;
+  // Version 2 of the spec renames /items/{id}, as a backend refactor might.
+  let itemsPath = "/items/{id}";
+  let itemsTitle = "상품 상세 조회";
   const server = createServer((req, res) => {
     res.setHeader("content-type", "application/json");
     if (req.url === "/openapi.json" && req.headers.authorization !== docsAuth) { res.statusCode = 401; res.end('{}'); return; }
@@ -19,7 +22,7 @@ async function main() {
       res.end(JSON.stringify({ accessToken: "login-secret-token", id: 7 }));
       return;
     }
-    if (req.url === "/openapi.json") res.end(JSON.stringify({ openapi: "3.0.3", info: { title: "로컬 상품 API", version: "1.0" }, paths: { "/login": { post: { summary: "로그인", requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["loginId"], properties: { loginId: { type: "string" } } } } } }, responses: { "200": { description: "성공", content: { "application/json": { schema: { type: "object", properties: { accessToken: { type: "string" }, id: { type: "integer" } } } } } } } } }, "/items/{id}": { get: { summary: "상품 상세 조회", description: "상품 번호로 이름과 가격을 확인합니다.", parameters: [{ name: "id", in: "path", required: true, description: "조회할 상품 번호", schema: { type: "integer" } }], responses: { "200": { description: "조회 성공", content: { "application/json": { schema: { type: "object", properties: { id: { type: "integer" }, name: { type: "string" }, price: { type: "integer" } } } } } } } } } } }));
+    if (req.url === "/openapi.json") res.end(JSON.stringify({ openapi: "3.0.3", info: { title: "로컬 상품 API", version: "1.0" }, paths: { "/login": { post: { summary: "로그인", requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["loginId"], properties: { loginId: { type: "string" } } } } } }, responses: { "200": { description: "성공", content: { "application/json": { schema: { type: "object", properties: { accessToken: { type: "string" }, id: { type: "integer" } } } } } } } } }, [itemsPath]: { get: { summary: itemsTitle, description: "상품 번호로 이름과 가격을 확인합니다.", parameters: [{ name: "id", in: "path", required: true, description: "조회할 상품 번호", schema: { type: "integer" } }], responses: { "200": { description: "조회 성공", content: { "application/json": { schema: { type: "object", properties: { id: { type: "integer" }, name: { type: "string" }, price: { type: "integer" } } } } } } } } } } }));
     else res.end(JSON.stringify({ id: 7, name: "테스트 상품", price: 12000, accessToken: "hidden-secret", cookie: req.headers.cookie ?? "" }));
   });
   await new Promise<void>(r => server.listen(0, "127.0.0.1", r));
@@ -314,6 +317,29 @@ async function main() {
     await expect(restored.getByRole("button", { name: "AI 상품 조회", exact: true })).toHaveCount(0);
     await restored.getByRole("button", { name: "{ } 전역변수", exact: true }).click();
     await expect(restored.getByText("저장된 변수가 없습니다.", { exact: true })).toBeVisible();
+    await restored.keyboard.press("Escape");
+    // Refreshing a spec whose title changed offers to rename steps still named after the old title.
+    itemsTitle = "상품 상세 정보 조회";
+    await restored.getByRole("tab", { name: /^API 문서/ }).click();
+    const refreshedSource = restored.getByRole("region", { name: "API 명세 가져오기" });
+    const refreshSpec = async () => {
+      if (!(await restored.getByLabel("OpenAPI URL").isVisible())) await restored.getByRole("button", { name: "명세 설정", exact: true }).click();
+      await restored.getByLabel("Swagger 인증 방식").selectOption("basic");
+      await restored.getByLabel("Swagger 아이디", { exact: true }).fill("docs-user");
+      await restored.getByLabel("Swagger 비밀번호", { exact: true }).fill("docs-test-password");
+      await refreshedSource.getByRole("button", { name: /^(가져오기|새로고침)$/ }).click();
+    };
+    await refreshSpec();
+    await expect(refreshedSource).toContainText("API 제목이 바뀌었습니다 · 시나리오 1개의 단계 1개가 이전 제목을 이름으로 씁니다.");
+    await refreshedSource.getByRole("button", { name: "새 제목으로 바꾸기", exact: true }).click();
+    await expect(refreshedSource).toContainText("시나리오 1개의 단계 이름을 새 제목으로 바꿨습니다.");
+    await expect(refreshedSource).not.toContainText("API 제목이 바뀌었습니다");
+    // A refreshed spec that drops a path a saved scenario uses is flagged right away.
+    itemsPath = "/products/{id}";
+    await refreshSpec();
+    await expect(refreshedSource.getByRole("alert")).toContainText("시나리오 1개가 명세에 없는 API를 씁니다");
+    await refreshedSource.getByRole("alert").locator("summary").click();
+    await expect(refreshedSource.getByRole("alert")).toContainText("로그인 후 상품 조회 · 상품 상세 정보 조회 (GET /items/{id})");
   } finally {
     try {
       const electronProcess = app?.process();
