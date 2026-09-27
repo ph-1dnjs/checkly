@@ -13,6 +13,8 @@ type Props = {
   /** Renames them; resolves to a short result message. */
   onApplyRenames?: () => Promise<string>;
   checkingMissing?: boolean;
+  /** Opens a scenario in the editor, e.g. to fix a step listed in a warning. */
+  onOpenScenario?: (scenarioId: string) => void;
   onRecheckMissing?: () => void;
   sync: ApiSpecSync | null;
   disabled: boolean;
@@ -36,6 +38,9 @@ export function SpecSourcePanel(props: Props) {
   const [open, setOpen] = useState(!catalog);
   const [renaming, setRenaming] = useState(false);
   const [renameResult, setRenameResult] = useState("");
+  const scenarioLink = (item: { scenarioId: string; scenario: string }) => props.onOpenScenario
+    ? <button type="button" className="api-spec-scenario-link" title="이 시나리오 수정 화면 열기" onClick={() => props.onOpenScenario!(item.scenarioId)}>{item.scenario}</button>
+    : <strong>{item.scenario}</strong>;
   const renamedSteps = props.renamedTitles?.reduce((sum, item) => sum + item.steps.length, 0) ?? 0;
   const failed = sync?.status === "failed";
   const sameUrl = Boolean(sync?.url) && url.trim() === sync?.url;
@@ -59,7 +64,7 @@ export function SpecSourcePanel(props: Props) {
     </div>
     {!!props.missingApis?.length && <details className="api-spec-missing" role="alert">
       <summary>시나리오 {props.missingApis.length}개가 명세에 없는 API를 씁니다. 경로가 바뀌었다면 해당 단계를 새 API로 다시 추가하세요.</summary>
-      <ul>{props.missingApis.map(item => <li key={item.scenarioId}><strong>{item.scenario}</strong> · {item.steps.join(", ")}</li>)}</ul>
+      <ul>{props.missingApis.map(item => <li key={item.scenarioId}>{scenarioLink(item)} · {item.steps.join(", ")}</li>)}</ul>
       {props.onRecheckMissing && <button type="button" className="api-compose-link" disabled={props.checkingMissing} onClick={props.onRecheckMissing}>다시 확인</button>}
     </details>}
     {!!props.renamedTitles?.length && <div className="api-spec-missing api-spec-renamed">
@@ -68,7 +73,7 @@ export function SpecSourcePanel(props: Props) {
         {props.onApplyRenames && <button type="button" className="api-primary" disabled={renaming || disabled} onClick={async () => { setRenaming(true); setRenameResult(""); try { setRenameResult(await props.onApplyRenames!()); } catch (error) { setRenameResult((error as Error).message); } finally { setRenaming(false); } }}>{renaming ? "바꾸는 중…" : "새 제목으로 바꾸기"}</button>}
       </div>
       <details><summary>바뀔 내용 보기</summary>
-        <ul>{props.renamedTitles.map(item => <li key={item.scenarioId}><strong>{item.scenario}</strong> · {item.steps.map(step => `“${step.from}” → “${step.to}”`).join(", ")}</li>)}</ul>
+        <ul>{props.renamedTitles.map(item => <li key={item.scenarioId}>{scenarioLink(item)} · {item.steps.map(step => `“${step.from}” → “${step.to}”`).join(", ")}</li>)}</ul>
       </details>
     </div>}
     {renameResult && <p role="status" className="api-spec-rename-result">{renameResult}</p>}

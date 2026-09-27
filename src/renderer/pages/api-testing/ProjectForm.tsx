@@ -10,6 +10,10 @@ export function ProjectForm({ initial, onSave, onCancel, onDelete }: {
     const serverId = crypto.randomUUID();
     return initial ? structuredClone(initial) : { id: crypto.randomUUID(), name: "", servers: [{ id: serverId, name: "기본 API" }], environments: [{ id: crypto.randomUUID(), name: "dev", baseUrls: { [serverId]: "" } }] };
   });
+  // Leaving with edits asks first (same dialog as the scenario editor).
+  const [original] = useState(() => JSON.stringify(draft));
+  const [confirmLeave, setConfirmLeave] = useState(false);
+  const leave = () => { if (JSON.stringify(draft) !== original) setConfirmLeave(true); else onCancel(); };
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const removed = initial ? [...initial.servers.filter(s => !draft.servers.some(n => n.id === s.id)).map(s => `서버 ${s.name}`), ...initial.environments.filter(e => !draft.environments.some(n => n.id === e.id)).map(e => `환경 ${e.name}`)] : [];
@@ -30,7 +34,7 @@ export function ProjectForm({ initial, onSave, onCancel, onDelete }: {
     try { await onSave(parsed.data); } catch (e) { setError((e as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, "")); } finally { setSaving(false); }
   }}>
     <header className="api-project-form-heading">
-      <button type="button" className="api-project-back" disabled={saving} onClick={onCancel}>← 돌아가기</button>
+      <button type="button" className="api-project-back" disabled={saving} onClick={leave}>← 돌아가기</button>
       <h2>{initial ? "프로젝트 설정" : "새 API 프로젝트"}</h2>
       <p>서버마다 API 명세를 등록하고, 실행할 때 고른 환경의 기본 주소로 호출합니다.</p>
     </header>
@@ -66,7 +70,17 @@ export function ProjectForm({ initial, onSave, onCancel, onDelete }: {
     </fieldset>
     <footer className="api-project-form-footer">
       {initial && onDelete && <DeleteAction label="프로젝트 삭제" disabled={saving} description={`‘${initial.name}’의 모든 서버·환경, API 명세, 시나리오·초안, 저장된 문서 계정과 전역변수를 삭제합니다. 실제 API 서버의 데이터는 삭제하지 않습니다.`} onDelete={onDelete} />}
-      <span className="api-project-form-actions"><button type="button" disabled={saving} onClick={onCancel}>취소</button><button className="api-primary" disabled={saving}>{saving ? "저장 중…" : "프로젝트 저장"}</button></span>
+      <span className="api-project-form-actions"><button type="button" disabled={saving} onClick={leave}>취소</button><button className="api-primary" disabled={saving}>{saving ? "저장 중…" : "프로젝트 저장"}</button></span>
     </footer>
+    {confirmLeave && <div className="api-confirm-dialog-backdrop">
+      <section className="api-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="api-project-leave-title">
+        <h2 id="api-project-leave-title">저장하지 않은 변경사항</h2>
+        <p>프로젝트 설정을 바꾼 내용이 저장되지 않았습니다. 나가면 수정 내용이 사라집니다.</p>
+        <div className="api-actions">
+          <button type="button" autoFocus onClick={() => setConfirmLeave(false)}>계속 수정</button>
+          <button type="button" className="api-danger-action" onClick={onCancel}>변경사항 버리고 나가기</button>
+        </div>
+      </section>
+    </div>}
   </form>;
 }

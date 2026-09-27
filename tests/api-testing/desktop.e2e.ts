@@ -196,9 +196,10 @@ async function main() {
     await page.locator('details[aria-label="편집 단계 1"] > summary').click();
     await page.locator('details[aria-label="편집 단계 2"] > summary').click();
     await page.getByLabel("시나리오 이름", { exact: true }).fill("로그인 후 상품 조회");
+    // loginId is typed while the scenario runs (runtime input), not stored in the scenario.
     await page.getByRole("button", { name: "1단계 loginId 키 값 연결", exact: true }).click();
-    await page.getByLabel("1단계 loginId 직접 입력값", { exact: true }).fill("tester");
-    await page.getByRole("button", { name: "입력값 적용", exact: true }).click();
+    await page.getByRole("button", { name: /^실행 중 사용자 입력으로 받기/ }).click();
+    await page.getByRole("button", { name: "완료", exact: true }).click();
     await page.getByRole("button", { name: "/accessToken 키 선택", exact: true }).first().click();
     await page.getByRole("button", { name: /^전역변수로 저장/ }).click();
     await page.getByLabel("응답 전역변수 이름", { exact: true }).fill("accessToken");
@@ -230,6 +231,10 @@ async function main() {
     await page.getByRole("button", { name: "시나리오 목록으로", exact: true }).click();
     await page.getByRole("button", { name: /로그인 후 상품 조회/ }).click();
     await page.getByRole("button", { name: "실행", exact: true }).click();
+    const inputDialog = page.getByRole("dialog", { name: "loginId 입력", exact: true });
+    await expect(inputDialog).toContainText("1/2단계");
+    await inputDialog.getByRole("textbox").fill("tester");
+    await inputDialog.getByRole("button", { name: "입력 완료 · 계속", exact: true }).click();
     const result = page.getByRole("region", { name: "시나리오 실행 결과" });
     await expect(result).toContainText("통과");
     await shot("run-result");
@@ -302,6 +307,16 @@ async function main() {
     restored.setDefaultTimeout(15_000);
     await restored.getByRole("button", { name: "API 테스트", exact: true }).click();
     await expect(restored.getByLabel("API 프로젝트")).toContainText("쇼핑몰 QA");
+    // Leaving the project form with edits asks first.
+    await restored.getByRole("button", { name: "프로젝트 설정", exact: true }).click();
+    await restored.getByLabel("프로젝트 이름").fill("쇼핑몰 QA 수정");
+    await restored.getByRole("button", { name: "← 돌아가기", exact: true }).click();
+    await restored.getByRole("button", { name: "계속 수정", exact: true }).click();
+    await expect(restored.getByLabel("프로젝트 이름")).toHaveValue("쇼핑몰 QA 수정");
+    await restored.getByRole("button", { name: "← 돌아가기", exact: true }).click();
+    await restored.getByRole("button", { name: "변경사항 버리고 나가기", exact: true }).click();
+    await expect(restored.getByLabel("API 프로젝트")).toContainText("쇼핑몰 QA");
+    await expect(restored.getByLabel("프로젝트 이름")).toHaveCount(0);
     await restored.getByRole("button", { name: "명세 설정", exact: true }).click();
     await expect(restored.getByLabel("OpenAPI URL", { exact: true })).toHaveValue(`${url}/openapi.json`);
     if (canRemember) {
@@ -340,6 +355,9 @@ async function main() {
     await expect(refreshedSource.getByRole("alert")).toContainText("시나리오 1개가 명세에 없는 API를 씁니다");
     await refreshedSource.getByRole("alert").locator("summary").click();
     await expect(refreshedSource.getByRole("alert")).toContainText("로그인 후 상품 조회 · 상품 상세 정보 조회 (GET /items/{id})");
+    // The scenario name in the warning opens it in the editor.
+    await refreshedSource.getByRole("button", { name: "로그인 후 상품 조회", exact: true }).click();
+    await expect(restored.getByText("시나리오 수정 · 로그인 후 상품 조회", { exact: true })).toBeVisible();
   } finally {
     try {
       const electronProcess = app?.process();

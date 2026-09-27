@@ -186,7 +186,7 @@ export function ScenarioValueLink({ scenario, targetIndex, target, catalogs, bin
         </details>
       </>}
       {error && <p role="alert" className="api-field-menu-error">{error}</p>}
-      <footer><button type="button" onClick={onClose}>취소</button>{previousSourceSteps.length > 0 && <button type="button" className="api-primary" disabled={!ready || from < 0} onClick={apply}>이 값으로 연결</button>}</footer>
+      <footer><button type="button" onClick={onClose}>{previousSourceSteps.length > 0 ? "취소" : "닫기"}</button>{previousSourceSteps.length > 0 && <button type="button" className="api-primary" disabled={!ready || from < 0} onClick={apply}>이 값으로 연결</button>}</footer>
     </section>
   </div>;
 }
