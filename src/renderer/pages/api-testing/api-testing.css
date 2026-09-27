@@ -1067,3 +1067,8 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 .api-picker-groups > p { margin:12px; }
 .api-picker-group li.is-unavailable label { cursor:not-allowed; opacity:.55; }
 .api-picker-group li.is-unavailable .api-picker-summary { color:var(--ck-color-wait-ink); }
+.api-scenario-yaml { margin-top:24px; padding-top:16px; border-top:1px solid var(--api-border); }
+.api-scenario-yaml > summary { color:var(--api-body); font-weight:600; cursor:pointer; }
+.api-scenario-yaml-tools { display:flex; align-items:center; gap:12px; margin-top:12px; }
+.api-scenario-yaml-tools small { flex:1; color:var(--api-muted); }
+.api-testing-page pre.api-yaml { max-height:none; overflow:visible; }

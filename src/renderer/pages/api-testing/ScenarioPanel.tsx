@@ -15,7 +15,8 @@ import { RunInputModal } from "./RunInputModal";
 import { globalProducerScenarios } from "./global-options";
 import { ScenarioSidebarTree } from "./ScenarioSidebarTree";
 import { Icon } from "../../shared/ui/Icon";
-import { runStatusName, ScenarioRunFlow, ScenarioRunResult } from "./ScenarioRunViews";
+import { operationForStep, runStatusName, ScenarioRunFlow, ScenarioRunResult } from "./ScenarioRunViews";
+import { YamlCode } from "./YamlCode";
 
 const errorText = (e: unknown) => (e as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, "");
 
@@ -85,6 +86,8 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
   const [lastRun, setLastRun] = useState<ScenarioLastRun | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [yamlOpen, setYamlOpen] = useState(false);
+  const [yamlCopied, setYamlCopied] = useState(false);
   const [busy, setBusy] = useState(false);
   const [running, setRunning] = useState(false);
   const [checkedSource, setCheckedSource] = useState("");
@@ -349,6 +352,16 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
       {(running || result) && <section hidden={!running && runView === "preview"} className={`api-response${running ? " api-response-running" : ""}`} aria-label={running ? "시나리오 실행 중" : "시나리오 실행 결과"}>
         {running ? <><h2>실행 중</h2><ProgressBar label={pendingInput ? "입력 대기 중" : "시나리오 실행 중"} detail={pendingInput ? `${pendingInput.index + 1}/${pendingInput.totalSteps}단계 · ${pendingInput.label ?? pendingInput.name}` : preview ? `${preview.scenario.steps.length}개 API · 순서대로 실행 중` : "순서대로 실행 중"} /></> : result && <>{lastRun && <p className="api-spec-meta">마지막 실행 {new Date(lastRun.completedAt).toLocaleString()} · 새로고침하면 사라집니다</p>}<ScenarioRunResult result={result} preview={lastRun?.preview ?? preview} catalogs={catalogs} bindings={lastRun?.bindings ?? bindings} focusRequest={resultFocusRequest} /></>}
       </section>}
+      {preview && <details key={current?.id} className="api-scenario-yaml" onToggle={event => setYamlOpen(event.currentTarget.open)}>
+        <summary>YAML 보기</summary>
+        {yamlOpen && (() => {
+          const yaml = stringifyScenario(preview.scenario, false, step => operationForStep(step, catalogs, bindings), Object.fromEntries(project.servers.map(server => [server.id, server.name])));
+          return <>
+            <div className="api-scenario-yaml-tools"><small>AI에게 보여주거나 공유할 때 쓰는 간단한 형태입니다.</small><button type="button" onClick={() => void navigator.clipboard.writeText(yaml).then(() => { setYamlCopied(true); window.setTimeout(() => setYamlCopied(false), 1200); })}>{yamlCopied ? "복사됨" : "YAML 복사"}</button></div>
+            <YamlCode label="시나리오 YAML" source={yaml} />
+          </>;
+        })()}
+      </details>}
     </article>
     {pendingInput && <RunInputModal key={pendingInput.requestId} request={pendingInput} scope={scenarioScope} bridge={bridge} onSubmitted={() => setPendingInput(null)} onCancel={() => { setPendingInput(null); void bridge.cancel(scope); }} />}</>}
   </div>;
