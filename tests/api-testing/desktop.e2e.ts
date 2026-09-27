@@ -210,6 +210,9 @@ async function main() {
     await expect(page.getByRole("button", { name: "검증 수정", exact: true })).toBeVisible();
     await page.keyboard.press("Escape");
     await page.getByRole("button", { name: "+ HTTP 상태 검증", exact: true }).first().click();
+    // A new status check has no preset code; its value field opens focused.
+    await expect(page.getByPlaceholder("예: 201 또는 404")).toBeFocused();
+    await page.getByPlaceholder("예: 201 또는 404").fill("200");
     await expect(page.locator('details[aria-label="편집 단계 1"] > summary')).toContainText("검증 2");
     await page.getByRole("button", { name: "값 연결", exact: true }).click();
     await page.getByRole("button", { name: /^이전 단계 값 선택/ }).click();

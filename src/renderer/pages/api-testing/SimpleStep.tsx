@@ -36,6 +36,8 @@ export function SimpleStep({ scenario, index, catalogs, bindings, scope, bridge,
   const [error, setError] = useState("");
   const [globals, setGlobals] = useState<ApiGlobal[]>([]);
   const [globalsLoaded, setGlobalsLoaded] = useState(false);
+  // A just-added check opens with its value field focused (no silent default like 200).
+  const [newExpectation, setNewExpectation] = useState<number | null>(null);
   const globalAccess = useGlobalVariableAccess();
   const responseNameSuggestions = responseGlobalNameSuggestions(operation, responsePointer);
   const existingGlobalExtraction = (pointer: string | null) => pointer === null ? undefined : step.extract.find(extract => extract.source === "body" && (extract.pointer ?? "") === pointer && extract.target.startsWith("globals."));
@@ -271,16 +273,16 @@ export function SimpleStep({ scenario, index, catalogs, bindings, scope, bridge,
         <footer><button type="button" onClick={closeResponseModal}>닫기</button></footer>
       </section>
     </div>}
-    <header className="api-simple-section-heading"><h3>검증</h3><button type="button" onClick={() => updateExpectations([...(step.expect ?? []), { source: "status", operator: "equals", value: 200 }])}>+ HTTP 상태 검증</button></header>
-    {!(step.expect ?? []).length && <p className="api-field-help">응답 항목의 ‘설정’에서 값 검증을, 위 버튼으로 HTTP 상태 검증을 추가하세요.</p>}
+    <header className="api-simple-section-heading"><h3>검증</h3><button type="button" onClick={() => { setNewExpectation((step.expect ?? []).length); updateExpectations([...(step.expect ?? []), { source: "status", operator: "equals" }]); }}>+ HTTP 상태 검증</button></header>
+    <p className="api-field-help">상태 검증이 없으면 2xx 응답이면 통과합니다. 201·404처럼 특정 코드를 기대할 때만 상태 검증을 추가하세요. 값 검증은 응답 항목의 ‘설정’에서 추가합니다.</p>
     {(step.expect ?? []).map((expectation, n) => {
       const change = (patch: Partial<typeof expectation>) => updateExpectations(step.expect!.map((v, i) => i === n ? { ...v, ...patch } : v));
       const target = expectation.source === "status" ? "" : ` ${expectation.pointer || expectation.header || "전체 응답"}`;
-      return <details key={n} className="api-verification-item"><summary>검증 {n + 1} · {verificationSourceLabels[expectation.source]}{target} · {verificationOperatorLabels[expectation.operator]}{expectation.operator !== "exists" ? ` ${expectedValueText(expectation.value)}` : ""}</summary>
+      return <details key={n} className="api-verification-item" open={newExpectation === n || undefined}><summary>검증 {n + 1} · {verificationSourceLabels[expectation.source]}{target} · {verificationOperatorLabels[expectation.operator]}{expectation.operator !== "exists" ? ` ${expectedValueText(expectation.value)}` : ""}</summary>
       <label>검증 대상<select value={expectation.source} onChange={e => { const source = e.target.value as typeof expectation.source; change(source === "status" ? { source, pointer: undefined, header: undefined, operator: "equals", value: expectation.value ?? 200 } : { source, pointer: source === "body" ? "" : undefined, header: source === "header" ? "content-type" : undefined }); }}>{(Object.keys(verificationSourceLabels) as (keyof typeof verificationSourceLabels)[]).map(source => <option key={source} value={source}>{verificationSourceLabels[source]}</option>)}</select></label>
       {expectation.source !== "status" && <label>{expectation.source === "body" ? "응답 경로 (JSON Pointer)" : "헤더 이름"}<input value={expectation.pointer ?? expectation.header ?? ""} onChange={e => change(expectation.source === "body" ? { pointer: e.target.value } : { header: e.target.value })} /></label>}
       <label>검증 방식<select value={expectation.operator} onChange={e => change({ operator: e.target.value as VerificationOperator })}>{(Object.keys(verificationOperatorLabels) as VerificationOperator[]).filter(operator => expectation.source !== "status" || operator !== "exists").map(operator => <option key={operator} value={operator}>{verificationOperatorLabels[operator]}</option>)}</select></label>
-      {expectation.operator !== "exists" && <label>기대값<DraftInput value={expectedValueText(expectation.value)} placeholder="예: success 또는 200" onChange={e => change({ value: parseExpectedValue(e.target.value) })} /></label>}
+      {expectation.operator !== "exists" && <label>기대값<DraftInput autoFocus={newExpectation === n} required value={expectedValueText(expectation.value)} placeholder={expectation.source === "status" ? "예: 201 또는 404" : "예: success 또는 200"} onChange={e => change({ value: e.target.value === "" ? undefined : parseExpectedValue(e.target.value) })} /></label>}
       <button type="button" className="api-danger-action" onClick={() => updateExpectations(step.expect!.filter((_, i) => i !== n))}>검증 제거</button>
     </details>; })}
     {error && <p role="alert" className="api-warning">{error}</p>}

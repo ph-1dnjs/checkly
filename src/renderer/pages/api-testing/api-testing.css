@@ -1036,3 +1036,4 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 .api-project-section > h3 { margin:0!important; }
 .api-project-form-heading { display:grid; justify-items:start; gap:4px; }
 .api-project-form-heading > .api-project-back { margin-bottom:8px; }
+.api-testing-page button.api-summary-check { min-height:0; }
