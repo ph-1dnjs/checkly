@@ -5,6 +5,8 @@ import type { ApiCatalog, ApiGlobal, ApiProject, ApiScope, ApiTestingBridge, Sav
 import type { Step } from "./scenario-builder-model";
 import { SimpleStep } from "./SimpleStep";
 import { YamlCode } from "./YamlCode";
+import { ApiReplaceModal } from "./ApiReplaceModal";
+import { apiReference } from "./scenario-builder-model";
 import { useGlobalVariableAccess } from "./global-variable-access";
 import { globalOptions } from "./global-options";
 import { configuredFields } from "./settings-summary-model";
@@ -31,6 +33,8 @@ export function ScenarioBuilder({ bindings, project, scope, bridge, onApply, val
   const [error, setError] = useState("");
   const [visitedSteps, setVisitedSteps] = useState<Set<string>>(() => new Set());
   const [yamlOpen, setYamlOpen] = useState(false);
+  const [replacing, setReplacing] = useState<number | null>(null);
+  const [descriptionOpen, setDescriptionOpen] = useState<Set<string>>(() => new Set());
   const [globals, setGlobals] = useState<ApiGlobal[]>([]);
   const [savedScenarios, setSavedScenarios] = useState<SavedApiScenario[]>([]);
   const globalAccess = useGlobalVariableAccess();
@@ -69,16 +73,28 @@ export function ScenarioBuilder({ bindings, project, scope, bridge, onApply, val
     {draft.steps.map((step, index) => { const operation = operationForStep(step, catalogs, bindings); const method = operation?.method ?? ("method" in step.api ? step.api.method : "API"); const path = operation?.path ?? ("path" in step.api ? step.api.path : step.api.operationId); return <details id={`scenario-editor-step-${step.id}`} onToggle={event => { if (event.currentTarget.open) setVisitedSteps(previous => previous.has(step.id) ? previous : new Set([...previous, step.id])); }} className={`api-builder-step api-step-accordion api-selected-${method.toLowerCase()}`} key={step.id} aria-label={`편집 단계 ${index + 1}`}>
       <summary className="api-step-summary" onClick={() => onStepFocus?.(step)}><span>{index + 1}</span><span className="api-selected-method">{method}</span><code>{path}</code><span className="api-step-summary-name">{step.name || operation?.summary || step.id}</span><small>{[["요청", configuredFields(draft, index).length], ["저장", step.extract.length], ["검증", step.expect?.length ?? 0]].filter(([, count]) => count).map(([label, count]) => `${label} ${count}`).join(" · ") || "설정 없음"}{step.auth ? ` · 인증 ${step.auth === "none" ? "없음" : step.auth.slice(8)}` : draft.auth ? ` · 인증 ${draft.auth.slice(8)}` : ""}</small></summary>
       {visitedSteps.has(step.id) && <div className="api-step-body">
-      {operation?.description && <details className="api-step-description swagger-ui" aria-label="API 설명"><summary>API 설명 보기</summary>{Markdown ? <Markdown source={operation.description} /> : <p style={{ whiteSpace: "pre-wrap" }}>{operation.description}</p>}</details>}
-      <div className="api-step-toolbar">
-        <label>이 단계의 인증<select aria-label={`${index + 1}단계 인증`} value={step.auth ?? ""} onChange={event => updateStep(index, { auth: event.target.value ? event.target.value as typeof step.auth : undefined })}><option value="">{draft.auth ? `시나리오 인증 따름 · ${draft.auth.slice(8)}` : "시나리오 인증 따름 (없음)"}</option><option value="none">인증 없음</option>{authNames.map(name => <option key={name} value={`globals.${name}`}>전역변수 · {name}</option>)}</select></label>
+      <div className="api-step-actions">
+        {operation?.description && <button type="button" className="api-step-description-toggle" aria-expanded={descriptionOpen.has(step.id)} onClick={() => setDescriptionOpen(previous => { const next = new Set(previous); if (next.has(step.id)) next.delete(step.id); else next.add(step.id); return next; })}>{descriptionOpen.has(step.id) ? "▾" : "▸"} API 설명</button>}
+        <button type="button" aria-label={`${index + 1}단계 API 바꾸기`} className={operation ? undefined : "api-primary"} onClick={() => setReplacing(index)}>API 바꾸기</button>
         <button type="button" className="api-danger-action" aria-label={`${index + 1}단계 제거`} onClick={() => setDraft({ ...draft, steps: draft.steps.filter((_, i) => i !== index) })}>단계 제거</button>
+      </div>
+      {operation?.description && descriptionOpen.has(step.id) && <div className="api-step-description swagger-ui" aria-label="API 설명">{Markdown ? <Markdown source={operation.description} /> : <p style={{ whiteSpace: "pre-wrap" }}>{operation.description}</p>}</div>}
+      <div className="api-step-auth">
+        <label>이 단계의 인증<select aria-label={`${index + 1}단계 인증`} value={step.auth ?? ""} onChange={event => updateStep(index, { auth: event.target.value ? event.target.value as typeof step.auth : undefined })}><option value="">{draft.auth ? `시나리오 인증 따름 · ${draft.auth.slice(8)}` : "시나리오 인증 따름 (없음)"}</option><option value="none">인증 없음</option>{authNames.map(name => <option key={name} value={`globals.${name}`}>전역변수 · {name}</option>)}</select></label>
       </div>
       <SimpleStep scenario={draft} index={index} catalogs={catalogs} bindings={bindings} scope={scope} bridge={bridge} onChange={setDraft} />
       </div>}
     </details>; })}
     </div></div>
     {!draft.steps.length && <p>1단계에서 API를 추가하세요.</p>}
+    {replacing !== null && draft.steps[replacing] && (() => {
+      const step = draft.steps[replacing];
+      const api = step.api;
+      return <ApiReplaceModal stepNumber={replacing + 1} current={"operationId" in api ? api.operationId : `${api.method} ${api.path}`}
+        operations={catalogs[bindings[step.server] ?? step.server]?.operations ?? []}
+        onClose={() => setReplacing(null)}
+        onPick={operation => { updateStep(replacing, { api: apiReference(operation) }); setReplacing(null); }} />;
+    })()}
     {error && <p role="alert" className="api-warning">{error}</p>}
     </fieldset>
     <details onToggle={event => setYamlOpen(event.currentTarget.open)}><summary>간단한 YAML 보기</summary>{yamlOpen && <YamlCode label="작성 중인 시나리오 YAML" source={stringifyScenario(draft, false, step => operationForStep(step, catalogs, bindings), Object.fromEntries(project.servers.map(server => [server.id, server.name])))} />}</details>

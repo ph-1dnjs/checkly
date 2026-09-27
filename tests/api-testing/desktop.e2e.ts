@@ -365,6 +365,22 @@ async function main() {
     await restored.getByRole("button", { name: "시나리오 목록으로", exact: true }).click();
     const warnedEntry = restored.locator(".api-sidebar-entry").filter({ hasText: "로그인 후 상품 조회" });
     await expect(warnedEntry.locator(".api-sidebar-warning")).toHaveCount(1);
+    // "API 바꾸기" points the step at the renamed path, keeping its values; saving clears the warning.
+    await warnedEntry.click();
+    await restored.getByRole("button", { name: "수정", exact: true }).click();
+    await restored.locator(".api-compose-steps button").nth(1).click();
+    await restored.locator('details[aria-label="편집 단계 2"] > summary').click();
+    await expect(restored.getByText("현재 API 명세에서 이 API를 찾을 수 없습니다", { exact: false })).toBeVisible();
+    await restored.getByRole("button", { name: "2단계 API 바꾸기", exact: true }).click();
+    const replaceDialog = restored.getByRole("dialog", { name: "2단계 API 바꾸기" });
+    await replaceDialog.getByLabel("바꿀 API 검색").fill("products");
+    await replaceDialog.getByRole("button", { name: /\/products\/\{id\}/ }).click();
+    await expect(restored.getByText("현재 API 명세에서 이 API를 찾을 수 없습니다", { exact: false })).toHaveCount(0);
+    await expect(restored.locator('details[aria-label="편집 단계 2"]')).toContainText("값 연결");
+    await restored.getByRole("button", { name: "시나리오 검사·저장", exact: true }).click();
+    await expect(restored.getByText("시나리오를 저장했습니다. 이 화면에서 계속 수정할 수 있습니다.", { exact: true })).toBeVisible();
+    await restored.getByRole("button", { name: "시나리오 목록으로", exact: true }).click();
+    await expect(warnedEntry.locator(".api-sidebar-warning")).toHaveCount(0);
   } finally {
     try {
       const electronProcess = app?.process();

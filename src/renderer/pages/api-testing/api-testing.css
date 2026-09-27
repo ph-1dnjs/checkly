@@ -700,9 +700,6 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 .api-testing-page:has(.api-compose-layout) .api-compose-layout { flex:1 1 0; height:auto; min-height:0; margin-top:0; }
 .api-testing-page:has(.api-compose-layout) .api-compose-layout > :is(.api-swagger-renderer,.api-selection-basket,.api-compose-editor) { min-height:0; max-height:none; overflow-y:auto; overscroll-behavior:contain; scrollbar-gutter:stable; }
 .api-testing-page:has(.api-compose-layout) .api-selection-basket { position:static; }
-.api-step-toolbar { display:flex; align-items:flex-end; justify-content:space-between; gap:12px; margin:12px 0; }
-.api-step-toolbar > label { flex:1; min-width:0; }
-.api-step-toolbar > .api-danger-action { flex:none; color:var(--ck-color-fail-ink); }
 .api-compose-editor { padding-bottom:0; }
 .api-inline-flow svg { display:block; width:100%; height:auto; margin:8px auto; }
 .api-inline-flow g.node[role=button] { cursor:pointer; }
@@ -1097,3 +1094,20 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 .api-run-result-check-badge { margin-right:8px; padding:1px 6px; border-radius:var(--ck-dim-radius-base); background:var(--ck-color-fail-tint); color:var(--ck-color-fail-ink); font-size:11px; font-weight:600; }
 .api-sidebar-warning { flex:none; width:8px; height:8px; margin-left:auto; background:var(--ck-color-wait); }
 .api-sidebar-entry > .api-sidebar-warning + .api-sidebar-entry-meta { margin-left:6px; }
+/* Replace a step's API */
+.api-replace-modal { display:grid; gap:10px; }
+.api-replace-list { max-height:360px; overflow:auto; margin:0; padding:0; list-style:none; border:1px solid var(--api-border); border-radius:var(--ck-dim-radius-base); }
+.api-replace-list li + li { border-top:1px solid var(--ck-color-line-soft); }
+.api-testing-page .api-replace-list button { display:grid; grid-template-columns:56px minmax(0,auto) minmax(0,1fr); align-items:center; gap:10px; width:100%; min-height:34px; padding:4px 10px; border:0; border-radius:0; background:transparent; text-align:left; }
+.api-testing-page .api-replace-list button:hover { background:var(--ck-color-surface-hover); }
+.api-replace-list button > span:last-child { overflow:hidden; color:var(--api-muted); text-overflow:ellipsis; white-space:nowrap; }
+.api-replace-list .api-field-help { padding:8px 10px; }
+.api-extra-fields ul { margin:6px 0 0; padding-left:18px; }
+.api-extra-fields li { display:flex; gap:8px; align-items:baseline; }
+/* Step card: step-wide actions as a small row on the right, then the step's own fields. */
+.api-step-actions { display:flex; align-items:center; justify-content:flex-end; gap:6px; margin:10px 0 12px; }
+.api-testing-page .api-step-actions > button.api-step-description-toggle { margin-right:auto; padding-left:0; border:0; background:transparent; color:var(--api-body); }
+.api-step-body > .api-step-description { margin:0 0 12px; }
+.api-testing-page .api-step-actions > button { min-height:28px; padding:3px 10px; font-size:12px; }
+.api-step-auth > label { display:grid; gap:6px; margin:0; }
+.api-step-body > .api-step-description :is(p,.markdown p,.renderedMarkdown p):first-child { margin-top:0; } .api-step-body > .api-step-description :is(p,.markdown p,.renderedMarkdown p):last-child { margin-bottom:0; }

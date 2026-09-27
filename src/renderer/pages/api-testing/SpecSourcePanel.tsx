@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ApiCatalog, ApiSpecSync } from "../../../app/api-testing/shared/workspace";
 import { Icon } from "../../shared/ui/Icon";
 import { DeleteAction } from "./DeleteAction";
@@ -38,6 +38,8 @@ export function SpecSourcePanel(props: Props) {
   const [open, setOpen] = useState(!catalog);
   const [renaming, setRenaming] = useState(false);
   const [renameResult, setRenameResult] = useState("");
+  // A result message belongs to the spec it was made for; a new sync clears it.
+  useEffect(() => { setRenameResult(""); }, [catalog?.importedAt]);
   const scenarioLink = (item: { scenarioId: string; scenario: string }) => props.onOpenScenario
     ? <button type="button" className="api-spec-scenario-link" title="이 시나리오 수정 화면 열기" onClick={() => props.onOpenScenario!(item.scenarioId)}>{item.scenario}</button>
     : <strong>{item.scenario}</strong>;
@@ -63,7 +65,7 @@ export function SpecSourcePanel(props: Props) {
       </span>
     </div>
     {!!props.missingApis?.length && <details className="api-spec-missing" role="alert">
-      <summary>시나리오 {props.missingApis.length}개가 명세에 없는 API를 씁니다. 경로가 바뀌었다면 해당 단계를 새 API로 다시 추가하세요.</summary>
+      <summary>시나리오 {props.missingApis.length}개가 명세에 없는 API를 씁니다. 시나리오 이름을 눌러 해당 단계의 <strong>API 바꾸기</strong>로 새 API를 연결하세요.</summary>
       <ul>{props.missingApis.map(item => <li key={item.scenarioId}>{scenarioLink(item)} · {item.steps.join(", ")}</li>)}</ul>
       {props.onRecheckMissing && <button type="button" className="api-compose-link" disabled={props.checkingMissing} onClick={props.onRecheckMissing}>다시 확인</button>}
     </details>}

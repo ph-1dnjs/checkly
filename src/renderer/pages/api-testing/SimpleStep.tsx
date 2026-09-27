@@ -223,10 +223,19 @@ export function SimpleStep({ scenario, index, catalogs, bindings, scope, bridge,
   const spec = catalogs[bindings[step.server] ?? step.server]?.spec;
   return <div className="api-simple-step">
     <header className="api-simple-section-heading"><h3>요청</h3></header>
-    {!operation ? <p>현재 API 명세에서 이 API를 찾을 수 없습니다. 명세를 다시 가져오거나 이 단계를 제거하세요.</p> : <>
+    {!operation ? <p className="api-warning">현재 API 명세에서 이 API를 찾을 수 없습니다. 경로가 바뀌었다면 위의 <strong>API 바꾸기</strong>로 새 API를 연결하세요. 요청값은 그대로 유지됩니다.</p> : <>
       {fields.filter(field => field.area !== "body").length > 0 ? <div className="api-request-fields">{fields.filter(field => field.area !== "body").map(field => renderField(field))}</div> : !hasRequestBody && <p>입력 가능한 요청 파라미터가 없습니다.</p>}
       {hasRequestBody && <RequestBodyEditor operation={operation} step={step} update={update} bodyFields={fields.filter(field => field.area === "body")} renderField={renderField} />}
     </>}
+    {operation && (() => {
+      // Values kept from a previous API that this one does not define (e.g. after "API 바꾸기").
+      const known = new Set(fields.map(field => `${field.area}:${field.name}`));
+      const bodyIsObject = step.request.body !== undefined && step.request.body !== null && typeof step.request.body === "object" && !Array.isArray(step.request.body);
+      const extra = (["pathParams", "query", "headers", "cookies", ...(bodyIsObject && fields.some(field => field.area === "body") ? ["body"] : [])] as RequestArea[])
+        .flatMap(area => Object.keys(objectValue(step.request[area])).filter(name => !known.has(`${area}:${name}`) && !(area === "headers" && name.toLowerCase() === "authorization")).map(name => ({ area, name })));
+      if (!extra.length) return null;
+      return <div className="api-warning api-extra-fields" role="status"><strong>새 API에 없는 요청 값 {extra.length}개</strong><ul>{extra.map(item => <li key={`${item.area}:${item.name}`}><code>{item.area}.{item.name}</code><button type="button" className="api-compose-link" onClick={() => setValue(item.area, item.name, undefined)}>제거</button></li>)}</ul></div>;
+    })()}
     <header className="api-simple-section-heading"><h3>응답</h3></header>
     <ResponsePicker operation={operation} spec={spec} actionLabel="설정" selectedPointer={responsePointer} showPreview={false} badges={responseBadges} onSelect={pointer => { setResponsePointer(pointer); setAction(null); setVerificationPointer(pointer); setGlobalName(existingGlobalExtraction(pointer)?.target.slice("globals.".length) || responseGlobalNameSuggestions(operation, pointer)[0]?.name || "response"); setError(""); }} />
     {responsePointer !== null && <div className="api-value-modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) closeResponseModal(); }}>
