@@ -6,7 +6,7 @@
 
 API 문서는 공식 Swagger UI에 저장된 명세를 전달합니다. 태그 접기·펼치기, 요청 편집, 응답 명세 및 실시간 응답 표시를 지원합니다. 검색은 태그·메서드·경로·전체 URL·operationId·summary·description을 대상으로 합니다. 하단 전체 Schemas 목록은 숨기고 개별 요청·응답의 스키마는 표시합니다.
 
-현재 Swagger 화면에는 별도 tagsSorter/operationsSorter를 지정하지 않습니다. 이전 목록용 `documentation-order.ts`의 선언 태그 → 미선언 이름순, 경로 → 메서드 정렬 규칙을 현재 Swagger 화면의 계약으로 간주하지 않습니다.
+현재 Swagger 화면에는 별도 tagsSorter/operationsSorter를 지정하지 않고 명세 순서를 따릅니다.
 
 태그·엔드포인트 펼침 상태는 URL hash와 연결합니다. hash에는 프로젝트·환경이 포함되지 않으므로 해당 명세가 선택되어 있어야 위치를 찾을 수 있습니다. 앱 내부 hash 이동과 외부에서 앱을 여는 OS 딥링크는 별개이며 후자는 미구현입니다.
 
