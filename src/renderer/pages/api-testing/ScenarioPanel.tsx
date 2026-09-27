@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { ApiCatalog, ApiProject, ApiScope, ApiTestingBridge, ApiScenarioInputRequest, ApiScenarioPreview, ApiScenarioResult, SavedApiScenario, SavedApiSuite } from "../../../app/api-testing/shared/workspace";
 import { parseScenario, stringifyScenario, type Json, type Scenario } from "../../../app/api-testing/shared/scenario";
 import { useSensitiveValues } from "./sensitive-values";
@@ -11,6 +11,7 @@ import { LoadingSpinner } from "../../shared/ui/LoadingSpinner";
 import { GlobalVariableSetupLink, useGlobalVariableAccess } from "./global-variable-access";
 import { readLastRun, writeLastRun, type ScenarioLastRun } from "./scenario-last-run";
 import { SuitePanel } from "./SuitePanel";
+import { RunInputModal } from "./RunInputModal";
 import { globalProducerScenarios } from "./global-options";
 import { ScenarioSidebarTree } from "./ScenarioSidebarTree";
 import { Icon } from "../../shared/ui/Icon";
@@ -85,9 +86,6 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
   const [running, setRunning] = useState(false);
   const [checkedSource, setCheckedSource] = useState("");
   const [pendingInput, setPendingInput] = useState<ApiScenarioInputRequest | null>(null);
-  const [inputValue, setInputValue] = useState("");
-  const [inputError, setInputError] = useState("");
-  const [inputSubmitting, setInputSubmitting] = useState(false);
   const [catalogs, setCatalogs] = useState<Record<string, ApiCatalog | null>>({});
   const [composer, setComposer] = useState<{ saved?: SavedApiScenario; scenario?: Scenario } | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -117,7 +115,6 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
   useEffect(() => {
     if (!running) {
       setPendingInput(null);
-      setInputSubmitting(false);
       return;
     }
     let active = true;
@@ -135,11 +132,6 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
     void poll();
     return () => { active = false; if (timer !== undefined) window.clearTimeout(timer); };
   }, [bridge, running, scope.projectId, scope.environmentId]);
-  useEffect(() => {
-    setInputValue("");
-    setInputError("");
-    setInputSubmitting(false);
-  }, [pendingInput?.requestId]);
   const working = (v: boolean) => { setBusy(v); onBusy(v); };
   const scenarioScope = { projectId: scope.projectId, environmentId: scope.environmentId };
   const check = async (yaml = source, mapping = bindings) => {
@@ -195,28 +187,6 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
     if (preview && !busy) void check().catch(e => setError(errorText(e)));
   }, [globalAccess.revision]);
   const canUse = Boolean(canSave && !current?.draft && !preview?.executionIssues?.length);
-  const parseScenarioInput = (request: ApiScenarioInputRequest, raw: string): Json => {
-    if (request.type === "string") return raw;
-    if (!raw.trim()) return null;
-    try { return JSON.parse(raw) as Json; }
-    catch { throw new Error(`${request.type} 입력은 JSON 형식으로 입력하세요`); }
-  };
-  const submitPendingInput = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!pendingInput) return;
-    setInputError(""); setInputSubmitting(true);
-    try {
-      const value = parseScenarioInput(pendingInput, inputValue);
-      if (pendingInput.required && (value === null || value === "")) throw new Error("필수 입력값을 입력하세요");
-      await bridge.submitScenarioInput({ projectId: scope.projectId, environmentId: scope.environmentId }, {
-        requestId: pendingInput.requestId, runId: pendingInput.runId, stepId: pendingInput.stepId, name: pendingInput.name, value,
-      });
-      setPendingInput(null);
-    } catch (e) {
-      setInputError(errorText(e));
-      setInputSubmitting(false);
-    }
-  };
   const runScenario = async () => {
     if (!preview) return;
     working(true); setRunning(true); setError(""); setNotice("");
@@ -367,13 +337,6 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
         {running ? <><h2>실행 중</h2><ProgressBar label={pendingInput ? "입력 대기 중" : "시나리오 실행 중"} detail={pendingInput ? `${pendingInput.index + 1}/${pendingInput.totalSteps}단계 · ${pendingInput.label ?? pendingInput.name}` : preview ? `${preview.scenario.steps.length}개 API · 순서대로 실행 중` : "순서대로 실행 중"} /></> : result && <>{lastRun && <p className="api-spec-meta">마지막 실행 {new Date(lastRun.completedAt).toLocaleString()} · 새로고침하면 사라집니다</p>}<ScenarioRunResult result={result} preview={lastRun?.preview ?? preview} catalogs={catalogs} bindings={lastRun?.bindings ?? bindings} focusRequest={resultFocusRequest} /></>}
       </section>}
     </article>
-    {pendingInput && <div className="api-input-modal-backdrop" role="presentation"><form className="api-input-modal" role="dialog" aria-modal="true" aria-labelledby="api-input-title" onSubmit={event => void submitPendingInput(event)}>
-      <header><div><p className="api-input-kicker">실행 중 입력 · {pendingInput.index + 1}/{pendingInput.totalSteps}단계</p><h2 id="api-input-title">{pendingInput.label ?? pendingInput.name}</h2></div><span>{pendingInput.stepId}</span></header>
-      <p>앞 단계 실행이 완료되었습니다. 다음 API를 호출하기 전에 값을 입력하세요.</p>
-      <p className="api-input-note">입력값은 이번 실행의 <code>vars.{pendingInput.name}</code>으로만 전달되며 YAML이나 실행 결과에 원문으로 저장되지 않습니다.</p>
-      <label>{pendingInput.name}{pendingInput.required ? " *" : ""}<input autoFocus data-value-visibility={pendingInput.sensitive ? "sensitive" : undefined} type={pendingInput.type === "number" ? "number" : "text"} value={inputValue} disabled={inputSubmitting} placeholder={pendingInput.type === "string" ? "값 입력" : `${pendingInput.type} JSON 입력`} onChange={event => setInputValue(event.target.value)} /></label>
-      {inputError && <p className="api-warning" role="alert">{inputError}</p>}
-      <footer className="api-actions"><button type="button" disabled={inputSubmitting} onClick={() => { setPendingInput(null); void bridge.cancel(scope); }}>실행 중단</button><button type="submit" className="api-primary" disabled={inputSubmitting}>{inputSubmitting ? "전달 중…" : "입력 완료 · 계속"}</button></footer>
-    </form></div>}</>}
+    {pendingInput && <RunInputModal key={pendingInput.requestId} request={pendingInput} scope={scenarioScope} bridge={bridge} onSubmitted={() => setPendingInput(null)} onCancel={() => { setPendingInput(null); void bridge.cancel(scope); }} />}</>}
   </div>;
 }

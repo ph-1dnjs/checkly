@@ -1,12 +1,12 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ApiProject, ApiScope, ApiScenarioInputRequest, ApiTestingBridge, SavedApiScenario, SavedApiSuite } from "../../../app/api-testing/shared/workspace";
-import { type Json } from "../../../app/api-testing/shared/scenario";
 import { producedGlobalNames, renderSuiteReport, reportScenario, usesInvalidatedGlobal, type SuiteReport, type SuiteReportScenario } from "../../../app/api-testing/shared/suite-report";
 import { SidebarMetadataFields } from "./SidebarMetadataFields";
 import { useSensitiveValues } from "./sensitive-values";
 import { runStatusName } from "./ScenarioRunViews";
 import { DeleteAction } from "./DeleteAction";
 import { SortableList } from "./SortableList";
+import { RunInputModal } from "./RunInputModal";
 import { Icon } from "../../shared/ui/Icon";
 
 type Props = { project: ApiProject; scope: ApiScope; bridge: ApiTestingBridge; scenarios: SavedApiScenario[]; suites: SavedApiSuite[]; selectedId: string; onSuitesChange: (suites: SavedApiSuite[]) => void; onSelectedIdChange: (id: string) => void; onBusy: (busy: boolean) => void };
@@ -26,7 +26,6 @@ export function SuitePanel({ project, scope, bridge, scenarios, suites, selected
   const [error, setError] = useState("");
   const [report, setReport] = useState<SuiteReport | null>(null);
   const [pending, setPending] = useState<ApiScenarioInputRequest | null>(null);
-  const [inputValue, setInputValue] = useState("");
   const groupPathMap = new Map<string, string[]>();
   for (const item of [...scenarios, ...suites]) for (let depth = 1; depth <= (item.groupPath?.length ?? 0); depth++) {
     const path = item.groupPath!.slice(0, depth);
@@ -48,7 +47,6 @@ export function SuitePanel({ project, scope, bridge, scenarios, suites, selected
     void poll();
     return () => { active = false; if (timer !== undefined) window.clearTimeout(timer); };
   }, [bridge, running, scope.projectId, scope.environmentId]);
-  useEffect(() => setInputValue(""), [pending?.requestId]);
   const save = async () => {
     setError(""); setReport(null);
     try {
@@ -62,14 +60,6 @@ export function SuitePanel({ project, scope, bridge, scenarios, suites, selected
     await bridge.deleteSuite(project.id, selected.id, selected.updatedAt); onSuitesChange(await bridge.listSuites(project.id)); onSelectedIdChange("");
   };
   const cancel = async () => { cancelRequested.current = true; await bridge.cancel(scope); };
-  const submitInput = async (event: FormEvent) => {
-    event.preventDefault(); if (!pending) return;
-    try {
-      const value: Json = pending.type === "string" ? inputValue : JSON.parse(inputValue) as Json;
-      await bridge.submitScenarioInput({ projectId: scope.projectId, environmentId: scope.environmentId }, { requestId: pending.requestId, runId: pending.runId, stepId: pending.stepId, name: pending.name, value });
-      setPending(null); setError("");
-    } catch (err) { setError(err instanceof SyntaxError ? "JSON 형식으로 입력하세요" : message(err)); }
-  };
   const run = async () => {
     if (!selected) return;
     setRunning(true); onBusy(true); setError(""); setReport(null); cancelRequested.current = false;
@@ -142,7 +132,7 @@ export function SuitePanel({ project, scope, bridge, scenarios, suites, selected
           <button type="button" className="api-suite-order-remove" title="제거" aria-label={`${index + 1}번째 ${item?.name ?? "삭제된 시나리오"} 제거`} onClick={() => setIds(ids.filter((_, i) => i !== index))}><Icon name="close" size={16} /></button>
         </>; }} /><label>시나리오 추가<select value="" onChange={event => { if (event.target.value) setIds([...ids, event.target.value]); }}><option value="">선택하세요</option>{scenarios.filter(item => !item.draft).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><small>같은 시나리오를 여러 번 추가할 수 있습니다. 각 항목을 순서대로 다시 실행합니다.</small></fieldset><label>실패 시 동작<select value={onFailure} disabled={running} onChange={event => setOnFailure(event.target.value as "stop" | "continue") }><option value="stop">중단하고 나머지 건너뛰기</option><option value="continue">다음 시나리오 계속 실행</option></select></label><div className="api-actions"><button type="button" className={unsaved ? "api-primary" : undefined} disabled={running || !name.trim() || !ids.length || !unsaved} onClick={() => void save()}>스위트 저장</button></div></div>
       {running && <p role="status">{progress || "스위트 실행 준비 중…"}</p>}
-      {pending && <form className="api-suite-input" onSubmit={event => void submitInput(event)}><strong>{pending.index + 1}단계 · {pending.label ?? pending.name} 입력</strong><label>{pending.name}{pending.required && " *"}<input autoComplete="off" data-value-visibility={pending.sensitive ? "sensitive" : undefined} type="text" value={inputValue} onChange={event => setInputValue(event.target.value)} /></label><button type="submit" className="api-primary">입력 완료 · 계속</button></form>}
+      {pending && <RunInputModal key={pending.requestId} request={pending} scope={{ projectId: scope.projectId, environmentId: scope.environmentId }} bridge={bridge} context={progress.replace(/^\d+\/\d+ · /, "") || undefined} onSubmitted={() => setPending(null)} onCancel={() => { setPending(null); void cancel(); }} />}
       {error && <p className="api-warning" role="alert">{error}</p>}
       {report && <section className="api-suite-results" aria-label="스위트 실행 결과"><header className="api-run-section-heading"><div><h3>실행 결과 · {statusName(report.status)}</h3><small>{report.scenarios.length}개 시나리오 · {new Date(report.completedAt).toLocaleString()}</small></div><button type="button" disabled={running} onClick={() => void download()}>HTML 리포트 받기</button></header>{report.scenarios.map((row, index) => <details key={`${row.id}:${index}`} open={row.status !== "passed"}><summary>{index + 1}. {row.name} · {statusName(row.status)} · {row.durationMs}ms</summary>{row.reason && <p>{row.reason}</p>}<ol>{row.steps.map((step, stepIndex) => <li key={stepIndex}>{step.reference} · {statusName(step.status)}{step.httpStatus !== undefined && ` · HTTP ${step.httpStatus}`}{step.reason && ` · ${step.reason}`}</li>)}</ol></details>)}</section>}
     </article>;
