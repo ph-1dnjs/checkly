@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { YamlCode } from "./YamlCode";
 import type { ApiAiImportResult, ApiCatalog, ApiEnvironmentScope, ApiProject, ApiTestingBridge, SavedApiScenario } from "../../../app/api-testing/shared/workspace";
 
 const errorText = (error: unknown) => (error as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, "");
@@ -119,7 +120,7 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
         {draft.notices.length > 0 && <p className="api-field-help">{draft.notices.join(" · ")}</p>}
         {draft.issues.length > 0 && <ul className="api-ai-author-issues">{draft.issues.map(issue => <li key={issue}>{issue}</li>)}</ul>}
         {draft.executionIssues.length > 0 && <p className="api-field-help">실행 전에 필요: {draft.executionIssues.join(" · ")}</p>}
-        <details><summary>내용 보기</summary><pre>{draft.yaml}</pre></details>
+        <details><summary>내용 보기</summary><YamlCode source={draft.yaml} /></details>
       </li>)}</ul>
       {result.suite && <div className="api-ai-author-suite">
         <label className="api-check-row"><input type="checkbox" checked={saveSuite} disabled={saving} onChange={e => setSaveSuite(e.target.checked)} />스위트 ‘{result.suite.name}’{result.suite.groupPath ? ` (${result.suite.groupPath.join(" › ")})` : ""}도 저장</label>

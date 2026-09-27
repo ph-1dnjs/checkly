@@ -4,6 +4,7 @@ import type { Scenario } from "../../../app/api-testing/shared/scenario";
 import type { ApiCatalog, ApiGlobal, ApiProject, ApiScope, ApiTestingBridge, SavedApiScenario } from "../../../app/api-testing/shared/workspace";
 import type { Step } from "./scenario-builder-model";
 import { SimpleStep } from "./SimpleStep";
+import { YamlCode } from "./YamlCode";
 import { useGlobalVariableAccess } from "./global-variable-access";
 import { globalOptions } from "./global-options";
 import { configuredFields } from "./settings-summary-model";
@@ -80,7 +81,7 @@ export function ScenarioBuilder({ bindings, project, scope, bridge, onApply, val
     {!draft.steps.length && <p>1단계에서 API를 추가하세요.</p>}
     {error && <p role="alert" className="api-warning">{error}</p>}
     </fieldset>
-    <details onToggle={event => setYamlOpen(event.currentTarget.open)}><summary>간단한 YAML 보기</summary>{yamlOpen && <pre aria-label="작성 중인 시나리오 YAML">{stringifyScenario(draft, false, step => operationForStep(step, catalogs, bindings), Object.fromEntries(project.servers.map(server => [server.id, server.name])))}</pre>}</details>
+    <details onToggle={event => setYamlOpen(event.currentTarget.open)}><summary>간단한 YAML 보기</summary>{yamlOpen && <YamlCode label="작성 중인 시나리오 YAML" source={stringifyScenario(draft, false, step => operationForStep(step, catalogs, bindings), Object.fromEntries(project.servers.map(server => [server.id, server.name])))} />}</details>
     <footer className="api-actions"><button type="submit" className="api-primary" disabled={saving || !draft.steps.length}>{saving ? "검사·저장 중…" : "시나리오 검사·저장"}</button>{actions}</footer>
   </form>;
 }
