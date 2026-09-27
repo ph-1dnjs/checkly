@@ -15,6 +15,8 @@ type Props<T extends ScenarioSidebarEntry> = {
   kind: "scenario" | "suite";
   /** Open every folder, e.g. while filtering. */
   expandAll?: boolean;
+  /** Item id → short warning shown as a dot (e.g. steps whose API left the spec). */
+  warnings?: Map<string, string>;
   onSelect: (item: T) => void;
 };
 
@@ -47,11 +49,12 @@ function makeTree<T extends ScenarioSidebarEntry>(items: T[]): Folder<T> {
   return root;
 }
 
-export function ScenarioSidebarTree<T extends ScenarioSidebarEntry>({ items, selectedId, disabled = false, kind, expandAll = false, onSelect }: Props<T>) {
+export function ScenarioSidebarTree<T extends ScenarioSidebarEntry>({ items, selectedId, disabled = false, kind, expandAll = false, warnings, onSelect }: Props<T>) {
   const tree = useMemo(() => makeTree(items), [items]);
   const renderRows = (folder: Folder<T>) => [...folder.items].sort((left, right) => left.name.localeCompare(right.name, "ko")).map(item =>
     <button type="button" key={item.id} disabled={disabled} className={`api-sidebar-entry${selectedId === item.id ? " selected" : ""}`} onClick={() => onSelect(item)}>
       <strong>{item.name}</strong>
+      {warnings?.has(item.id) && <span className="api-sidebar-warning" role="img" aria-label={warnings.get(item.id)} title={warnings.get(item.id)} />}
       {item.draft && <span className="api-sidebar-entry-meta"><small className="api-sidebar-draft">초안</small></span>}
     </button>);
   const renderFolder = (folder: Folder<T>, depth: number) => {

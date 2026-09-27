@@ -1095,3 +1095,5 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 .api-run-check-rule { color:var(--api-muted); }
 .api-run-check-actual { color:var(--ck-color-fail-ink); }
 .api-run-result-check-badge { margin-right:8px; padding:1px 6px; border-radius:var(--ck-dim-radius-base); background:var(--ck-color-fail-tint); color:var(--ck-color-fail-ink); font-size:11px; font-weight:600; }
+.api-sidebar-warning { flex:none; width:8px; height:8px; margin-left:auto; background:var(--ck-color-wait); }
+.api-sidebar-entry > .api-sidebar-warning + .api-sidebar-entry-meta { margin-left:6px; }

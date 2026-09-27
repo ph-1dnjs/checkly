@@ -65,6 +65,8 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
   const [suites, setSuites] = useState<SavedApiSuite[]>([]);
   const [saved, setSaved] = useState<SavedApiScenario[]>([]);
   const [savedLoaded, setSavedLoaded] = useState(false);
+  // Scenarios with steps whose API is gone from this environment's specs (a dot in the list).
+  const [specWarnings, setSpecWarnings] = useState<Map<string, string>>(new Map());
   const [current, setCurrent] = useState<SavedApiScenario | null>(null);
   const [source, setSource] = useState("");
   const [scenarioGroupPath, setScenarioGroupPath] = useState<string[]>([]);
@@ -111,6 +113,14 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
     void bridge.listSuites(project.id).then(v => { if (live.current) setSuites(v); }).catch(e => { if (live.current) setError(errorText(e)); });
     return () => { live.current = false; void bridge.cancel(scope); };
   }, []);
+  useEffect(() => {
+    if (editorMode) return;
+    let active = true;
+    void bridge.checkScenarioSpecs(scenarioScope).then(impact => {
+      if (active) setSpecWarnings(new Map(impact.missing.map(item => [item.scenarioId, `명세에 없는 API를 쓰는 단계: ${item.steps.join(", ")}`])));
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [scope.projectId, scope.environmentId, saved]);
   useEffect(() => {
     let active = true;
     void Promise.all(project.servers.map(async server => [server.id, await bridge.getCatalog({ ...scope, serverId: server.id })] as const))
@@ -316,7 +326,7 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
       <input data-value-visibility="public" aria-label="시나리오·스위트 검색" placeholder="이름·설명·그룹 검색" value={query} onChange={event => setQuery(event.target.value)} />
       <section className="api-sidebar-section">
         <header><button type="button" className="api-sidebar-section-toggle" aria-expanded={scenariosExpanded} onClick={() => setScenariosExpanded(value => !value)}><span className="api-sidebar-section-label">시나리오<small>{sidebarScenarios.length}{sidebarScenarios.length !== saved.length ? ` / ${saved.length}` : ""}</small></span><Icon name="expand_more" size={18} className="api-sidebar-chevron" /></button><button type="button" className="api-sidebar-add" disabled={busy} onClick={openNewScenario}>+ 새 시나리오</button></header>
-        {scenariosExpanded && <ScenarioSidebarTree kind="scenario" expandAll={Boolean(normalizedQuery)} items={sidebarScenarios} selectedId={suiteSelection === null ? current?.id : null} disabled={busy} onSelect={item => { setSuiteSelection(null); void load(item); }} />}
+        {scenariosExpanded && <ScenarioSidebarTree kind="scenario" expandAll={Boolean(normalizedQuery)} warnings={specWarnings} items={sidebarScenarios} selectedId={suiteSelection === null ? current?.id : null} disabled={busy} onSelect={item => { setSuiteSelection(null); void load(item); }} />}
       </section>
       <section className="api-sidebar-section api-sidebar-suite-section">
         <header><button type="button" className="api-sidebar-section-toggle" aria-expanded={suitesExpanded} onClick={() => setSuitesExpanded(value => !value)}><span className="api-sidebar-section-label">스위트<small>{sidebarSuites.length}{sidebarSuites.length !== suites.length ? ` / ${suites.length}` : ""}</small></span><Icon name="expand_more" size={18} className="api-sidebar-chevron" /></button><button type="button" className="api-sidebar-add" disabled={busy} onClick={() => setSuiteSelection("")}>+ 새 스위트</button></header>

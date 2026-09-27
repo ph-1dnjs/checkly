@@ -361,6 +361,10 @@ async function main() {
     // The scenario name in the warning opens it in the editor.
     await refreshedSource.getByRole("button", { name: "로그인 후 상품 조회", exact: true }).click();
     await expect(restored.getByText("시나리오 수정 · 로그인 후 상품 조회", { exact: true })).toBeVisible();
+    // The scenario list marks it too.
+    await restored.getByRole("button", { name: "시나리오 목록으로", exact: true }).click();
+    const warnedEntry = restored.locator(".api-sidebar-entry").filter({ hasText: "로그인 후 상품 조회" });
+    await expect(warnedEntry.locator(".api-sidebar-warning")).toHaveCount(1);
   } finally {
     try {
       const electronProcess = app?.process();
