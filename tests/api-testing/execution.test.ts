@@ -12,8 +12,16 @@ test("body checks retain default success status unless status is explicitly chec
   try {
     const scenario = scenarioSchema.parse({ version: 1, id: "status-default", name: "기본 검증", steps: [{ id: "first", name: "조회", server: "api", api: { method: "GET", path: "/" }, expect: [{ source: "body", pointer: "/message", operator: "exists" }] }] });
     const options = { projectId: "test", environment: "dev", servers: { api: { baseUrl: `http://127.0.0.1:${(server.address() as { port: number }).port}` } } };
-    assert.equal((await new ApiRunner().run(scenario, options)).status, "failed");
+    const failed = await new ApiRunner().run(scenario, options);
+    assert.equal(failed.status, "failed");
+    // Every check is reported, not just the first failure: automatic 2xx failed, /message passed.
+    assert.deepEqual(failed.steps[0].checks, [{ passed: false, actual: "400" }, { expect: 0, passed: true }]);
     scenario.steps[0].expect!.push({ source: "status", operator: "equals", value: 400 });
+    scenario.steps[0].expect!.push({ source: "body", pointer: "/message", operator: "equals", value: "ok" });
+    const mixed = await new ApiRunner().run(scenario, options);
+    assert.equal(mixed.status, "failed");
+    assert.deepEqual(mixed.steps[0].checks, [{ expect: 0, passed: true }, { expect: 1, passed: true }, { expect: 2, passed: false, actual: '"error"' }]);
+    scenario.steps[0].expect!.pop();
     assert.equal((await new ApiRunner().run(scenario, options)).status, "passed");
   } finally { await new Promise<void>(r => server.close(() => r())); }
 });

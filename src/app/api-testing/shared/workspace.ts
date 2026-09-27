@@ -46,7 +46,9 @@ export type ApiOperation = {
 /** `titleChanges`: per operation key, earlier summaries (still possibly used as step names) and the current one. */
 export type ApiCatalog = { title: string; version: string; importedAt: string; spec?: Json; operations: ApiOperation[]; tags?: Array<{ name: string; description: string }>; titleChanges?: Record<string, { from: string[]; to: string }> };
 export type ApiRequestTrace = { method: string; url: string; headers: Record<string, string>; body?: Json };
-export type ApiResponse = { status: string; httpStatus?: number; durationMs: number; request?: ApiRequestTrace; headers?: Record<string, string>; body?: Json; error?: string; failure?: { kind: "http" | "assertion" | "extraction" | "request" | "input" | "other"; source?: "status" | "header" | "body"; operator?: "exists" | "equals" | "contains" | "includes" }; input?: { name: string; provided: boolean }; inputs?: Array<{ name: string; provided: boolean }> };
+/** One response check of a step: `expect` indexes step.expect, absent = automatic 2xx; `actual` only on failure. */
+export type ApiCheckResult = { expect?: number; passed: boolean; actual?: string };
+export type ApiResponse = { status: string; httpStatus?: number; durationMs: number; checks?: ApiCheckResult[]; request?: ApiRequestTrace; headers?: Record<string, string>; body?: Json; error?: string; failure?: { kind: "http" | "assertion" | "extraction" | "request" | "input" | "other"; source?: "status" | "header" | "body"; operator?: "exists" | "equals" | "contains" | "includes" }; input?: { name: string; provided: boolean }; inputs?: Array<{ name: string; provided: boolean }> };
 export type ApiScope = { projectId: string; serverId: string; environmentId: string };
 export type ApiProjectScope = Pick<ApiScope, "projectId">;
 export type ApiEnvironmentScope = Pick<ApiScope, "projectId" | "environmentId">;

@@ -1083,3 +1083,15 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 .api-spec-renamed details > summary { margin-top:4px; cursor:pointer; font-size:11.5px; }
 .api-spec-rename-result { margin:0; padding:6px 12px; border-top:1px solid var(--api-border); color:var(--api-body); font-size:12px; }
 .api-testing-page button.api-spec-scenario-link { min-height:0; padding:0; border:0; background:transparent; color:inherit; font:inherit; font-weight:700; text-decoration:underline; text-underline-offset:2px; cursor:pointer; }
+/* Per-check results in a run step */
+.api-run-checks { margin:10px 0; }
+.api-run-checks h4 { margin:0 0 6px; color:var(--api-muted); font-size:11px; font-weight:600; }
+.api-run-checks h4 small { margin-left:6px; font-weight:400; }
+.api-run-checks ul { display:grid; gap:4px; margin:0; padding:0; list-style:none; }
+.api-run-checks li { display:flex; flex-wrap:wrap; align-items:baseline; gap:6px; font-size:12px; }
+.api-run-checks li.is-passed > span:first-child { color:var(--ck-color-pass); }
+.api-run-checks li.is-failed > span:first-child { color:var(--ck-color-fail-ink); font-weight:700; }
+.api-run-checks li code { font-size:11.5px; }
+.api-run-check-rule { color:var(--api-muted); }
+.api-run-check-actual { color:var(--ck-color-fail-ink); }
+.api-run-result-check-badge { margin-right:8px; padding:1px 6px; border-radius:var(--ck-dim-radius-base); background:var(--ck-color-fail-tint); color:var(--ck-color-fail-ink); font-size:11px; font-weight:600; }

@@ -7,7 +7,9 @@ import { CookieJar } from "./cookies";
 
 type Status = "passed" | "failed" | "blocked" | "skipped" | "cancelled";
 type InputResult = { name: string; provided: boolean };
-export type StepResult = { id: string; name: string; status: Status; durationMs: number; httpStatus?: number; error?: string; failure?: { kind: "http" | "assertion" | "extraction" | "request" | "input" | "other"; source?: "status" | "header" | "body"; operator?: "exists" | "equals" | "contains" | "includes" }; input?: InputResult; inputs?: InputResult[] };
+/** One response check: `expect` is its index in step.expect; absent = the automatic 2xx check. `actual` only for failures, shortened. */
+export type CheckResult = { expect?: number; passed: boolean; actual?: string };
+export type StepResult = { id: string; name: string; status: Status; durationMs: number; httpStatus?: number; error?: string; checks?: CheckResult[]; failure?: { kind: "http" | "assertion" | "extraction" | "request" | "input" | "other"; source?: "status" | "header" | "body"; operator?: "exists" | "equals" | "contains" | "includes" }; input?: InputResult; inputs?: InputResult[] };
 export type RunResult = { status: Status; steps: StepResult[] };
 export type RunOptions = {
   projectId: string; environment: string; servers: Record<string, { baseUrl: string }>;
@@ -167,6 +169,7 @@ export class ApiRunner {
         }
         const started = Date.now();
         let httpStatus: number | undefined;
+        let checks: CheckResult[] | undefined;
         const inputResults: InputResult[] = [];
         try {
           applyBindings(scenario, index, context, requestSnapshots, responseSnapshots, options);
@@ -243,13 +246,23 @@ export class ApiRunner {
           responseSnapshots.set(step.id, { status: response.status, headers: Object.fromEntries(response.headers.entries()), body });
           options.onResponse?.({ headers: Object.fromEntries(response.headers.entries()), body }, step.id);
           const read = (source: string, pointer?: string, header?: string): Json | undefined => source === "status" ? response.status : source === "header" ? response.headers.get(header!) ?? undefined : atPointer(body, pointer!);
-          if (!step.expect?.some(expectation => expectation.source === "status") && (response.status < 200 || response.status >= 300)) throw new SafeCheckFailure({ kind: "http", source: "status" });
-          for (const check of step.expect ?? []) {
+          // Every check runs so the result can show each one; the step fails if any fails.
+          const shown = (value: Json | undefined) => value === undefined ? "없음" : (JSON.stringify(value) ?? "없음").slice(0, 80);
+          checks = [];
+          let firstFailure: NonNullable<StepResult["failure"]> | undefined;
+          if (!step.expect?.some(expectation => expectation.source === "status")) {
+            const passed = response.status >= 200 && response.status < 300;
+            checks.push({ passed, ...(passed ? {} : { actual: String(response.status) }) });
+            if (!passed) firstFailure ??= { kind: "http", source: "status" };
+          }
+          for (const [index, check] of (step.expect ?? []).entries()) {
             const actual = read(check.source, check.pointer, check.header);
             const expected = check.value === undefined ? undefined : resolve(check.value, context);
             const passed = check.operator === "exists" ? actual !== undefined : check.operator === "equals" ? isDeepStrictEqual(actual, expected) : typeof actual === "string" && typeof expected === "string" ? actual.includes(expected) : Array.isArray(actual) && actual.some(v => isDeepStrictEqual(v, expected));
-            if (!passed) throw new SafeCheckFailure({ kind: "assertion", source: check.source, operator: check.operator });
+            checks.push({ expect: index, passed, ...(passed ? {} : { actual: shown(actual) }) });
+            if (!passed) firstFailure ??= { kind: "assertion", source: check.source, operator: check.operator };
           }
+          if (firstFailure) throw new SafeCheckFailure(firstFailure);
           const vars: Variables = {}, globals: Variables = {};
           for (const extraction of step.extract) {
             const v = read(extraction.source, extraction.pointer, extraction.header);
@@ -261,11 +274,11 @@ export class ApiRunner {
           context.vars = { ...context.vars, ...vars };
           context.globals = { ...context.globals, ...globals };
           this.globals.commit(options.projectId, globals);
-          results.push({ id: step.id, name: scenarioStepLabel(step), status: "passed", httpStatus, durationMs: Date.now() - started, ...(inputResults.length === 1 ? { input: inputResults[0] } : inputResults.length > 1 ? { inputs: inputResults } : {}) });
+          results.push({ id: step.id, name: scenarioStepLabel(step), status: "passed", httpStatus, durationMs: Date.now() - started, ...(checks ? { checks } : {}), ...(inputResults.length === 1 ? { input: inputResults[0] } : inputResults.length > 1 ? { inputs: inputResults } : {}) });
         } catch (error) {
           const status = options.signal?.aborted ? "cancelled" : error instanceof MissingValue ? "blocked" : "failed";
           // Never surface network/library errors that could contain credentials or URLs.
-          results.push({ id: step.id, name: scenarioStepLabel(step), status, httpStatus, durationMs: Date.now() - started, ...(inputResults.length === 1 ? { input: inputResults[0] } : inputResults.length > 1 ? { inputs: inputResults } : {}), failure: error instanceof SafeCheckFailure ? error.failure : { kind: status === "blocked" ? "input" : error instanceof RequestValueError ? "request" : "other" }, error: status === "blocked" ? "필수 변수 또는 API 설정이 없습니다" : status === "cancelled" ? "실행 취소" : error instanceof RequestValueError ? error.message : "요청·응답 검증 또는 값 추출 실패" });
+          results.push({ id: step.id, name: scenarioStepLabel(step), status, httpStatus, durationMs: Date.now() - started, ...(checks ? { checks } : {}), ...(inputResults.length === 1 ? { input: inputResults[0] } : inputResults.length > 1 ? { inputs: inputResults } : {}), failure: error instanceof SafeCheckFailure ? error.failure : { kind: status === "blocked" ? "input" : error instanceof RequestValueError ? "request" : "other" }, error: status === "blocked" ? "필수 변수 또는 API 설정이 없습니다" : status === "cancelled" ? "실행 취소" : error instanceof RequestValueError ? error.message : "요청·응답 검증 또는 값 추출 실패" });
           stopped = scenario.onFailure === "stop" || status === "cancelled";
         }
       }

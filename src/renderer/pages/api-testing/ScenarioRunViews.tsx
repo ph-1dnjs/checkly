@@ -5,6 +5,31 @@ import { scenarioStepInputs, type Scenario } from "../../../app/api-testing/shar
 import { ScenarioStepSummary } from "./ScenarioStepSummary";
 import { JsonCode } from "./JsonCode";
 import { configuredFields } from "./settings-summary-model";
+import { expectedValueText, verificationOperatorLabels, verificationSourceLabels } from "./step-request-model";
+import { isSensitiveKey } from "../../../app/api-testing/shared/sensitive";
+
+type RunStep = ApiScenarioResult["steps"][number];
+type ScenarioStep = Scenario["steps"][number];
+
+/** Each response check of a run step, in the editor's words: ✓/✗, what was checked, and the actual value on failure. */
+function RunChecks({ runStep, step }: { runStep: RunStep; step?: ScenarioStep }) {
+  if (!runStep.checks?.length) return null;
+  const failed = runStep.checks.filter(check => !check.passed).length;
+  return <section className="api-run-checks" aria-label="검증 결과">
+    <h4>검증 <small>{failed ? `${runStep.checks.length - failed}/${runStep.checks.length} 통과` : `${runStep.checks.length}개 모두 통과`}</small></h4>
+    <ul>{runStep.checks.map((check, index) => {
+      const expectation = check.expect === undefined ? undefined : step?.expect?.[check.expect];
+      const target = expectation ? expectation.source === "status" ? verificationSourceLabels.status : expectation.source === "header" ? expectation.header : expectation.pointer || "전체 응답" : "HTTP 상태";
+      const rule = expectation ? `${verificationOperatorLabels[expectation.operator]}${expectation.operator !== "exists" ? ` ${expectedValueText(expectation.value)}` : ""}` : "2xx (자동 확인)";
+      const secret = expectation?.source !== "status" && isSensitiveKey(String(target).split("/").pop() ?? "");
+      return <li key={index} className={check.passed ? "is-passed" : "is-failed"}>
+        <span aria-hidden="true">{check.passed ? "✓" : "✗"}</span>
+        {expectation && expectation.source !== "status" ? <code>{target}</code> : <span>{target}</span>}<span className="api-run-check-rule">{rule}</span>
+        {!check.passed && check.actual !== undefined && <span className="api-run-check-actual">실제 <code className={secret ? "api-sensitive-value" : undefined}>{check.actual}</code></span>}
+      </li>;
+    })}</ul>
+  </section>;
+}
 
 /** Korean labels for run statuses, shared by scenario and suite results. */
 export const runStatusName = (status: string) => ({ passed: "통과", failed: "실패", blocked: "설정 필요", cancelled: "취소", skipped: "건너뜀" })[status as "passed"] ?? status;
@@ -115,9 +140,10 @@ export function ScenarioRunResult({ result, preview, catalogs, bindings, focusRe
         const [method, ...pathParts] = reference.split(" ");
         const status = runStep.status.toLowerCase();
         return <details key={runStep.id} className={`api-run-result-step api-selected-${method.toLowerCase()} is-${status}`} open={shouldExpandResult(runStep)}>
-          <summary><span className="api-run-result-chevron" aria-hidden="true">▸</span><span className="api-run-result-index">{index + 1}.</span><span className="api-method" data-method={method}>{method}</span><code>{pathParts.join(" ")}</code><small>{runStep.name}</small><strong className="api-run-result-step-status">{runStep.httpStatus ? `HTTP ${runStep.httpStatus}` : runStep.status.toUpperCase()}</strong><span className="api-run-result-duration">{runStep.durationMs}ms</span></summary>
+          <summary><span className="api-run-result-chevron" aria-hidden="true">▸</span><span className="api-run-result-index">{index + 1}.</span><span className="api-method" data-method={method}>{method}</span><code>{pathParts.join(" ")}</code><small>{runStep.name}</small>{runStep.checks?.some(check => !check.passed) && <small className="api-run-result-check-badge">검증 {runStep.checks.filter(check => check.passed).length}/{runStep.checks.length}</small>}<strong className="api-run-result-step-status">{runStep.httpStatus ? `HTTP ${runStep.httpStatus}` : runStep.status.toUpperCase()}</strong><span className="api-run-result-duration">{runStep.durationMs}ms</span></summary>
           <div className="api-run-result-step-body">
             {runStep.error && <p className="api-warning">{runStep.error}</p>}
+            <RunChecks runStep={runStep} step={scenarioStep} />
             <details className="api-run-payload" open><summary>요청{runStep.request && <span className="api-run-payload-meta"><strong>{runStep.request.method.toUpperCase()}</strong> <code>{runStep.request.url}</code></span>}</summary>{runStep.request ? <JsonCode value={{ body: runStep.request.body, headers: runStep.request.headers }} known={knownSecrets} /> : <p className="api-run-payload-empty">이 단계는 요청을 전송하지 않았습니다.</p>}</details>
             <details className="api-run-payload" open><summary>응답<span className="api-run-payload-meta">{runStep.httpStatus !== undefined && <strong className={runStep.httpStatus < 400 ? "is-ok" : "is-error"}>HTTP {runStep.httpStatus}</strong>}<span>{runStep.durationMs}ms</span>{runStep.inputs ? <span>입력 {runStep.inputs.filter(input => input.provided).length}/{runStep.inputs.length}</span> : runStep.input ? <span>입력 {runStep.input.provided ? "완료" : "없음"}</span> : null}</span></summary>{runStep.headers !== undefined || runStep.body !== undefined ? <JsonCode value={{ body: runStep.body, headers: runStep.headers }} known={knownSecrets} /> : <p className="api-run-payload-empty">응답이 없습니다.</p>}</details>
           </div>

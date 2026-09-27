@@ -237,6 +237,9 @@ async function main() {
     await inputDialog.getByRole("button", { name: "입력 완료 · 계속", exact: true }).click();
     const result = page.getByRole("region", { name: "시나리오 실행 결과" });
     await expect(result).toContainText("통과");
+    // Each check is reported: step 1 has its two checks, step 2 only the automatic 2xx.
+    await expect(result.locator(".api-run-checks").nth(0)).toContainText("2개 모두 통과");
+    await expect(result.locator(".api-run-checks").nth(1)).toContainText("2xx (자동 확인)");
     await shot("run-result");
     // The session cookie from login reaches the next request.
     await expect(result).toContainText("SESSION=desktop-session");
