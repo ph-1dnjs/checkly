@@ -310,6 +310,12 @@ async function main() {
     await expect(suiteRows.nth(0)).toContainText("AI 상품 조회");
     await page.getByRole("button", { name: /^2번째 AI 로그인 순서 변경$/ }).press("ArrowUp");
     await expect(suiteRows.nth(0)).toContainText("AI 로그인");
+    // Suite results list each check too.
+    await page.getByRole("button", { name: "실행", exact: true }).click();
+    const suiteResult = page.getByRole("region", { name: "스위트 실행 결과" });
+    await expect(suiteResult).toContainText("실행 결과 · 통과");
+    await suiteResult.locator("summary").first().click();
+    await expect(suiteResult).toContainText("✓ HTTP 상태 2xx (자동 확인)");
     // Scenarios are deleted from their detail view.
     await page.getByRole("button", { name: "AI 상품 조회", exact: true }).click();
     await page.getByRole("button", { name: "시나리오 삭제", exact: true }).click();

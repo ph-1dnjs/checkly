@@ -1,11 +1,10 @@
 // Read-only views of a scenario's call flow (preview) and its latest run result.
 import { useEffect, useRef, useState } from "react";
 import type { ApiCatalog, ApiScenarioPreview, ApiScenarioResult } from "../../../app/api-testing/shared/workspace";
-import { scenarioStepInputs, type Scenario } from "../../../app/api-testing/shared/scenario";
+import { describeCheck, scenarioStepInputs, type Scenario } from "../../../app/api-testing/shared/scenario";
 import { ScenarioStepSummary } from "./ScenarioStepSummary";
 import { JsonCode } from "./JsonCode";
 import { configuredFields } from "./settings-summary-model";
-import { expectedValueText, verificationOperatorLabels, verificationSourceLabels } from "./step-request-model";
 import { isSensitiveKey } from "../../../app/api-testing/shared/sensitive";
 
 type RunStep = ApiScenarioResult["steps"][number];
@@ -19,8 +18,7 @@ function RunChecks({ runStep, step }: { runStep: RunStep; step?: ScenarioStep })
     <h4>검증 <small>{failed ? `${runStep.checks.length - failed}/${runStep.checks.length} 통과` : `${runStep.checks.length}개 모두 통과`}</small></h4>
     <ul>{runStep.checks.map((check, index) => {
       const expectation = check.expect === undefined ? undefined : step?.expect?.[check.expect];
-      const target = expectation ? expectation.source === "status" ? verificationSourceLabels.status : expectation.source === "header" ? expectation.header : expectation.pointer || "전체 응답" : "HTTP 상태";
-      const rule = expectation ? `${verificationOperatorLabels[expectation.operator]}${expectation.operator !== "exists" ? ` ${expectedValueText(expectation.value)}` : ""}` : "2xx (자동 확인)";
+      const { target, rule } = describeCheck(expectation);
       const secret = expectation?.source !== "status" && isSensitiveKey(String(target).split("/").pop() ?? "");
       return <li key={index} className={check.passed ? "is-passed" : "is-failed"}>
         <span aria-hidden="true">{check.passed ? "✓" : "✗"}</span>

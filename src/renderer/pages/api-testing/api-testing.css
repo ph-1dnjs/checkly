@@ -1118,3 +1118,6 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 .api-testing-page .api-step-actions > button { min-height:28px; padding:3px 10px; font-size:12px; }
 .api-step-auth > label { display:grid; gap:6px; margin:0; }
 .api-step-body > .api-step-description :is(p,.markdown p,.renderedMarkdown p):first-child { margin-top:0; } .api-step-body > .api-step-description :is(p,.markdown p,.renderedMarkdown p):last-child { margin-bottom:0; }
+.api-suite-checks { margin:2px 0 4px; padding-left:14px; list-style:none; font-size:11.5px; }
+.api-suite-checks .is-passed { color:var(--ck-color-pass); }
+.api-suite-checks .is-failed { color:var(--ck-color-fail-ink); font-weight:600; }

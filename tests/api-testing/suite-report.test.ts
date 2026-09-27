@@ -43,6 +43,20 @@ test("HTML report summarizes failures, skipped runs and repeated scenarios witho
   assert.doesNotMatch(html, /private-token|"token"|accessToken/);
 });
 
+test("HTML report lists each check with pass/fail in words, never the actual response value", () => {
+  const source = parseScenario(`id: lookup\nname: 조회\nserver: main\nsteps:\n  - api: GET /lookup\n    expect:\n      - { source: body, pointer: /data, operator: exists }\n      - { source: body, pointer: /state, operator: equals, value: ACTIVE }\n`);
+  const result = { status: "failed", variables: {}, steps: [{ id: source.steps[0].id, name: "조회", status: "failed", durationMs: 21, httpStatus: 200, checks: [{ passed: true }, { expect: 0, passed: true }, { expect: 1, passed: false, actual: '"secret-state"' }], failure: { kind: "assertion" as const, source: "body" as const, operator: "equals" as const } }] };
+  const row = reportScenario("lookup", "조회", result, [{ name: "조회", reference: "GET /lookup" }], 24, source);
+  assert.deepEqual(row.steps[0].checkResults, [
+    { label: "HTTP 상태 2xx (자동 확인)", passed: true },
+    { label: "/data 존재하는지", passed: true },
+    { label: "/state 기대값과 같은지 ACTIVE", passed: false },
+  ]);
+  const html = renderSuiteReport({ suiteName: "검증", projectName: "프로젝트", environmentName: "dev", startedAt: "2026-01-01T00:00:00Z", completedAt: "2026-01-01T00:00:01Z", status: "failed", scenarios: [row] });
+  assert.match(html, /✗ \/state 기대값과 같은지 ACTIVE/);
+  assert.doesNotMatch(html, /secret-state/);
+});
+
 test("suite persistence validates order, revision and referenced scenarios", async () => {
   const directory = await mkdtemp(path.join(tmpdir(), "checkly-suite-"));
   try {

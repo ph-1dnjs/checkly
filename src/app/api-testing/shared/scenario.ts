@@ -373,3 +373,26 @@ export function stringifyScenario(scenario: Scenario, preserveIds = false, resol
     }),
   });
 }
+
+// ─ Check wording (editor, run results and suite reports) ─
+export const verificationOperatorLabels: Record<"exists" | "equals" | "contains", string> = { exists: "존재하는지", equals: "기대값과 같은지", contains: "포함하는지" };
+export const verificationSourceLabels = { body: "응답 본문", status: "HTTP 상태", header: "응답 헤더" } as const;
+
+/** Expected values are typed as plain text: JSON when it parses (200, true, {"a":1}), otherwise a string. */
+export function parseExpectedValue(text: string): Json {
+  try { return JSON.parse(text) as Json; } catch { return text; }
+}
+
+/** Inverse of parseExpectedValue: a string that would parse as another JSON type keeps its quotes. */
+export function expectedValueText(value: Json | undefined): string {
+  if (value === undefined) return "";
+  if (typeof value === "string") return parseExpectedValue(value) === value ? value : JSON.stringify(value);
+  return JSON.stringify(value);
+}
+
+/** A step check in words: `target` (what is checked) and `rule`; no expectation = the automatic 2xx check. */
+export function describeCheck(expectation?: { source: "status" | "body" | "header"; pointer?: string; header?: string; operator: "exists" | "equals" | "contains"; value?: Json }): { target: string; rule: string } {
+  if (!expectation) return { target: "HTTP 상태", rule: "2xx (자동 확인)" };
+  const target = expectation.source === "status" ? verificationSourceLabels.status : expectation.source === "header" ? expectation.header ?? "응답 헤더" : expectation.pointer || "전체 응답";
+  return { target, rule: `${verificationOperatorLabels[expectation.operator]}${expectation.operator !== "exists" ? ` ${expectedValueText(expectation.value)}` : ""}` };
+}
