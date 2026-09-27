@@ -192,6 +192,16 @@ async function main() {
     await page.getByLabel("응답 전역변수 이름", { exact: true }).fill("accessToken");
     await page.getByRole("button", { name: "저장 설정 적용", exact: true }).click();
     await page.keyboard.press("Escape");
+    // Verifying the same field again edits it instead of adding a duplicate.
+    await page.getByRole("button", { name: "/accessToken 키 선택", exact: true }).first().click();
+    await page.getByRole("button", { name: /^이 값 검증/ }).click();
+    await page.getByRole("button", { name: "검증 추가", exact: true }).click();
+    await page.getByRole("button", { name: "/accessToken 키 선택", exact: true }).first().click();
+    await page.getByRole("button", { name: /^이 값 검증/ }).click();
+    await expect(page.getByRole("button", { name: "검증 수정", exact: true })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "+ HTTP 상태 검증", exact: true }).first().click();
+    await expect(page.locator('details[aria-label="편집 단계 1"] > summary')).toContainText("검증 2");
     await page.getByRole("button", { name: "값 연결", exact: true }).click();
     await page.getByRole("button", { name: /^이전 단계 값 선택/ }).click();
     await page.getByRole("button", { name: "/id integer 값 선택", exact: true }).click();
@@ -225,6 +235,12 @@ async function main() {
     await expect(globals.getByRole("region", { name: "세션 쿠키" })).toContainText("SESSION");
     await expect(globals.getByRole("region", { name: "세션 쿠키" })).not.toContainText("desktop-session");
     await page.keyboard.press("Escape");
+    // The run flow lists the checks with the editor's labels.
+    await page.getByRole("button", { name: "실행 흐름", exact: true }).click();
+    await page.getByRole("button", { name: "모두 펼치기", exact: true }).first().click();
+    const flow = page.getByRole("region", { name: "시나리오 실행 흐름" });
+    await expect(flow).toContainText("HTTP 상태");
+    await expect(flow).toContainText("존재하는지");
     // A copy opens in place and is deleted from its detail view.
     await page.getByRole("button", { name: "복제", exact: true }).click();
     await expect(page.getByRole("heading", { name: "로그인 후 상품 조회 사본", exact: true })).toBeVisible();
@@ -241,6 +257,17 @@ async function main() {
     await expect(page.getByRole("button", { name: "실행", exact: true })).toBeDisabled();
     await page.getByRole("button", { name: /^2번째 AI 로그인 순서 변경$/ }).press("ArrowUp");
     await expect(page.getByRole("button", { name: "실행", exact: true })).toBeEnabled();
+    // And the same mouse drag as the selected APIs.
+    const suiteRows = page.locator(".api-suite-order");
+    await page.getByRole("button", { name: /^2번째 AI 상품 조회 순서 변경$/ }).hover();
+    await page.mouse.down();
+    const firstSuiteRow = await suiteRows.nth(0).boundingBox();
+    if (!firstSuiteRow) throw new Error("Suite row is not visible");
+    await page.mouse.move(firstSuiteRow.x + firstSuiteRow.width / 2, firstSuiteRow.y + 4, { steps: 12 });
+    await page.mouse.up();
+    await expect(suiteRows.nth(0)).toContainText("AI 상품 조회");
+    await page.getByRole("button", { name: /^2번째 AI 로그인 순서 변경$/ }).press("ArrowUp");
+    await expect(suiteRows.nth(0)).toContainText("AI 로그인");
     // Scenarios are deleted from their detail view.
     await page.getByRole("button", { name: "AI 상품 조회", exact: true }).click();
     await page.getByRole("button", { name: "시나리오 삭제", exact: true }).click();
