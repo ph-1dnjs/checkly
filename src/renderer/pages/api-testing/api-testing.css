@@ -1104,6 +1104,13 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 .api-replace-list .api-field-help { padding:8px 10px; }
 .api-extra-fields ul { margin:6px 0 0; padding-left:18px; }
 .api-extra-fields li { display:flex; gap:8px; align-items:baseline; }
+/* Step 1 docs (compose): tighter Swagger rhythm — 12 between blocks, 24 between tags. */
+.api-compose-layout .swagger-ui .filter .operation-filter-input { margin:0 0 12px; }
+.api-compose-layout .swagger-ui .opblock-tag-section + .opblock-tag-section { margin-top:12px; }
+.api-compose-layout .swagger-ui .opblock-tag { padding:6px 12px 6px 8px; margin-bottom:8px; }
+.api-compose-layout .swagger-ui .opblock-tag small details { margin:6px 0; }
+.api-compose-layout .swagger-ui .opblock-tag small p { margin:4px 0; }
+.api-compose-layout .swagger-ui .opblock { margin-bottom:8px; }
 /* Step card: step-wide actions as a small row on the right, then the step's own fields. */
 .api-step-actions { display:flex; align-items:center; justify-content:flex-end; gap:6px; margin:10px 0 12px; }
 .api-testing-page .api-step-actions > button.api-step-description-toggle { margin-right:auto; padding-left:0; border:0; background:transparent; color:var(--api-body); }
