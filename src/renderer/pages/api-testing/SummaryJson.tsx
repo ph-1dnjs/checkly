@@ -34,7 +34,8 @@ export function SummaryJson({ entries, knownPaths = [] }: { entries: SummaryJson
   const line = (depth: number, content: ReactNode) => lines.push(<div className="api-summary-json-line" key={lines.length} style={{ paddingLeft: `${depth * 2}ch` }}>{content}</div>);
   const visit = (node: Node, depth: number, prefix: ReactNode, comma: boolean) => {
     const tail = comma ? "," : "";
-    if (node.content.length) { line(depth, <>{prefix}{node.content.map((content, i) => <span key={i}>{content}</span>)}{tail}</>); return; }
+    // Value and its comma stay together; a long badge wraps inside instead of leaving "," alone.
+    if (node.content.length) { line(depth, <>{prefix}<span className="api-summary-json-value">{node.content.map((content, i) => <span key={i}>{content}</span>)}{tail}</span></>); return; }
     const members = [...node.children];
     if (!members.length && !node.omitted) { line(depth, <>{prefix}{"{}"}{tail}</>); return; }
     line(depth, <>{prefix}{"{"}</>);

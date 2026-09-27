@@ -977,3 +977,6 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 .api-builder > fieldset > label { display:grid; gap:6px; }
 .api-builder > fieldset > .api-field-help { margin-top:-6px; }
 .api-testing-page > .api-spec-tools { margin-bottom:12px; }
+.api-summary-json-value { display:inline-flex; align-items:baseline; gap:0; max-width:100%; min-width:0; vertical-align:top; }
+.api-summary-json-value > span { min-width:0; }
+.api-summary-json-value :is(.api-field-state,.api-response-json-badge) { white-space:normal; }
