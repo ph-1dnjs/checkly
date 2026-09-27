@@ -42,6 +42,26 @@ async function main() {
     // Library-mode Playwright has no default timeout; fail instead of hanging.
     page.setDefaultTimeout(15_000);
     // CHECKLY_E2E_SHOTS=<dir> saves screenshots of key screens for visual review.
+    // Drags a sortable row by its handle. A short first move lets the browser start the drag
+    // (dragstart) before the long move, which otherwise sometimes races past it.
+    const startDrag = async (handle: ReturnType<typeof page.locator>, target: ReturnType<typeof page.locator>) => {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const from = await handle.boundingBox();
+        if (!from) throw new Error("Drag handle is not visible");
+        await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+        await page.mouse.down();
+        await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2 - 6, { steps: 3 });
+        const started = await page.locator(".api-sortable-item.is-dragging").waitFor({ timeout: 1_000 }).then(() => true, () => false);
+        if (started) {
+          const box = await target.boundingBox();
+          if (!box) throw new Error("Drop target is not visible");
+          await page.mouse.move(box.x + box.width / 2, box.y + 4, { steps: 12 });
+          return;
+        }
+        await page.mouse.up();
+      }
+      throw new Error("Drag did not start");
+    };
     const shot = async (name: string) => { if (process.env.CHECKLY_E2E_SHOTS) await page.screenshot({ path: path.join(process.env.CHECKLY_E2E_SHOTS, `${name}.png`) }); };
     page.on("dialog", dialog => {
       void (dialog.type() === "beforeunload" ? dialog.accept() : dialog.dismiss()).catch(() => undefined);
@@ -173,11 +193,7 @@ async function main() {
     // Reorder by dragging the whole row, then back with the keyboard.
     const selectedRows = page.locator(".api-selected-row");
     await expect(selectedRows.nth(0)).toContainText("/login");
-    await page.getByRole("button", { name: /^2단계 .* 순서 변경$/ }).hover();
-    await page.mouse.down();
-    const firstRow = await selectedRows.nth(0).boundingBox();
-    if (!firstRow) throw new Error("Selected API row is not visible");
-    await page.mouse.move(firstRow.x + firstRow.width / 2, firstRow.y + 4, { steps: 12 });
+    await startDrag(page.getByRole("button", { name: /^2단계 .* 순서 변경$/ }), selectedRows.nth(0));
     await expect(page.locator(".api-sortable-item.is-dragging")).toHaveCount(1);
     // Holding still before the drop must not lose it.
     await page.waitForTimeout(300);
@@ -289,11 +305,7 @@ async function main() {
     await expect(page.getByRole("button", { name: "실행", exact: true })).toBeEnabled();
     // And the same mouse drag as the selected APIs.
     const suiteRows = page.locator(".api-suite-order");
-    await page.getByRole("button", { name: /^2번째 AI 상품 조회 순서 변경$/ }).hover();
-    await page.mouse.down();
-    const firstSuiteRow = await suiteRows.nth(0).boundingBox();
-    if (!firstSuiteRow) throw new Error("Suite row is not visible");
-    await page.mouse.move(firstSuiteRow.x + firstSuiteRow.width / 2, firstSuiteRow.y + 4, { steps: 12 });
+    await startDrag(page.getByRole("button", { name: /^2번째 AI 상품 조회 순서 변경$/ }), suiteRows.nth(0));
     await page.mouse.up();
     await expect(suiteRows.nth(0)).toContainText("AI 상품 조회");
     await page.getByRole("button", { name: /^2번째 AI 로그인 순서 변경$/ }).press("ArrowUp");
