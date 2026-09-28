@@ -58,6 +58,10 @@ const closeScenarioWorker = async (workerId?: string): Promise<void> => {
 };
 export const finishQaWorker = (workerId: string): Promise<void> =>
   closeScenarioWorker(workerId);
+// 세션 유지 모드에서는 반복 실행 사이에 finishQaWorker가 호출되지 않으므로,
+// 앱 종료 시 남아 있는 브라우저를 정리하기 위해 별도로 노출한다.
+export const shutdownScenarioWorker = (): Promise<void> =>
+  closeScenarioWorker();
 
 export const controlManualBrowser = async (
   event: ManualBrowserEvent,

@@ -35,12 +35,15 @@
 | 실행 실패/취소 후 상단 상태 | RunPage는 수동 상태/진행률로 WAITING/RUNNING/FAILED/PASSED/IDLE 계산 | 미완료 실패가 IDLE, 잔여 수동 상태가 WAITING으로 표시될 수 있음. 개별 결과·로그 함께 확인 |
 | 화면 이탈 | 큐는 계속 | 입력·직접 제어는 실행 화면 복귀 필요; manualResult는 전역 모달 |
 | 창 분리·headed | 창 분리는 로그/토스트뿐, headed 미사용 | 실제 Chromium은 headless |
+| 세션 유지 중 실행 중단 | `qa:cancel`이 workerId 무관하게 즉시 컨텍스트를 닫음 | 유지 중이던 로그인 세션도 함께 종료되어 다음 실행은 재인증 필요 |
+| 세션 유지 중 앱 종료 | `before-quit`에서 `shutdownScenarioWorker` 호출 | 정상 종료 시 유지 세션이 정리됨; 강제 종료(kill)는 보장하지 않음 |
+| 세션 유지 + SPA 클라이언트 라우팅 | 로그인 단계가 스킵/단축되어 click·goto 직후 다음 단계가 훨씬 빨리 시작됨. click/goto는 액션 완료만 보장하고 그 결과 화면의 렌더링 완료는 기다리지 않음 | condition·waitSeconds 없이 click/goto 바로 다음에 manualFill/manualControl 등이 있으면, 화면이 준비되기 전에 해당 단계가 활성화되는 것처럼 보일 수 있음. 해당 단계에 condition/waitSeconds 추가 필요 |
 
 ## 정책 변경 전에 결정할 사항
 
 | 결정할 사항 | 현재 동작 | 영향 받는 코드 |
 | --- | --- | --- |
-| 실행 간 세션 격리 | 묶음 내 BrowserContext 공유 | qaExecution |
+| 실행 간 세션 격리 | 묶음 내 BrowserContext 공유. `keepSession` 토글을 켜면 묶음이 끝나도 컨텍스트를 닫지 않고 다음 실행에 재사용(로그인 세션 유지); 끄면 기존처럼 묶음 종료 시 `qa:finish-worker`로 닫음 | useRunOrchestration, qaExecution |
 | 취소 완료 시점과 상태 일관성 | UI 선행 종료, 이벤트·reject·병합 완료 최신성 검사 불완전 | useRunOrchestration, qaExecution, video |
 | 수동 대기 만료·이탈 처리 | manualFill 무제한, 다른 수동 단계 300초; UI 공통 정리 없음 | useRunOrchestration, RunPage, App |
 | 산출물 보존·민감정보 범위 | 디스크 자동 삭제·영상 마스킹 없음 | reports, video, qaExecution |

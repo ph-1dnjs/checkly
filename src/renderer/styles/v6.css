@@ -126,6 +126,13 @@
 .setting-choice button.selected { border-color:#1f63ae; background:#1f63ae; color:#fff; }
 .run-settings-toggle { display:flex; align-items:center; gap:9px; padding:9px 12px; font-size:12px; color:#14181c; cursor:pointer; }
 
+.run-session-btn { height:28px; display:flex; align-items:center; gap:7px; padding:0 12px; border:1px solid #d8dde2; background:#fff; font-size:12.5px; font-weight:600; color:#5a646e; cursor:pointer; }
+.run-session-btn:hover { background:#f0f3f5; }
+.run-session-dot { width:7px; height:7px; border-radius:50%; background:#c3c9ce; }
+.run-session-btn.active { border-color:#1e7a4a; background:#eaf5ee; color:#1e7a4a; }
+.run-session-btn.active .run-session-dot { background:#1e7a4a; }
+.run-session-end-btn { height:28px; padding:0 11px; font-size:12.5px; }
+
 .run-tape { flex:none; display:flex; gap:1px; height:3px; margin:0 26px; }
 .run-tape-bar { flex:1 1 0; background:#e4e8eb; }
 

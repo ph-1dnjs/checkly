@@ -92,6 +92,10 @@ export const App = (): ReactElement => {
     runQueue,
     runValidationError,
     setRunValidationError,
+    keepSession,
+    setKeepSession,
+    sessionActive,
+    endSession,
     runProgressPercent,
     scenarioProgressPercent,
     beginRuns,
@@ -193,6 +197,10 @@ export const App = (): ReactElement => {
             elapsedSeconds={elapsedSeconds}
             runStartedAt={runStartedAt}
             livePreview={livePreview}
+            keepSession={keepSession}
+            onKeepSessionChange={setKeepSession}
+            sessionActive={sessionActive}
+            onEndSession={endSession}
             previewImage={previewImage}
             stepPreviews={stepPreviews}
             onManualBrowserEvent={(event) =>

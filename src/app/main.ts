@@ -31,6 +31,7 @@ import {
   resolveManualInput,
   resolveManualResult,
   setQaViewport,
+  shutdownScenarioWorker,
 } from "./ipc/qaExecution";
 import type {
   ManualBrowserEvent,
@@ -274,4 +275,8 @@ app.whenReady().then(() => {
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
+});
+
+app.on("before-quit", () => {
+  void shutdownScenarioWorker();
 });

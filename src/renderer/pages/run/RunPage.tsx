@@ -74,6 +74,10 @@ type Props = {
   elapsedSeconds: number;
   runStartedAt: number | null;
   livePreview: boolean;
+  keepSession: boolean;
+  onKeepSessionChange: (value: boolean) => void;
+  sessionActive: boolean;
+  onEndSession: () => void;
   previewImage: string;
   stepPreviews: Record<string, string>;
   onManualBrowserEvent: (event: {
@@ -114,6 +118,10 @@ export const RunPage = ({
   runLog,
   runProgress,
   livePreview,
+  keepSession,
+  onKeepSessionChange,
+  sessionActive,
+  onEndSession,
   previewImage,
   stepPreviews,
   onManualBrowserEvent,
@@ -426,6 +434,26 @@ export const RunPage = ({
           {canReplay && (
             <Button variant="secondary" onClick={onGoToPicker}>
               시나리오 다시 선택
+            </Button>
+          )}
+          <Button
+            className={`run-session-btn${keepSession ? " active" : ""}`}
+            title="켜두면 시나리오를 다시 실행할 때 이전 실행의 로그인 세션(쿠키)을 그대로 사용해 재인증을 건너뜁니다."
+            aria-pressed={keepSession}
+            disabled={running}
+            onClick={() => onKeepSessionChange(!keepSession)}
+          >
+            <span className="run-session-dot" />
+            세션 유지
+          </Button>
+          {sessionActive && (
+            <Button
+              variant="secondary"
+              className="run-session-end-btn"
+              disabled={running}
+              onClick={onEndSession}
+            >
+              세션 종료
             </Button>
           )}
           <Popover

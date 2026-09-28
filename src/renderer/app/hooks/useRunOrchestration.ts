@@ -69,8 +69,11 @@ export const useRunOrchestration = ({
   const [runValidationError, setRunValidationError] = useState<string | null>(
     null,
   );
+  const [keepSession, setKeepSession] = useState(false);
+  const [sessionActive, setSessionActive] = useState(false);
   const runCancelled = useRef(false);
   const runSequence = useRef(0);
+  const sessionWorkerId = useRef<string | null>(null);
   const runVideoPaths = useRef<string[]>([]);
   const runVideoScenario = useRef<Scenario | null>(null);
   const runProgressRef = useRef<RunProgress>(runProgress);
@@ -211,6 +214,10 @@ export const useRunOrchestration = ({
       item.steps.some((step) => step.action === "manualControl"),
     );
     const sequence = ++runSequence.current;
+    const workerId = keepSession
+      ? (sessionWorkerId.current ??= `session-${Date.now()}`)
+      : String(sequence);
+    if (keepSession) setSessionActive(true);
     if (!background) setRoute("run");
     setRunning(true);
     runCancelled.current = false;
@@ -282,7 +289,7 @@ export const useRunOrchestration = ({
           runVideoScenario.current = runScenario;
           const result = await window.electronAPI.runQa(runScenario, {
             preview: livePreview,
-            workerId: String(sequence),
+            workerId,
           });
           if (sequence !== runSequence.current) break;
           setRunLog((logs) => [
@@ -334,7 +341,7 @@ export const useRunOrchestration = ({
           ]);
         }
       }
-      await window.electronAPI.finishQaWorker(String(sequence));
+      if (!keepSession) await window.electronAPI.finishQaWorker(workerId);
       if (sequence === runSequence.current) {
         if (!cancelled) {
           recordRun(toRun, passed, failed, collected);
@@ -361,10 +368,27 @@ export const useRunOrchestration = ({
     })();
   };
 
+  const endSession = () => {
+    if (sessionWorkerId.current) {
+      void window.electronAPI.finishQaWorker(sessionWorkerId.current);
+      sessionWorkerId.current = null;
+    }
+    setSessionActive(false);
+  };
+
+  const changeKeepSession = (value: boolean) => {
+    setKeepSession(value);
+    if (!value) endSession();
+  };
+
   const cancelRuns = () => {
     runCancelled.current = true;
     runSequence.current += 1;
     void window.electronAPI.cancelQa();
+    // qa:cancel은 workerId와 무관하게 현재 브라우저를 즉시 닫으므로
+    // 유지 중이던 세션도 함께 종료된 것으로 반영한다.
+    sessionWorkerId.current = null;
+    setSessionActive(false);
     setRunning(false);
     setRunNotification(
       (notification) =>
@@ -462,6 +486,10 @@ export const useRunOrchestration = ({
     runQueue,
     runValidationError,
     setRunValidationError,
+    keepSession,
+    setKeepSession: changeKeepSession,
+    sessionActive,
+    endSession,
     runProgressPercent,
     scenarioProgressPercent,
     beginRuns,

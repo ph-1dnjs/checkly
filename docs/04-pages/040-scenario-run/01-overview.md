@@ -10,8 +10,18 @@
 
 - 시나리오 하나가 failed여도 다음 시나리오를 계속 실행합니다. cancelled이면 큐를 중단합니다.
 - 취소되지 않은 묶음은 하나라도 실패하면 failed, 아니면 passed로 최근 기록에 추가합니다.
-- worker ID가 바뀌면 기존 컨텍스트를 닫습니다. 큐 종료 시 `qa:finish-worker`로 컨텍스트·브라우저를 닫습니다.
+- worker ID가 바뀌면 기존 컨텍스트를 닫습니다. 큐 종료 시 기본적으로 `qa:finish-worker`로 컨텍스트·브라우저를 닫습니다.
 - main의 activeRun/scenarioWorker는 전역 단일 객체입니다. 독립 실행 큐의 병렬 처리를 보장하지 않습니다. 실행 설정의 WebKit/Firefox 및 workers 2/4 버튼에는 변경 callback이 없어 표시 전용이며 실제 실행은 Chromium·순차 처리입니다.
+
+### 실행 간 세션 유지 (`keepSession`)
+
+실행 화면 설정 메뉴의 "로그인 세션 유지" 토글(`useRunOrchestration`의 `keepSession`)을 켜면, 묶음 실행이 끝나도 `qa:finish-worker`를 호출하지 않고 고정된 workerId(`session-<timestamp>`)를 재사용합니다. 따라서 이후 `beginRuns` 호출(다시 실행, 시나리오 재선택 후 실행 등)이 같은 BrowserContext·Page 세션을 이어받아 로그인 쿠키가 유지되며, 2차 인증이 필요한 시나리오를 반복 실행할 때 매번 재인증하지 않아도 됩니다.
+
+- 토글을 끄거나 화면에서 "세션 종료" 버튼을 누르면 즉시 `qa:finish-worker`로 컨텍스트·브라우저를 닫고 다음 실행부터는 새 workerId를 사용합니다.
+- "실행 중단"(`qa:cancel`)은 workerId와 무관하게 현재 브라우저를 즉시 닫으므로, 유지 중이던 세션도 함께 종료됩니다.
+- 앱 종료(`before-quit`) 시 유지 중인 세션이 있으면 `shutdownScenarioWorker`가 정리합니다.
+- 세션 유지는 쿠키·localStorage 등 컨텍스트 상태만 이어줄 뿐, 로그인 성공 여부를 자동으로 판정하거나 만료된 세션을 감지해 재인증하지 않습니다. 로그인 화면으로 리다이렉트되었는지는 여전히 시나리오의 condition·expectText·manualResult로 확인해야 합니다.
+- **타이밍 주의**: 세션 유지 상태에서는 이미 인증되어 있어 로그인 관련 단계가 스킵되거나 매우 빨리 지나갑니다. click/goto는 액션 자체의 완료만 기다리고 SPA 클라이언트 라우팅으로 인한 화면 렌더링 완료까지는 기다리지 않으므로, 세션 없이 실행할 때 로그인 타이핑·리다이렉트가 우연히 만들어주던 대기 시간이 사라져 다음 단계(특히 manualFill/manualControl)가 화면이 준비되기 전에 활성화될 수 있습니다. click/goto 직후 자동·수동 단계가 바로 이어지는 곳에는 `condition` 또는 `waitSeconds`를 명시적으로 지정해야 합니다.
 
 ## 브라우저와 화면 크기
 
