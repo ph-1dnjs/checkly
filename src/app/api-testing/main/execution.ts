@@ -29,7 +29,7 @@ type RequestSnapshot = NonNullable<Scenario["steps"][number]["request"]>;
 
 class RequestValueError extends Error {}
 class SafeCheckFailure extends Error {
-  constructor(readonly failure: NonNullable<StepResult["failure"]>) { super("응답 검증 또는 값 추출 실패"); }
+  constructor(readonly failure: NonNullable<StepResult["failure"]>, message = "응답 검증 또는 값 추출 실패") { super(message); }
 }
 
 function jsonType(value: unknown): string {
@@ -267,7 +267,8 @@ export class ApiRunner {
           const vars: Variables = {}, globals: Variables = {};
           for (const extraction of step.extract) {
             const v = read(extraction.source, extraction.pointer, extraction.header);
-            if (v === undefined) throw new SafeCheckFailure({ kind: "extraction", source: extraction.source });
+            // Names where the value was looked for, never the value itself.
+            if (v === undefined) throw new SafeCheckFailure({ kind: "extraction", source: extraction.source }, `응답 저장 실패: ${extraction.source === "header" ? `응답 헤더 '${extraction.header}'` : `응답 본문 ${extraction.pointer || "전체"}`}에서 ${extraction.target}에 저장할 값을 찾지 못했습니다.`);
             const [scope, key] = extraction.target.split(".");
             Object.defineProperty(scope === "vars" ? vars : globals, key, { value: v, enumerable: true });
           }
@@ -279,7 +280,7 @@ export class ApiRunner {
         } catch (error) {
           const status = options.signal?.aborted ? "cancelled" : error instanceof MissingValue ? "blocked" : "failed";
           // Never surface network/library errors that could contain credentials or URLs.
-          results.push({ id: step.id, name: scenarioStepLabel(step), status, httpStatus, durationMs: Date.now() - started, ...(checks ? { checks } : {}), ...(inputResults.length === 1 ? { input: inputResults[0] } : inputResults.length > 1 ? { inputs: inputResults } : {}), failure: error instanceof SafeCheckFailure ? error.failure : { kind: status === "blocked" ? "input" : error instanceof RequestValueError ? "request" : "other" }, error: status === "blocked" ? "필수 변수 또는 API 설정이 없습니다" : status === "cancelled" ? "실행 취소" : error instanceof RequestValueError ? error.message : "요청·응답 검증 또는 값 추출 실패" });
+          results.push({ id: step.id, name: scenarioStepLabel(step), status, httpStatus, durationMs: Date.now() - started, ...(checks ? { checks } : {}), ...(inputResults.length === 1 ? { input: inputResults[0] } : inputResults.length > 1 ? { inputs: inputResults } : {}), failure: error instanceof SafeCheckFailure ? error.failure : { kind: status === "blocked" ? "input" : error instanceof RequestValueError ? "request" : "other" }, error: status === "blocked" ? "필수 변수 또는 API 설정이 없습니다" : status === "cancelled" ? "실행 취소" : error instanceof RequestValueError || (error instanceof SafeCheckFailure && error.failure.kind === "extraction") ? error.message : "요청·응답 검증 또는 값 추출 실패" });
           stopped = scenario.onFailure === "stop" || status === "cancelled";
         }
       }

@@ -149,3 +149,23 @@ test("after a spec refresh: steps whose API is gone are listed, and steps named 
     assert.deepEqual(missing.map(item => item.steps), [["상품 상세 조회 (GET /items/{id})"], ["내가 붙인 이름 (GET /items/{id})"]]);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
+
+test("title renames still apply to a scenario that also uses an API gone from the spec", async () => {
+  const { dir, workspace, project, scope } = await setup();
+  try {
+    await workspace.saveScenario(scope, "id: shop/mixed\nname: 섞임\nserver: 상점\nsteps:\n  - name: 로그인\n    api: POST /login\n    auth: none\n    body: { loginId: tester }\n  - name: 상품 조회\n    api: GET /items/{id}\n    auth: none\n    pathParams: { id: 7 }\n", {});
+    const next = JSON.parse(spec);
+    delete next.paths["/login"];
+    next.paths["/items/{id}"].get.summary = "상품 상세 조회";
+    await workspace.importSpec({ ...scope, serverId: project.servers[0].id }, JSON.stringify(next));
+    const impact = await workspace.checkScenarioSpecs(scope);
+    assert.deepEqual(impact.missing.map(item => item.steps), [["로그인 (POST /login)"]]);
+    assert.deepEqual(await workspace.applyTitleRenames(scope), { updated: ["섞임"], skipped: [] });
+    const after = await workspace.checkScenarioSpecs(scope);
+    assert.deepEqual(after.renamed, []);
+    assert.equal(after.missing.length, 1);
+    const saved = (await workspace.listScenarios(project.id)).find(item => item.id === "shop/mixed");
+    assert.equal(saved?.draft, false);
+    assert.match(saved!.source, /name: 상품 상세 조회/);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});

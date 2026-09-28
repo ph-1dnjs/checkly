@@ -547,13 +547,13 @@ export class ApiWorkspace {
     const { renamed } = await this.checkScenarioSpecs(scope);
     const updated: string[] = [], skipped: string[] = [];
     const saved = await this.listScenarios(scope.projectId);
+    const catalogs = new Map<string, ApiCatalog | null>();
+    if (renamed.length) for (const server of project.servers) catalogs.set(server.id, await this.readCatalog({ ...scope, serverId: server.id }));
     for (const target of renamed) {
       const item = saved.find(candidate => candidate.id === target.scenarioId);
       if (!item) continue;
       try {
         const scenario = this.parseSource(item.source);
-        const catalogs = new Map<string, ApiCatalog | null>();
-        for (const server of project.servers) catalogs.set(server.id, await this.readCatalog({ ...scope, serverId: server.id }));
         for (const step of scenario.steps) {
           const key = item.bindings[step.server] ?? step.server;
           const server = project.servers.find(candidate => candidate.id === key) ?? project.servers.find(candidate => candidate.name === key);
@@ -562,7 +562,9 @@ export class ApiWorkspace {
           const change = operation ? catalogs.get(server!.id)?.titleChanges?.[operation.key] : undefined;
           if (step.name && change?.from.includes(step.name)) step.name = change.to;
         }
-        await (item.draft ? this.saveScenarioDraft : this.saveScenario).call(this, scope, stringifyScenario(scenario, true), item.bindings, item.updatedAt);
+        // Only names change, so problems the scenario already had (e.g. an API gone from the spec)
+        // do not block it; a scenario edited elsewhere meanwhile is still skipped.
+        await this.persistScenario(scope, stringifyScenario(scenario, true), item.bindings, item.updatedAt, item.draft ?? false, undefined, true);
         updated.push(item.name);
       } catch { skipped.push(item.name); }
     }
@@ -676,13 +678,13 @@ export class ApiWorkspace {
     return this.persistScenario(input, source, bindings, expectedUpdatedAt, true, metadata);
   }
 
-  private async persistScenario(input: ApiEnvironmentScope, source: string, bindings: Record<string, string>, expectedUpdatedAt: string | undefined, draft: boolean, rawMetadata?: ApiSidebarMetadata): Promise<SavedApiScenario> {
+  private async persistScenario(input: ApiEnvironmentScope, source: string, bindings: Record<string, string>, expectedUpdatedAt: string | undefined, draft: boolean, rawMetadata?: ApiSidebarMetadata, allowIssues = false): Promise<SavedApiScenario> {
     const metadata = rawMetadata === undefined ? undefined : sidebarMetadataSchema.parse(rawMetadata);
     const action = this.queue.then(async () => {
       // Validate inside the queue so project/server changes queued earlier are already applied
       // and ones queued later see this scenario when checking references.
       const preview = await this.previewScenario(input, source, bindings);
-      if (!draft && preview.issues.length) throw new Error(preview.issues.join("\n"));
+      if (!draft && !allowIssues && preview.issues.length) throw new Error(preview.issues.join("\n"));
       const { project } = await this.environment(input);
       const saved = await this.listScenarios(input.projectId);
       const index = saved.findIndex(s => s.id === preview.scenario.id);
