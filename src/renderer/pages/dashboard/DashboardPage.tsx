@@ -34,7 +34,7 @@ export const DashboardPage = ({
         !(event.metaKey || event.ctrlKey) ||
         event.shiftKey ||
         event.altKey ||
-        event.code !== "KeyR"
+        event.code !== "KeyP"
       ) return;
 
       event.preventDefault();
@@ -64,7 +64,7 @@ export const DashboardPage = ({
         <div className="dash-heading">대시보드</div>
         <div className="dash-title-actions">
           <Button variant="primary" onClick={onOpenRun}>
-            실행 화면 열기 <span className="dash-kbd">⌘R</span>
+            실행 화면 열기 <span className="dash-kbd">⌘P</span>
           </Button>
         </div>
       </div>

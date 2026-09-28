@@ -78,6 +78,13 @@ type Props = {
   onKeepSessionChange: (value: boolean) => void;
   sessionActive: boolean;
   onEndSession: () => void;
+  onRerunScenario: (scenario: Scenario) => void;
+  rerunStack: Array<{ id: string; scenario: Scenario }>;
+  stackPaused: boolean;
+  onRemoveFromStack: (id: string) => void;
+  onClearStack: () => void;
+  onPauseStack: () => void;
+  onResumeStack: () => void;
   previewImage: string;
   stepPreviews: Record<string, string>;
   onManualBrowserEvent: (event: {
@@ -122,6 +129,13 @@ export const RunPage = ({
   onKeepSessionChange,
   sessionActive,
   onEndSession,
+  onRerunScenario,
+  rerunStack,
+  stackPaused,
+  onRemoveFromStack,
+  onClearStack,
+  onPauseStack,
+  onResumeStack,
   previewImage,
   stepPreviews,
   onManualBrowserEvent,
@@ -438,9 +452,12 @@ export const RunPage = ({
           )}
           <Button
             className={`run-session-btn${keepSession ? " active" : ""}`}
-            title="켜두면 시나리오를 다시 실행할 때 이전 실행의 로그인 세션(쿠키)을 그대로 사용해 재인증을 건너뜁니다."
+            title={
+              running
+                ? "지금 실행 중인 브라우저를 그대로 유지 세션으로 사용합니다. 다음 실행부터 재인증을 건너뜁니다."
+                : "켜두면 시나리오를 다시 실행할 때 이전 실행의 로그인 세션(쿠키)을 그대로 사용해 재인증을 건너뜁니다."
+            }
             aria-pressed={keepSession}
-            disabled={running}
             onClick={() => onKeepSessionChange(!keepSession)}
           >
             <span className="run-session-dot" />
@@ -505,6 +522,47 @@ export const RunPage = ({
             />
           ))}
       </div>
+
+      {rerunStack.length > 0 && (
+        <div className="run-stack-bar">
+          <div className="run-stack-head">
+            <span className="run-stack-title">재실행 대기열</span>
+            <span className="run-stack-count">{rerunStack.length}개 대기</span>
+            <div className="run-stack-actions">
+              {stackPaused ? (
+                <Button variant="primary" onClick={onResumeStack}>
+                  재개
+                </Button>
+              ) : (
+                <Button variant="secondary" onClick={onPauseStack}>
+                  일시정지
+                </Button>
+              )}
+              <Button variant="secondary" onClick={onClearStack}>
+                초기화
+              </Button>
+            </div>
+          </div>
+          <div className="run-stack-list">
+            {rerunStack.map((item, index) => (
+              <div className="run-stack-chip" key={item.id}>
+                <span className="run-stack-chip-index">{index + 1}</span>
+                <span className="run-stack-chip-title">
+                  {item.scenario.title}
+                </span>
+                <button
+                  type="button"
+                  className="run-stack-chip-remove"
+                  aria-label={`${item.scenario.title} 대기열에서 제거`}
+                  onClick={() => onRemoveFromStack(item.id)}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {manual && (
         <div className="run-manual-banner">
@@ -593,6 +651,18 @@ export const RunPage = ({
                   <span className="run-group-count">
                     {group.scenario.steps.length}단계
                   </span>
+                  {rerunStack.some(
+                    (item) => item.scenario.id === group.scenario.id,
+                  ) ? (
+                    <span className="run-group-queued">대기열에 있음</span>
+                  ) : (
+                    <Button
+                      className="run-group-rerun"
+                      onClick={() => onRerunScenario(group.scenario)}
+                    >
+                      재실행
+                    </Button>
+                  )}
                 </div>
                 {group.steps.map((row) => (
                   <Button
