@@ -265,6 +265,6 @@ test("a value missing for a response save says where it was looked for", async (
     const scenario = scenarioSchema.parse({ version: 1, id: "extract-missing", name: "저장 실패", steps: [{ id: "first", name: "조회", server: "api", api: { method: "GET", path: "/" }, extract: [{ source: "body", pointer: "/data/token", target: "globals.token" }] }] });
     const result = await new ApiRunner().run(scenario, { projectId: "test", environment: "dev", servers: { api: { baseUrl: `http://127.0.0.1:${(server.address() as { port: number }).port}` } } });
     assert.equal(result.steps[0].status, "failed");
-    assert.equal(result.steps[0].error, "응답 저장 실패: 응답 본문 /data/token에서 globals.token에 저장할 값을 찾지 못했습니다.");
+    assert.equal(result.steps[0].error, "응답 저장 실패: 응답 본문 /data/token에 값이 없어 전역변수 token에 저장하지 못했습니다.");
   } finally { await new Promise<void>(r => server.close(() => r())); }
 });

@@ -369,6 +369,7 @@ async function main() {
     await expect(refreshedSource).toContainText("API 제목이 바뀌었습니다 · 시나리오 1개의 단계 1개가 이전 제목을 이름으로 씁니다.");
     // "이대로 두기" keeps the old name and hides the suggestion; a later, different title asks again.
     await refreshedSource.getByText("바뀔 내용 보기", { exact: true }).click();
+    if (process.env.CHECKLY_E2E_SHOTS) await restored.screenshot({ path: path.join(process.env.CHECKLY_E2E_SHOTS, "rename-offer.png") });
     await refreshedSource.getByRole("button", { name: "로그인 후 상품 조회 이름 그대로 두기", exact: true }).click();
     await expect(refreshedSource).not.toContainText("API 제목이 바뀌었습니다");
     itemsTitle = "상품 상세 정보 조회";
@@ -417,6 +418,7 @@ async function main() {
     await replaceFirst.getByRole("button", { name: /\/products\/\{id\}/ }).click();
     const staleBody = restored.locator('details[aria-label="편집 단계 1"] .api-extra-fields');
     await expect(staleBody).toContainText("body (요청 본문 전체)");
+    if (process.env.CHECKLY_E2E_SHOTS) { await staleBody.scrollIntoViewIfNeeded(); await restored.screenshot({ path: path.join(process.env.CHECKLY_E2E_SHOTS, "stale-body.png") }); }
     await staleBody.getByRole("button", { name: "제거", exact: true }).click();
     await expect(staleBody).toHaveCount(0);
     // Leave without saving so the app closes cleanly.

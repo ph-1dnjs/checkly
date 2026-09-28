@@ -37,12 +37,12 @@ export function safeFailureReason(status: string, httpStatus?: number, failure?:
   if (status === "blocked") return "필수 입력·전역변수 또는 API 설정을 확인하세요.";
   if (status === "cancelled") return "사용자가 실행을 취소했습니다.";
   if (failure?.kind === "assertion") return `${failure.source === "status" ? "HTTP 상태" : failure.source === "header" ? "응답 헤더" : "응답 본문"} ${failure.operator === "equals" ? "일치" : failure.operator === "exists" ? "존재" : failure.operator === "contains" ? "포함" : "포함"} 검증 실패`;
-  if (failure?.kind === "extraction") return `${failure.source === "header" ? "응답 헤더" : "응답 본문"}에서 연결할 값을 찾지 못했습니다.`;
+  if (failure?.kind === "extraction") return `${failure.source === "header" ? "응답 헤더" : "응답 본문"}에서 저장할 값을 찾지 못했습니다.`;
   if (failure?.kind === "request") return "요청값 형식이 API 명세와 다릅니다.";
   if (failure?.kind === "input") return "필수 실행 입력이나 전역변수를 확인하세요.";
   if (failure?.kind === "http") return httpStatus === undefined ? "HTTP 요청에 실패했습니다." : `HTTP ${httpStatus} 응답`;
   if (httpStatus !== undefined && (httpStatus < 200 || httpStatus >= 300)) return `HTTP ${httpStatus} 응답 또는 검증 실패`;
-  return "요청·응답 검증 또는 값 추출 실패";
+  return httpStatus === undefined ? "요청을 보내지 못했습니다." : "응답을 처리하지 못했습니다.";
 }
 
 const escapeHtml = (value: string | number) => String(value).replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]!);

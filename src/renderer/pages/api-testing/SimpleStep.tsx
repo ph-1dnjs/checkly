@@ -236,7 +236,7 @@ export function SimpleStep({ scenario, index, catalogs, bindings, scope, bridge,
       {hasRequestBody && <RequestBodyEditor operation={operation} step={step} update={update} bodyFields={fields.filter(field => field.area === "body")} renderField={renderField} />}
     </>}
     {operation && (() => {
-      // Values kept from a previous API that this one does not define (e.g. after "API 바꾸기").
+      // Values this API's spec does not define: left over from "API 바꾸기", a spec change, or AI/YAML edits.
       const known = new Set(fields.map(field => `${field.area}:${field.name}`));
       const bodyIsObject = step.request.body !== undefined && step.request.body !== null && typeof step.request.body === "object" && !Array.isArray(step.request.body);
       const extra = (["pathParams", "query", "headers", "cookies", ...(bodyIsObject && fields.some(field => field.area === "body") ? ["body"] : [])] as RequestArea[])
@@ -245,7 +245,7 @@ export function SimpleStep({ scenario, index, catalogs, bindings, scope, bridge,
       const staleBody = !hasRequestBody && step.request.body !== undefined;
       const count = extra.length + (staleBody ? 1 : 0);
       if (!count) return null;
-      return <div className="api-warning api-extra-fields" role="status"><strong>새 API에 없는 요청 값 {count}개</strong><ul>
+      return <div className="api-warning api-extra-fields" role="status"><strong>이 API 명세에 없는 요청값 {count}개</strong><ul>
         {staleBody && <li><code>body (요청 본문 전체)</code><button type="button" className="api-compose-link" onClick={removeBody}>제거</button></li>}
         {extra.map(item => <li key={`${item.area}:${item.name}`}><code>{item.area}.{item.name}</code><button type="button" className="api-compose-link" onClick={() => setValue(item.area, item.name, undefined)}>제거</button></li>)}
       </ul></div>;
