@@ -235,6 +235,7 @@ export class ApiRunner {
             ...(req.body !== undefined ? { body: structuredClone(req.body) } : {}),
           };
           options.onRequest?.(requestTrace, step.id);
+          if (req.body !== undefined && /^(GET|HEAD)$/i.test(api.method)) throw new RequestValueError(`${api.method.toUpperCase()} 요청에는 본문을 보낼 수 없습니다. 단계의 요청 본문을 제거하세요.`);
           validateRequestBody(scenario, index, req.body, "bodySchema" in api ? api.bodySchema : undefined);
           const signal = AbortSignal.any([AbortSignal.timeout(options.timeoutMs ?? 30_000), ...(options.signal ? [options.signal] : [])]);
           const response = await fetch(url, { method: api.method, headers, body: req.body === undefined ? undefined : JSON.stringify(req.body), signal, redirect: "manual" });

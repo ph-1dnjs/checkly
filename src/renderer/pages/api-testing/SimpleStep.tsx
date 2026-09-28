@@ -121,6 +121,14 @@ export function SimpleStep({ scenario, index, catalogs, bindings, scope, bridge,
     const nextBindings = variable && !bindingInUseElsewhere ? scenario.valueBindings.filter(binding => binding.name !== variable) : scenario.valueBindings;
     update({ request, ...(removeInput ? { input: undefined, inputs: nextInputs.length ? nextInputs : undefined } : {}) }, { valueBindings: nextBindings });
   };
+  /** Drops the whole body, with the runtime inputs and value links only it used (like removing each field). */
+  const removeBody = () => {
+    const request = { ...step.request, body: undefined };
+    const orphaned = (name: string) => variableReferenceInValue(step.request.body, name) && !variableReferenceInValue(request, name);
+    const nextInputs = runtimeInputs.filter(input => !orphaned(input.name));
+    const nextBindings = scenario.valueBindings.filter(binding => !orphaned(binding.name) || scenario.steps.some((otherStep, otherIndex) => otherIndex !== index && variableReferenceInValue(otherStep.request, binding.name)));
+    update({ request, input: undefined, inputs: nextInputs.length ? nextInputs : undefined }, { valueBindings: nextBindings });
+  };
   const toggleUserInput = (field: RequestField) => {
     const current = objectValue(step.request[field.area])[field.name];
     const currentInput = runtimeInputs.find(input => current === `{{vars.${input.name}}}`);
@@ -233,8 +241,14 @@ export function SimpleStep({ scenario, index, catalogs, bindings, scope, bridge,
       const bodyIsObject = step.request.body !== undefined && step.request.body !== null && typeof step.request.body === "object" && !Array.isArray(step.request.body);
       const extra = (["pathParams", "query", "headers", "cookies", ...(bodyIsObject && fields.some(field => field.area === "body") ? ["body"] : [])] as RequestArea[])
         .flatMap(area => Object.keys(objectValue(step.request[area])).filter(name => !known.has(`${area}:${name}`) && !(area === "headers" && name.toLowerCase() === "authorization")).map(name => ({ area, name })));
-      if (!extra.length) return null;
-      return <div className="api-warning api-extra-fields" role="status"><strong>새 API에 없는 요청 값 {extra.length}개</strong><ul>{extra.map(item => <li key={`${item.area}:${item.name}`}><code>{item.area}.{item.name}</code><button type="button" className="api-compose-link" onClick={() => setValue(item.area, item.name, undefined)}>제거</button></li>)}</ul></div>;
+      // A body the new API does not take at all has no editor, so it is listed as a whole.
+      const staleBody = !hasRequestBody && step.request.body !== undefined;
+      const count = extra.length + (staleBody ? 1 : 0);
+      if (!count) return null;
+      return <div className="api-warning api-extra-fields" role="status"><strong>새 API에 없는 요청 값 {count}개</strong><ul>
+        {staleBody && <li><code>body (요청 본문 전체)</code><button type="button" className="api-compose-link" onClick={removeBody}>제거</button></li>}
+        {extra.map(item => <li key={`${item.area}:${item.name}`}><code>{item.area}.{item.name}</code><button type="button" className="api-compose-link" onClick={() => setValue(item.area, item.name, undefined)}>제거</button></li>)}
+      </ul></div>;
     })()}
     <header className="api-simple-section-heading"><h3>응답</h3></header>
     <ResponsePicker operation={operation} spec={spec} actionLabel="설정" selectedPointer={responsePointer} showPreview={false} badges={responseBadges} onSelect={pointer => { setResponsePointer(pointer); setAction(null); setVerificationPointer(pointer); setGlobalName(existingGlobalExtraction(pointer)?.target.slice("globals.".length) || responseGlobalNameSuggestions(operation, pointer)[0]?.name || "response"); setError(""); }} />

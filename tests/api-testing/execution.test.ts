@@ -244,3 +244,16 @@ test("cancellation, timeout and stop/continue do not dispatch dependent requests
     assert.deepEqual((await runner.run(scenario, options)).steps.map(s => s.status), ["failed", "blocked"]);
   } finally { server.closeAllConnections(); await new Promise<void>(r => server.close(() => r())); }
 });
+
+test("a body left on a GET step fails with a clear message before any request", async () => {
+  let hits = 0;
+  const server = createServer((_req, res) => { hits++; res.end("{}"); });
+  await new Promise<void>(r => server.listen(0, "127.0.0.1", r));
+  try {
+    const scenario = scenarioSchema.parse({ version: 1, id: "get-body", name: "본문 남음", steps: [{ id: "first", name: "조회", server: "api", api: { method: "GET", path: "/" }, request: { body: { loginId: "a" } } }] });
+    const result = await new ApiRunner().run(scenario, { projectId: "test", environment: "dev", servers: { api: { baseUrl: `http://127.0.0.1:${(server.address() as { port: number }).port}` } } });
+    assert.equal(result.steps[0].status, "failed");
+    assert.match(result.steps[0].error ?? "", /GET 요청에는 본문을 보낼 수 없습니다/);
+    assert.equal(hits, 0);
+  } finally { await new Promise<void>(r => server.close(() => r())); }
+});
