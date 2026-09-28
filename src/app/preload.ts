@@ -26,6 +26,7 @@ const apiTesting: ApiTestingBridge = {
   listScenarios: (projectId) => ipcRenderer.invoke('api-testing:list-scenarios', projectId),
   checkScenarioSpecs: (scope) => ipcRenderer.invoke('api-testing:check-scenario-specs', scope),
   applyTitleRenames: (scope) => ipcRenderer.invoke('api-testing:apply-title-renames', scope),
+  keepTitles: (scope, scenarioId) => ipcRenderer.invoke('api-testing:keep-titles', scope, scenarioId),
   listSuites: (projectId) => ipcRenderer.invoke('api-testing:list-suites', projectId),
   saveSuite: (projectId, suite, revision) => ipcRenderer.invoke('api-testing:save-suite', projectId, suite, revision),
   deleteSuite: (projectId, id, revision) => ipcRenderer.invoke('api-testing:delete-suite', projectId, id, revision),

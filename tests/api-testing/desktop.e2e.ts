@@ -355,7 +355,7 @@ async function main() {
     await expect(restored.getByText("저장된 변수가 없습니다.", { exact: true })).toBeVisible();
     await restored.keyboard.press("Escape");
     // Refreshing a spec whose title changed offers to rename steps still named after the old title.
-    itemsTitle = "상품 상세 정보 조회";
+    itemsTitle = "상품 정보 조회";
     await restored.getByRole("tab", { name: /^API 문서/ }).click();
     const refreshedSource = restored.getByRole("region", { name: "API 명세 가져오기" });
     const refreshSpec = async () => {
@@ -365,6 +365,13 @@ async function main() {
       await restored.getByLabel("Swagger 비밀번호", { exact: true }).fill("docs-test-password");
       await refreshedSource.getByRole("button", { name: /^(가져오기|새로고침)$/ }).click();
     };
+    await refreshSpec();
+    await expect(refreshedSource).toContainText("API 제목이 바뀌었습니다 · 시나리오 1개의 단계 1개가 이전 제목을 이름으로 씁니다.");
+    // "이대로 두기" keeps the old name and hides the suggestion; a later, different title asks again.
+    await refreshedSource.getByText("바뀔 내용 보기", { exact: true }).click();
+    await refreshedSource.getByRole("button", { name: "로그인 후 상품 조회 이름 그대로 두기", exact: true }).click();
+    await expect(refreshedSource).not.toContainText("API 제목이 바뀌었습니다");
+    itemsTitle = "상품 상세 정보 조회";
     await refreshSpec();
     await expect(refreshedSource).toContainText("API 제목이 바뀌었습니다 · 시나리오 1개의 단계 1개가 이전 제목을 이름으로 씁니다.");
     await refreshedSource.getByRole("button", { name: "새 제목으로 바꾸기", exact: true }).click();
@@ -399,6 +406,23 @@ async function main() {
     await expect(restored.getByText("시나리오를 저장했습니다. 이 화면에서 계속 수정할 수 있습니다.", { exact: true })).toBeVisible();
     await restored.getByRole("button", { name: "시나리오 목록으로", exact: true }).click();
     await expect(warnedEntry.locator(".api-sidebar-warning")).toHaveCount(0);
+    // Moving a step with a body to an API without one lists the whole body so it can be removed.
+    await warnedEntry.click();
+    await restored.getByRole("button", { name: "수정", exact: true }).click();
+    await restored.locator(".api-compose-steps button").nth(1).click();
+    await restored.locator('details[aria-label="편집 단계 1"] > summary').click();
+    await restored.getByRole("button", { name: "1단계 API 바꾸기", exact: true }).click();
+    const replaceFirst = restored.getByRole("dialog", { name: "1단계 API 바꾸기" });
+    await replaceFirst.getByLabel("바꿀 API 검색").fill("products");
+    await replaceFirst.getByRole("button", { name: /\/products\/\{id\}/ }).click();
+    const staleBody = restored.locator('details[aria-label="편집 단계 1"] .api-extra-fields');
+    await expect(staleBody).toContainText("body (요청 본문 전체)");
+    await staleBody.getByRole("button", { name: "제거", exact: true }).click();
+    await expect(staleBody).toHaveCount(0);
+    // Leave without saving so the app closes cleanly.
+    await restored.getByRole("button", { name: "시나리오 목록으로", exact: true }).click();
+    await restored.getByRole("button", { name: "변경사항 버리고 닫기", exact: true }).click();
+    await expect(warnedEntry).toBeVisible();
   } finally {
     try {
       const electronProcess = app?.process();

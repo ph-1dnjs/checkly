@@ -12,6 +12,8 @@ type Props = {
   renamedTitles?: Array<{ scenarioId: string; scenario: string; steps: Array<{ from: string; to: string }> }>;
   /** Renames them; resolves to a short result message. */
   onApplyRenames?: () => Promise<string>;
+  /** Keeps one scenario's current names; its suggestion goes away. */
+  onKeepTitles?: (scenarioId: string) => Promise<void>;
   checkingMissing?: boolean;
   /** Opens a scenario in the editor, e.g. to fix a step listed in a warning. */
   onOpenScenario?: (scenarioId: string) => void;
@@ -75,7 +77,9 @@ export function SpecSourcePanel(props: Props) {
         {props.onApplyRenames && <button type="button" className="api-primary" disabled={renaming || disabled} onClick={async () => { setRenaming(true); setRenameResult(""); try { setRenameResult(await props.onApplyRenames!()); } catch (error) { setRenameResult((error as Error).message); } finally { setRenaming(false); } }}>{renaming ? "바꾸는 중…" : "새 제목으로 바꾸기"}</button>}
       </div>
       <details><summary>바뀔 내용 보기</summary>
-        <ul>{props.renamedTitles.map(item => <li key={item.scenarioId}>{scenarioLink(item)} · {item.steps.map(step => `“${step.from}” → “${step.to}”`).join(", ")}</li>)}</ul>
+        <ul>{props.renamedTitles.map(item => <li key={item.scenarioId}>{scenarioLink(item)} · {item.steps.map(step => `“${step.from}” → “${step.to}”`).join(", ")}
+          {props.onKeepTitles && <button type="button" className="api-compose-link" disabled={renaming || disabled} title="이 시나리오의 단계 이름을 바꾸지 않고, 이 제안을 다시 보여주지 않습니다" aria-label={`${item.scenario} 이름 그대로 두기`} onClick={() => { setRenameResult(""); props.onKeepTitles!(item.scenarioId).catch(error => setRenameResult((error as Error).message)); }}>이대로 두기</button>}
+        </li>)}</ul>
       </details>
     </div>}
     {renameResult && <p role="status" className="api-spec-rename-result">{renameResult}</p>}

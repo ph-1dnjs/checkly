@@ -19,6 +19,7 @@ const sidebarMetadataSchema = z.object({
   tags: z.array(z.string().trim().min(1).max(32)).max(20).optional().transform(values => values?.length ? [...new Map(values.map(value => [value.toLocaleLowerCase(), value])).values()] : undefined),
 }).strict();
 const suiteSchema = z.object({ id: z.string().uuid(), name: z.string().trim().min(1).max(100), scenarioIds: z.array(z.string().min(1).max(1000)).min(1).max(100), onFailure: z.enum(["stop", "continue"]) }).extend(sidebarMetadataSchema.shape).strict();
+const keptTitle = (item: SavedApiScenario, from: string, to: string) => Boolean(item.keptTitles?.some(kept => kept.from === from && kept.to === to));
 function migrateSidebarMetadata<T extends Record<string, unknown>>(item: T): T & Partial<ApiSidebarMetadata> {
   const { group: legacyGroup, ...rest } = item;
   const rawPath = Array.isArray(item.groupPath)
@@ -533,7 +534,7 @@ export class ApiWorkspace {
         const matches = catalog.operations.filter(o => "operationId" in api ? o.operationId === api.operationId : o.method === api.method && o.path === api.path);
         if (matches.length !== 1) { gone.push(`${scenarioStepLabel(step)} (${"operationId" in api ? api.operationId : `${api.method} ${api.path}`})`); continue; }
         const change = catalog.titleChanges?.[matches[0].key];
-        if (step.name && change && change.from.includes(step.name) && step.name !== change.to) titles.push({ from: step.name, to: change.to });
+        if (step.name && change && change.from.includes(step.name) && step.name !== change.to && !keptTitle(item, step.name, change.to)) titles.push({ from: step.name, to: change.to });
       }
       if (gone.length) missing.push({ scenarioId: item.id, scenario: item.name, steps: gone });
       if (titles.length) renamed.push({ scenarioId: item.id, scenario: item.name, steps: titles });
@@ -560,7 +561,7 @@ export class ApiWorkspace {
           const api = step.api;
           const operation = server && catalogs.get(server.id)?.operations.find(o => "operationId" in api ? o.operationId === api.operationId : o.method === api.method && o.path === api.path);
           const change = operation ? catalogs.get(server!.id)?.titleChanges?.[operation.key] : undefined;
-          if (step.name && change?.from.includes(step.name)) step.name = change.to;
+          if (step.name && change?.from.includes(step.name) && !keptTitle(item, step.name, change.to)) step.name = change.to;
         }
         // Only names change, so problems the scenario already had (e.g. an API gone from the spec)
         // do not block it; a scenario edited elsewhere meanwhile is still skipped.
@@ -569,6 +570,23 @@ export class ApiWorkspace {
       } catch { skipped.push(item.name); }
     }
     return { updated, skipped };
+  }
+
+  /** Stops suggesting the scenario's current title renames; the names stay as they are. */
+  async keepTitles(input: ApiEnvironmentScope, rawScenarioId: string): Promise<void> {
+    const scenarioId = z.string().min(1).max(1000).parse(rawScenarioId);
+    const pending = (await this.checkScenarioSpecs(input)).renamed.find(item => item.scenarioId === scenarioId)?.steps ?? [];
+    if (!pending.length) return;
+    const action = this.queue.then(async () => {
+      const saved = await this.listScenarios(input.projectId);
+      const item = saved.find(candidate => candidate.id === scenarioId);
+      if (!item) throw new Error("시나리오를 찾을 수 없습니다");
+      // Metadata only: updatedAt stays, so an editor open on this scenario can still save.
+      item.keptTitles = [...(item.keptTitles ?? []).filter(kept => !pending.some(step => step.from === kept.from)), ...pending];
+      await this.save(`scenarios-${input.projectId}.json`, saved);
+    });
+    this.queue = action.catch(() => undefined);
+    return action;
   }
 
   async previewScenario(input: ApiEnvironmentScope, source: string, rawBindings: Record<string, string>): Promise<ApiScenarioPreview> {
@@ -695,6 +713,7 @@ export class ApiWorkspace {
         id: preview.scenario.id, name: preview.scenario.name, source: stringifyScenario(named, true), bindings: {}, updatedAt: new Date().toISOString(), draft,
         ...(metadata?.groupPath !== undefined ? { groupPath: metadata.groupPath } : metadata === undefined && previous?.groupPath ? { groupPath: previous.groupPath } : {}),
         ...(metadata?.tags !== undefined ? { tags: metadata.tags } : previous?.tags ? { tags: previous.tags } : {}),
+        ...(previous?.keptTitles ? { keptTitles: previous.keptTitles } : {}),
       };
       if (index >= 0) saved[index] = item; else saved.push(item);
       await this.save(`scenarios-${input.projectId}.json`, saved);

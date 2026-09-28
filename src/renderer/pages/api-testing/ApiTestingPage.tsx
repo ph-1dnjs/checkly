@@ -209,6 +209,7 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
             setMissingCheck(count => count + 1);
             return skipped.length ? `시나리오 ${updated.length}개를 바꿨습니다. 다른 곳에서 먼저 바뀐 ${skipped.join(", ")}은(는) 건너뛰었습니다.` : `시나리오 ${updated.length}개의 단계 이름을 새 제목으로 바꿨습니다.`;
           }}
+          onKeepTitles={async scenarioId => { await bridge.keepTitles({ projectId, environmentId }, scenarioId); setMissingCheck(count => count + 1); }}
           url={url} onUrlChange={setUrl}
           authKind={authKind} onAuthKindChange={kind => { setAuthKind(kind); setDocsPassword(""); }}
           username={docsUsername} onUsernameChange={setDocsUsername}

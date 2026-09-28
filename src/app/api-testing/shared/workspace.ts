@@ -55,7 +55,7 @@ export type ApiEnvironmentScope = Pick<ApiScope, "projectId" | "environmentId">;
 export type ApiGlobal = { name: string; type: string; displayValue: string };
 /** Session cookie scope only; values never leave the main process. */
 export type ApiCookie = { name: string; domain: string; path: string };
-export type SavedApiScenario = { id: string; name: string; source: string; bindings: Record<string, string>; updatedAt: string; draft?: boolean; groupPath?: string[]; tags?: string[] };
+export type SavedApiScenario = { id: string; name: string; source: string; bindings: Record<string, string>; updatedAt: string; draft?: boolean; groupPath?: string[]; tags?: string[]; /** Old-title → new-title renames the user chose to keep as is. */ keptTitles?: Array<{ from: string; to: string }> };
 export type SavedApiSuite = { id: string; name: string; scenarioIds: string[]; onFailure: "stop" | "continue"; updatedAt: string; groupPath?: string[]; tags?: string[] };
 export type ApiSidebarMetadata = { groupPath?: string[]; tags?: string[] };
 export type ApiScenarioPreview = { scenario: Scenario; issues: string[]; executionIssues?: string[] };
@@ -109,6 +109,7 @@ export type ApiTestingBridge = {
   listScenarios(projectId: string): Promise<SavedApiScenario[]>;
   checkScenarioSpecs(scope: ApiEnvironmentScope): Promise<ApiSpecImpact>;
   applyTitleRenames(scope: ApiEnvironmentScope): Promise<{ updated: string[]; skipped: string[] }>;
+  keepTitles(scope: ApiEnvironmentScope, scenarioId: string): Promise<void>;
   listSuites(projectId: string): Promise<SavedApiSuite[]>;
   saveSuite(projectId: string, suite: Omit<SavedApiSuite, "updatedAt">, expectedUpdatedAt?: string): Promise<SavedApiSuite>;
   deleteSuite(projectId: string, id: string, expectedUpdatedAt: string): Promise<void>;

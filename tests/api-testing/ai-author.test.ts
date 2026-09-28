@@ -169,3 +169,26 @@ test("title renames still apply to a scenario that also uses an API gone from th
     assert.match(saved!.source, /name: 상품 상세 조회/);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
+
+test("keeping a scenario's old step names stops the suggestion until the title changes again", async () => {
+  const { dir, workspace, project, scope } = await setup();
+  const specScope = { ...scope, serverId: project.servers[0].id };
+  try {
+    await workspace.saveScenario(scope, read, {});
+    await workspace.importSpec(specScope, spec.replace('"summary":"상품 조회"', '"summary":"상품 상세 조회"'));
+    const before = (await workspace.listScenarios(project.id))[0];
+    await workspace.keepTitles(scope, "shop/read");
+    assert.deepEqual((await workspace.checkScenarioSpecs(scope)).renamed, []);
+    assert.deepEqual(await workspace.applyTitleRenames(scope), { updated: [], skipped: [] });
+    const kept = (await workspace.listScenarios(project.id))[0];
+    // Metadata only: the name and updatedAt stay, so an open editor can still save.
+    assert.equal(kept.updatedAt, before.updatedAt);
+    assert.match(kept.source, /name: 상품 조회\n/);
+    // A later save keeps the choice.
+    await workspace.saveScenario(scope, kept.source, {}, kept.updatedAt);
+    assert.deepEqual((await workspace.checkScenarioSpecs(scope)).renamed, []);
+    // A different new title is suggested again.
+    await workspace.importSpec(specScope, spec.replace('"summary":"상품 조회"', '"summary":"상품 정보"'));
+    assert.deepEqual((await workspace.checkScenarioSpecs(scope)).renamed.map(item => item.steps), [[{ from: "상품 조회", to: "상품 정보" }]]);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
