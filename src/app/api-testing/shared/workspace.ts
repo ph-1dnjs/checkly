@@ -1,5 +1,7 @@
 import { z } from "zod";
 import type { Json, Scenario, ScenarioInputRequest } from "./scenario";
+import type { ApiDocInput } from "./doc-inputs";
+export type { ApiDocInput } from "./doc-inputs";
 
 export const httpUrl = z.string().url().refine((value) => {
   const url = new URL(value);
@@ -101,6 +103,9 @@ export type ApiTestingBridge = {
   /** Raw, transient response for the Swagger "Try it out". Never use for reports, persistence or AI context. */
   execute(scope: ApiScope, operationKey: string, request: Scenario["steps"][number]["request"]): Promise<ApiResponse>;
   cancel(scope: ApiScope): Promise<void>;
+  /** Last "Try it out" values per operation key of the scope's server; secrets are never kept. */
+  getDocInputs(scope: ApiScope): Promise<Record<string, ApiDocInput>>;
+  forgetDocInput(scope: ApiScope, operationKey: string): Promise<void>;
   listGlobals(scope: ApiProjectScope): Promise<ApiGlobal[]>;
   setGlobal(scope: ApiProjectScope, name: string, value: Json): Promise<void>;
   deleteGlobal(scope: ApiProjectScope, name: string): Promise<void>;

@@ -2,7 +2,7 @@ import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type Compo
 import SwaggerUI from "swagger-ui-react";
 import "swagger-ui-react/swagger-ui.css";
 import type { Scenario } from "../../../../app/api-testing/shared/scenario";
-import type { ApiCatalog, ApiScope, ApiTestingBridge, ApiSidebarMetadata } from "../../../../app/api-testing/shared/workspace";
+import type { ApiCatalog, ApiDocInput, ApiScope, ApiTestingBridge, ApiSidebarMetadata } from "../../../../app/api-testing/shared/workspace";
 import { SelectedApiList } from "../../../features/api-testing/edit-scenario";
 import { useRunAction } from "../../../shared/hooks/useRunAction";
 import type { OnRunAction } from "../../../shared/model/run-action";
@@ -135,6 +135,14 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
   const bridgeRef = useRef(bridge);
   const scopeRef = useRef(scope);
   const systemRef = useRef<SwaggerSystem | null>(null);
+  const docInputsRef = useRef<Record<string, ApiDocInput>>({});
+  useEffect(() => {
+    docInputsRef.current = {};
+    if (composeOnly) return;
+    let live = true;
+    void Promise.resolve().then(() => bridge.getDocInputs(scope)).then(inputs => { if (live) docInputsRef.current = inputs; }).catch(() => undefined);
+    return () => { live = false; };
+  }, [bridge, composeOnly, scope.projectId, scope.environmentId, scope.serverId]);
   const locateCleanup = useRef<(() => void) | null>(null);
   useEffect(() => () => locateCleanup.current?.(), []);
   const locateStep = (step: Scenario["steps"][number]) => {
@@ -198,7 +206,7 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
       },
     });
   };
-  const plugin = useMemo(() => createSwaggerPlugin({ catalogRef, baseUrlRef, bridgeRef, scopeRef, systemRef, selectedRef, busyRef, publishSelection, setBusy: onBusy, composingRef }), []);
+  const plugin = useMemo(() => createSwaggerPlugin({ catalogRef, baseUrlRef, bridgeRef, scopeRef, systemRef, selectedRef, busyRef, publishSelection, setBusy: onBusy, composingRef, docInputsRef }), []);
   const plugins = useMemo(() => [plugin], [plugin]);
   const onComplete = useMemo(() => (value: unknown) => {
     systemRef.current = value as SwaggerSystem;

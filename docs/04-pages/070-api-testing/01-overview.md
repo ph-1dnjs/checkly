@@ -30,6 +30,7 @@ YAML의 `{{steps.N.…}}` 참조는 파싱할 때 내부 실행 모델의 `value
 | 명세 URL·동기화·계정 정보 | `spec-source-…json` | 계정 기억 제외 |
 | 시나리오 | `scenarios-{projectId}.json` | 동일 형식 |
 | 시나리오 묶음 | `suites-{projectId}.json` | 동일 형식 |
+| API 문서 Try it out 입력값 | `doc-inputs-{projectId}.json` (키 `{serverId} {METHOD path}`, 민감 이름 값 제외) | 동일 형식 |
 | AI 가이드용 명세·외부 AI 결과 | `ai/{projectId}/api-catalog.json`, `scenarios.yaml` | 동일 형식 |
 | 전역변수·API 인증 연결 | 프로세스 메모리 | 개발 서버 메모리 |
 | 세션 쿠키(프로젝트별) | 프로세스 메모리 | 개발 서버 메모리 |
@@ -43,6 +44,6 @@ AI 가이드를 만들 때 명세 파일을 기록하고, 결과 YAML은 외부 
 
 ## 응답과 외부 전달
 
-개별 API 호출(`execute`)과 시나리오 실행 결과는 요청·응답 원문을, 시나리오 실행은 변수 원문도 반환하며 디스크에 자동 저장하지 않습니다. 화면 표시 여부는 상단의 **민감값 숨기기** 토글(기본 켬)이 결정합니다. 토글은 민감한 값만 CSS로 가리는 표시 전용 기능이며 DOM의 값은 바꾸지 않습니다. 판단 기준(`shared/sensitive.ts`)은 두 가지입니다. ① 키·헤더·쿼리·변수 이름이 `authorization|cookie|password|passwd|token|secret|api key|otp|credential|session` 패턴이면 그 값, ② 이름이 민감한 문자열 전역변수 값과 `sensitive: true` 입력값이 나타나는 모든 위치. 키 이름·구조·일반 값은 그대로 보입니다. Swagger UI의 Try it out 응답은 자체 렌더링이라 응답·Request URL·curl 블록 전체를 가립니다.
+개별 API 호출(`execute`)과 시나리오 실행 결과는 요청·응답 원문을, 시나리오 실행은 변수 원문도 반환하며 디스크에 자동 저장하지 않습니다. 예외로 개별 호출의 **요청 입력값**은 다음에 다시 채우려고 저장하되, 민감 패턴 이름(아래 ①)의 파라미터·헤더·쿠키는 빼고 본문의 해당 키는 빈 값으로 남깁니다. 화면 표시 여부는 상단의 **민감값 숨기기** 토글(기본 켬)이 결정합니다. 토글은 민감한 값만 CSS로 가리는 표시 전용 기능이며 DOM의 값은 바꾸지 않습니다. 판단 기준(`shared/sensitive.ts`)은 두 가지입니다. ① 키·헤더·쿼리·변수 이름이 `authorization|cookie|password|passwd|token|secret|api key|otp|credential|session` 패턴이면 그 값, ② 이름이 민감한 문자열 전역변수 값과 `sensitive: true` 입력값이 나타나는 모든 위치. 키 이름·구조·일반 값은 그대로 보입니다. Swagger UI의 Try it out 응답은 자체 렌더링이라 응답·Request URL·curl 블록 전체를 가립니다.
 
 묶음 실행은 저장된 시나리오를 순차 실행하며 각 시나리오 직전에 설정을 다시 확인합니다. 묶음 실행 결과는 화면 메모리에만 남고, 사용자가 선택하면 요청·응답 원문과 변수 값을 제외한 독립 HTML 리포트를 저장할 수 있습니다. 실행 이력 영구 저장은 제공하지 않습니다. 연결한 값과 실행 입력의 실제 값은 YAML에 자동 기록하지 않으며, `{{steps.N.…}}`·`{{globals.name}}`·`{{inputs.name}}` 참조로 저장합니다. 사용자가 직접 입력한 요청값은 YAML에 저장됩니다.

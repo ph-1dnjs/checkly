@@ -18,7 +18,8 @@
 | read-ai-result | 프로젝트·환경 → 결과 파일의 경로·내용·수정 시각, 없으면 null(2MB 이하) |
 | check-ai-scenarios | 프로젝트·환경, AI 결과 텍스트 → 검사된 초안·스위트(저장하지 않음) |
 | list-cookies / clear-cookies | 프로젝트 → 쿠키 이름·도메인·경로 목록(값 제외)/완료. 실행 중에는 비울 수 없음 |
-| execute | scope, operation key, request → 원문 ApiResponse (Swagger Try it out) |
+| execute | scope, operation key, request → 원문 ApiResponse (Swagger Try it out). 요청 입력값은 민감값을 빼고 기억 |
+| get-doc-inputs / forget-doc-input | scope(서버 기준)/operation key → 기억한 Try it out 입력값 목록/삭제. 프로젝트 단위(환경 공통), 서버 삭제·프로젝트 삭제 시 함께 삭제 |
 | cancel | scope → 현재 환경 실행 취소 |
 | list-scenarios / read-scenario-file | 프로젝트 ID/파일 선택 → 목록/YAML 또는 null |
 | check-scenario-specs | 프로젝트·환경 → `{ missing, renamed }`: 명세에서 사라진 API를 쓰는 단계, 이전 제목을 이름으로 쓰는 단계 (서버별 명세를 한 번만 읽음) |

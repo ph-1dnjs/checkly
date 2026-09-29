@@ -348,6 +348,16 @@ async function main() {
       await expect(restored.getByRole("button", { name: "저장된 계정 삭제", exact: true })).not.toBeVisible();
     }
     await expect(restored.getByRole("button", { name: /GET.*items/ })).toBeVisible();
+    // "Try it out" values from the previous run come back after a restart, and can be forgotten.
+    await restored.getByRole("button", { name: /GET.*items/ }).click();
+    await restored.getByRole("button", { name: "Try it out", exact: true }).click();
+    await expect(restored.getByLabel("path id", { exact: true })).toHaveValue("7");
+    await expect(restored.getByRole("status").filter({ hasText: "마지막으로 실행한 값을 채웠습니다" })).toBeVisible();
+    await restored.getByRole("button", { name: "기억한 값 지우기", exact: true }).click();
+    await expect(restored.getByLabel("path id", { exact: true })).toHaveValue("");
+    await expect(restored.getByText("마지막으로 실행한 값을 채웠습니다", { exact: false })).toHaveCount(0);
+    await restored.getByRole("button", { name: "Cancel", exact: true }).click();
+    await restored.getByRole("button", { name: /GET.*items/ }).click();
     await restored.getByRole("tab", { name: "시나리오", exact: true }).click();
     await expect(restored.getByRole("button", { name: /로그인 후 상품 조회/ })).toBeVisible();
     await expect(restored.getByRole("button", { name: "AI 상품 조회", exact: true })).toHaveCount(0);

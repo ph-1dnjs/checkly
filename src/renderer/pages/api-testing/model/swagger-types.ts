@@ -11,6 +11,7 @@ export type SwaggerSystem = {
   layoutActions: { show: (key: string[], shown: boolean) => void; updateFilter: (filter: string) => void };
   specActions: {
     changeParam: (pathMethod: string[], name: string, location: string, value: unknown) => unknown;
+    changeParamByIdentity: (pathMethod: string[], parameter: SwaggerMap, value: unknown) => unknown;
     execute: (args: { path: string; method: string }) => unknown;
     setRequest: (path: string, method: string, request: Record<string, unknown>) => unknown;
     setMutatedRequest?: (path: string, method: string, request: Record<string, unknown>) => unknown;
