@@ -17,9 +17,9 @@ function operationForStep(step: Step, catalogs: Record<string, ApiCatalog | null
     : operation.path === step.api.path && operation.method.toUpperCase() === step.api.method);
 }
 
-export function ScenarioBuilder({ bindings, project, scope, bridge, onApply, value: draft, onChange: setDraft, onStepFocus, Markdown, saving = false, suppliedCatalogs, actions, metadata, globalRevision, onConfigureGlobal }: {
+export function ScenarioBuilder({ bindings, project, scope, bridge, onApply, value: draft, onChange: setDraft, onStepFocus, Markdown, saving = false, suppliedCatalogs, actions, metadata, globalRevision, onConfigureGlobal, catalogLoading = false }: {
   globalRevision: number; onConfigureGlobal: (name: string) => void;
-  suppliedCatalogs?: Record<string, ApiCatalog | null>;
+  suppliedCatalogs?: Record<string, ApiCatalog | null>; catalogLoading?: boolean;
   Markdown?: ComponentType<any>;
   bindings: Record<string, string>; project: ApiProject; scope: ApiScope; bridge: ApiTestingBridge;
   onApply: (source: string) => void;
@@ -75,14 +75,14 @@ export function ScenarioBuilder({ bindings, project, scope, bridge, onApply, val
       {visitedSteps.has(step.id) && <div className="api-step-body">
       <div className="api-step-actions">
         {operation?.description && <button type="button" className="api-step-description-toggle" aria-expanded={descriptionOpen.has(step.id)} onClick={() => setDescriptionOpen(previous => { const next = new Set(previous); if (next.has(step.id)) next.delete(step.id); else next.add(step.id); return next; })}>{descriptionOpen.has(step.id) ? "▾" : "▸"} API 설명</button>}
-        <button type="button" aria-label={`${index + 1}단계 API 바꾸기`} className={operation ? undefined : "api-primary"} onClick={() => setReplacing(index)}>API 바꾸기</button>
+        <button type="button" aria-label={`${index + 1}단계 API 바꾸기`} className={!catalogLoading && !operation ? "api-primary" : undefined} disabled={catalogLoading} onClick={() => setReplacing(index)}>API 바꾸기</button>
         <button type="button" className="api-danger-action" aria-label={`${index + 1}단계 제거`} onClick={() => setDraft({ ...draft, steps: draft.steps.filter((_, i) => i !== index) })}>단계 제거</button>
       </div>
       {operation?.description && descriptionOpen.has(step.id) && <div className="api-step-description swagger-ui" aria-label="API 설명">{Markdown ? <Markdown source={operation.description} /> : <p style={{ whiteSpace: "pre-wrap" }}>{operation.description}</p>}</div>}
       <div className="api-step-auth">
         <label>이 단계의 인증<select aria-label={`${index + 1}단계 인증`} value={step.auth ?? ""} onChange={event => updateStep(index, { auth: event.target.value ? event.target.value as typeof step.auth : undefined })}><option value="">{draft.auth ? `시나리오 인증 따름 · ${draft.auth.slice(8)}` : "시나리오 인증 따름 (없음)"}</option><option value="none">인증 없음</option>{authNames.map(name => <option key={name} value={`globals.${name}`}>전역변수 · {name}</option>)}</select></label>
       </div>
-      <SimpleStep globalRevision={globalRevision} onConfigureGlobal={onConfigureGlobal} scenario={draft} index={index} catalogs={catalogs} bindings={bindings} scope={scope} bridge={bridge} onChange={setDraft} />
+      <SimpleStep catalogLoading={catalogLoading} globalRevision={globalRevision} onConfigureGlobal={onConfigureGlobal} scenario={draft} index={index} catalogs={catalogs} bindings={bindings} scope={scope} bridge={bridge} onChange={setDraft} />
       </div>}
     </details>; })}
     </div></div>
