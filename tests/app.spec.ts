@@ -28,7 +28,8 @@ test('uses the dashboard and execution navigation layout', async ({ page }) => {
   await page.getByRole('button', { name: 'Checkly' }).click()
   await expect(page.getByText('대시보드', { exact: true })).toBeVisible()
 
-  await expect(page.getByRole('button', { name: '준비 중', exact: true })).toBeDisabled()
+  // The disabled "준비 중" placeholder was removed from the dock; every item is a real route.
+  await expect(page.getByRole('button', { name: '준비 중', exact: true })).toHaveCount(0)
 
   await page.getByRole('button', { name: '시나리오 선택 · 실행' }).click()
 
