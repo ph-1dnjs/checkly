@@ -1,6 +1,6 @@
-import { useEffect, useState, type ChangeEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { scenarioStepInputs, type Scenario, type Json, type ScenarioInput } from "../../../app/api-testing/shared/scenario";
-import type { ApiCatalog, ApiScope, ApiTestingBridge, ApiGlobal } from "../../../app/api-testing/shared/workspace";
+import type { ApiCatalog, ApiOperation, ApiScope, ApiTestingBridge, ApiGlobal } from "../../../app/api-testing/shared/workspace";
 import { type RequestArea } from "./scenario-builder-model";
 import { objectValue } from "./response-fields";
 import { responseGlobalNameSuggestions } from "./response-global-name";
@@ -24,6 +24,13 @@ export function SimpleStep({ scenario, index, catalogs, bindings, scope, bridge,
 }) {
   const step = scenario.steps[index];
   const operation = findStepOperation(scenario, index, catalogs, bindings);
+  const requestKey = JSON.stringify([bindings[step.server] ?? step.server, step.api]);
+  const lastRequestOperation = useRef<{ key: string; operation: ApiOperation } | null>(null);
+  const requestOperation = operation ?? (lastRequestOperation.current?.key === requestKey ? lastRequestOperation.current.operation : undefined);
+  useEffect(() => {
+    // Keep partially typed JSON mounted when the current environment has no catalog.
+    lastRequestOperation.current = operation ? { key: requestKey, operation } : lastRequestOperation.current?.key === requestKey ? lastRequestOperation.current : null;
+  }, [operation, requestKey]);
   const [target, setTarget] = useState<{ area: RequestArea; name: string } | null>(null);
   const [valueMenu, setValueMenu] = useState<string | null>(null);
   const [inputTarget, setInputTarget] = useState<string | null>(null);
@@ -99,9 +106,9 @@ export function SimpleStep({ scenario, index, catalogs, bindings, scope, bridge,
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [responsePointer]);
-  const fields: RequestField[] = (operation?.parameters ?? []).filter(p => ["path", "query", "header", "cookie"].includes(p.location)).map(p => ({ name: p.name, area: (p.location === "path" ? "pathParams" : p.location === "header" ? "headers" : p.location === "cookie" ? "cookies" : "query") as RequestArea, type: p.type, required: p.required, description: p.description, example: p.example }));
-  const body = objectValue(operation?.bodySchema);
-  for (const [name, schema] of Object.entries(objectValue(body.properties))) fields.push({ name, area: "body", type: objectValue(schema).type ?? "string", required: operation?.bodyRequired === true && (body.required ?? []).includes(name), description: typeof objectValue(schema).description === "string" ? objectValue(schema).description : undefined, example: objectValue(schema).example ?? objectValue(schema).default });
+  const fields: RequestField[] = (requestOperation?.parameters ?? []).filter(p => ["path", "query", "header", "cookie"].includes(p.location)).map(p => ({ name: p.name, area: (p.location === "path" ? "pathParams" : p.location === "header" ? "headers" : p.location === "cookie" ? "cookies" : "query") as RequestArea, type: p.type, required: p.required, description: p.description, example: p.example }));
+  const body = objectValue(requestOperation?.bodySchema);
+  for (const [name, schema] of Object.entries(objectValue(body.properties))) fields.push({ name, area: "body", type: objectValue(schema).type ?? "string", required: requestOperation?.bodyRequired === true && (body.required ?? []).includes(name), description: typeof objectValue(schema).description === "string" ? objectValue(schema).description : undefined, example: objectValue(schema).example ?? objectValue(schema).default });
   const requestWithValue = (area: RequestArea, name: string, value: Json | undefined) => {
     const previous = step.request[area];
     if (previous !== undefined && (!previous || typeof previous !== "object" || Array.isArray(previous))) return null;
@@ -227,13 +234,14 @@ export function SimpleStep({ scenario, index, catalogs, bindings, scope, bridge,
       {valueModal}{inputSettings}{scenarioLink}
     </div>;
   };
-  const hasRequestBody = Boolean(operation && (operation.bodySchema !== undefined || operation.bodyExample !== undefined || operation.bodyRequired));
+  const hasRequestBody = Boolean(requestOperation && (requestOperation.bodySchema !== undefined || requestOperation.bodyExample !== undefined || requestOperation.bodyRequired));
   const spec = catalogs[bindings[step.server] ?? step.server]?.spec;
   return <div className="api-simple-step">
     <header className="api-simple-section-heading"><h3>요청</h3></header>
-    {!operation ? <p className="api-warning">현재 API 명세에서 이 API를 찾을 수 없습니다. 경로가 바뀌었다면 위의 <strong>API 바꾸기</strong>로 새 API를 연결하세요. 요청값은 그대로 유지됩니다.</p> : <>
+    {!operation && <p className="api-warning">현재 API 명세에서 이 API를 찾을 수 없습니다. 경로가 바뀌었다면 위의 <strong>API 바꾸기</strong>로 새 API를 연결하세요. 요청값은 그대로 유지됩니다.{requestOperation && " 요청 필드는 마지막으로 확인한 명세 기준입니다."}</p>}
+    {requestOperation && <>
       {fields.filter(field => field.area !== "body").length > 0 ? <div className="api-request-fields">{fields.filter(field => field.area !== "body").map(field => renderField(field))}</div> : !hasRequestBody && <p>입력 가능한 요청 파라미터가 없습니다.</p>}
-      {hasRequestBody && <RequestBodyEditor operation={operation} step={step} update={update} bodyFields={fields.filter(field => field.area === "body")} renderField={renderField} />}
+      {hasRequestBody && <RequestBodyEditor operation={requestOperation} step={step} update={update} bodyFields={fields.filter(field => field.area === "body")} renderField={renderField} />}
     </>}
     {operation && (() => {
       // Values this API's spec does not define: left over from "API 바꾸기", a spec change, or AI/YAML edits.

@@ -21,7 +21,7 @@ export type RunOptions = {
   onResponse?: (response: { headers: Record<string, string>; body: Json }, stepId: string) => void;
   onValue?: (value: Json, sensitive: boolean) => void;
   onVariables?: (variables: Variables) => void;
-  resolveOperation?: (server: string, operationId: string) => { method: string; path: string; bodySchema?: Json; parameters?: Array<{ name: string; location: string; type: string; style?: string; explode?: boolean }> };
+  resolveOperation?: (server: string, api: Scenario["steps"][number]["api"]) => { method: string; path: string; bodySchema?: Json; parameters?: Array<{ name: string; location: string; type: string; style?: string; explode?: boolean }> };
 };
 
 type ResponseSnapshot = { status: number; headers: Record<string, string>; body: Json };
@@ -47,6 +47,11 @@ function schemaType(value: unknown): string | undefined {
   return alternatives.length > 0 && new Set(alternatives).size === 1 ? alternatives[0] : undefined;
 }
 
+function matchesSchemaType(value: unknown, expected: string, schema: unknown): boolean {
+  if (value === null && schema && typeof schema === "object" && !Array.isArray(schema) && (schema as Record<string, unknown>).nullable === true) return true;
+  return expected === "integer" ? typeof value === "number" && Number.isInteger(value) : jsonType(value) === expected;
+}
+
 function requestBindingHint(scenario: Scenario, field: string, value: unknown): string {
   if (typeof value !== "string") return "";
   const match = value.match(/^\{\{vars\.([A-Za-z][A-Za-z0-9_]*)\}\}$/);
@@ -60,16 +65,18 @@ function requestBindingHint(scenario: Scenario, field: string, value: unknown): 
 }
 
 function validateRequestBody(scenario: Scenario, index: number, body: Json | undefined, bodySchema: Json | undefined): void {
-  if (bodySchema === undefined) return;
+  if (body === undefined || bodySchema === undefined) return;
   const schema = bodySchema && typeof bodySchema === "object" && !Array.isArray(bodySchema) ? bodySchema as Record<string, unknown> : {};
   const expectedBodyType = schemaType(schema);
-  if (expectedBodyType && expectedBodyType !== "object" && jsonType(body) !== expectedBodyType)
+  if (expectedBodyType && expectedBodyType !== "object" && !matchesSchemaType(body, expectedBodyType, schema))
     throw new RequestValueError(`요청 본문 형식 오류: 명세는 ${expectedBodyType}인데 현재 ${jsonType(body)}입니다.`);
   if (expectedBodyType !== "object" || !body || typeof body !== "object" || Array.isArray(body)) return;
   const properties = schema.properties && typeof schema.properties === "object" && !Array.isArray(schema.properties) ? schema.properties as Record<string, unknown> : {};
   const required = Array.isArray(schema.required) ? schema.required.filter((key): key is string => typeof key === "string") : [];
   const requestBody = body as Record<string, Json>;
   for (const field of required) {
+    const fieldSchema = properties[field];
+    if (fieldSchema && typeof fieldSchema === "object" && !Array.isArray(fieldSchema) && (fieldSchema as Record<string, unknown>).readOnly === true) continue;
     if (!Object.hasOwn(requestBody, field)) throw new RequestValueError(`필수 요청값 누락: body.${field}`);
   }
   for (const [field, rawSchema] of Object.entries(properties)) {
@@ -77,7 +84,7 @@ function validateRequestBody(scenario: Scenario, index: number, body: Json | und
     const expected = schemaType(rawSchema);
     if (!expected) continue;
     const actual = jsonType(requestBody[field]);
-    const valid = expected === "number" ? actual === "number" : expected === "integer" ? actual === "number" && Number.isInteger(requestBody[field] as number) : actual === expected;
+    const valid = matchesSchemaType(requestBody[field], expected, rawSchema);
     if (!valid) {
       const hint = requestBindingHint(scenario, field, scenario.steps[index].request.body && typeof scenario.steps[index].request.body === "object" && !Array.isArray(scenario.steps[index].request.body) ? (scenario.steps[index].request.body as Record<string, unknown>)[field] : undefined);
       throw new RequestValueError(`요청값 형식 오류: body.${field}는 ${expected}이어야 하지만 현재 ${actual}입니다.${hint}`);
@@ -112,6 +119,22 @@ function applyBindings(scenario: Scenario, index: number, context: Context, requ
     context.vars[binding.name] = structuredClone(value);
     options.onValue?.(structuredClone(value), binding.sensitive);
   }
+}
+
+/** Use the same resolved URL for session-cookie checks and the outgoing request. */
+export function resolveRequestUrl(baseUrl: string, apiPath: string, pathParams: Record<string, Json> = {}): URL {
+  const path = apiPath.replace(/\{([^}]+)\}/g, (_, key) => {
+    const value = pathParams[key];
+    if (value === undefined || value === null || typeof value === "object") throw new MissingValue(`경로 변수 오류: ${key}`);
+    return encodeURIComponent(String(value));
+  });
+  const base = new URL(baseUrl);
+  if (!["http:", "https:"].includes(base.protocol) || base.username || base.password || base.search || base.hash)
+    throw new Error("잘못된 서버 주소");
+  if (!path.startsWith("/") || path.startsWith("//") || path.includes("?") || path.includes("#")) throw new Error("잘못된 API 경로");
+  const url = new URL(base.toString().replace(/\/$/, "") + path);
+  if (url.origin !== base.origin) throw new Error("API 서버 범위를 벗어난 경로");
+  return url;
 }
 
 function addCookies(headers: Headers, cookies: Record<string, Json>, automatic: Record<string, string>): void {
@@ -175,7 +198,7 @@ export class ApiRunner {
           applyBindings(scenario, index, context, requestSnapshots, responseSnapshots, options);
           const server = options.servers[step.server];
           if (!server) throw new MissingValue(`API 서버 없음: ${step.server}`);
-          const api = ("operationId" in step.api ? options.resolveOperation?.(step.server, step.api.operationId) : step.api);
+          const api = options.resolveOperation ? options.resolveOperation(step.server, step.api) : "operationId" in step.api ? undefined : step.api;
           if (!api) throw new MissingValue("operationId 명세 연결이 필요합니다");
           for (const input of scenarioStepInputs(step)) {
             let value: Json | undefined;
@@ -202,17 +225,7 @@ export class ApiRunner {
           }
           const req = resolve(step.request as Json, context) as NonNullable<Scenario["steps"][number]["request"]>;
           requestSnapshots.set(step.id, structuredClone(req));
-          const path = api.path.replace(/\{([^}]+)\}/g, (_, key) => {
-            const v = req.pathParams?.[key];
-            if (v === undefined || v === null || typeof v === "object") throw new MissingValue(`경로 변수 오류: ${key}`);
-            return encodeURIComponent(String(v));
-          });
-          const base = new URL(server.baseUrl);
-          if (!["http:", "https:"].includes(base.protocol) || base.username || base.password || base.search || base.hash)
-            throw new Error("잘못된 서버 주소");
-          if (!path.startsWith("/") || path.startsWith("//") || path.includes("?") || path.includes("#")) throw new Error("잘못된 API 경로");
-          const url = new URL(base.toString().replace(/\/$/, "") + path);
-          if (url.origin !== base.origin) throw new Error("API 서버 범위를 벗어난 경로");
+          const url = resolveRequestUrl(server.baseUrl, api.path, req.pathParams);
           for (const [key, v] of Object.entries(req.query ?? {})) {
             const parameter = "parameters" in api ? api.parameters?.find(candidate => candidate.location === "query" && candidate.name === key) : undefined;
             appendQueryParameter(url, key, v, parameter);

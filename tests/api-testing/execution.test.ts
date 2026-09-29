@@ -208,7 +208,7 @@ test("resolved requests are reported and body binding type errors explain the se
     const traces: Array<{ method: string; url: string; body?: unknown }> = [];
     const result = await new ApiRunner().run(scenario, {
       projectId: "request-trace", environment: "local", servers: { api: { baseUrl: `http://127.0.0.1:${(server.address() as { port: number }).port}` } },
-      resolveOperation: () => ({ method: "POST", path: "/verify", bodySchema: { type: "object", properties: { challengeToken: { type: "string" } }, required: ["challengeToken"] } }),
+      resolveOperation: (_server, api) => "operationId" in api ? { method: "POST", path: "/verify", bodySchema: { type: "object", properties: { challengeToken: { type: "string" } }, required: ["challengeToken"] } } : api,
       onRequest: request => traces.push({ method: request.method, url: request.url, body: request.body }),
     });
     assert.equal(result.status, "failed");

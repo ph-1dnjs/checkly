@@ -29,7 +29,8 @@ export function ScenarioBuilder({ bindings, project, scope, bridge, onApply, val
   /** Rendered right under the name (e.g. group). */
   metadata?: ReactNode;
 }) {
-  const [catalogs, setCatalogs] = useState<Record<string, ApiCatalog | null>>({});
+  const [loadedCatalogs, setCatalogs] = useState<Record<string, ApiCatalog | null>>({});
+  const catalogs = suppliedCatalogs ?? loadedCatalogs;
   const [error, setError] = useState("");
   const [visitedSteps, setVisitedSteps] = useState<Set<string>>(() => new Set());
   const [yamlOpen, setYamlOpen] = useState(false);
@@ -46,7 +47,7 @@ export function ScenarioBuilder({ bindings, project, scope, bridge, onApply, val
     return () => { live = false; };
   }, [bridge, scope.projectId, globalAccess.revision]);
   useEffect(() => {
-    if (suppliedCatalogs) { setCatalogs(suppliedCatalogs); return; }
+    if (suppliedCatalogs) return;
     let live = true;
     void Promise.all(project.servers.map(async s => [s.id, await bridge.getCatalog({ ...scope, serverId: s.id })] as const))
       .then(entries => { if (live) setCatalogs(Object.fromEntries(entries)); })
