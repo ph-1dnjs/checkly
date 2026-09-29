@@ -421,6 +421,18 @@ async function main() {
     if (process.env.CHECKLY_E2E_SHOTS) { await staleBody.scrollIntoViewIfNeeded(); await restored.screenshot({ path: path.join(process.env.CHECKLY_E2E_SHOTS, "stale-body.png") }); }
     await staleBody.getByRole("button", { name: "제거", exact: true }).click();
     await expect(staleBody).toHaveCount(0);
+    // Closing the window with unsaved edits asks first; "계속 수정" keeps the window and the edits.
+    await app.evaluate(({ dialog }) => {
+      const state = globalThis as unknown as { unloadAsks: number };
+      state.unloadAsks = 0;
+      dialog.showMessageBoxSync = (() => { state.unloadAsks++; return 0; }) as typeof dialog.showMessageBoxSync;
+    });
+    // The main process answers the beforeunload itself; stop Playwright from also trying to (it throws).
+    restored.on("dialog", () => undefined);
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close());
+    await expect.poll(() => app!.evaluate(() => (globalThis as unknown as { unloadAsks: number }).unloadAsks)).toBe(1);
+    await expect(staleBody).toHaveCount(0);
+    await expect(restored.getByText("저장 안 됨", { exact: false })).toBeVisible();
     // Leave without saving so the app closes cleanly.
     await restored.getByRole("button", { name: "시나리오 목록으로", exact: true }).click();
     await restored.getByRole("button", { name: "변경사항 버리고 닫기", exact: true }).click();
