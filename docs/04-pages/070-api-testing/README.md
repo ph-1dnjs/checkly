@@ -4,6 +4,8 @@ Swagger/OpenAPI 명세를 가져와 개별 API를 호출하고, 프로젝트별 
 
 > 범위: 하단 `{ }` 메뉴의 API 테스트 페이지. 기존 Playwright 시나리오 실행(040)과 별도 모델·실행기를 사용합니다.
 
+문서 점검 기준: 2026-09-29. 커밋 `3b62f9f1a2bdea864cb069bd5181e0d0c249d8c7`의 API 테스트 기능 변경과 이후 인증 시나리오 사전 검사 수정을 반영합니다.
+
 ## 문서 목록
 
 1. [개요·구조·저장](01-overview.md)
@@ -19,7 +21,11 @@ API 테스트 기능 문서는 이 디렉터리에서 관리합니다. 디자인
 | 페이지 | `src/renderer/pages/api-testing/ApiTestingPage.tsx` | 프로젝트·환경·탭 |
 | 명세 가져오기 | `SpecSourcePanel.tsx` | 명세 요약 한 줄·설정 폼·동기화 후 시나리오 영향(사라진 API·바뀐 제목) |
 | API 문서 | `ApiDocumentation.tsx` | Swagger UI·검색·인증·개별 호출, 시나리오 작성 1단계(보기·API 추가) |
-| 시나리오 | `ScenarioPanel.tsx`, `ScenarioBuilder.tsx`, `SimpleStep.tsx` | 목록·상세·실행, 작성 2단계(값·연결·검증) |
+| 시나리오 실행 | `ScenarioPanel.tsx` | 시나리오·스위트 목록, 시나리오 상세·검사·실행 |
+| 시나리오 편집 | `ScenarioEditorPanel.tsx`, `ScenarioBuilder.tsx`, `SimpleStep.tsx` | 편집 전용 탭, 작성 2단계(값·연결·검증) |
+| AI 작성 도우미 | `AiAuthorPanel.tsx` | 외부 AI용 가이드 복사·결과 파일 가져오기·검사·선택 저장 |
+| 스위트 | `SuitePanel.tsx` | 실행 순서·실패 정책 편집, 묶음 실행·HTML 리포트 저장 |
+| 그룹 | `SidebarMetadataFields.tsx`, `ScenarioSidebarTree.tsx` | 그룹 폴더 선택·생성, 시나리오·스위트 트리 표시 |
 | 실행 결과 | `ScenarioRunViews.tsx`, `SummaryJson.tsx`, `YamlCode.tsx` | 실행 흐름·설정 요약·검증별 결과·YAML 보기 |
 | 공용 조각 | `SortableList.tsx`, `ApiPicker.tsx`, `ApiReplaceModal.tsx`, `RunInputModal.tsx` | 드래그 정렬·API 선택·API 바꾸기·실행 중 입력 |
 | 설명 | `src/renderer/pages/api-testing/DescriptionMarkdown.tsx` | 설명 토글·Mermaid 모달 |
