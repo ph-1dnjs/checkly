@@ -313,11 +313,16 @@ test('unfinished array and body JSON retain their text and validity across envir
   try {
     await environment(page, 'stage').click()
     await expect.poll(() => fixture.requests.filter(id => id === environments.stage).length).toBeGreaterThan(0)
+    await expect(stepDetails(page)).toContainText('명세를 불러오는 중…')
+    await expect(stepDetails(page)).not.toContainText('현재 API 명세에서 이 API를 찾을 수 없습니다')
+    await expect(page.getByRole('button', { name: '1단계 API 바꾸기', exact: true })).toBeDisabled()
     await expectUnfinished()
   } finally {
     fixture.resume(environments.stage)
   }
   await expect(structuredApi).toContainText('스테이징 구조 입력')
+  await expect(stepDetails(page)).not.toContainText('명세를 불러오는 중…')
+  await expect(page.getByRole('button', { name: '1단계 API 바꾸기', exact: true })).toBeEnabled()
   await expectUnfinished()
   await environment(page, 'empty').click()
   await expect(stepDetails(page)).toContainText('현재 API 명세에서 이 API를 찾을 수 없습니다')
