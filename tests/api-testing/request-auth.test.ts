@@ -25,29 +25,28 @@ test("request auth resolves latest variable and isolates server/environment/proj
     await workspace.saveProject(otherProject);
     const scopes=[scope,{...scope,serverId:secondServer},{...scope,environmentId:secondEnv},{...scope,projectId:otherProject.id}];
     for (const s of scopes) await workspace.importSpec(s,spec);
-    await workspace.setGlobal(scope,"accessToken","first-token");
+    await workspace.setGlobal({ projectId },"accessToken","first-token");
     await workspace.setRequestAuth(scope,"accessToken");
     assert.equal(await workspace.getRequestAuth(scope),"accessToken");
     const response=await workspace.execute(scope,"GET /check",{headers:{authorization:""}});
     assert.equal(received.at(-1),"Bearer first-token");
-    assert.ok(!JSON.stringify(response).includes("first-token"));
-    const live = await workspace.executeLive(scope, "GET /check", {});
+    // Responses carry raw values; the renderer's hide-values toggle controls display.
+    assert.deepEqual(response.body, { echo: "Bearer first-token" });
+    const live = await workspace.execute(scope, "GET /check", {});
     assert.deepEqual(live.body, { echo: "Bearer first-token" });
     assert.equal(live.httpStatus, 200);
-    // Live viewing must not change the protected response contract.
-    assert.ok(!JSON.stringify(await workspace.execute(scope, "GET /check", {})).includes("first-token"));
-    await workspace.setGlobal(scope,"accessToken","next-token");
+    await workspace.setGlobal({ projectId },"accessToken","next-token");
     await workspace.execute(scope,"GET /check",{});
     assert.equal(received.at(-1),"Bearer next-token");
     for (const s of scopes.slice(1)) { assert.equal(await workspace.getRequestAuth(s),null); await workspace.execute(s,"GET /check",{}); assert.equal(received.at(-1),undefined); }
     let count=received.length;
     await assert.rejects(workspace.execute(scope,"GET /check",{headers:{AUTHORIZATION:"Bearer manual"}}),/중복/);
-    await workspace.deleteGlobal(scope,"accessToken");
+    await workspace.deleteGlobal({ projectId },"accessToken");
     await assert.rejects(workspace.execute(scope,"GET /check",{}),/토큰/);
-    await workspace.setGlobal(scope,"accessToken",123);
+    await workspace.setGlobal({ projectId },"accessToken",123);
     await assert.rejects(workspace.execute(scope,"GET /check",{}),/토큰/);
     assert.equal(received.length,count);
-    await workspace.setGlobal(scope,"accessToken","next-token");
+    await workspace.setGlobal({ projectId },"accessToken","next-token");
     await workspace.saveProject({...project,environments:project.environments.map(e=>e.id===environmentId?{...e,baseUrls:{...e.baseUrls,[serverId]:url+"/changed"}}:e)});
     await assert.rejects(workspace.execute(scope,"GET /check",{}),/주소가 변경/);
     assert.equal(received.length,count);

@@ -1,5 +1,5 @@
 import { app, clipboard, dialog, ipcMain, safeStorage } from "electron";
-import { readFile, stat } from "node:fs/promises";
+import { readFile, stat, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { ApiWorkspace, scopeSchema } from "./workspace";
@@ -53,19 +53,19 @@ export function registerApiTesting() {
   ipcMain.handle("api-testing:delete-spec-account", (_event, scope) => sync.deleteAccount(scope));
   ipcMain.handle("api-testing:get-request-auth", (_event, scope) => workspace.getRequestAuth(scope));
   ipcMain.handle("api-testing:set-request-auth", (_event, scope, variable) => workspace.setRequestAuth(scope, variable));
-  ipcMain.handle("api-testing:ai-context", (_event, request) => workspace.buildAiContext(request));
-  ipcMain.handle("api-testing:copy-ai-context", async (_event, request) => {
-    clipboard.writeText(await workspace.buildAiContext(request));
+  ipcMain.handle("api-testing:copy-ai-prompt", async (_event, request) => {
+    clipboard.writeText(await workspace.buildAiPrompt(request));
   });
+  ipcMain.handle("api-testing:get-ai-prompt", (_event, request) => workspace.buildAiPrompt(request));
+  ipcMain.handle("api-testing:read-ai-result", (_event, scope) => workspace.readAiResult(scope));
+  ipcMain.handle("api-testing:check-ai-scenarios", (_event, scope, text) => workspace.checkAiScenarios(scope, text));
   ipcMain.handle("api-testing:list-projects", () => workspace.listProjects());
   ipcMain.handle("api-testing:save-project", (_event, project) => workspace.saveProject(project));
   ipcMain.handle("api-testing:delete-project", (_event, id) => workspace.deleteProject(id));
   ipcMain.handle("api-testing:delete-catalog", (_event, scope) => workspace.deleteCatalog(scope));
   ipcMain.handle("api-testing:delete-scenario", (_event, projectId, id, revision) => workspace.deleteScenario(projectId, id, revision));
   ipcMain.handle("api-testing:catalog", (_event, scope) => workspace.getCatalog(scope));
-  ipcMain.handle("api-testing:execute", (_event, scope, key, request) => workspace.execute(scope, z.string().parse(key), request));
-  ipcMain.handle("api-testing:execute-live", (_event, scope, key, request) => workspace.executeLive(scope, z.string().parse(key), request));
-  ipcMain.handle("api-testing:cancel", async (event, rawScope) => {
+  ipcMain.handle("api-testing:execute", (_event, scope, key, request) => workspace.execute(scope, z.string().parse(key), request));  ipcMain.handle("api-testing:cancel", async (event, rawScope) => {
     const scope = scopeSchema.parse(rawScope);
     await workspace.cancel(scope);
     releasePendingInputs(event.sender, scope);
@@ -73,10 +73,26 @@ export function registerApiTesting() {
   ipcMain.handle("api-testing:list-globals", (_event, scope) => workspace.listGlobals(scope));
   ipcMain.handle("api-testing:set-global", (_event, scope, name, value) => workspace.setGlobal(scope, name, value));
   ipcMain.handle("api-testing:delete-global", (_event, scope, name) => workspace.deleteGlobal(scope, name));
+  ipcMain.handle("api-testing:list-cookies", (_event, scope) => workspace.listCookies(scope));
+  ipcMain.handle("api-testing:clear-cookies", (_event, scope) => workspace.clearCookies(scope));
   ipcMain.handle("api-testing:list-scenarios", (_event, projectId) => workspace.listScenarios(projectId));
+  ipcMain.handle("api-testing:check-scenario-specs", (_event, scope) => workspace.checkScenarioSpecs(scope));
+  ipcMain.handle("api-testing:apply-title-renames", (_event, scope) => workspace.applyTitleRenames(scope));
+  ipcMain.handle("api-testing:keep-titles", (_event, scope, scenarioId) => workspace.keepTitles(scope, scenarioId));
+  ipcMain.handle("api-testing:list-suites", (_event, projectId) => workspace.listSuites(projectId));
+  ipcMain.handle("api-testing:save-suite", (_event, projectId, suite, revision) => workspace.saveSuite(projectId, suite, revision));
+  ipcMain.handle("api-testing:delete-suite", (_event, projectId, id, revision) => workspace.deleteSuite(projectId, id, revision));
+  ipcMain.handle("api-testing:save-suite-report", async (_event, rawFilename, rawHtml) => {
+    const filename = z.string().regex(/^checkly-api-report-[A-Za-z0-9-]+\.html$/).parse(rawFilename);
+    const html = z.string().max(2_000_000).startsWith("<!doctype html>").parse(rawHtml);
+    const selected = await dialog.showSaveDialog({ defaultPath: filename, filters: [{ name: "HTML 리포트", extensions: ["html"] }] });
+    if (selected.canceled || !selected.filePath) return null;
+    await writeFile(selected.filePath, html, "utf8");
+    return selected.filePath;
+  });
   ipcMain.handle("api-testing:preview-scenario", (_event, scope, source, bindings) => workspace.previewScenario(scope, source, bindings));
-  ipcMain.handle("api-testing:save-scenario", (_event, scope, source, bindings, revision) => workspace.saveScenario(scope, source, bindings, revision));
-  ipcMain.handle("api-testing:save-scenario-draft", (_event, scope, source, bindings, revision) => workspace.saveScenarioDraft(scope, source, bindings, revision));
+  ipcMain.handle("api-testing:save-scenario", (_event, scope, source, bindings, revision, metadata) => workspace.saveScenario(scope, source, bindings, revision, metadata));
+  ipcMain.handle("api-testing:save-scenario-draft", (_event, scope, source, bindings, revision, metadata) => workspace.saveScenarioDraft(scope, source, bindings, revision, metadata));
   ipcMain.handle("api-testing:run-scenario", (event, rawScope, source, bindings, inputs) => {
     const scope = inputScopeSchema.parse(rawScope);
     const runId = randomUUID();

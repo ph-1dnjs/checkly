@@ -11,35 +11,41 @@
 | import | scope, 파일 또는 URL·Basic 인증 → 명세 또는 취소 시 null |
 | spec-sync / delete-spec-account | scope → 동기화·계정 저장 여부/완료 |
 | get-request-auth / set-request-auth | scope, 변수 이름 또는 null → 연결 이름/완료 |
-| list-globals / set-global / delete-global | 프로젝트·환경, 이름·JSON 값 → 마스킹된 목록/완료 |
-| execute / execute-live | scope, operation key, request → ApiResponse |
+| list-globals / set-global / delete-global | 프로젝트, 이름·JSON 값 → 원문 값 목록/완료 |
+| copy-ai-prompt / get-ai-prompt / read-ai-result / check-ai-scenarios | 프로젝트·환경, 태그 또는 고른 API(`operations: ["<serverId> <METHOD path>"]`) → 스키마 파일을 쓰고 가이드를 클립보드로 / 같은 가이드 텍스트 / 결과 파일의 경로·내용·수정 시각, 없으면 null(2MB 이하) / 붙여넣은 AI 결과 → 검사된 초안·스위트(저장하지 않음) |
+| list-cookies / clear-cookies | 프로젝트 → 쿠키 이름·도메인·경로 목록(값 제외)/완료. 실행 중에는 비울 수 없음 |
+| execute | scope, operation key, request → 원문 ApiResponse (Swagger Try it out) |
 | cancel | scope → 현재 환경 실행 취소 |
 | list-scenarios / read-scenario-file | 프로젝트 ID/파일 선택 → 목록/YAML 또는 null |
+| check-scenario-specs | 프로젝트·환경 → `{ missing, renamed }`: 명세에서 사라진 API를 쓰는 단계, 이전 제목을 이름으로 쓰는 단계 (서버별 명세를 한 번만 읽음) |
+| apply-title-renames | 프로젝트·환경 → `{ updated, skipped }`: 이전 제목 그대로인 단계 이름만 새 제목으로 저장, 먼저 바뀐 시나리오는 건너뜀 |
+| list-suites / save-suite / delete-suite / save-suite-report | 프로젝트, 스위트, expectedUpdatedAt / 파일명·HTML → 목록·저장 결과/완료/저장 경로 |
 | preview-scenario | 프로젝트·환경, YAML, 서버 매핑 → scenario, issues |
 | save-scenario / save-scenario-draft | 동일 입력 + expectedUpdatedAt → 저장 항목 |
 | delete-scenario | 프로젝트 ID, 시나리오 ID, expectedUpdatedAt → 완료 |
 | run-scenario | 프로젝트·환경, YAML, 서버 매핑, inputs → ApiScenarioResult |
 | get-pending-input | 프로젝트·환경 → 현재 실행 입력 요청 또는 null |
 | submit-input | 프로젝트·환경, requestId·runId·stepId·name·JSON value → 대기 해제 |
-| ai-context / copy-ai-context | scope, 선택 API, goal → 텍스트/클립보드 복사 |
 
-`ApiResponse`는 status, httpStatus, durationMs, headers, body, error를 제공합니다. `ApiScenarioResult`는 전체 status, 단계별 결과, variables를 제공합니다. 브리지 오류는 Promise rejection으로, 실행 중 검증·요청 실패는 결과 상태로 반환합니다. API 시나리오 단계별 progress 이벤트는 아직 없으며, renderer는 대기 중인 입력 요청을 조회해 모달을 표시합니다.
+`ApiResponse`는 status, httpStatus, durationMs, headers, body, error, checks를 제공합니다. `checks`는 검증마다 `{ expect?: 인덱스, passed, actual? }`이며 `expect`가 없으면 자동 2xx 확인, `actual`은 실패 시에만 80자까지 담습니다. `ApiScenarioResult`는 전체 status, 단계별 결과, variables를 제공합니다. 브리지 오류는 Promise rejection으로, 실행 중 검증·요청 실패는 결과 상태로 반환합니다. API 시나리오 단계별 progress 이벤트는 아직 없으며, renderer는 대기 중인 입력 요청을 조회해 모달을 표시합니다.
 
 `get-pending-input`은 값이 아니라 `requestId`, `runId`, `stepId`, 입력 이름·라벨·타입·필수/민감 여부와 현재 단계 번호만 반환합니다. `submit-input`은 이 식별자들이 현재 실행과 일치하는지와 JSON 타입을 확인한 뒤 실행을 재개합니다. 입력값은 실행 요청의 메모리와 마스킹 계층에만 존재하며 YAML에는 기록하지 않습니다. Electron은 IPC 채널로, 웹 개발 모드는 같은-origin 개발 RPC로 제공합니다.
 
 ## 실행 계약
 
-실행 직전에 현재 환경의 명세와 서버 연결을 재검증합니다. 시나리오 YAML은 `operationId` 또는 method/path로 명세의 엔드포인트를 가리키며, summary·description·파라미터·요청/응답 스키마는 저장된 OpenAPI 카탈로그에서 다시 읽습니다. JSON 본문과 단일 값 경로·쿼리·헤더·쿠키를 구성하며 기본 요청 시간 제한은 30초입니다. 쿠키는 `request.cookies`의 단순 문자열·숫자·불리언 값을 `Cookie` 헤더로 조합합니다. 리다이렉트·자동 재시도를 하지 않습니다.
+실행 직전에 현재 환경의 명세와 서버 연결을 재검증합니다. 시나리오 YAML은 `operationId` 또는 method/path로 명세의 엔드포인트를 가리키며, summary·description·파라미터·요청/응답 스키마는 저장된 OpenAPI 카탈로그에서 다시 읽습니다. JSON 본문과 경로·쿼리·헤더·쿠키를 구성하며, 쿼리는 OpenAPI `form`, `deepObject`, `spaceDelimited`, `pipeDelimited` 직렬화를 따릅니다. 기본 요청 시간 제한은 30초입니다. 쿠키는 `request.cookies`의 단순 문자열·숫자·불리언 값을 `Cookie` 헤더로 조합합니다. 리다이렉트·자동 재시도를 하지 않습니다.
 
 기본 실패 정책은 stop이며 이후 단계는 skipped입니다. continue이면 후속 단계를 시도하고 필요한 변수가 없으면 blocked입니다. 취소는 진행 요청을 중단하고 후속 호출을 막습니다.
 
 API 단계에 `input`이 있고 같은 이름의 값이 없으면 `run-scenario`는 입력 공급자 Promise를 기다립니다. 제출된 값은 현재 요청을 resolve하기 전에 `vars`에 들어가며 이후 단계에서도 참조할 수 있습니다. 취소·renderer 종료·5분 만료는 대기를 `undefined`로 끝내고, 필수 입력이면 해당 단계가 blocked가 됩니다.
 
-요청을 resolve한 뒤 요청 출처 스냅샷을 저장하고, 응답을 받은 뒤 응답 출처 스냅샷을 저장합니다. 이전 단계에서 만들어진 `valueBindings`만 다음 요청을 resolve하기 전에 `vars`에 반영합니다. 검증은 사용자가 명시한 `expect`와 기본 HTTP 2xx만 수행하며 중간 업무 검증을 자동으로 끼워 넣지 않습니다. 모든 추출이 성공한 후 해당 단계의 vars/globals 변경을 반영합니다. 실패한 단계는 일부 변수만 저장하지 않습니다. 앞 단계에서 성공한 전역변수 변경은 이후 실패로 되돌리지 않습니다. 같은 프로젝트·환경 중복 실행은 대기열에 넣지 않고 차단합니다.
+요청을 resolve한 뒤 요청 출처 스냅샷을 저장하고, 응답을 받은 뒤 응답 출처 스냅샷을 저장합니다. 이전 단계에서 만들어진 `valueBindings`만 다음 요청을 resolve하기 전에 `vars`에 반영합니다. 검증은 사용자가 명시한 `expect`와 기본 HTTP 2xx(상태 검증이 없을 때)만 수행하며, 첫 실패에서 멈추지 않고 모두 확인해 `checks`로 돌려준 뒤 하나라도 실패하면 단계를 실패로 처리합니다. 중간 업무 검증을 자동으로 끼워 넣지 않습니다. 모든 추출이 성공한 후 해당 단계의 vars/globals 변경을 반영합니다. 실패한 단계는 일부 변수만 저장하지 않습니다. 앞 단계에서 성공한 전역변수 변경은 이후 실패로 되돌리지 않습니다. 전역변수는 프로젝트의 모든 환경이 공유하므로, 같은 프로젝트의 중복 실행은 환경이 달라도 대기열에 넣지 않고 차단합니다.
 
 `valueBindings`는 `{name, step, source, area, pointer|header}` 구조입니다. `source: request`는 출처 단계의 실제 해석된 요청값을, `source: response`는 응답 본문 또는 헤더를 가리킵니다. 미리보기는 `{{vars.name}}` 사용 위치와 출처 단계의 순서를 검사하며, 출처가 이후이거나 같은 단계면 값 순서 오류를 반환합니다. 실행 결과에는 출처 원문을 별도 필드로 노출하지 않습니다.
 
 Bearer 연결은 프로젝트·환경·서버·기본 URL에 묶이며 요청 직전에 최신 변수값을 읽습니다. 수동 Authorization과 중복되거나 값이 없고 형식이 잘못되면 호출을 차단합니다. 문서용 Basic 인증은 API 호출에 재사용하지 않습니다.
+
+시나리오 YAML의 최상위 `auth: globals.memberToken`은 모든 단계의 Bearer 기본값입니다. 각 단계는 `auth: globals.adminToken`으로 다른 계정을 선택하거나 `auth: none`으로 기본 인증을 제외할 수 있습니다. 지정하지 않은 단계는 기본값을 상속합니다. 토큰은 YAML에 저장하지 않고 해당 요청 직전에 프로젝트 전역변수에서 읽습니다. 이전 단계가 같은 변수를 추출해 갱신했다면 이후 단계는 갱신된 값을 사용합니다. 필요한 값이 없으면 실행 전 확인에 표시하고 호출을 막으며, 수동 `Authorization` 헤더와 중복 설정된 경우에도 호출을 막습니다.
 
 ## 개발과 검증
 

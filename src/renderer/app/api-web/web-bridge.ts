@@ -26,11 +26,21 @@ function pickText(accept: string, limit: number): Promise<string | null> {
   });
 }
 
+function download(filename: string, text: string, type: string): string {
+  const url = URL.createObjectURL(new Blob([text], { type }));
+  const link = document.createElement("a"); link.href = url; link.download = filename;
+  document.body.append(link); link.click(); link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  return filename;
+}
+
 export const webBridge: ApiTestingBridge = new Proxy({} as ApiTestingBridge, {
   get(_target, method: string) {
     if (method === "readScenarioFile") return () => pickText(".yaml,.yml", 1_000_000);
-    if (method === "copyAiContext") return async (request: unknown) =>
-      navigator.clipboard.writeText(await rpc("buildAiContext", [request]));
+    if (method === "saveSuiteReport") return async (filename: string, html: string) => download(filename, html, "text/html;charset=utf-8");
+    if (method === "getAiPrompt") return (request: unknown) => rpc("buildAiPrompt", [request]);
+    if (method === "copyAiPrompt") return async (request: unknown) =>
+      navigator.clipboard.writeText(await rpc("buildAiPrompt", [request]));
     if (method === "importSpec") return async (scope: unknown, source: { kind: string }) => {
       if (source.kind !== "file") return rpc(method, [scope, source]);
       const text = await pickText(".json,.yaml,.yml", 5_000_000);

@@ -13,6 +13,92 @@ function loadEngine() {
 
 type DiagramDefinition = { source: string; title: string };
 
+function cleanDiagram(svg: string): string {
+  const clean = DOMPurify.sanitize(svg, { USE_PROFILES: { svg: true, svgFilters: true }, FORBID_TAGS: ["foreignObject", "a", "image"] });
+  const doc = new DOMParser().parseFromString(clean, "image/svg+xml");
+  const walker = doc.createTreeWalker(doc.documentElement, NodeFilter.SHOW_TEXT);
+  while (walker.nextNode()) {
+    walker.currentNode.textContent = (walker.currentNode.textContent ?? "").replace(/&#(\d+);/g, (original, number) => Number(number) <= 0x10ffff ? String.fromCodePoint(Number(number)) : original);
+  }
+  return new XMLSerializer().serializeToString(doc.documentElement);
+}
+
+// Decorate only configuration JSON leaves; endpoint labels and API diagrams stay intact.
+function decorateFlowBadges(root: Element | null) {
+  if (!root) return;
+  const ns = "http://www.w3.org/2000/svg";
+  root.querySelectorAll<SVGTextElement>("g.node.request text, g.node.response text").forEach(text => {
+    if (text.dataset.aligned) return;
+    const left = text.getBBox().x;
+    text.style.textAnchor = "start";
+    text.style.whiteSpace = "pre";
+    let depth = 0;
+    text.querySelectorAll(":scope > tspan").forEach((line, index) => {
+      const content = (line.textContent ?? "").trim();
+      if (/^[}\]]/.test(content)) depth = Math.max(0, depth - 1);
+      line.setAttribute("x", String(left + (index ? depth * 14 : 0)));
+      if (/[{\[]$/.test(content)) depth++;
+    });
+    text.dataset.aligned = "true";
+  });
+  root.querySelectorAll<SVGTSpanElement>("g.node.request text > tspan, g.node.response text > tspan").forEach(line => {
+    if (line.dataset.badge) return;
+    const match = (line.textContent ?? "").match(/^(\s*"(?:[^"\\]|\\.)*"\s*:)\s*("(?:[^"\\]|\\.)*")(,?)$/);
+    if (!match) return;
+    const value: string = JSON.parse(match[2]);
+    const text = line.closest("text")!;
+    const group = text.parentElement!;
+    line.dataset.badge = "true";
+    line.textContent = `${match[1]}  `;
+    const badge = document.createElementNS(ns, "tspan");
+    badge.textContent = value;
+    const global = value.includes("전역변수");
+    const linked = /단계|시나리오/.test(value);
+    badge.setAttribute("fill", global ? "#65459a" : linked ? "#267653" : "#17607f");
+    line.append(badge, document.createTextNode(`  ${match[3]}`));
+    const bounds = badge.getBBox();
+    const background = document.createElementNS(ns, "rect");
+    Object.entries({ x: bounds.x - 4, y: bounds.y - 1, width: bounds.width + 8, height: bounds.height + 2, rx: 7 }).forEach(([key, value]) => background.setAttribute(key, String(value)));
+    background.setAttribute("fill", global ? "#f6f1fc" : linked ? "#f1faf5" : "#edf7fa");
+    background.setAttribute("stroke", global ? "#c9b9e6" : linked ? "#b8dec9" : "#a8cfe0");
+    background.setAttribute("stroke-width", "0.7");
+    group.insertBefore(background, text);
+  });
+}
+
+export function InlineDiagram({ source, onSelect }: { source: string; onSelect: (index: number, area?: "request" | "response") => void }) {
+  const [markup, setMarkup] = useState("");
+  const [error, setError] = useState(false);
+  useEffect(() => {
+    let live = true;
+    setError(false);
+    void loadEngine().then(engine => engine.render(`api-flow-${crypto.randomUUID()}`, source)).then(({ svg }) => {
+      if (live) setMarkup(cleanDiagram(svg));
+    }).catch(() => { if (live) setError(true); });
+    return () => { live = false; };
+  }, [source]);
+  const root = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    decorateFlowBadges(root.current);
+    root.current?.querySelectorAll<SVGElement>("g.node").forEach(node => {
+      if (!/(?:^|-)flowchart-(?:s|req|res)\d+-\d+$/.test(node.id)) return;
+      node.setAttribute("role", "button"); node.setAttribute("tabindex", "0");
+      node.setAttribute("aria-label", `${node.textContent} 단계 편집`);
+    });
+    root.current?.querySelectorAll("tspan.text-inner-tspan").forEach(node => {
+      node.textContent = (node.textContent ?? "").replace(/&#(\d+);/g, (original, number) => Number(number) <= 0x10ffff ? String.fromCodePoint(Number(number)) : original);
+    });
+  }, [markup]);
+  const select = (target: EventTarget | null) => {
+    const node = target instanceof Element ? target.closest("g.node") : null;
+    const match = node?.id.match(/(?:^|-)flowchart-(s|req|res)(\d+)-\d+$/);
+    if (match) onSelect(Number(match[2]), match[1] === "req" ? "request" : match[1] === "res" ? "response" : undefined);
+  };
+  return <div ref={root} className="api-inline-flow" onClick={e => select(e.target)} onKeyDown={e => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); select(e.target); }
+  }}>{error ? <p role="alert">흐름을 표시하지 못했습니다.</p> : markup ? <div dangerouslySetInnerHTML={{ __html: markup }} /> : <p>흐름을 그리는 중…</p>}</div>;
+}
+
 function htmlText(markup: string, collapseWhitespace = true): string {
   const text = new DOMParser().parseFromString(markup, "text/html").body.textContent ?? "";
   return collapseWhitespace ? text.replace(/\s+/g, " ").trim() : text;
@@ -37,6 +123,7 @@ export function Diagram({ source, title }: DiagramDefinition) {
   const [status, setStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [svgMarkup, setSvgMarkup] = useState("");
   const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => { decorateFlowBadges(dialog.current); }, [svgMarkup]);
   const trigger = useRef<HTMLButtonElement>(null);
   const [zoom, setZoom] = useState(100);
   const renderDiagram = async () => {
@@ -45,7 +132,7 @@ export function Diagram({ source, title }: DiagramDefinition) {
       if (source.length > 50_000) throw new Error("Diagram too large");
       const mermaid = await loadEngine();
       const { svg } = await mermaid.render(`api-mermaid-${crypto.randomUUID()}`, source);
-      const clean = DOMPurify.sanitize(svg, { USE_PROFILES: { svg: true, svgFilters: true }, FORBID_TAGS: ["foreignObject", "a", "image"] });
+      const clean = cleanDiagram(svg);
       // Diagram markup never receives host privileges or network access.
       setSvgMarkup(clean);
       setStatus("ready");

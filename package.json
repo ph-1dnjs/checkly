@@ -80,6 +80,7 @@
     "mermaid": "^11.17.2",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
+    "remarkable": "^2.0.1",
     "swagger-ui-react": "^5.32.15",
     "yaml": "^2.9.0",
     "zod": "^4.5.4"

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { Json, Scenario, ScenarioInput, ScenarioInputRequest } from "./scenario";
+import type { Json, Scenario, ScenarioInputRequest } from "./scenario";
 
 export const httpUrl = z.string().url().refine((value) => {
   const url = new URL(value);
@@ -16,6 +16,8 @@ export const projectSchema = z.object({
     baseUrls: z.record(z.string().uuid(), httpUrl.refine(v => !new URL(v).search, "기본 주소에 쿼리를 넣을 수 없습니다")),
   }).strict()).min(1),
 }).strict().superRefine((p, ctx) => {
+  if (new Set(p.servers.map(server => server.name)).size !== p.servers.length)
+    ctx.addIssue({ code: "custom", path: ["servers"], message: "프로젝트 내 서버 이름은 중복될 수 없습니다" });
   for (const group of [p.servers, p.environments]) {
     if (new Set(group.map(v => v.id)).size !== group.length)
       ctx.addIssue({ code: "custom", message: "중복 식별자" });
@@ -34,20 +36,34 @@ export const specSourceSchema = z.discriminatedUnion("kind", [
 ]);
 export type ApiSpecSource = z.infer<typeof specSourceSchema>;
 export type ApiSpecSync = { url?: string; username?: string; hasSavedAccount: boolean; secureStorageAvailable: boolean; lastAttemptAt?: string; lastSuccessAt?: string; status?: "success" | "failed" };
-export type ApiParameter = { name: string; location: string; required: boolean; description: string; type: string; example?: Json };
+export type ApiParameter = { name: string; location: string; required: boolean; description: string; type: string; style?: string; explode?: boolean; example?: Json };
 export type ApiOperation = {
   tags?: string[];
   key: string; method: string; path: string; operationId?: string; summary: string; description: string; tag: string;
   parameters: ApiParameter[]; bodyRequired: boolean; bodyExample?: Json;
   bodySchema?: Json; responses: Json; warnings: string[];
 };
-export type ApiCatalog = { title: string; version: string; importedAt: string; spec?: Json; operations: ApiOperation[]; tags?: Array<{ name: string; description: string }> };
-export type ApiResponse = { status: string; httpStatus?: number; durationMs: number; headers?: Record<string, string>; body?: Json; error?: string; input?: { name: string; provided: boolean } };
+/** `titleChanges`: per operation key, earlier summaries (still possibly used as step names) and the current one. */
+export type ApiCatalog = { title: string; version: string; importedAt: string; spec?: Json; operations: ApiOperation[]; tags?: Array<{ name: string; description: string }>; titleChanges?: Record<string, { from: string[]; to: string }> };
+export type ApiRequestTrace = { method: string; url: string; headers: Record<string, string>; body?: Json };
+/** One response check of a step: `expect` indexes step.expect, absent = automatic 2xx; `actual` only on failure. */
+export type ApiCheckResult = { expect?: number; passed: boolean; actual?: string };
+export type ApiResponse = { status: string; httpStatus?: number; durationMs: number; checks?: ApiCheckResult[]; request?: ApiRequestTrace; headers?: Record<string, string>; body?: Json; error?: string; failure?: { kind: "http" | "assertion" | "extraction" | "request" | "input" | "other"; source?: "status" | "header" | "body"; operator?: "exists" | "equals" | "contains" | "includes" }; input?: { name: string; provided: boolean }; inputs?: Array<{ name: string; provided: boolean }> };
 export type ApiScope = { projectId: string; serverId: string; environmentId: string };
+export type ApiProjectScope = Pick<ApiScope, "projectId">;
 export type ApiEnvironmentScope = Pick<ApiScope, "projectId" | "environmentId">;
 export type ApiGlobal = { name: string; type: string; displayValue: string };
-export type SavedApiScenario = { id: string; name: string; source: string; bindings: Record<string, string>; updatedAt: string; draft?: boolean };
-export type ApiScenarioPreview = { scenario: Scenario; issues: string[] };
+/** Session cookie scope only; values never leave the main process. */
+export type ApiCookie = { name: string; domain: string; path: string };
+export type SavedApiScenario = { id: string; name: string; source: string; bindings: Record<string, string>; updatedAt: string; draft?: boolean; groupPath?: string[]; tags?: string[]; /** Old-title → new-title renames the user chose to keep as is. */ keptTitles?: Array<{ from: string; to: string }> };
+export type SavedApiSuite = { id: string; name: string; scenarioIds: string[]; onFailure: "stop" | "continue"; updatedAt: string; groupPath?: string[]; tags?: string[] };
+export type ApiSidebarMetadata = { groupPath?: string[]; tags?: string[] };
+export type ApiScenarioPreview = { scenario: Scenario; issues: string[]; executionIssues?: string[] };
+/** A saved scenario with steps whose API is gone from the current specs; steps read "label (METHOD path)". */
+export type ApiMissingApi = { scenarioId: string; scenario: string; steps: string[] };
+/** A saved scenario with steps still named after an API title the spec has since changed. */
+export type ApiTitleRename = { scenarioId: string; scenario: string; steps: Array<{ from: string; to: string }> };
+export type ApiSpecImpact = { missing: ApiMissingApi[]; renamed: ApiTitleRename[] };
 export type ApiScenarioResult = { status: string; steps: Array<ApiResponse & { id: string; name: string }>; variables: Record<string, Json> };
 export type ApiScenarioInputRequest = ScenarioInputRequest & { requestId: string };
 export type ApiScenarioInputSubmission = {
@@ -57,14 +73,24 @@ export type ApiScenarioInputSubmission = {
   name: string;
   value: Json;
 };
-export type ApiAiContextRequest = { scope: ApiEnvironmentScope; selections: Array<{ serverId: string; operationKey: string }>; goal: string };
+/** Guide for the user's own AI; tags or picked operations ("<serverId> <METHOD path>") narrow the APIs it may use. */
+export type ApiAiGuideRequest = { scope: ApiEnvironmentScope; tags?: string[]; operations?: string[] };
+/** issues keep a draft from running; notices are warnings only (e.g. a saved scenario has the same name). */
+export type ApiAiDraft = { id: string; name: string; yaml: string; stepCount: number; issues: string[]; notices: string[]; executionIssues: string[]; groupPath?: string[] };
+export type ApiAiImportResult = { drafts: ApiAiDraft[]; suite: { name: string; scenarioIds: string[]; problems: string[]; groupPath?: string[] } | null };
 export type ApiTestingBridge = {
   getSpecSync(scope: ApiScope): Promise<ApiSpecSync>;
   deleteSpecAccount(scope: ApiScope): Promise<void>;
   getRequestAuth(scope: ApiScope): Promise<string | null>;
   setRequestAuth(scope: ApiScope, variable: string | null): Promise<void>;
-  buildAiContext(request: ApiAiContextRequest): Promise<string>;
-  copyAiContext(request: ApiAiContextRequest): Promise<void>;
+  /** Copies the authoring guide for the user's own AI (Claude Code, Codex…). */
+  copyAiPrompt(request: ApiAiGuideRequest): Promise<void>;
+  /** Same guide text, for reading it in the app. */
+  getAiPrompt(request: ApiAiGuideRequest): Promise<string>;
+  /** The result file the user's AI wrote; null when it does not exist yet. */
+  readAiResult(scope: ApiEnvironmentScope): Promise<{ path: string; text: string; modifiedAt: string } | null>;
+  /** Checks pasted AI output (scenarios separated by ---, optional suite); nothing is saved. */
+  checkAiScenarios(scope: ApiEnvironmentScope, text: string): Promise<ApiAiImportResult>;
   listProjects(): Promise<ApiProject[]>;
   saveProject(project: ApiProject): Promise<ApiProject>;
   deleteProject(projectId: string): Promise<void>;
@@ -72,18 +98,26 @@ export type ApiTestingBridge = {
   deleteScenario(projectId: string, id: string, expectedUpdatedAt: string): Promise<void>;
   getCatalog(scope: ApiScope): Promise<ApiCatalog | null>;
   importSpec(scope: ApiScope, source: ApiSpecSource): Promise<ApiCatalog | null>;
+  /** Raw, transient response for the Swagger "Try it out". Never use for reports, persistence or AI context. */
   execute(scope: ApiScope, operationKey: string, request: Scenario["steps"][number]["request"]): Promise<ApiResponse>;
-  /** Unredacted, transient interactive response. Never use for reports, persistence or AI context. */
-  executeLive(scope: ApiScope, operationKey: string, request: Scenario["steps"][number]["request"]): Promise<ApiResponse>;
   cancel(scope: ApiScope): Promise<void>;
-  listGlobals(scope: ApiEnvironmentScope): Promise<ApiGlobal[]>;
-  setGlobal(scope: ApiEnvironmentScope, name: string, value: Json): Promise<void>;
-  deleteGlobal(scope: ApiEnvironmentScope, name: string): Promise<void>;
+  listGlobals(scope: ApiProjectScope): Promise<ApiGlobal[]>;
+  setGlobal(scope: ApiProjectScope, name: string, value: Json): Promise<void>;
+  deleteGlobal(scope: ApiProjectScope, name: string): Promise<void>;
+  listCookies(scope: ApiProjectScope): Promise<ApiCookie[]>;
+  clearCookies(scope: ApiProjectScope): Promise<void>;
   listScenarios(projectId: string): Promise<SavedApiScenario[]>;
+  checkScenarioSpecs(scope: ApiEnvironmentScope): Promise<ApiSpecImpact>;
+  applyTitleRenames(scope: ApiEnvironmentScope): Promise<{ updated: string[]; skipped: string[] }>;
+  keepTitles(scope: ApiEnvironmentScope, scenarioId: string): Promise<void>;
+  listSuites(projectId: string): Promise<SavedApiSuite[]>;
+  saveSuite(projectId: string, suite: Omit<SavedApiSuite, "updatedAt">, expectedUpdatedAt?: string): Promise<SavedApiSuite>;
+  deleteSuite(projectId: string, id: string, expectedUpdatedAt: string): Promise<void>;
+  saveSuiteReport(filename: string, html: string): Promise<string | null>;
   readScenarioFile(): Promise<string | null>;
   previewScenario(scope: ApiEnvironmentScope, source: string, bindings: Record<string, string>): Promise<ApiScenarioPreview>;
-  saveScenario(scope: ApiEnvironmentScope, source: string, bindings: Record<string, string>, expectedUpdatedAt?: string): Promise<SavedApiScenario>;
-  saveScenarioDraft(scope: ApiEnvironmentScope, source: string, bindings: Record<string, string>, expectedUpdatedAt?: string): Promise<SavedApiScenario>;
+  saveScenario(scope: ApiEnvironmentScope, source: string, bindings: Record<string, string>, expectedUpdatedAt?: string, metadata?: ApiSidebarMetadata): Promise<SavedApiScenario>;
+  saveScenarioDraft(scope: ApiEnvironmentScope, source: string, bindings: Record<string, string>, expectedUpdatedAt?: string, metadata?: ApiSidebarMetadata): Promise<SavedApiScenario>;
   runScenario(scope: ApiEnvironmentScope, source: string, bindings: Record<string, string>, inputs: Record<string, Json>): Promise<ApiScenarioResult>;
   getPendingScenarioInput(scope: ApiEnvironmentScope): Promise<ApiScenarioInputRequest | null>;
   submitScenarioInput(scope: ApiEnvironmentScope, submission: ApiScenarioInputSubmission): Promise<void>;

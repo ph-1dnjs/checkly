@@ -4,7 +4,7 @@ process.env.PLAYWRIGHT_BROWSERS_PATH = "0";
 
 import "dotenv/config";
 
-import { app, BrowserWindow, ipcMain, session, shell, type WebContents } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, session, shell, type WebContents } from "electron";
 import { is } from "@electron-toolkit/utils";
 import path from "node:path";
 import { registerApiTesting } from "./api-testing/main/register";
@@ -129,6 +129,20 @@ const createWindow = (): void => {
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: "deny" };
+  });
+
+  // Electron silently cancels a close/quit/reload a page's beforeunload blocks (e.g. an unsaved
+  // scenario), so ask here like a browser would. preventDefault() lets the unload go ahead.
+  mainWindow.webContents.on("will-prevent-unload", event => {
+    const choice = dialog.showMessageBoxSync(mainWindow, {
+      type: "warning",
+      buttons: ["계속 수정", "변경사항 버리고 나가기"],
+      defaultId: 0,
+      cancelId: 0,
+      message: "저장하지 않은 변경사항이 있습니다",
+      detail: "나가면 수정 내용이 사라집니다.",
+    });
+    if (choice === 1) event.preventDefault();
   });
 
   mainWindow.webContents.on("will-attach-webview", (_event, webPreferences, params) => {
