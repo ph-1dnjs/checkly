@@ -101,24 +101,27 @@ async function main() {
     await expect(page.getByRole("region", { name: "API 응답" })).toContainText("hidden-secret");
     if (leakedAuth) throw new Error("Documentation credentials forwarded to API");
     await page.getByRole("button", { name: "Authorize", exact: true }).click();
+    // With no string globals yet, the panel starts on entering a new token.
     await page.getByLabel("새 API 인증 토큰", { exact: true }).fill("desktop-api-token");
-    await page.getByRole("button", { name: "토큰 저장 후 연결", exact: true }).click();
-    await expect(page.getByRole("dialog", { name: "API 요청 인증", exact: true })).toContainText("연결: globals.docsToken");
-    await expect(page.getByLabel("새 API 인증 토큰", { exact: true })).toHaveValue("");
+    await page.getByRole("button", { name: "저장 후 연결", exact: true }).click();
+    const authDialog = page.getByRole("dialog", { name: "API 요청 인증", exact: true });
+    await expect(authDialog.getByRole("status")).toContainText("연결됨 · docsToken");
+    await expect(page.getByLabel("새 API 인증 토큰", { exact: true })).toHaveCount(0);
     const authVariable = await page.getByLabel("API 인증 전역변수", { exact: true }).inputValue();
-    await page.getByRole("button", { name: "인증 해제", exact: true }).click();
-    await expect(page.getByRole("dialog", { name: "API 요청 인증", exact: true })).toContainText("연결된 인증 없음");
+    await authDialog.getByRole("button", { name: "연결 해제", exact: true }).click();
+    await expect(authDialog.getByRole("status")).toContainText("연결된 토큰 없음");
+    await expect(authDialog.getByRole("button", { name: "연결 해제", exact: true })).toHaveCount(0);
     await page.getByLabel("API 인증 전역변수", { exact: true }).selectOption(authVariable);
-    await page.getByRole("button", { name: "인증에 연결", exact: true }).click();
-    await expect(page.getByRole("dialog", { name: "API 요청 인증", exact: true })).toContainText(`연결: globals.${authVariable}`);
+    await authDialog.getByRole("button", { name: "연결", exact: true }).click();
+    await expect(authDialog.getByRole("status")).toContainText(`연결됨 · ${authVariable}`);
     await shot("api-auth");
     await page.keyboard.press("Escape");
     await page.getByRole("button", { name: "선택한 API 테스트 실행", exact: true }).click();
     await expect(page.getByRole("region", { name: "API 응답" })).toContainText("200");
     if (lastApiAuth !== "Bearer desktop-api-token") throw new Error("Selected token not applied");
     await page.getByRole("button", { name: "Authorize", exact: true }).click();
-    await page.getByRole("button", { name: "인증 해제", exact: true }).click();
-    await expect(page.getByRole("dialog", { name: "API 요청 인증", exact: true })).toContainText("연결된 인증 없음");
+    await page.getByRole("button", { name: "연결 해제", exact: true }).click();
+    await expect(page.getByRole("dialog", { name: "API 요청 인증", exact: true }).getByRole("status")).toContainText("연결된 토큰 없음");
     await page.keyboard.press("Escape");
     for (const file of await readdir(path.join(dir, "api-testing"))) {
       const data = await readFile(path.join(dir, "api-testing", file), "utf8");
