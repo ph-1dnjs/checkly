@@ -5,6 +5,7 @@ import { projectSchema, type ApiCatalog, type ApiCookie, type ApiProject, type A
 import { z } from "zod";
 import { ApiRunner, resolveRequestUrl } from "./execution";
 import { resolve } from "./variables";
+import { docInputFromRequest, type ApiDocInput } from "../shared/doc-inputs";
 import { bindingUseLocations, pruneUnusedBrokenBindings, stringifyScenario, parseScenario, ScenarioFormatError, scenarioSchema, scenarioStepInputs, scenarioStepLabel, type Json, type Scenario, type ScenarioInputRequest } from "../shared/scenario";
 import { readOpenApi } from "./openapi";
 import { CookieJar } from "./cookies";
@@ -104,6 +105,7 @@ export class ApiWorkspace {
       this.cookieJars.delete(id);
       await this.removeFile(`scenarios-${id}.json`);
       await this.removeFile(`suites-${id}.json`);
+      await this.removeFile(`doc-inputs-${id}.json`);
       await rm(this.aiFiles(id).dir, { recursive: true, force: true });
       await this.save("projects.json", projects.filter(p => p.id !== id));
     });
@@ -293,6 +295,38 @@ export class ApiWorkspace {
     try { return JSON.parse(await readFile(path.join(this.directory, file), "utf8")); }
     catch (e) { if ((e as NodeJS.ErrnoException).code === "ENOENT") return null; throw new Error("저장된 API 작업 공간을 읽을 수 없습니다"); }
   }
+  /** Keyed by "<serverId> <METHOD path>"; project-wide like globals, so every environment shares them. */
+  private async readDocInputs(projectId: string): Promise<Record<string, ApiDocInput>> {
+    const parsed = z.record(z.string(), z.object({
+      pathParams: z.record(z.string(), z.json()).optional(), query: z.record(z.string(), z.json()).optional(),
+      headers: z.record(z.string(), z.string()).optional(), cookies: z.record(z.string(), z.json()).optional(), body: z.json().optional(),
+    })).safeParse(await this.read(`doc-inputs-${projectId}.json`));
+    return parsed.success ? parsed.data as Record<string, ApiDocInput> : {};
+  }
+
+  /** Last "Try it out" values per API of the scope's server (secret-looking names are never stored). */
+  async getDocInputs(input: ApiScope): Promise<Record<string, ApiDocInput>> {
+    const { scope } = await this.scope(input);
+    const prefix = `${scope.serverId} `;
+    return Object.fromEntries(Object.entries(await this.readDocInputs(scope.projectId)).filter(([key]) => key.startsWith(prefix)).map(([key, value]) => [key.slice(prefix.length), value]));
+  }
+
+  async forgetDocInput(input: ApiScope, rawKey: string): Promise<void> {
+    const { scope } = await this.scope(input);
+    const key = `${scope.serverId} ${z.string().min(1).max(2000).parse(rawKey)}`;
+    await this.updateDocInputs(scope.projectId, inputs => { delete inputs[key]; });
+  }
+
+  private updateDocInputs(projectId: string, change: (inputs: Record<string, ApiDocInput>) => void): Promise<void> {
+    const action = this.queue.then(async () => {
+      const inputs = await this.readDocInputs(projectId);
+      change(inputs);
+      await this.save(`doc-inputs-${projectId}.json`, inputs);
+    });
+    this.queue = action.catch(() => undefined);
+    return action;
+  }
+
   async listProjects(): Promise<ApiProject[]> {
     return z.array(projectSchema).parse(await this.read("projects.json") ?? []);
   }
@@ -333,6 +367,10 @@ export class ApiWorkspace {
           if (affected.length) throw new Error(`시나리오 참조를 먼저 정리하세요: ${affected.map(s => s.name).join(", ")}`);
           for (const env of previous.environments) {
             for (const server of previous.servers) if (removedEnvironments.some(e => e.id === env.id) || removedServers.some(s => s.id === server.id)) await this.clearScope({ projectId: project.id, environmentId: env.id, serverId: server.id });
+          }
+          if (removedServers.length) {
+            const inputs = await this.readDocInputs(project.id);
+            await this.save(`doc-inputs-${project.id}.json`, Object.fromEntries(Object.entries(inputs).filter(([key]) => !removedServers.some(server => key.startsWith(`${server.id} `)))));
           }
         }
       }
@@ -794,6 +832,11 @@ export class ApiWorkspace {
     if (operation.warnings.length) throw new Error(operation.warnings.join("\n"));
     const scenario = scenarioSchema.parse({ version: 1, id: "single", name: operation.summary, steps: [{ id: "request", name: operation.summary, server: scope.serverId, api: operation.operationId ? { operationId: operation.operationId } : { method: operation.method, path: operation.path }, request }] });
     const req = scenario.steps[0].request;
+    // Remember what was typed before any check below can fail; never let storage break the request.
+    const remembered = docInputFromRequest(req);
+    await this.updateDocInputs(scope.projectId, inputs => {
+      if (remembered) inputs[`${scope.serverId} ${key}`] = remembered; else delete inputs[`${scope.serverId} ${key}`];
+    }).catch(() => undefined);
     const auth = this.requestAuth.get(this.authKey(scope));
     if (auth) {
       if (auth.baseUrl !== baseUrl) throw new Error("서버 주소가 변경되었습니다. API 인증 설정을 다시 연결하거나 해제하세요");

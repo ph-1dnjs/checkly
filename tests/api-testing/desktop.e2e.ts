@@ -86,6 +86,11 @@ async function main() {
     // Imported: the form folds into one summary line.
     await expect(specSource).toContainText("최근 동기화 성공");
     await expect(page.getByLabel("OpenAPI URL")).toHaveCount(0);
+    // Tags start folded (open operations slow Swagger typing); searching opens the matching tags.
+    await expect(page.getByRole("button", { name: /GET.*items/ })).not.toBeVisible();
+    await page.getByLabel("API 문서 검색", { exact: true }).fill("items");
+    await expect(page.getByRole("button", { name: /GET.*items/ })).toBeVisible();
+    await page.getByLabel("API 문서 검색", { exact: true }).fill("");
     await page.getByRole("button", { name: "태그 모두 접기", exact: true }).click();
     await expect(page.getByRole("button", { name: /GET.*items/ })).not.toBeVisible();
     await page.getByRole("button", { name: "태그 모두 펼치기", exact: true }).click();
@@ -101,24 +106,27 @@ async function main() {
     await expect(page.getByRole("region", { name: "API 응답" })).toContainText("hidden-secret");
     if (leakedAuth) throw new Error("Documentation credentials forwarded to API");
     await page.getByRole("button", { name: "Authorize", exact: true }).click();
+    // With no string globals yet, the panel starts on entering a new token.
     await page.getByLabel("새 API 인증 토큰", { exact: true }).fill("desktop-api-token");
-    await page.getByRole("button", { name: "토큰 저장 후 연결", exact: true }).click();
-    await expect(page.getByRole("dialog", { name: "API 요청 인증", exact: true })).toContainText("연결: globals.docsToken");
-    await expect(page.getByLabel("새 API 인증 토큰", { exact: true })).toHaveValue("");
+    await page.getByRole("button", { name: "저장 후 연결", exact: true }).click();
+    const authDialog = page.getByRole("dialog", { name: "API 요청 인증", exact: true });
+    await expect(authDialog.getByRole("status")).toContainText("연결됨 · docsToken");
+    await expect(page.getByLabel("새 API 인증 토큰", { exact: true })).toHaveCount(0);
     const authVariable = await page.getByLabel("API 인증 전역변수", { exact: true }).inputValue();
-    await page.getByRole("button", { name: "인증 해제", exact: true }).click();
-    await expect(page.getByRole("dialog", { name: "API 요청 인증", exact: true })).toContainText("연결된 인증 없음");
+    await authDialog.getByRole("button", { name: "연결 해제", exact: true }).click();
+    await expect(authDialog.getByRole("status")).toContainText("연결된 토큰 없음");
+    await expect(authDialog.getByRole("button", { name: "연결 해제", exact: true })).toHaveCount(0);
     await page.getByLabel("API 인증 전역변수", { exact: true }).selectOption(authVariable);
-    await page.getByRole("button", { name: "인증에 연결", exact: true }).click();
-    await expect(page.getByRole("dialog", { name: "API 요청 인증", exact: true })).toContainText(`연결: globals.${authVariable}`);
+    await authDialog.getByRole("button", { name: "연결", exact: true }).click();
+    await expect(authDialog.getByRole("status")).toContainText(`연결됨 · ${authVariable}`);
     await shot("api-auth");
     await page.keyboard.press("Escape");
     await page.getByRole("button", { name: "선택한 API 테스트 실행", exact: true }).click();
     await expect(page.getByRole("region", { name: "API 응답" })).toContainText("200");
     if (lastApiAuth !== "Bearer desktop-api-token") throw new Error("Selected token not applied");
     await page.getByRole("button", { name: "Authorize", exact: true }).click();
-    await page.getByRole("button", { name: "인증 해제", exact: true }).click();
-    await expect(page.getByRole("dialog", { name: "API 요청 인증", exact: true })).toContainText("연결된 인증 없음");
+    await page.getByRole("button", { name: "연결 해제", exact: true }).click();
+    await expect(page.getByRole("dialog", { name: "API 요청 인증", exact: true }).getByRole("status")).toContainText("연결된 토큰 없음");
     await page.keyboard.press("Escape");
     for (const file of await readdir(path.join(dir, "api-testing"))) {
       const data = await readFile(path.join(dir, "api-testing", file), "utf8");
@@ -347,7 +355,18 @@ async function main() {
       await restored.getByRole("button", { name: "저장된 계정 삭제", exact: true }).click();
       await expect(restored.getByRole("button", { name: "저장된 계정 삭제", exact: true })).not.toBeVisible();
     }
+    await restored.getByRole("button", { name: "태그 모두 펼치기", exact: true }).click();
     await expect(restored.getByRole("button", { name: /GET.*items/ })).toBeVisible();
+    // "Try it out" values from the previous run come back after a restart, and can be forgotten.
+    await restored.getByRole("button", { name: /GET.*items/ }).click();
+    await restored.getByRole("button", { name: "Try it out", exact: true }).click();
+    await expect(restored.getByLabel("path id", { exact: true })).toHaveValue("7");
+    await expect(restored.getByRole("status").filter({ hasText: "마지막으로 실행한 값을 채웠습니다" })).toBeVisible();
+    await restored.getByRole("button", { name: "기억한 값 지우기", exact: true }).click();
+    await expect(restored.getByLabel("path id", { exact: true })).toHaveValue("");
+    await expect(restored.getByText("마지막으로 실행한 값을 채웠습니다", { exact: false })).toHaveCount(0);
+    await restored.getByRole("button", { name: "Cancel", exact: true }).click();
+    await restored.getByRole("button", { name: /GET.*items/ }).click();
     await restored.getByRole("tab", { name: "시나리오", exact: true }).click();
     await expect(restored.getByRole("button", { name: /로그인 후 상품 조회/ })).toBeVisible();
     await expect(restored.getByRole("button", { name: "AI 상품 조회", exact: true })).toHaveCount(0);

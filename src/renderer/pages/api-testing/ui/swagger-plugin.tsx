@@ -1,5 +1,6 @@
-import { useEffect, useLayoutEffect, useRef } from "react";
-import type { ApiCatalog, ApiScope, ApiTestingBridge } from "../../../../app/api-testing/shared/workspace";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { ApiCatalog, ApiDocInput, ApiScope, ApiTestingBridge } from "../../../../app/api-testing/shared/workspace";
+import { docInputFromRequest } from "../../../../app/api-testing/shared/doc-inputs";
 import { RequestAuthPanel } from "../../../features/api-testing/configure-request-auth";
 import { DescriptionMarkdown } from "./DescriptionMarkdown";
 import { type SwaggerMap, type SwaggerSystem, type Selection, type MutableRef, type SwaggerComponent } from "../model/swagger-types";
@@ -18,25 +19,74 @@ export function createSwaggerPlugin(options: {
   publishSelection: (selection: Selection | null) => void;
   setBusy: (busy: boolean) => void;
   composingRef: MutableRef<boolean>;
+  /** Last "Try it out" values per operation key ("METHOD path"), loaded for the docs' server. */
+  docInputsRef: MutableRef<Record<string, ApiDocInput>>;
 }) {
+  // Swagger keys parameter values by the parameter itself (not by name), so set them through the raw
+  // parameters it hands its rows (ones from operationWithMeta carry values and hash differently).
+  // `valueOf` returns undefined to leave a parameter as it is.
+  const setParameters = (system: SwaggerSystem, path: string, method: string, parameters: unknown, valueOf: (location: string, name: string) => { value: unknown } | undefined) => {
+    if (!parameters || typeof (parameters as { forEach?: unknown }).forEach !== "function") return;
+    (parameters as { forEach: (callback: (parameter: SwaggerMap) => void) => void }).forEach(parameter => {
+      const next = valueOf(textValue(mapValue(parameter, "in")), textValue(mapValue(parameter, "name")));
+      if (next) system.specActions.changeParamByIdentity([path, method], parameter, next.value);
+    });
+  };
+  const fillRemembered = (system: SwaggerSystem, path: string, method: string, parameters: unknown, input: ApiDocInput) => {
+    const areas: Record<string, Record<string, unknown> | undefined> = { path: input.pathParams, query: input.query, header: input.headers, cookie: input.cookies };
+    setParameters(system, path, method, parameters, (location, name) => {
+      const value = areas[location]?.[name];
+      // Array parameters are Immutable lists in Swagger's state; leave them to the user.
+      if (value === undefined || Array.isArray(value)) return undefined;
+      return { value: typeof value === "object" && value !== null ? JSON.stringify(value) : value };
+    });
+    if (input.body !== undefined) system.oas3Actions?.setRequestBodyValue({ pathMethod: [path, method], value: JSON.stringify(input.body, null, 2) });
+  };
+  // Filter the operation lists, not the spec: keep request editors and responses intact.
+  const filterOperations = (taggedOps: any, phrase: string) => {
+    const query = phrase.trim().toLocaleLowerCase();
+    if (!query) return taggedOps;
+    return taggedOps.map((group: any, tag: string) => {
+      if (tag.toLocaleLowerCase().includes(query)) return group;
+      return group.set("operations", group.get("operations").filter((op: any) => {
+        const operation = op.get("operation");
+        return [op.get("method"), op.get("path"), `${options.baseUrlRef.current.replace(/\/$/, "")}${op.get("path")}`,
+          operation?.get("operationId"), operation?.get("summary"), operation?.get("description")]
+          .some(value => typeof value === "string" && value.toLocaleLowerCase().includes(query));
+      }));
+    }).filter((group: any) => group.get("operations").size > 0);
+  };
   return () => ({
     fn: {
-      // Filter the operation lists, not the spec: keep request editors and responses intact.
-      opsFilter: (taggedOps: any, phrase: string) => {
-        const query = phrase.trim().toLocaleLowerCase();
-        if (!query) return taggedOps;
-        return taggedOps.map((group: any, tag: string) => {
-          if (tag.toLocaleLowerCase().includes(query)) return group;
-          return group.set("operations", group.get("operations").filter((op: any) => {
-            const operation = op.get("operation");
-            return [op.get("method"), op.get("path"), `${options.baseUrlRef.current.replace(/\/$/, "")}${op.get("path")}`,
-              operation?.get("operationId"), operation?.get("summary"), operation?.get("description")]
-              .some(value => typeof value === "string" && value.toLocaleLowerCase().includes(query));
-          }));
-        }).filter((group: any) => group.get("operations").size > 0);
-      },
+      opsFilter: (taggedOps: any, phrase: string) => filterOperations(taggedOps, phrase),
     },
     wrapComponents: {
+      parameters: (Original: SwaggerComponent) => function RememberedParameters(props: any) {
+        const [path, method] = (props.pathMethod ?? []) as string[];
+        const key = path && method ? `${method.toUpperCase()} ${path}` : "";
+        const [remembered, setRemembered] = useState(() => Boolean(key && options.docInputsRef.current[key]));
+        useEffect(() => {
+          const input = key ? options.docInputsRef.current[key] : undefined;
+          setRemembered(Boolean(input));
+          const system = options.systemRef.current;
+          if (!props.tryItOutEnabled || options.composingRef.current || !input || !system) return;
+          // After Swagger's own mount-time defaults; a timer (not rAF) also runs in hidden windows.
+          const timer = window.setTimeout(() => fillRemembered(system, path, method, props.parameters, input), 0);
+          return () => window.clearTimeout(timer);
+        }, [props.tryItOutEnabled, key]);
+        const forget = () => {
+          delete options.docInputsRef.current[key];
+          setRemembered(false);
+          void options.bridgeRef.current.forgetDocInput(options.scopeRef.current, key).catch(() => undefined);
+          const system = options.systemRef.current;
+          if (system) setParameters(system, path, method, props.parameters, () => ({ value: undefined }));
+          props.onResetClick?.([path, method]);
+        };
+        return <>
+          {props.tryItOutEnabled && remembered && !options.composingRef.current && <p className="api-doc-remembered" role="status">마지막으로 실행한 값을 채웠습니다. 비밀번호·토큰은 저장하지 않습니다.<button type="button" className="api-compose-link" onClick={forget}>기억한 값 지우기</button></p>}
+          <Original {...props} />
+        </>;
+      },
       DeepLink: (Original: SwaggerComponent) => function AccessibleDeepLink(props: any) {
         return <Original {...props} enabled />;
       },
@@ -51,6 +101,15 @@ export function createSwaggerPlugin(options: {
       },
       FilterContainer: (Original: SwaggerComponent) => function SearchOperations(props: any) {
         const root = useRef<HTMLDivElement>(null);
+        // Tags start folded (every open operation slows typing); a search opens the tags it matches.
+        const filter = props.layoutSelectors?.currentFilter?.();
+        useEffect(() => {
+          const system = options.systemRef.current;
+          const phrase = typeof filter === "string" ? filter.trim() : "";
+          if (!system || !phrase) return;
+          const matched = filterOperations(system.specSelectors.taggedOperations(), phrase);
+          for (const tag of matched?.keySeq?.().toArray?.() ?? []) if (typeof tag === "string") system.layoutActions.show(["operations-tag", tag], true);
+        }, [filter]);
         useLayoutEffect(() => {
           const input = root.current?.querySelector("input");
           input?.setAttribute("placeholder", "태그 · 메서드 · 경로 · 이름 · 설명 검색");
@@ -88,7 +147,7 @@ export function createSwaggerPlugin(options: {
           <div className="backdrop-ux" onClick={() => props.authActions.showDefinitions(false)} />
           <div className="modal-ux" role="dialog" aria-label="API 요청 인증">
             <div className="modal-dialog-ux"><div className="modal-ux-inner">
-              <div className="modal-ux-header"><h3>전역변수 토큰 연결</h3>
+              <div className="modal-ux-header"><h3>API 요청 인증</h3>
                 <button ref={closeButton} onClick={() => props.authActions.showDefinitions(false)} aria-label="인증 설정 닫기">닫기</button>
               </div>
               <div className="modal-ux-content"><RequestAuthPanel scope={options.scopeRef.current} bridge={options.bridgeRef.current} /></div>
@@ -177,6 +236,10 @@ export function createSwaggerPlugin(options: {
                 const catalog = options.catalogRef.current;
                 if (!catalog) throw new Error("선택한 서버·환경에 API 명세가 없습니다.");
                 const request = buildRequest(catalog, selection, system);
+                // Mirrors what the main process stores, so a reopened editor refills without reloading.
+                const remembered = docInputFromRequest(request);
+                if (remembered) options.docInputsRef.current[`${method.toUpperCase()} ${path}`] = remembered;
+                else delete options.docInputsRef.current[`${method.toUpperCase()} ${path}`];
                 url = requestUrl(options.baseUrlRef.current, path, request, catalog.operations.find(operation => operation.path === path && operation.method.toLowerCase() === method.toLowerCase()));
                 const shownRequest = displayRequest(selection, url, request);
                 system.specActions.setRequest(path, method, shownRequest);

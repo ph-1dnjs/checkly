@@ -9,9 +9,7 @@ html:has(.api-diagram-dialog[open]) { overflow:hidden; }
 /* Presentation-only: retain the original values for editing and transmission.
    Only values marked sensitive (see shared/sensitive.ts) are hidden. */
 .api-hide-values :is(.api-sensitive-value, [data-value-visibility="sensitive"]) { -webkit-text-security:disc; }
-/* Swagger UI renders live responses itself, so mask those blocks and secret-looking parameter inputs as a whole. */
-.api-hide-values .swagger-ui :is(.live-responses-table, .request-url, .curl-command) :is(pre, pre *, textarea) { -webkit-text-security:disc; }
-.api-hide-values .swagger-ui tr:is([data-param-name*="token" i], [data-param-name*="passw" i], [data-param-name*="secret" i], [data-param-name*="authorization" i], [data-param-name*="cookie" i], [data-param-name*="key" i], [data-param-name*="otp" i], [data-param-name*="session" i], [data-param-name*="credential" i]) :is(input, textarea) { -webkit-text-security:disc; }
+/* Swagger's own request inputs and live responses stay as typed/received, like Swagger itself. */
 .api-accordion-editor .api-step-accordion { --method-color:var(--ck-color-text-mute); padding:0; margin:10px 0; border:1px solid var(--method-color); border-radius:var(--ck-dim-radius-base); }
 .api-accordion-editor .api-selected-get { --method-color:#61affe; } .api-accordion-editor .api-selected-post { --method-color:#49cc90; } .api-accordion-editor .api-selected-put { --method-color:#fca130; } .api-accordion-editor .api-selected-patch { --method-color:#50e3c2; } .api-accordion-editor .api-selected-delete { --method-color:#f93e3e; }
 .api-accordion-editor .api-step-summary { display:grid; grid-template-columns:auto auto minmax(0,1fr) auto auto; align-items:center; gap:4px 10px; padding:10px; margin:0; cursor:pointer; background:color-mix(in srgb,var(--method-color) 10%,var(--ck-color-canvas)); }
@@ -345,8 +343,19 @@ html:has(.api-diagram-dialog[open]) { overflow:hidden; }
   .api-global-value { grid-column:1; grid-row:2; }
   .api-global-actions { grid-column:2; grid-row:1 / 3; }
 }
-.api-auth-panel p { font-size:12px; line-height:1.6; overflow-wrap:anywhere; }
+/* Inside Swagger's modal, its own section/label/input rules would otherwise win. */
+.swagger-ui section.api-auth-panel { display:grid; gap:12px; }
+.swagger-ui .api-auth-panel label { margin:0; }
+.swagger-ui .api-auth-panel :is(input, select) { margin:0; }
+.api-auth-panel p { margin:0; font-size:12px; line-height:1.6; overflow-wrap:anywhere; word-break:keep-all; }
 .api-auth-panel select { width:100%; }
+.api-auth-status { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:0 0 12px; border-bottom:1px solid var(--api-border); font-weight:600; }
+.api-auth-status code { font-family:var(--ck-font-mono); }
+.api-auth-panel fieldset { margin:0; padding:0; border:0; }
+.api-auth-new { display:grid; gap:12px; padding:12px; border-radius:var(--ck-dim-radius-base); background:var(--ck-color-line-faint); }
+.api-auth-note { color:var(--api-muted); }
+.api-auth-footer { display:flex; align-items:center; justify-content:space-between; gap:12px; padding-top:12px; border-top:1px solid var(--api-border); }
+.api-auth-footer > button { flex:none; }
 .api-testing-page .api-remember { flex-direction:row; align-items:center; white-space:nowrap; }
 .api-remember input { width:16px; height:16px; }
 .api-builder { margin-top:20px; }
@@ -843,7 +852,6 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 .api-auth-panel fieldset { display:grid; gap:12px; }
 .api-auth-panel label { display:grid; gap:6px; }
 .api-auth-panel label small { color:var(--api-muted); font-size:11px; }
-.api-auth-panel fieldset > button { justify-self:start; }
 .api-swagger-ui .api-auth-panel button.api-primary { background:var(--ck-color-blue-action); border-color:var(--ck-color-blue-action); color:var(--ck-color-canvas); }
 
 /* Spec source: one summary line once loaded; the form opens under it. */
@@ -991,3 +999,5 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 .api-suite-checks { margin:2px 0 4px; padding-left:14px; list-style:none; font-size:11.5px; }
 .api-suite-checks .is-passed { color:var(--ck-color-pass); }
 .api-suite-checks .is-failed { color:var(--ck-color-fail-ink); font-weight:600; }
+/* Remembered "Try it out" values */
+.api-doc-remembered { display:flex; flex-wrap:wrap; align-items:center; gap:4px 12px; margin:8px 20px 4px; color:var(--api-muted); font-size:12px; word-break:keep-all; }
