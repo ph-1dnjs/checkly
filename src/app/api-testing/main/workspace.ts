@@ -602,6 +602,7 @@ export class ApiWorkspace {
     const issues: string[] = [];
     const executionIssues: string[] = [];
     const availableGlobals = new Set(Object.entries(this.runner.globals.snapshot(scope.projectId)).filter(([, value]) => value !== null && value !== "").map(([name]) => name));
+    const producedGlobals = new Set<string>();
     if (scenario.environments && !scenario.environments.includes(environment.name)) issues.push(`지원 환경: ${scenario.environments.join(", ")} · 현재 환경: ${environment.name}`);
     const catalogs = new Map<string, ApiCatalog | null>();
     const variables = new Set(Object.keys(scenario.vars));
@@ -640,7 +641,7 @@ export class ApiWorkspace {
         const variable = auth.slice("globals.".length);
         if (Object.keys(step.request.headers ?? {}).some(name => name.toLowerCase() === "authorization")) issues.push(`${executionLabel}: 단계 인증과 Authorization 헤더가 중복됩니다`);
         if (!availableGlobals.has(variable)) executionIssues.push(`${executionLabel}: 인증 전역변수 '${variable}' 값이 없습니다. 전역변수에서 설정하세요`);
-        else {
+        else if (!producedGlobals.has(variable)) {
           const token = this.runner.globals.snapshot(scope.projectId)[variable];
           if (typeof token !== "string" || !/^[A-Za-z0-9._~+/-]+=*$/.test(token)) executionIssues.push(`${executionLabel}: 인증 전역변수 '${variable}'는 Bearer 접두사 없는 토큰 문자열이어야 합니다`);
         }
@@ -682,7 +683,12 @@ export class ApiWorkspace {
         } else if (v && typeof v === "object") Object.values(v).forEach(check);
       };
       check(step.request); check(step.expect);
-      step.extract.filter(e => e.target.startsWith("globals.")).forEach(e => availableGlobals.add(e.target.slice(8)));
+      // Earlier extractions replace stored values; validate their tokens when the request runs.
+      step.extract.filter(e => e.target.startsWith("globals.")).forEach(e => {
+        const name = e.target.slice(8);
+        availableGlobals.add(name);
+        producedGlobals.add(name);
+      });
       step.extract.filter(e => e.target.startsWith("vars.")).forEach(e => variables.add(e.target.slice(5)));
     }
     return { scenario, issues: [...new Set(issues)], executionIssues: [...new Set(executionIssues)] };
