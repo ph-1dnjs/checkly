@@ -3,7 +3,8 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { projectSchema, type ApiCatalog, type ApiCookie, type ApiProject, type ApiScope, type ApiResponse, type ApiProjectScope, type ApiEnvironmentScope, type ApiGlobal, type SavedApiScenario, type SavedApiSuite, type ApiSidebarMetadata, type ApiScenarioPreview, type ApiScenarioResult, type ApiRequestTrace, type ApiAiImportResult, type ApiAiDraft, type ApiMissingApi, type ApiTitleRename, type ApiSpecImpact } from "../shared/workspace";
 import { z } from "zod";
-import { ApiRunner } from "./execution";
+import { ApiRunner, resolveRequestUrl } from "./execution";
+import { resolve } from "./variables";
 import { bindingUseLocations, pruneUnusedBrokenBindings, stringifyScenario, parseScenario, ScenarioFormatError, scenarioSchema, scenarioStepInputs, scenarioStepLabel, type Json, type Scenario, type ScenarioInputRequest } from "../shared/scenario";
 import { readOpenApi } from "./openapi";
 import { CookieJar } from "./cookies";
@@ -750,10 +751,10 @@ export class ApiWorkspace {
       const result = await this.runner.run(scenario, {
         projectId: scope.projectId, environment: scope.environmentId, inputs, servers, cookies: this.cookieJar(scope.projectId), signal: controller.signal, runId: options.runId ?? randomUUID(),
         requestInput: async request => options.requestInput?.(request),
-        resolveOperation: (server, operationId) => {
-          const operation = catalogs.get(server)?.operations.find(o => o.operationId === operationId);
-          if (!operation) throw new Error("API 명세가 변경되었습니다");
-          return operation;
+        resolveOperation: (server, api) => {
+          const matches = catalogs.get(server)?.operations.filter(operation => "operationId" in api ? operation.operationId === api.operationId : operation.method === api.method && operation.path === api.path) ?? [];
+          if (matches.length !== 1) throw new Error("API 명세가 변경되었습니다");
+          return matches[0];
         },
         onRequest: (request, id) => {
           const detail = details.get(id) ?? {};
@@ -799,10 +800,20 @@ export class ApiWorkspace {
       if (Object.entries(req.headers ?? {}).some(([name, value]) => name.toLowerCase() === "authorization" && value !== "")) throw new Error("개별 Authorization 헤더와 공통 인증이 중복됩니다. 하나를 해제하세요");
       req.headers = { ...Object.fromEntries(Object.entries(req.headers ?? {}).filter(([name]) => name.toLowerCase() !== "authorization")), Authorization: `Bearer ${this.authToken(scope, auth.variable)}` };
     }
-    for (const p of operation.parameters.filter(p => p.required)) {
-      const values = p.location === "path" ? req.pathParams : p.location === "query" ? req.query : p.location === "cookie" ? req.cookies : req.headers;
+    for (const p of operation.parameters.filter(p => p.required && p.location !== "cookie")) {
+      const values = p.location === "path" ? req.pathParams : p.location === "query" ? req.query : req.headers;
       const found = Object.entries(values ?? {}).find(([k]) => p.location === "header" ? k.toLowerCase() === p.name.toLowerCase() : k === p.name)?.[1];
       if (found === undefined || found === "") throw new Error(`필수 입력: ${p.name}`);
+    }
+    const requiredCookies = operation.parameters.filter(p => p.required && p.location === "cookie");
+    if (requiredCookies.length) {
+      const pathParams = resolve(req.pathParams ?? {}, { inputs: {}, vars: scenario.vars, globals: this.runner.globals.snapshot(scope.projectId) }) as Record<string, Json>;
+      const url = resolveRequestUrl(baseUrl, operation.path, pathParams);
+      const cookies = { ...this.cookieJar(scope.projectId).forUrl(url), ...req.cookies };
+      for (const p of requiredCookies) {
+        const found = Object.hasOwn(cookies, p.name) ? cookies[p.name] : undefined;
+        if (found === undefined || found === "") throw new Error(`필수 입력: ${p.name}`);
+      }
     }
     if (operation.bodyRequired && req.body === undefined) throw new Error("요청 본문이 필요합니다");
     this.assertAvailable(scope.projectId);
