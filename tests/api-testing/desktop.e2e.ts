@@ -86,6 +86,11 @@ async function main() {
     // Imported: the form folds into one summary line.
     await expect(specSource).toContainText("최근 동기화 성공");
     await expect(page.getByLabel("OpenAPI URL")).toHaveCount(0);
+    // Tags start folded (open operations slow Swagger typing); searching opens the matching tags.
+    await expect(page.getByRole("button", { name: /GET.*items/ })).not.toBeVisible();
+    await page.getByLabel("API 문서 검색", { exact: true }).fill("items");
+    await expect(page.getByRole("button", { name: /GET.*items/ })).toBeVisible();
+    await page.getByLabel("API 문서 검색", { exact: true }).fill("");
     await page.getByRole("button", { name: "태그 모두 접기", exact: true }).click();
     await expect(page.getByRole("button", { name: /GET.*items/ })).not.toBeVisible();
     await page.getByRole("button", { name: "태그 모두 펼치기", exact: true }).click();
@@ -350,6 +355,7 @@ async function main() {
       await restored.getByRole("button", { name: "저장된 계정 삭제", exact: true }).click();
       await expect(restored.getByRole("button", { name: "저장된 계정 삭제", exact: true })).not.toBeVisible();
     }
+    await restored.getByRole("button", { name: "태그 모두 펼치기", exact: true }).click();
     await expect(restored.getByRole("button", { name: /GET.*items/ })).toBeVisible();
     // "Try it out" values from the previous run come back after a restart, and can be forgotten.
     await restored.getByRole("button", { name: /GET.*items/ }).click();

@@ -342,7 +342,9 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
         spec={spec}
         plugins={plugins}
         onComplete={onComplete}
-        docExpansion="list"
+        // Docs start folded: every rendered operation re-computes on each keystroke in Try it out.
+        // The composer has no Try it out, so it keeps the list open for picking APIs.
+        docExpansion={composing ? "list" : "none"}
         deepLinking
         filter
         displayRequestDuration

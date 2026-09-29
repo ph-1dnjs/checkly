@@ -42,22 +42,23 @@ export function createSwaggerPlugin(options: {
     });
     if (input.body !== undefined) system.oas3Actions?.setRequestBodyValue({ pathMethod: [path, method], value: JSON.stringify(input.body, null, 2) });
   };
+  // Filter the operation lists, not the spec: keep request editors and responses intact.
+  const filterOperations = (taggedOps: any, phrase: string) => {
+    const query = phrase.trim().toLocaleLowerCase();
+    if (!query) return taggedOps;
+    return taggedOps.map((group: any, tag: string) => {
+      if (tag.toLocaleLowerCase().includes(query)) return group;
+      return group.set("operations", group.get("operations").filter((op: any) => {
+        const operation = op.get("operation");
+        return [op.get("method"), op.get("path"), `${options.baseUrlRef.current.replace(/\/$/, "")}${op.get("path")}`,
+          operation?.get("operationId"), operation?.get("summary"), operation?.get("description")]
+          .some(value => typeof value === "string" && value.toLocaleLowerCase().includes(query));
+      }));
+    }).filter((group: any) => group.get("operations").size > 0);
+  };
   return () => ({
     fn: {
-      // Filter the operation lists, not the spec: keep request editors and responses intact.
-      opsFilter: (taggedOps: any, phrase: string) => {
-        const query = phrase.trim().toLocaleLowerCase();
-        if (!query) return taggedOps;
-        return taggedOps.map((group: any, tag: string) => {
-          if (tag.toLocaleLowerCase().includes(query)) return group;
-          return group.set("operations", group.get("operations").filter((op: any) => {
-            const operation = op.get("operation");
-            return [op.get("method"), op.get("path"), `${options.baseUrlRef.current.replace(/\/$/, "")}${op.get("path")}`,
-              operation?.get("operationId"), operation?.get("summary"), operation?.get("description")]
-              .some(value => typeof value === "string" && value.toLocaleLowerCase().includes(query));
-          }));
-        }).filter((group: any) => group.get("operations").size > 0);
-      },
+      opsFilter: (taggedOps: any, phrase: string) => filterOperations(taggedOps, phrase),
     },
     wrapComponents: {
       parameters: (Original: SwaggerComponent) => function RememberedParameters(props: any) {
@@ -100,6 +101,15 @@ export function createSwaggerPlugin(options: {
       },
       FilterContainer: (Original: SwaggerComponent) => function SearchOperations(props: any) {
         const root = useRef<HTMLDivElement>(null);
+        // Tags start folded (every open operation slows typing); a search opens the tags it matches.
+        const filter = props.layoutSelectors?.currentFilter?.();
+        useEffect(() => {
+          const system = options.systemRef.current;
+          const phrase = typeof filter === "string" ? filter.trim() : "";
+          if (!system || !phrase) return;
+          const matched = filterOperations(system.specSelectors.taggedOperations(), phrase);
+          for (const tag of matched?.keySeq?.().toArray?.() ?? []) if (typeof tag === "string") system.layoutActions.show(["operations-tag", tag], true);
+        }, [filter]);
         useLayoutEffect(() => {
           const input = root.current?.querySelector("input");
           input?.setAttribute("placeholder", "태그 · 메서드 · 경로 · 이름 · 설명 검색");
