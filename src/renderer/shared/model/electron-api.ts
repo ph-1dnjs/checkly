@@ -63,7 +63,7 @@ declare global {
         status: "passed" | "failed";
         reason?: string;
       }) => Promise<void>;
-      cancelQa: () => Promise<void>;
+      cancelQa: (options?: { keepWorker?: boolean }) => Promise<void>;
       insertFormAutomationText: (input: {
         webContentsId: number;
         text: string;

@@ -117,11 +117,11 @@ export const App = (): ReactElement => {
     endSession,
     sessionPromptOpen,
     resolveSessionPrompt,
-    rerunStack,
+    runTimeline,
     stackPaused,
     queueRerun,
     removeFromStack,
-    clearStack,
+    clearDoneRecords,
     pauseStack,
     resumeStack,
     runProgressPercent,
@@ -230,10 +230,10 @@ export const App = (): ReactElement => {
             sessionActive={sessionActive}
             onEndSession={endSession}
             onRerunScenario={queueRerun}
-            rerunStack={rerunStack}
+            runTimeline={runTimeline}
             stackPaused={stackPaused}
             onRemoveFromStack={removeFromStack}
-            onClearStack={clearStack}
+            onClearDoneRecords={clearDoneRecords}
             onPauseStack={pauseStack}
             onResumeStack={resumeStack}
             previewImage={previewImage}
@@ -384,7 +384,8 @@ export const App = (): ReactElement => {
               이어받아, 2차 인증이 필요한 시나리오를 반복 실행할 때 매번 다시
               로그인하지 않아도 됩니다.
             </p>
-            <label className="run-settings-toggle">
+            <label className="session-prompt-toggle">
+              <span>다시 묻지 않기</span>
               <input
                 type="checkbox"
                 checked={keepSessionPromptChecked}
@@ -392,17 +393,24 @@ export const App = (): ReactElement => {
                   setKeepSessionPromptChecked(event.target.checked)
                 }
               />
-              다시 묻지 않기 (항상 세션 유지)
             </label>
             <div className="modal-actions">
               <Button
-                variant="primary"
                 onClick={() => {
-                  resolveSessionPrompt(keepSessionPromptChecked);
+                  resolveSessionPrompt(false, keepSessionPromptChecked);
                   setKeepSessionPromptChecked(false);
                 }}
               >
                 닫기
+              </Button>
+              <Button
+                variant="primary"
+                onClick={() => {
+                  resolveSessionPrompt(true, keepSessionPromptChecked);
+                  setKeepSessionPromptChecked(false);
+                }}
+              >
+                세션 유지
               </Button>
             </div>
           </div>

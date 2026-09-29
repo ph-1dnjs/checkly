@@ -121,9 +121,14 @@ export const resolveManualControl = (result: ManualControlResult): void => {
 export const resolveManualResult = (result: ManualResult): void => {
   activeRun?.resolveManualResult?.(result);
 };
-export const cancelActiveRun = async (): Promise<void> => {
+// keepWorker: true이면 브라우저(scenarioWorker)를 닫지 않는다. 재실행 대기열에서
+// 실행 중인 항목 하나만 건너뛸 때 사용하며, 이어지는 finishQaWorker 호출(세션 미유지 시)
+// 또는 다음 시나리오의 워커 재사용(세션 유지 시)에 정리를 맡긴다.
+export const cancelActiveRun = async (
+  options: { keepWorker?: boolean } = {},
+): Promise<void> => {
   if (!activeRun) {
-    await closeScenarioWorker();
+    if (!options.keepWorker) await closeScenarioWorker();
     return;
   }
   activeRun.cancelled = true;
@@ -136,7 +141,7 @@ export const cancelActiveRun = async (): Promise<void> => {
     status: "failed",
     reason: "실행이 취소되었습니다.",
   });
-  await closeScenarioWorker();
+  if (!options.keepWorker) await closeScenarioWorker();
 };
 
 const readableStep = (step: QaStep): string =>
@@ -231,6 +236,7 @@ const clickTargetFor = async (
         frameIndex: number;
         order: number;
         isClickContainer: boolean;
+        isHeading: boolean;
       }
     >();
     for (const [frameIndex, frame] of page.frames().entries()) {
@@ -279,6 +285,7 @@ const clickTargetFor = async (
               key: pathFor(target),
               order: Array.from(document.querySelectorAll("*")).indexOf(target),
               isClickContainer: target === element,
+              isHeading: /^H[1-6]$/.test(target.tagName),
             };
           });
           const key = `${frameIndex}:${metadata.key}`;
@@ -292,14 +299,20 @@ const clickTargetFor = async (
               frameIndex,
               order: metadata.order,
               isClickContainer: metadata.isClickContainer,
+              isHeading: metadata.isHeading,
             });
           }
         }
       }
     }
+    // 페이지 제목 같은 heading 요소는 클릭 대상 문구를 우연히 포함하더라도 실제
+    // 클릭 대상으로 의도된 경우가 거의 없다. 같은 이름의 버튼·링크가 화면에 있다면
+    // DOM 순서와 무관하게 그것을 우선 선택하고, heading은 최후 후보로만 남긴다.
     const orderedTargets = [...visibleTargets.values()].sort(
       (left, right) =>
-        left.frameIndex - right.frameIndex || left.order - right.order,
+        Number(left.isHeading) - Number(right.isHeading) ||
+        left.frameIndex - right.frameIndex ||
+        left.order - right.order,
     );
     if (orderedTargets.length >= occurrence)
       return orderedTargets[occurrence - 1].locator;
