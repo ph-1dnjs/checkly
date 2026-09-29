@@ -113,12 +113,15 @@ export const defaultMarkerPosition = (index: number) => ({
 const unquoteMarkdownValue = (value: string) =>
   value.trim().replace(/^`([\s\S]*)`$/, "$1");
 
-export const parseMarkdown = (markdown: string): Scenario[] =>
+export const splitScenarioBlocks = (markdown: string): string[] =>
   markdown
     .split(/(?=^#{1,3}\s*시나리오:|^Scenario:)/im)
     // 편집 중에는 Enter/Delete로 공백 줄만 남는 중간 상태가 생길 수 있다.
-    // 이 상태는 시나리오 블록이 아니므로 파싱 대상에서 제외한다.
-    .filter((block) => block.trim())
+    // 이 상태는 시나리오 블록이 아니므로 파싱/교체 대상에서 제외한다.
+    .filter((block) => block.trim());
+
+export const parseMarkdown = (markdown: string): Scenario[] =>
+  splitScenarioBlocks(markdown)
     .map((block, index) => {
       const lines = block
         .split("\n")

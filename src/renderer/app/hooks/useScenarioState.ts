@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   markerColor,
   parseMarkdown,
+  splitScenarioBlocks,
   emptyScenario,
   type Action,
   type MarkerPositionStore,
@@ -80,15 +81,13 @@ const replaceScenarioMarkdown = (
   sourceMarkdown: string,
   scenario: Scenario,
 ): string => {
-  const blocks = sourceMarkdown
-    .split(/(?=^#{1,3}\s*시나리오:|^Scenario:)/im)
-    .filter(Boolean);
+  const blocks = splitScenarioBlocks(sourceMarkdown);
   const index = parseMarkdown(sourceMarkdown).findIndex(
     (item) =>
       item.id === scenario.id ||
       (item.title === scenario.title && item.url === scenario.url),
   );
-  if (index < 0) return scenarioToMarkdown(scenario);
+  if (index < 0) return sourceMarkdown;
   blocks[index] = scenarioToMarkdown(scenario);
   return blocks.join("\n\n").trim();
 };
