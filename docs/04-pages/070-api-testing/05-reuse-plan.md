@@ -24,7 +24,7 @@ Checkly의 현재 구현은 2026-09-29 커밋 `3b62f9f` 기준이다. 외부 프
 - `/Users/slogup/project/test/openapi-k6-runner/test/scenario.executor.test.ts`: 인증번호 공급자 값을 다음 요청에 전달하는 테스트. 존재 확인만 했으며 이 프로젝트 테스트를 실행한 것은 아니다.
 - Checkly `src/app/api-testing/shared/scenario.ts`: 단일 YAML 작성 문법 검사·직렬화, 폐기 문법 거절, 내부 실행 모델 변환.
 - Checkly `src/app/api-testing/main/execution.ts`: 실행 전 검사, 단계 입력 공급자 대기, HTTP 단계 실행.
-- Checkly `src/renderer/pages/api-testing/ApiDocumentation.tsx`, `ScenarioBuilder.tsx`: API 선택과 별도 값 설정 화면.
+- Checkly `src/renderer/pages/api-testing/ui/ApiDocumentation.tsx`, `src/renderer/features/api-testing/edit-scenario/ui/ScenarioBuilder.tsx`: API 선택과 별도 값 설정 화면.
 - Checkly `src/app/api-testing/main/register.ts`, `web-dev.ts`: Electron IPC·웹 RPC의 입력 조회와 제출.
 
 ## 현재 계약과 재사용 시 주의점

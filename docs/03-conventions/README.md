@@ -27,7 +27,7 @@
 
 ## import와 프로세스 경계
 
-- 상대 import를 사용하며 path alias와 barrel export는 없습니다.
+- 상대 import를 사용하며 path alias는 없습니다.
 - 타입만 가져오면 `import type`을 사용합니다.
 - renderer는 Node.js·Electron·Playwright를 직접 import하지 않습니다.
 - main/preload는 renderer 컴포넌트나 DOM 코드를 import하지 않습니다.
@@ -48,7 +48,7 @@
 | `src/renderer/shared/model` | 공통 타입, 순수 parser·formatter, `window.electronAPI` 타입 |
 | `src/renderer/styles` | 전역·화면별 CSS |
 
-`features`, `entities`는 현재 비어 있으므로 단일 변경을 위해 새 레이어를 도입하지 않습니다. `src/app/ipc`와 `src/renderer/app/hooks`는 이미 도입된 도메인/관심사 분리이므로, 새 IPC 채널이나 새 App 상태를 추가할 때는 `main.ts`나 `App.tsx`에 직접 붙이지 말고 이 디렉터리 아래에 파일을 추가한 뒤 조립부에서만 연결합니다.
+`src/app/ipc`와 `src/renderer/app/hooks`는 이미 도입된 도메인/관심사 분리이므로, 새 IPC 채널이나 새 App 상태를 추가할 때는 `main.ts`나 `App.tsx`에 직접 붙이지 말고 이 디렉터리 아래에 파일을 추가한 뒤 조립부에서만 연결합니다.
 
 ## 상태와 컴포넌트
 

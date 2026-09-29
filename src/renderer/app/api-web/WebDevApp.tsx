@@ -2,7 +2,7 @@ import { useState } from "react";
 import { ApiTestingPage } from "../../pages/api-testing/ApiTestingPage";
 import { webBridge } from "./web-bridge";
 import { BottomNavigation } from "../../widgets/BottomNavigation";
-import type { ApiRunAction } from "../../pages/api-testing/useRunAction";
+import type { ApiRunAction } from "../../shared/model/run-action";
 
 export function WebDevApp() {
   const [action, setAction] = useState<ApiRunAction | null>(null);

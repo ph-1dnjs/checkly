@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { responseFields } from "../../src/renderer/pages/api-testing/response-fields";
+import { responseFields } from "../../src/renderer/entities/api-testing/lib/response-fields";
 
 test("response selection shows one DTO array item with first-item pointers", () => {
   const responses = { "200": { content: { "application/json": { schema: { $ref: "#/components/schemas/Result" } } } } };

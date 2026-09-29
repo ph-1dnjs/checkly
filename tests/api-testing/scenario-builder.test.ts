@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { parseScenario, stringifyScenario, type Scenario } from "../../src/app/api-testing/shared/scenario";
-import { apiReference, connectValue, linkVariableName, moveStep } from "../../src/renderer/pages/api-testing/scenario-builder-model";
+import { apiReference, connectValue, linkVariableName, moveStep } from "../../src/renderer/features/api-testing/edit-scenario/model/scenario-builder-model";
 
 const sample = () => parseScenario(`id: imported
 name: AI 원본

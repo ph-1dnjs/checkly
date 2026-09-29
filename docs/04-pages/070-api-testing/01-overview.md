@@ -12,7 +12,9 @@ API 문서는 공식 Swagger UI에 저장된 명세를 전달합니다. 태그 �
 
 ## 코드 경계
 
-화면은 기존 페이지 구조인 `src/renderer/pages/api-testing/`에 둡니다. 웹 개발 진입점과 웹 브리지는 `src/renderer/app/api-web/`, 공통 UI는 `src/renderer/shared/ui/`에 둡니다. 실행·저장 서비스와 계약은 `src/app/api-testing/main/`, `shared/`에 유지합니다. 별도 npm 패키지는 없습니다. renderer는 main을 직접 import하지 않고 브리지를 사용합니다. shared 모델은 Node.js·Electron·DOM에 의존하지 않습니다. Electron 빌드는 main/shared를, Vite는 renderer를 처리합니다.
+화면 진입점·URL 상태·화면 전체 조합은 `src/renderer/pages/api-testing/`에 둡니다. 사용자 행동은 `src/renderer/features/api-testing/`의 기능별 slice로, 시나리오 데이터 표시·계산·최근 실행 상태는 `src/renderer/entities/api-testing/`으로 나눕니다. 웹 개발 진입점과 웹 브리지는 `src/renderer/app/api-web/`, 범용 입력·정렬 UI는 `src/renderer/shared/ui/`, 공통 실행 버튼 훅은 `src/renderer/shared/hooks/`에 둡니다. entity·feature의 외부 사용은 필요한 항목만 공개하는 `index.ts`를 통합니다. 실행·저장 서비스와 계약은 `src/app/api-testing/main/`, `shared/`에 유지합니다. 별도 npm 패키지는 없습니다. renderer는 main을 직접 import하지 않고 브리지를 사용합니다. shared 모델은 Node.js·Electron·DOM에 의존하지 않습니다. Electron 빌드는 main/shared를, Vite는 renderer를 처리합니다.
+
+전역변수 관리 기능은 편집 메뉴의 상태를 소유합니다. 페이지의 `ApiTestingProviders`가 저장 revision을 민감값 Context에 전달하고, 편집·요약·실행 흐름에는 `onConfigureGlobal` 콜백을 전달합니다. entity가 변수 편집 feature를 직접 참조하지 않습니다. 클래스와 스타일 적용 순서는 기존 화면을 유지하며, API 테스트 전용 CSS는 페이지의 `ui/api-testing.css`에서 관리합니다.
 
 기존 공통 Dock과 Popover를 사용합니다. `useRunAction`은 현재 API 또는 시나리오 실행을 Dock에 연결합니다. 공통 `ProgressBar`는 API 시나리오 결과 영역의 실행 중 상태에, `LoadingSpinner`는 명세 조회에 사용합니다. 단계별 진행 이벤트가 없으므로 시나리오 로딩바는 퍼센트를 표시하지 않습니다. 실행 중 입력이 필요한 API 단계는 실행을 잠시 멈추고 결과 영역 위에 입력 모달을 표시하며, 제출하면 같은 실행을 이어갑니다.
 
