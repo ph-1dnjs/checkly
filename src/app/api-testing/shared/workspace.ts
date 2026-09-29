@@ -58,6 +58,18 @@ export type ApiGlobal = { name: string; type: string; displayValue: string };
 /** Session cookie scope only; values never leave the main process. */
 export type ApiCookie = { name: string; domain: string; path: string };
 export type SavedApiScenario = { id: string; name: string; source: string; bindings: Record<string, string>; updatedAt: string; draft?: boolean; groupPath?: string[]; tags?: string[]; /** Old-title → new-title renames the user chose to keep as is. */ keptTitles?: Array<{ from: string; to: string }> };
+/**
+ * A project shared as one file: settings, scenarios and suites, plus each spec's URL. Never
+ * carries globals, saved docs accounts, tokens, cookies, remembered docs inputs or spec bodies.
+ */
+export type ApiProjectExport = {
+  format: "checkly-api-project"; version: 1; exportedAt: string;
+  project: ApiProject;
+  specUrls: Array<{ serverId: string; environmentId: string; url: string }>;
+  scenarios: Array<{ id: string; name: string; source: string; draft?: boolean; groupPath?: string[]; tags?: string[] }>;
+  suites: Array<{ id: string; name: string; scenarioIds: string[]; onFailure: "stop" | "continue"; groupPath?: string[]; tags?: string[] }>;
+};
+export type ApiProjectImportResult = { project: ApiProject; scenarios: number; suites: number; specUrls: number };
 export type SavedApiSuite = { id: string; name: string; scenarioIds: string[]; onFailure: "stop" | "continue"; updatedAt: string; groupPath?: string[]; tags?: string[] };
 export type ApiSidebarMetadata = { groupPath?: string[]; tags?: string[] };
 export type ApiScenarioPreview = { scenario: Scenario; issues: string[]; executionIssues?: string[] };
@@ -106,6 +118,10 @@ export type ApiTestingBridge = {
   /** Last "Try it out" values per operation key of the scope's server; secrets are never kept. */
   getDocInputs(scope: ApiScope): Promise<Record<string, ApiDocInput>>;
   forgetDocInput(scope: ApiScope, operationKey: string): Promise<void>;
+  /** Saves the project as a share file; resolves to where it was saved, or null when cancelled. */
+  exportProject(projectId: string): Promise<string | null>;
+  /** Picks a share file and adds it as a new project; null when cancelled. */
+  importProject(): Promise<ApiProjectImportResult | null>;
   listGlobals(scope: ApiProjectScope): Promise<ApiGlobal[]>;
   setGlobal(scope: ApiProjectScope, name: string, value: Json): Promise<void>;
   deleteGlobal(scope: ApiProjectScope, name: string): Promise<void>;

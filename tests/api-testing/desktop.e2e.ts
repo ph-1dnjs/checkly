@@ -456,6 +456,23 @@ async function main() {
     await restored.getByRole("button", { name: "시나리오 목록으로", exact: true }).click();
     await restored.getByRole("button", { name: "변경사항 버리고 닫기", exact: true }).click();
     await expect(warnedEntry).toBeVisible();
+    // A project exports to one share file and imports back as a new project.
+    const shareFile = path.join(dir, "share.checkly-api.json");
+    await app.evaluate(({ dialog }, file) => {
+      dialog.showSaveDialog = (async () => ({ canceled: false, filePath: file })) as unknown as typeof dialog.showSaveDialog;
+      dialog.showOpenDialog = (async () => ({ canceled: false, filePaths: [file] })) as unknown as typeof dialog.showOpenDialog;
+    }, shareFile);
+    await restored.getByRole("button", { name: "프로젝트 설정", exact: true }).click();
+    await restored.getByRole("button", { name: "프로젝트 내보내기", exact: true }).click();
+    await expect(restored.getByRole("status").filter({ hasText: "저장했습니다" })).toContainText(shareFile);
+    const shared = await readFile(shareFile, "utf8");
+    if (shared.includes("desktop-api-token") || shared.includes("docs-test-password")) throw new Error("Share file carries secrets");
+    await restored.getByRole("button", { name: "← 돌아가기", exact: true }).click();
+    await restored.getByRole("button", { name: "+ 프로젝트", exact: true }).click();
+    await restored.getByRole("button", { name: "파일에서 가져오기", exact: true }).click();
+    await expect(restored.getByRole("status").filter({ hasText: "프로젝트를 가져왔습니다" })).toContainText("‘쇼핑몰 QA (2)’");
+    await expect(restored.getByLabel("API 프로젝트").locator("option:checked")).toHaveText("쇼핑몰 QA (2)");
+    await expect(restored.locator(".api-sidebar-entry").filter({ hasText: "로그인 후 상품 조회" })).toBeVisible();
   } finally {
     try {
       const electronProcess = app?.process();

@@ -1,7 +1,7 @@
 import { mkdir, readFile, rename, rm, stat, writeFile, unlink } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { projectSchema, type ApiCatalog, type ApiCookie, type ApiProject, type ApiScope, type ApiResponse, type ApiProjectScope, type ApiEnvironmentScope, type ApiGlobal, type SavedApiScenario, type SavedApiSuite, type ApiSidebarMetadata, type ApiScenarioPreview, type ApiScenarioResult, type ApiRequestTrace, type ApiAiImportResult, type ApiAiDraft, type ApiMissingApi, type ApiTitleRename, type ApiSpecImpact } from "../shared/workspace";
+import { httpUrl, projectSchema, type ApiCatalog, type ApiCookie, type ApiProject, type ApiScope, type ApiResponse, type ApiProjectScope, type ApiEnvironmentScope, type ApiGlobal, type SavedApiScenario, type SavedApiSuite, type ApiSidebarMetadata, type ApiScenarioPreview, type ApiScenarioResult, type ApiRequestTrace, type ApiAiImportResult, type ApiAiDraft, type ApiMissingApi, type ApiTitleRename, type ApiSpecImpact, type ApiProjectExport, type ApiProjectImportResult } from "../shared/workspace";
 import { z } from "zod";
 import { ApiRunner, resolveRequestUrl } from "./execution";
 import { resolve } from "./variables";
@@ -110,6 +110,75 @@ export class ApiWorkspace {
       await this.save("projects.json", projects.filter(p => p.id !== id));
     });
   }
+  /** Share file text for a project (see ApiProjectExport for what is left out). */
+  async exportProject(rawProjectId: string): Promise<string> {
+    const projectId = z.string().uuid().parse(rawProjectId);
+    const project = (await this.listProjects()).find(p => p.id === projectId);
+    if (!project) throw new Error("프로젝트를 찾을 수 없습니다");
+    const specUrls: ApiProjectExport["specUrls"] = [];
+    for (const environment of project.environments) for (const server of project.servers) {
+      const stored = await this.read(`spec-source-${projectId}-${environment.id}-${server.id}.json`) as { url?: unknown } | null;
+      if (typeof stored?.url === "string") specUrls.push({ serverId: server.id, environmentId: environment.id, url: stored.url });
+    }
+    const data: ApiProjectExport = {
+      format: "checkly-api-project", version: 1, exportedAt: new Date().toISOString(), project, specUrls,
+      scenarios: (await this.listScenarios(projectId)).map(item => ({ id: item.id, name: item.name, source: item.source, ...(item.draft ? { draft: true } : {}), ...(item.groupPath ? { groupPath: item.groupPath } : {}), ...(item.tags ? { tags: item.tags } : {}) })),
+      suites: (await this.listSuites(projectId)).map(({ updatedAt: _updatedAt, ...suite }) => suite),
+    };
+    return JSON.stringify(data, null, 2);
+  }
+
+  /**
+   * Adds a share file as a new project (never overwrites one): every project, server, environment
+   * and suite id is new, so importing the same file twice gives two projects. Specs come back by
+   * refreshing their URL; file-imported specs have to be imported again.
+   */
+  async importProject(text: string): Promise<ApiProjectImportResult> {
+    if (text.length > 10_000_000) throw new Error("프로젝트 파일은 10MB 이하만 지원합니다");
+    let raw: unknown;
+    try { raw = JSON.parse(text); } catch { throw new Error("Checkly 프로젝트 파일이 아닙니다"); }
+    const parsed = z.object({
+      format: z.literal("checkly-api-project"), version: z.literal(1), exportedAt: z.string().optional(),
+      project: projectSchema,
+      specUrls: z.array(z.object({ serverId: z.string().uuid(), environmentId: z.string().uuid(), url: httpUrl }).strict()).max(1000),
+      scenarios: z.array(z.object({ id: z.string().min(1).max(1000), name: z.string().max(200), source: z.string().max(1_000_000), draft: z.boolean().optional() }).extend(sidebarMetadataSchema.shape).strict()).max(5000),
+      suites: z.array(suiteSchema).max(1000),
+    }).strict().safeParse(raw);
+    if (!parsed.success) throw new Error(raw && typeof raw === "object" && (raw as { format?: unknown }).format === "checkly-api-project" ? "지원하지 않는 프로젝트 파일 형식입니다" : "Checkly 프로젝트 파일이 아닙니다");
+    const data = parsed.data;
+    const action = this.queue.then(async () => {
+      const projects = await this.listProjects();
+      const serverIds = new Map(data.project.servers.map(server => [server.id, randomUUID()]));
+      const environmentIds = new Map(data.project.environments.map(environment => [environment.id, randomUUID()]));
+      const names = new Set(projects.map(p => p.name));
+      let name = data.project.name;
+      for (let n = 2; names.has(name); n++) name = `${data.project.name} (${n})`.slice(0, 100);
+      const project = projectSchema.parse({
+        id: randomUUID(), name,
+        servers: data.project.servers.map(server => ({ ...server, id: serverIds.get(server.id)! })),
+        environments: data.project.environments.map(environment => ({ ...environment, id: environmentIds.get(environment.id)!, baseUrls: Object.fromEntries(Object.entries(environment.baseUrls).flatMap(([id, url]) => serverIds.has(id) ? [[serverIds.get(id)!, url]] : [])) })),
+      });
+      // Scenarios keep their YAML ids (suites point at them) and must still be valid YAML.
+      const now = new Date().toISOString();
+      const scenarios: SavedApiScenario[] = data.scenarios.map(item => {
+        const scenario = this.parseSource(item.source);
+        if (scenario.id !== item.id) throw new Error(`시나리오 '${item.name}'의 ID가 파일 내용과 다릅니다`);
+        return { id: item.id, name: scenario.name, source: item.source, bindings: {}, updatedAt: now, draft: item.draft ?? false, ...(item.groupPath ? { groupPath: item.groupPath } : {}), ...(item.tags ? { tags: item.tags } : {}) };
+      });
+      if (new Set(scenarios.map(item => item.id)).size !== scenarios.length) throw new Error("같은 ID의 시나리오가 파일에 여러 개 있습니다");
+      const suites: SavedApiSuite[] = data.suites.map(suite => ({ ...suite, id: randomUUID(), scenarioIds: suite.scenarioIds.filter(id => scenarios.some(item => item.id === id)), updatedAt: now })).filter(suite => suite.scenarioIds.length);
+      const specUrls = data.specUrls.filter(item => serverIds.has(item.serverId) && environmentIds.has(item.environmentId));
+      await this.save(`scenarios-${project.id}.json`, scenarios);
+      await this.save(`suites-${project.id}.json`, suites);
+      for (const item of specUrls) await this.save(`spec-source-${project.id}-${environmentIds.get(item.environmentId)}-${serverIds.get(item.serverId)}.json`, { url: item.url });
+      // Last: the project only appears once everything it points at is written.
+      await this.save("projects.json", [...projects, project]);
+      return { project, scenarios: scenarios.length, suites: suites.length, specUrls: specUrls.length };
+    });
+    this.queue = action.catch(() => undefined);
+    return action;
+  }
+
   async deleteCatalog(input: ApiScope): Promise<void> {
     const scope = scopeSchema.parse(input);
     return this.mutate(scope.projectId, async () => {

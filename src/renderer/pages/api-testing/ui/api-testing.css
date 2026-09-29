@@ -1001,3 +1001,8 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 .api-suite-checks .is-failed { color:var(--ck-color-fail-ink); font-weight:600; }
 /* Remembered "Try it out" values */
 .api-doc-remembered { display:flex; flex-wrap:wrap; align-items:center; gap:4px 12px; margin:8px 20px 4px; color:var(--api-muted); font-size:12px; word-break:keep-all; }
+/* Project share file */
+.api-project-import { display:flex; flex-wrap:wrap; align-items:center; gap:4px 8px; }
+.api-project-export { display:flex; align-items:center; gap:8px; min-width:0; }
+.api-project-export small { min-width:0; color:var(--api-muted); font-size:11px; overflow-wrap:anywhere; }
+.api-page-notice { display:flex; flex-wrap:wrap; align-items:center; gap:4px 12px; margin:0 0 12px; padding:8px 12px; border-left:3px solid var(--ck-color-blue-action); background:var(--ck-color-blue-tint-soft); color:var(--api-body); font-size:12px; word-break:keep-all; }
