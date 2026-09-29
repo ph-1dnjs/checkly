@@ -473,6 +473,18 @@ async function main() {
     await expect(restored.getByRole("status").filter({ hasText: "프로젝트를 가져왔습니다" })).toContainText("‘쇼핑몰 QA (2)’");
     await expect(restored.getByLabel("API 프로젝트").locator("option:checked")).toHaveText("쇼핑몰 QA (2)");
     await expect(restored.locator(".api-sidebar-entry").filter({ hasText: "로그인 후 상품 조회" })).toBeVisible();
+    // The imported project works once its spec is refreshed from the carried URL: the scenario runs.
+    await restored.getByRole("tab", { name: /^API 문서/ }).click();
+    await expect(refreshedSource).toContainText("/openapi.json");
+    await refreshSpec();
+    await expect(refreshedSource).toContainText("최근 동기화 성공");
+    await restored.getByRole("tab", { name: "시나리오", exact: true }).click();
+    await restored.getByRole("button", { name: /로그인 후 상품 조회/ }).click();
+    await restored.getByRole("button", { name: "실행", exact: true }).click();
+    const importedInput = restored.getByRole("dialog", { name: "loginId 입력", exact: true });
+    await importedInput.getByRole("textbox").fill("tester");
+    await importedInput.getByRole("button", { name: "입력 완료 · 계속", exact: true }).click();
+    await expect(restored.getByRole("region", { name: "시나리오 실행 결과" })).toContainText("통과");
   } finally {
     try {
       const electronProcess = app?.process();

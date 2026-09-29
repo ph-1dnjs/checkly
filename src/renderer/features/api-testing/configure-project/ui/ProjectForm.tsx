@@ -46,7 +46,7 @@ export function ProjectForm({ initial, onSave, onCancel, onDelete, onExport, onI
       <button type="button" className="api-project-back" disabled={saving} onClick={leave}>← 돌아가기</button>
       <h2>{initial ? "프로젝트 설정" : "새 API 프로젝트"}</h2>
       <p>서버마다 API 명세를 등록하고, 실행할 때 고른 환경의 기본 주소로 호출합니다.</p>
-      {!initial && onImport && <p className="api-project-import">공유받은 프로젝트 파일이 있나요?<button type="button" className="api-compose-link" disabled={saving} onClick={() => void runFileAction(onImport)}>파일에서 가져오기</button></p>}
+      {!initial && onImport && <div className="api-project-import"><span>공유받은 프로젝트 파일이 있으면 직접 만들지 않고 가져올 수 있습니다.</span><button type="button" disabled={saving} onClick={() => void runFileAction(onImport)}>파일에서 가져오기</button></div>}
     </header>
     <fieldset disabled={saving}>
       <label className="api-project-field">프로젝트 이름<input required value={draft.name} onChange={e => setDraft({ ...draft, name: e.target.value })} placeholder="예: 쇼핑몰 QA" /></label>
