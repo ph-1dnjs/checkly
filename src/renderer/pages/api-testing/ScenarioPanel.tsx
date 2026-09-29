@@ -122,12 +122,13 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
     return () => { active = false; };
   }, [scope.projectId, scope.environmentId, saved]);
   useEffect(() => {
+    if (editorMode) return;
     let active = true;
     void Promise.all(project.servers.map(async server => [server.id, await bridge.getCatalog({ ...scope, serverId: server.id })] as const))
       .then(entries => { if (active) setCatalogs(Object.fromEntries(entries)); })
       .catch(() => { if (active) setCatalogs({}); });
     return () => { active = false; };
-  }, [bridge, project.servers, scope.environmentId, scope.projectId]);
+  }, [bridge, editorMode, project.servers, scope.environmentId, scope.projectId]);
   useEffect(() => {
     if (!running) {
       setPendingInput(null);
@@ -253,14 +254,13 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
   }
   const availableGroupPaths = [...groupPathMap.values()].sort((left, right) => left.join(" › ").localeCompare(right.join(" › "), "ko"));
   if (composer) {
-    if (!activeCatalog) return <section className="api-scenario-composer-loading" aria-label="시나리오 작성"><LoadingSpinner label="선택한 서버의 API 문서를 준비하는 중…" /></section>;
     const initialEdit = composer.saved && composer.scenario ? { saved: composer.saved, scenario: composer.scenario } : undefined;
     return <ApiDocumentation
       key={composer.saved?.id ?? "new"}
       mode="compose"
       initialEdit={initialEdit}
       project={project}
-      catalog={activeCatalog}
+      catalog={activeCatalog ?? null}
       scope={scope}
       bridge={bridge}
       baseUrl={project.environments.find(environment => environment.id === scope.environmentId)?.baseUrls[scope.serverId] ?? ""}

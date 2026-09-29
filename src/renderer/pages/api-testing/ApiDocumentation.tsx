@@ -17,11 +17,13 @@ import { type SwaggerSystem, type Selection } from "./swagger-types";
 import { updateDeepLinkHash, applyDeepLink, handleSwaggerClick } from "./swagger-deep-link";
 import { buildSpec } from "./swagger-request";
 import { submitMethods, createSwaggerPlugin } from "./swagger-plugin";
+import { LoadingSpinner } from "../../shared/ui/LoadingSpinner";
 
 const StableSwaggerUI = memo(SwaggerUI);
+const emptyCatalogs: Record<string, ApiCatalog | null> = {};
 
 export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy, onRunAction, project, initialEdit, onEditConsumed, mode = "document", onCloseComposer, onSaved, onUnsavedChange, onExecuteSaved, sidebarGroupPath, sidebarGroupPaths = [], onSidebarGroupPathChange, onNewScenario, sidebarMetadata, toolbarContext }: {
-  catalog: ApiCatalog; scope: ApiScope; bridge: ApiTestingBridge; baseUrl: string; busy: boolean;
+  catalog: ApiCatalog | null; scope: ApiScope; bridge: ApiTestingBridge; baseUrl: string; busy: boolean;
   onBusy: (value: boolean) => void; onRunAction: OnRunAction;
   project: ApiProject;
   initialEdit?: { saved: SavedApiScenario; scenario: Scenario };
@@ -42,24 +44,26 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
   const ownsRunAction = !composeOnly && !initialEdit;
   const [composing, setComposing] = useState(composeOnly || Boolean(initialEdit));
   const [composeServerId, setComposeServerId] = useState(scope.serverId);
-  const [composeCatalogs, setComposeCatalogs] = useState<Record<string, ApiCatalog | null>>({ [scope.serverId]: catalog });
-  const [composeCatalogLoading, setComposeCatalogLoading] = useState(false);
+  const [composeCatalogState, setComposeCatalogState] = useState<{
+    projectId: string; environmentId: string; values: Record<string, ApiCatalog | null>;
+  } | null>(null);
+  // Keep the draft mounted, but never show another environment's catalogs while loading.
+  const currentCatalogState = composeCatalogState?.projectId === scope.projectId && composeCatalogState.environmentId === scope.environmentId ? composeCatalogState : null;
+  const composeCatalogs = currentCatalogState?.values ?? emptyCatalogs;
+  const composeCatalogLoading = composing && !currentCatalogState;
   useEffect(() => {
     setComposeServerId(current => project.servers.some(server => server.id === current) ? current : scope.serverId);
   }, [project.servers, scope.serverId]);
   useEffect(() => {
-    setComposeCatalogs(current => ({ ...current, [scope.serverId]: catalog }));
-  }, [catalog, scope.serverId]);
-  useEffect(() => {
     if (!composing) return;
     let live = true;
-    setComposeCatalogLoading(true);
+    setComposeCatalogState(null);
     void Promise.all(project.servers.map(async server => {
       try { return [server.id, await bridge.getCatalog({ ...scope, serverId: server.id })] as const; }
       catch { return [server.id, null] as const; }
     })).then(entries => {
-      if (live) setComposeCatalogs(current => ({ ...current, ...Object.fromEntries(entries) }));
-    }).finally(() => { if (live) setComposeCatalogLoading(false); });
+      if (live) setComposeCatalogState({ projectId: scope.projectId, environmentId: scope.environmentId, values: Object.fromEntries(entries) });
+    });
     return () => { live = false; };
   }, [bridge, composing, project.servers, scope.environmentId, scope.projectId]);
   useEffect(() => { if (initialEdit) onEditConsumed?.(); }, []);
@@ -93,7 +97,7 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
   const [dirty, setDirty] = useState(false);
   const [editorVersion, setEditorVersion] = useState(0);
   const displayCatalog = composing
-    ? composeCatalogs[composeServerId] ?? (composeServerId === scope.serverId ? catalog : null)
+    ? composeCatalogs[composeServerId] ?? null
     : catalog;
   const displayBaseUrl = composing
     ? project.environments.find(environment => environment.id === scope.environmentId)?.baseUrls[composeServerId] ?? ""
@@ -169,7 +173,7 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
   };
   const selectedRef = useRef<Selection | null>(null);
   const busyRef = useRef(busy);
-  catalogRef.current = displayCatalog ?? catalog;
+  catalogRef.current = displayCatalog;
   baseUrlRef.current = displayBaseUrl;
   bridgeRef.current = bridge;
   scopeRef.current = scope;
@@ -198,7 +202,7 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
     setMarkdown(() => (value as SwaggerSystem).getComponent("Markdown"));
     applyDeepLink(systemRef.current, window.location.hash);
   }, []);
-  const spec = useMemo(() => buildSpec(displayCatalog ?? catalog, displayBaseUrl), [catalog, displayBaseUrl, displayCatalog]);
+  const spec = useMemo(() => displayCatalog ? buildSpec(displayCatalog, displayBaseUrl) : undefined, [displayBaseUrl, displayCatalog]);
 
   useLayoutEffect(() => {
     if (!composing) return;
@@ -237,7 +241,7 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
     const observer = new MutationObserver(install);
     observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-checkly-path", "data-checkly-method", "data-checkly-param-name", "data-checkly-param-in"] });
     return () => { observer.disconnect(); for (const button of created) button.remove(); };
-  }, [composeServerId, displayCatalog?.importedAt, composing, saving]);
+  }, [composeServerId, displayCatalog, composing, saving]);
 
   useEffect(() => {
     const handleNavigation = () => applyDeepLink(systemRef.current, window.location.hash);
@@ -323,7 +327,7 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
         {composeCatalogLoading && <small>명세를 불러오는 중…</small>}
       </div>}
       {displayCatalog ? <StableSwaggerUI
-        key={`${composeServerId}:${displayCatalog.importedAt}`}
+        key={`${scope.environmentId}:${composeServerId}:${displayCatalog.importedAt}`}
         spec={spec}
         plugins={plugins}
         onComplete={onComplete}
@@ -338,13 +342,13 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
         supportedSubmitMethods={composing ? [] : submitMethods}
         showExtensions={false}
         showCommonExtensions={false}
-      /> : <div className="api-empty api-compose-server-empty"><h2>API 명세를 가져오세요</h2><p>선택한 서버·환경에 API 명세가 없습니다.</p></div>}
+      /> : composeCatalogLoading ? <LoadingSpinner label="선택한 서버의 API 문서를 준비하는 중…" /> : <div className="api-empty api-compose-server-empty"><h2>API 명세를 가져오세요</h2><p>선택한 서버·환경에 API 명세가 없습니다.</p></div>}
     </div>
     {composing && composeView === "select" && <aside className="api-selection-basket" aria-label="선택한 API" data-scroll="light">
       <h2>선택한 API · {draft.steps.length}개</h2>
       <p className="api-compose-legend"><Icon name="add" size={14} />로 추가 · <Icon name="expand_more" size={14} />로 상세 열기 · 요청값은 2단계에서 설정</p>
       <SelectedApiList scenario={draft} disabled={saving} onChange={changeDraft} onLocate={locateStep} getOperation={step => {
-        const stepCatalog = step.server === composeServerId ? displayCatalog : composeCatalogs[step.server] ?? (step.server === scope.serverId ? catalog : null);
+        const stepCatalog = composeCatalogs[step.server];
         return stepCatalog?.operations.find(operation => "operationId" in step.api ? operation.operationId === step.api.operationId : operation.path === step.api.path && operation.method.toUpperCase() === step.api.method);
       }} />
       {activeStepId && draft.steps.some(step => step.id === activeStepId) && <p className="api-field-help">{draft.steps.findIndex(step => step.id === activeStepId) + 1}단계를 문서에서 보는 중입니다.</p>}

@@ -8,7 +8,7 @@ import { mapValue, textValue, buildRequest, requestUrl, displayRequest, response
 
 export const submitMethods = ["get", "put", "post", "delete", "options", "head", "patch"];
 export function createSwaggerPlugin(options: {
-  catalogRef: MutableRef<ApiCatalog>;
+  catalogRef: MutableRef<ApiCatalog | null>;
   baseUrlRef: MutableRef<string>;
   bridgeRef: MutableRef<ApiTestingBridge>;
   scopeRef: MutableRef<ApiScope>;
@@ -58,7 +58,8 @@ export function createSwaggerPlugin(options: {
         });
         const setTags = (shown: boolean) => {
           const system = options.systemRef.current;
-          if (system) for (const tag of tagNames(system, options.catalogRef.current)) system.layoutActions.show(["operations-tag", tag], shown);
+          const catalog = options.catalogRef.current;
+          if (system && catalog) for (const tag of tagNames(system, catalog)) system.layoutActions.show(["operations-tag", tag], shown);
         };
         const Authorize = props.getComponent("AuthorizeBtnContainer", true);
         return <div ref={root} className="api-doc-search-tools"><Original {...props} />
@@ -173,8 +174,10 @@ export function createSwaggerPlugin(options: {
             return (async () => {
               let url = path;
               try {
-                const request = buildRequest(options.catalogRef.current, selection, system);
-                url = requestUrl(options.baseUrlRef.current, path, request, options.catalogRef.current.operations.find(operation => operation.path === path && operation.method.toLowerCase() === method.toLowerCase()));
+                const catalog = options.catalogRef.current;
+                if (!catalog) throw new Error("선택한 서버·환경에 API 명세가 없습니다.");
+                const request = buildRequest(catalog, selection, system);
+                url = requestUrl(options.baseUrlRef.current, path, request, catalog.operations.find(operation => operation.path === path && operation.method.toLowerCase() === method.toLowerCase()));
                 const shownRequest = displayRequest(selection, url, request);
                 system.specActions.setRequest(path, method, shownRequest);
                 system.specActions.setMutatedRequest?.(path, method, shownRequest);
