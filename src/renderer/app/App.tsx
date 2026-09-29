@@ -363,9 +363,11 @@ export const App = (): ReactElement => {
         route={route}
         running={running}
         onNavigate={setRoute}
-        onRun={() =>
-          beginRuns(route === "run" ? runQueue : executableScenarios)
-        }
+        onRun={() => {
+          if (route === "run") return beginRuns(runQueue);
+          if (route === "editor") return runEditorContent();
+          return beginRuns(executableScenarios);
+        }}
         onCancel={cancelRuns}
       />
       {sessionPromptOpen && (
