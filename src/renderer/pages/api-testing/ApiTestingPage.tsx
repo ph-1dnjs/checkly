@@ -1,17 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import type { ApiCatalog, ApiSpecImpact, ApiProject, ApiSpecSync, ApiTestingBridge, SavedApiScenario } from "../../../app/api-testing/shared/workspace";
-import { ProjectForm } from "./ProjectForm";
-import { ApiDocumentation } from "./ApiDocumentation";
+import { ProjectForm } from "../../features/api-testing/configure-project";
+import { ApiDocumentation } from "./ui/ApiDocumentation";
 import { LoadingSpinner } from "../../shared/ui/LoadingSpinner";
-import { GlobalVariableAccessProvider, GlobalVariableMenu } from "./global-variable-access";
-import { SensitiveValuesProvider } from "./sensitive-values";
-import { ScenarioPanel } from "./ScenarioPanel";
-import { ScenarioEditorPanel } from "./ScenarioEditorPanel";
-import { AiAuthorPanel } from "./AiAuthorPanel";
-import { SpecSourcePanel } from "./SpecSourcePanel";
-import "./api-testing.css";
-import type { OnRunAction } from "./useRunAction";
-import { readWorkspaceUrl, workspaceUrl, type ApiTab } from "./workspace-url";
+import { GlobalVariableMenu } from "../../features/api-testing/configure-globals";
+import { ApiTestingProviders } from "./ui/ApiTestingProviders";
+import { ScenarioPanel } from "./ui/ScenarioPanel";
+import { ScenarioEditorPanel } from "./ui/ScenarioEditorPanel";
+import { AiAuthorPanel } from "../../features/api-testing/author-scenarios";
+import { SpecSourcePanel } from "../../features/api-testing/configure-spec";
+import "./ui/api-testing.css";
+import type { OnRunAction } from "../../shared/model/run-action";
+import { readWorkspaceUrl, workspaceUrl, type ApiTab } from "./lib/workspace-url";
 
 export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTesting }: { onRunAction: OnRunAction; bridge?: ApiTestingBridge }) {
   const [projects, setProjects] = useState<ApiProject[]>([]);
@@ -174,7 +174,7 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
   const locked = busy || scenarioComposerOpen;
   const environmentPicker = project && <div className="api-environments" role="group" aria-label={tab === "scenario-editor" ? "시나리오 전체 호출 환경" : "API 환경"}>{project.environments.map(e => <button key={e.id} aria-pressed={environmentId === e.id} disabled={busy || loading} title={tab === "scenario-editor" ? "이 시나리오의 전체 API 호출 환경" : undefined} onClick={() => { setEnvironmentId(e.id); setUrl(""); }}>{e.name}</button>)}</div>;
   const valueActions = <div className="api-context-value-actions"><button type="button" role="switch" aria-checked={hideValues} aria-label="민감값 숨기기" className="api-value-visibility" title="토큰·비밀번호·인증 헤더 등 민감한 값만 화면에서 숨깁니다" onClick={() => setHideValues(value => !value)}><span className="api-value-switch-track" aria-hidden="true" /><span>민감값 숨기기</span></button><GlobalVariableMenu projectId={projectId} bridge={bridge} disabled={busy} /></div>;
-  return <GlobalVariableAccessProvider key={projectId}><SensitiveValuesProvider projectId={projectId} bridge={bridge}><section className={`api-testing-page api-swagger-shell${hideValues ? " api-hide-values" : ""}`}>
+  return <ApiTestingProviders key={projectId} projectId={projectId} bridge={bridge}><section className={`api-testing-page api-swagger-shell${hideValues ? " api-hide-values" : ""}`}>
     <header className="api-toolbar"><h1>API 테스트</h1><div className="api-actions"><select aria-label="API 프로젝트" disabled={locked || loading} value={projectId} onChange={e => selectProject(projects.find(p => p.id === e.target.value)!)}><option value="" disabled>프로젝트 선택</option>{projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select><button disabled={locked || loading} onClick={() => setForm("new")}>+ 프로젝트</button>{project && <button disabled={locked || loading} onClick={() => setForm("edit")}>프로젝트 설정</button>}</div></header>
     {error && <p className="api-warning" role="alert">{error}</p>}
     {form ? <ProjectForm key={`${form}:${projectId}`} initial={form === "edit" ? project : undefined} onCancel={() => setForm(null)} onDelete={async () => {
@@ -237,5 +237,5 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
         </div>
       </section>
     </div>}
-  </section></SensitiveValuesProvider></GlobalVariableAccessProvider>;
+  </section></ApiTestingProviders>;
 }

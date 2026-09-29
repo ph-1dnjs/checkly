@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { parseScenario } from "../../src/app/api-testing/shared/scenario";
-import { configuredFields } from "../../src/renderer/pages/api-testing/settings-summary-model";
+import { configuredFields } from "../../src/renderer/entities/api-testing/lib/settings-summary-model";
 
 test("summary classifies configured values and detects broken links without mutating draft", () => {
   const scenario = parseScenario(`name: test\nserver: backend\nsteps:\n  - api: POST /login\n    body:\n      login: '{{globals.login}}'\n      enabled: false\n  - api: POST /verify\n    inputs: [{name: code}]\n    body:\n      token: '{{steps.1.response.body./data/token}}'\n      code: '{{inputs.code}}'\n`);

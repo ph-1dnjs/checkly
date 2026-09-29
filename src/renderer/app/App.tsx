@@ -1,7 +1,7 @@
 import type { CSSProperties, ReactElement } from "react";
 import { Button } from "../shared/ui/Button";
 import { useState } from "react";
-import type { ApiRunAction } from "../pages/api-testing/useRunAction";
+import type { ApiRunAction } from "../shared/model/run-action";
 import { DashboardPage } from "../pages/dashboard/DashboardPage";
 import { ScenarioEditorPage } from "../pages/editor/ScenarioEditorPage";
 import { RunPage } from "../pages/run/RunPage";

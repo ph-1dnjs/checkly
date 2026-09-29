@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readWorkspaceUrl, workspaceUrl } from "../../src/renderer/pages/api-testing/workspace-url";
+import { readWorkspaceUrl, workspaceUrl } from "../../src/renderer/pages/api-testing/lib/workspace-url";
 
 test("workspace URL restores tabs and scope without replacing Swagger links", () => {
   const state = { tab: "scenarios" as const, projectId: "한글 project", serverId: "backend", environmentId: "dev", scenarioId: "" };

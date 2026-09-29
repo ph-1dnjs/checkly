@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { responseGlobalNameSuggestions } from "../../src/renderer/pages/api-testing/response-global-name";
+import { responseGlobalNameSuggestions } from "../../src/renderer/features/api-testing/edit-scenario/lib/response-global-name";
 
 test("response global names can use the field or endpoint path", () => {
   assert.deepEqual(

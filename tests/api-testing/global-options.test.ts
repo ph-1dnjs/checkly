@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { stringify } from "yaml";
 import { parseScenario, stringifyScenario } from "../../src/app/api-testing/shared/scenario";
-import { globalOptions, globalProducerScenarios } from "../../src/renderer/pages/api-testing/global-options";
+import { globalOptions, globalProducerScenarios } from "../../src/renderer/entities/api-testing/lib/global-options";
 
 test("global options separate values, prior extraction, future extraction and unresolved references", () => {
   const scenario = parseScenario(stringify({ id: "current", name: "현재", server: "backend", steps: [

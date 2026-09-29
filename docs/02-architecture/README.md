@@ -40,7 +40,7 @@ BrowserWindow는 `contextIsolation: true`, `nodeIntegration: false`로 생성됩
 | `src/renderer/widgets` | 여러 화면과 App이 조합하는 UI | `BottomNavigation`, `RunReportDrawer` |
 | `src/renderer/shared/model` | 시나리오 타입, 파서, 표시·시간 함수, `window.electronAPI` 타입 | `scenario.ts`, `electron-api.ts` |
 | `src/renderer/styles` | 전역·화면별 CSS | `index.css`와 화면별 파일 |
-| `src/renderer/features`, `entities` | 현재 구현 없음 | `.gitkeep`만 존재 |
+| `src/renderer/features`, `entities` | 사용자 기능·도메인 표현 | 역할별 `ui`, `model`, `lib` 등 |
 
 현재 구조는 Feature-Sliced Design의 이름을 일부 사용하지만 전체 FSD 레이어나 공개 API 규칙을 구현하지는 않습니다. 새 추상화를 만들기보다 인접 코드의 현재 경계를 따릅니다.
 

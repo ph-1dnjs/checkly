@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { expectedValueText, parseExpectedValue } from "../../src/renderer/pages/api-testing/step-request-model";
+import { expectedValueText, parseExpectedValue } from "../../src/renderer/features/api-testing/edit-scenario/model/step-request-model";
 
 test("expected values are typed as plain text and round-trip without changing type", () => {
   assert.equal(parseExpectedValue("success"), "success");

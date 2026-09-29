@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readLastRun, writeLastRun, type ScenarioLastRun } from "../../src/renderer/pages/api-testing/scenario-last-run";
+import { readLastRun, writeLastRun, type ScenarioLastRun } from "../../src/renderer/entities/api-testing/model/scenario-last-run";
 
 test("last run is isolated by project, environment and scenario and snapshots its input", () => {
   const snapshot = { result: { status: "passed", steps: [], variables: { id: 1 } }, preview: { scenario: { id: "s" } }, bindings: {}, completedAt: "2026-09-21T00:00:00Z" } as ScenarioLastRun;

@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { parseScenario, stringifyScenario } from '../src/app/api-testing/shared/scenario'
-import type { ApiCatalog, ApiEnvironmentScope, ApiProject, ApiScenarioPreview, ApiScope, ApiTestingBridge, SavedApiScenario } from '../src/app/api-testing/shared/workspace'
+import type { ApiCatalog, ApiEnvironmentScope, ApiGlobal, ApiProject, ApiScenarioPreview, ApiScope, ApiTestingBridge, SavedApiScenario } from '../src/app/api-testing/shared/workspace'
 
 const projectId = '00000000-0000-4000-8000-000000000001'
 const serverId = '00000000-0000-4000-8000-000000000002'
@@ -57,7 +57,7 @@ function structuredCatalog(summary: string): ApiCatalog {
   }
 }
 
-async function workspace(page: Page, structured = false) {
+async function workspace(page: Page, structured = false, linkedGlobal = false) {
   const catalogs: Record<string, ApiCatalog | null> = {
     [environments.dev]: structured ? structuredCatalog('개발 구조 입력') : catalog('/dev-items', '개발 환경 조회'),
     [environments.empty]: null,
@@ -70,6 +70,10 @@ async function workspace(page: Page, structured = false) {
     })),
   }
   const original = parseScenario(`id: stored-scenario\nname: 저장된 시나리오\ndescription: 저장된 설명\nserver: ${serverId}\nsteps:\n  - api: GET /dev-items\n    query: { q: original }\n`)
+  if (linkedGlobal) original.steps[0].request.query = { q: '{{globals.accessToken}}' }
+  let globals: ApiGlobal[] = []
+  const globalSaves: Parameters<ApiTestingBridge['setGlobal']>[] = []
+  let runs = 0
   let saved: SavedApiScenario[] = [{
     id: original.id, name: original.name, source: stringifyScenario(original, true),
     bindings: {}, updatedAt: importedAt, groupPath: ['기존 그룹'],
@@ -91,8 +95,22 @@ async function workspace(page: Page, structured = false) {
       case 'listProjects': return [project]
       case 'listScenarios': return saved
       case 'listSuites':
-      case 'listGlobals':
       case 'listCookies': return []
+      case 'listGlobals': return globals
+      case 'setGlobal': {
+        const [scope, name, value] = args as Parameters<ApiTestingBridge['setGlobal']>
+        globalSaves.push([scope, name, value])
+        globals = [...globals.filter(item => item.name !== name), { name, type: typeof value, displayValue: typeof value === 'string' ? value : JSON.stringify(value) }]
+        return undefined
+      }
+      case 'runScenario': {
+        runs++
+        const scenario = parseScenario(args[1] as string)
+        return { status: 'passed', variables: {}, steps: scenario.steps.map(step => ({
+          id: step.id, name: step.name ?? step.id, status: 'passed', httpStatus: 200, durationMs: 1,
+          body: { message: 'before fresh-secret after' }, headers: {},
+        })) }
+      }
       case 'getRequestAuth':
       case 'getPendingScenarioInput': return null
       case 'cancel': return undefined
@@ -150,7 +168,7 @@ async function workspace(page: Page, structured = false) {
   await page.getByRole('button', { name: 'API 테스트', exact: true }).click()
   await expect(page.getByRole('button', { name: '+ 새 시나리오', exact: true })).toBeEnabled()
   return {
-    saves, requests, unexpected,
+    saves, requests, unexpected, globalSaves, get runs() { return runs },
     pause(environment: string) {
       gates.set(environment, new Promise<void>(resolve => releases.set(environment, resolve)))
     },
@@ -330,5 +348,56 @@ test('unfinished array and body JSON retain their text and validity across envir
   await expect(page.getByLabel('1단계 q', { exact: true })).toBeVisible()
   await expect(filters).toHaveCount(0)
   await expect(body).toHaveCount(0)
+  expect(fixture.unexpected).toEqual([])
+})
+
+
+test('global setup callbacks refresh the editor, summary and authentication choices', async ({ page }) => {
+  const fixture = await workspace(page, false, true)
+  await page.getByRole('button', { name: '저장된 시나리오', exact: true }).click()
+  await page.getByRole('button', { name: '수정', exact: true }).click()
+  await editStep(page).click()
+  await stepDetails(page).locator('summary').first().click()
+  const summaryLink = page.locator('.api-settings-summary').getByRole('button', { name: 'accessToken 전역변수 설정하기', exact: true })
+  const editorLink = stepDetails(page).getByRole('button', { name: 'accessToken 전역변수 설정하기', exact: true })
+  await expect(summaryLink).toBeVisible()
+  await editorLink.click()
+  const menu = page.getByRole('dialog', { name: '{ } 전역변수', exact: true })
+  await expect(menu.getByLabel('전역변수 이름', { exact: true })).toHaveValue('accessToken')
+  await menu.getByRole('button', { name: '{ } 전역변수 닫기', exact: true }).click()
+  await summaryLink.click()
+  await expect(menu.getByLabel('전역변수 이름', { exact: true })).toHaveValue('accessToken')
+  await menu.getByLabel('전역변수 값', { exact: true }).fill('saved-token')
+  await menu.getByRole('button', { name: '전역변수 저장', exact: true }).click()
+  await expect.poll(() => fixture.globalSaves.length).toBe(1)
+  expect(fixture.globalSaves[0]).toEqual([{ projectId }, 'accessToken', 'saved-token'])
+  await expect(summaryLink).toHaveCount(0)
+  await expect(editorLink).toHaveCount(0)
+  await menu.locator('.api-global-editor > summary').click()
+  await menu.getByLabel('전역변수 이름', { exact: true }).fill('otherToken')
+  await menu.getByLabel('전역변수 값', { exact: true }).fill('another-token')
+  await menu.getByRole('button', { name: '전역변수 저장', exact: true }).click()
+  await expect(page.getByLabel('시나리오 기본 인증', { exact: true }).locator('option[value="globals.otherToken"]')).toHaveCount(1)
+  expect(fixture.unexpected).toEqual([])
+})
+
+test('saving a secret updates masking in an already expanded run result', async ({ page }) => {
+  const fixture = await workspace(page)
+  await page.getByRole('button', { name: '저장된 시나리오', exact: true }).click()
+  await page.getByRole('button', { name: '실행', exact: true }).click()
+  await page.getByRole('group', { name: '실행 결과 펼치기' }).getByRole('button', { name: '모두 펼치기', exact: true }).click()
+  const response = page.locator('.api-run-result-step .api-highlighted-json').filter({ hasText: 'before fresh-secret after' })
+  await expect(response).toBeVisible()
+  await expect(response.locator('.api-sensitive-value')).toHaveCount(0)
+  await page.getByRole('button', { name: '{ } 전역변수', exact: true }).click()
+  const menu = page.getByRole('dialog', { name: '{ } 전역변수', exact: true })
+  await menu.locator('.api-global-editor > summary').click()
+  await menu.getByLabel('전역변수 이름', { exact: true }).fill('accessToken')
+  await menu.getByLabel('전역변수 값', { exact: true }).fill('fresh-secret')
+  await menu.getByRole('button', { name: '전역변수 저장', exact: true }).click()
+  await expect(response.locator('.api-sensitive-value')).toHaveText('fresh-secret')
+  await expect(response.locator('.api-sensitive-value')).toHaveCSS('-webkit-text-security', 'disc')
+  expect(fixture.runs).toBe(1)
+  expect(fixture.globalSaves).toEqual([[{ projectId }, 'accessToken', 'fresh-secret']])
   expect(fixture.unexpected).toEqual([])
 })
