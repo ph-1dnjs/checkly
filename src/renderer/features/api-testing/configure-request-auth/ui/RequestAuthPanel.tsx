@@ -30,7 +30,8 @@ export function RequestAuthPanel({ scope, bridge }: { scope: ApiScope; bridge: A
     finally { setToken(""); setBusy(false); }
   };
   const strings = variables.filter(v => v.type === "string");
-  const newToken = choice === NEW_TOKEN;
+  // With no string globals there is nothing to pick, so a new token is the only way.
+  const newToken = choice === NEW_TOKEN || !strings.length;
   const unchanged = !newToken && choice === active;
   return <section className="api-auth-panel">
     <div className="api-auth-status" role="status">
@@ -47,18 +48,22 @@ export function RequestAuthPanel({ scope, bridge }: { scope: ApiScope; bridge: A
       await bridge.setGlobal({ projectId: scope.projectId }, name, token);
       await bridge.setRequestAuth(scope, name);
     }); }}><fieldset disabled={busy}>
-      <label>토큰<select aria-label="API 인증 전역변수" value={choice} onChange={e => { setChoice(e.target.value); setError(""); }}>
+      {/* Nothing to pick yet: skip the list and go straight to entering a token. */}
+      {strings.length ? <label>토큰<select aria-label="API 인증 전역변수" value={choice} onChange={e => { setChoice(e.target.value); setError(""); }}>
         <option value="" disabled>전역변수 선택</option>
         {strings.map(v => <option key={v.name} value={v.name}>{v.name}</option>)}
         <option value={NEW_TOKEN}>+ 새 토큰 입력</option>
-      </select></label>
+      </select></label> : <p className="api-auth-note">저장된 문자열 전역변수가 없어 새 토큰을 입력합니다.</p>}
       {newToken && <div className="api-auth-new">
         <label>토큰 값<input aria-label="새 API 인증 토큰" data-value-visibility="sensitive" type="text" autoComplete="off" required placeholder="Bearer 없이 토큰만" value={token} onChange={e => setToken(e.target.value)} /></label>
         <label>저장할 전역변수 이름<input aria-label="토큰 전역변수 이름" data-value-visibility="public" autoComplete="off" required value={tokenName} onChange={e => setTokenName(e.target.value)} /><small>같은 이름이면 값을 덮어씁니다.</small></label>
       </div>}
-      <button className="api-primary" disabled={!choice || unchanged}>{newToken ? "저장 후 연결" : "연결"}</button>
+      {error && <p role="alert" className="api-warning">{error}</p>}
+      {/* Dialog footer like the app's other dialogs: note on the left, the action on the right. */}
+      <div className="api-auth-footer">
+        <p className="api-auth-note">API 문서의 개별 호출에만 Bearer 토큰으로 붙습니다. 앱을 끄면 토큰과 연결이 초기화됩니다.</p>
+        <button className="api-primary" disabled={(!newToken && !choice) || unchanged}>{newToken ? "저장 후 연결" : "연결"}</button>
+      </div>
     </fieldset></form>
-    {error && <p role="alert" className="api-warning">{error}</p>}
-    <p className="api-auth-note">API 문서의 개별 호출에만 Bearer 토큰으로 붙습니다. 앱을 끄면 토큰과 연결이 초기화됩니다.</p>
   </section>;
 }

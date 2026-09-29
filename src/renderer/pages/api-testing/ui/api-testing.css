@@ -354,6 +354,8 @@ html:has(.api-diagram-dialog[open]) { overflow:hidden; }
 .api-auth-panel fieldset { margin:0; padding:0; border:0; }
 .api-auth-new { display:grid; gap:12px; padding:12px; border-radius:var(--ck-dim-radius-base); background:var(--ck-color-line-faint); }
 .api-auth-note { color:var(--api-muted); }
+.api-auth-footer { display:flex; align-items:center; justify-content:space-between; gap:12px; padding-top:12px; border-top:1px solid var(--api-border); }
+.api-auth-footer > button { flex:none; }
 .api-testing-page .api-remember { flex-direction:row; align-items:center; white-space:nowrap; }
 .api-remember input { width:16px; height:16px; }
 .api-builder { margin-top:20px; }
@@ -850,7 +852,6 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 .api-auth-panel fieldset { display:grid; gap:12px; }
 .api-auth-panel label { display:grid; gap:6px; }
 .api-auth-panel label small { color:var(--api-muted); font-size:11px; }
-.api-auth-panel fieldset > button { justify-self:start; }
 .api-swagger-ui .api-auth-panel button.api-primary { background:var(--ck-color-blue-action); border-color:var(--ck-color-blue-action); color:var(--ck-color-canvas); }
 
 /* Spec source: one summary line once loaded; the form opens under it. */
