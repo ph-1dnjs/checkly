@@ -19,7 +19,7 @@
 | check-ai-scenarios | 프로젝트·환경, AI 결과 텍스트 → 검사된 초안·스위트(저장하지 않음) |
 | list-cookies / clear-cookies | 프로젝트 → 쿠키 이름·도메인·경로 목록(값 제외)/완료. 실행 중에는 비울 수 없음 |
 | execute | scope, operation key, request → 원문 ApiResponse (Swagger Try it out). 요청 입력값은 민감값을 빼고 기억 |
-| export-project | 프로젝트 ID → 저장 대화상자로 공유 파일 저장(경로 또는 null). 원본 프로젝트 ID(`origin`)와 기준 해시(`base`) 포함, 비밀값 제외 |
+| export-project | 프로젝트 ID → 저장 대화상자로 공유 파일 저장(경로 또는 null). 원본 프로젝트 ID(`origin`)와 기준 해시(`base`) 포함. 전역변수 값·저장된 문서 계정·세션 쿠키는 제외하며, 시나리오와 명세 URL은 원문 포함 |
 | read-project-file / plan-project-import / import-project | 열기 대화상자 → 파일 텍스트(10MB 이하) / 텍스트 → 새 프로젝트 요약과 같은 프로젝트 사본별 3-way 비교 / 텍스트, 선택적 `{ projectId, scenarioIds, suiteIds }`(파일 쪽으로 할 충돌) → 새 프로젝트 또는 합친 결과. 원본 연결은 `share-origins.json`, 마지막으로 합친 버전은 `share-bases.json` |
 | get-doc-inputs / forget-doc-input | scope(서버 기준)/operation key → 기억한 Try it out 입력값 목록/삭제. 프로젝트 단위(환경 공통), 서버 삭제·프로젝트 삭제 시 함께 삭제 |
 | cancel | scope → 현재 환경 실행 취소 |
