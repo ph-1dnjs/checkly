@@ -43,6 +43,11 @@ export function createSwaggerPlugin(options: {
     if (input.body !== undefined) system.oas3Actions?.setRequestBodyValue({ pathMethod: [path, method], value: JSON.stringify(input.body, null, 2) });
   };
   // Filter the operation lists, not the spec: keep request editors and responses intact.
+  // After a call, bring its result into view: long parameter forms push it below the fold.
+  const revealResponse = (path: string, method: string) => window.setTimeout(() => {
+    const block = [...document.querySelectorAll<HTMLElement>(".api-swagger-renderer .opblock")].find(element => element.dataset.checklyPath === path && element.dataset.checklyMethod?.toLowerCase() === method.toLowerCase());
+    block?.querySelector(".live-responses-table, .responses-inner > div > div")?.scrollIntoView({ block: "start", behavior: "smooth" });
+  }, 50);
   const filterOperations = (taggedOps: any, phrase: string) => {
     const query = phrase.trim().toLocaleLowerCase();
     if (!query) return taggedOps;
@@ -61,6 +66,16 @@ export function createSwaggerPlugin(options: {
       opsFilter: (taggedOps: any, phrase: string) => filterOperations(taggedOps, phrase),
     },
     wrapComponents: {
+      // The spec's title stays, its long description folds so the operations start sooner.
+      // InfoContainer, not info: OAS 3.1 specs swap in their own info component.
+      InfoContainer: (Original: SwaggerComponent) => function CompactInfo(props: any) {
+        const [open, setOpen] = useState(false);
+        const description = textValue(mapValue(props.specSelectors?.info?.(), "description"));
+        return <div className={`api-doc-info${open ? " is-open" : ""}`}>
+          <Original {...props} />
+          {description.trim() && <button type="button" className="api-compose-link api-doc-info-toggle" aria-expanded={open} onClick={() => setOpen(value => !value)}>{open ? "설명 접기" : "설명 보기"}</button>}
+        </div>;
+      },
       parameters: (Original: SwaggerComponent) => function RememberedParameters(props: any) {
         const [path, method] = (props.pathMethod ?? []) as string[];
         const key = path && method ? `${method.toUpperCase()} ${path}` : "";
@@ -122,7 +137,8 @@ export function createSwaggerPlugin(options: {
         };
         const Authorize = props.getComponent("AuthorizeBtnContainer", true);
         return <div ref={root} className="api-doc-search-tools"><Original {...props} />
-          {!props.specSelectors.securityDefinitions() && <Authorize />}
+          {/* Always here: the servers row (where Swagger puts it) is hidden, the environment picks the base URL. */}
+          <Authorize />
           <div className="api-actions api-doc-controls">
             <button type="button" onClick={() => setTags(true)}>태그 모두 펼치기</button>
             <button type="button" onClick={() => setTags(false)}>태그 모두 접기</button>
@@ -247,8 +263,10 @@ export function createSwaggerPlugin(options: {
                 const response = await options.bridgeRef.current.execute(options.scopeRef.current, `${method.toUpperCase()} ${path}`, request);
                 if (response.httpStatus === undefined && response.error) system.specActions.setResponse(path, method, responseFromError(response.error, url));
                 else system.specActions.setResponse(path, method, responseFromApi(response, url));
+                revealResponse(path, method);
               } catch (error) {
                 system.specActions.setResponse(path, method, responseFromError(error, url));
+                revealResponse(path, method);
               } finally {
                 options.busyRef.current = false;
                 options.setBusy(false);

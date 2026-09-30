@@ -1069,3 +1069,14 @@ body.panel-resizing { cursor:col-resize; user-select:none; }
 .api-global-editor h4 { margin:0 0 8px; font-size:12px; color:var(--api-primary); }
 .api-globals-heading-actions { display:flex; gap:6px; }
 .api-global-list.is-values-hidden .api-global-value { -webkit-text-security:disc; }
+/* API docs: a compact header, the servers row hidden (the environment decides the base URL),
+   and the search/Authorize row stuck to the top while the long operation list scrolls. */
+.api-swagger-renderer .swagger-ui .scheme-container { display:none; }
+.api-swagger-renderer .swagger-ui .information-container .info { margin:12px 0 8px; }
+.api-swagger-renderer .swagger-ui .info .title { font-size:20px; }
+.api-doc-info { position:relative; }
+.api-doc-info:not(.is-open) .swagger-ui .info .description, .api-doc-info:not(.is-open) .info > .description, .api-doc-info:not(.is-open) .info .renderedMarkdown { display:none; }
+.api-doc-info-toggle { margin:0 0 8px; }
+.api-swagger-renderer .api-doc-search-tools { position:sticky; top:0; z-index:20; margin:0 0 12px; padding:10px 20px; background:var(--ck-color-canvas); border-bottom:1px solid var(--api-border); }
+/* Scrolled-to results land below the sticky tools row, not under it. */
+.api-swagger-renderer .swagger-ui :is(.live-responses-table, .responses-inner > div > div, .opblock) { scroll-margin-top:120px; }

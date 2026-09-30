@@ -327,7 +327,6 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
         </div>
       </section>
     </div>}
-    {!(composing && composeView === "edit") && <p className={`api-spec-meta${composing ? " api-compose-meta" : ""}`}>API 문서의 응답은 원문 그대로 보이고 저장되지 않습니다. 화면 공유에 주의하세요.</p>}
     <div ref={layoutRef} className={composing ? `api-compose-layout${composeView === "select" ? " api-selection-layout" : " api-edit-layout"}` : undefined} style={composing && composeView === "edit" && summaryWidth !== null ? { "--api-summary-width": `${summaryWidth}px` } as CSSProperties : undefined}>
     <div className="api-swagger-renderer" hidden={composing && composeView === "edit"} data-scroll="light">
       {composing && project.servers.length > 1 && <div className="api-compose-server-switch">
