@@ -66,7 +66,6 @@ steps:
     extract:
       - pointer: /accessToken
         target: globals.accessToken
-        sensitive: true
   - name: 상품 조회
     api: GET /items/{id}
     pathParams:

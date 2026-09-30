@@ -5,7 +5,6 @@ import { configuredFields } from "../lib/settings-summary-model";
 import { SummaryJson } from "./SummaryJson";
 import { responseFields } from "../lib/response-fields";
 import { GlobalVariableSetupLink } from "./GlobalVariableSetupLink";
-import { isSensitiveKey } from "../../../../app/api-testing/shared/sensitive";
 import { expectedValueText, verificationOperatorLabels, verificationSourceLabels } from "../../../../app/api-testing/shared/scenario";
 
 const jsonKind = (value: unknown) => value === null ? "null" : typeof value === "string" ? "string" : typeof value === "number" ? "number" : typeof value === "boolean" ? "boolean" : "string";
@@ -44,7 +43,7 @@ export function ScenarioStepSummary({ scenario, stepIndex, operation, catalog, g
     : <span className={className}>{content}</span>;
   const fieldContent = (field: typeof fields[number]) => {
     const value = field.direct
-      ? <span className={`api-json-syntax-${jsonKind(field.value)}${isSensitiveKey(field.field) ? " api-sensitive-value" : ""}`}>{JSON.stringify(field.value) ?? "null"}</span>
+      ? <span className={`api-json-syntax-${jsonKind(field.value)}`}>{JSON.stringify(field.value) ?? "null"}</span>
       : <span className={`api-field-state api-field-state-${field.global ? "global" : field.label === "실행 중 입력" ? "user-input" : "scenario"}`}><strong>{field.global ? "전역변수" : field.label === "실행 중 입력" ? "사용자 입력" : "값 연결"}</strong>{field.label !== "실행 중 입력" && <code>{field.global ?? field.label}</code>}</span>;
     return <>{action(value, "api-json-token api-summary-value", onSelect ? () => onSelect(step.id, field.key) : undefined, `${field.field} 설정`)}{isMissingGlobal(field) ? <GlobalVariableSetupLink onConfigure={onConfigureGlobal} name={field.global!} /> : field.warning && <span className="api-response-json-badge is-verify" role="status">{field.warning}</span>}</>;
   };

@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, rm, stat, writeFile, unlink } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, rm, stat, writeFile, unlink } from "node:fs/promises";
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { httpUrl, projectSchema, type ApiCatalog, type ApiCookie, type ApiProject, type ApiScope, type ApiResponse, type ApiProjectScope, type ApiEnvironmentScope, type ApiGlobal, type SavedApiScenario, type SavedApiSuite, type ApiSidebarMetadata, type ApiScenarioPreview, type ApiScenarioResult, type ApiRequestTrace, type ApiAiImportResult, type ApiAiDraft, type ApiMissingApi, type ApiTitleRename, type ApiSpecImpact, type ApiProjectExport, type ApiProjectImportResult, type ApiProjectImportPlan, type ApiShareDiff } from "../shared/workspace";
@@ -127,6 +127,11 @@ export class ApiWorkspace {
       delete origins[id]; delete bases[id];
       await this.save("share-origins.json", origins); await this.save("share-bases.json", bases);
       await rm(this.aiFiles(id).dir, { recursive: true, force: true });
+      // Leftovers the steps above do not name: old format backups (…-<id>.json.bak-…) and specs of
+      // server/environment pairs no longer in the project. The id is a UUID, so this matches only it.
+      for (const file of await readdir(this.directory).catch(() => [] as string[])) {
+        if (file.includes(`-${id}.`) || file.includes(`-${id}-`)) await this.removeFile(file);
+      }
       await this.save("projects.json", projects.filter(p => p.id !== id));
     });
   }

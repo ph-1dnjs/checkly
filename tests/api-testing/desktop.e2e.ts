@@ -137,16 +137,17 @@ async function main() {
     await page.keyboard.press("Escape");
     await expect(page.getByRole("dialog", { name: "{ } 전역변수", exact: true })).not.toBeVisible();
     await expect(page.getByRole("button", { name: "{ } 전역변수", exact: true })).toBeFocused();
-    // Globals: the add form lives in a collapsed "변수 추가" section.
+    // Globals: "+ 변수 추가" opens the form in place.
     const globals = page.getByRole("dialog", { name: "{ } 전역변수", exact: true });
     await page.getByRole("button", { name: "{ } 전역변수", exact: true }).click();
-    await globals.getByText("변수 추가", { exact: true }).click();
+    await globals.getByRole("button", { name: "+ 변수 추가", exact: true }).click();
     await page.getByLabel("전역변수 이름", { exact: true }).fill("sampleId");
     await page.getByLabel("전역변수 형식", { exact: true }).selectOption("json");
     await page.getByLabel("전역변수 값", { exact: true }).fill("7");
     await page.getByRole("button", { name: "전역변수 저장", exact: true }).click();
     await expect(globals.locator(".api-global-row").filter({ hasText: "sampleId" })).toBeVisible();
-    await expect(globals.getByRole("region", { name: "세션 쿠키" })).toContainText("저장된 쿠키가 없습니다.");
+    await expect(globals.getByRole("region", { name: "세션 쿠키" })).toContainText("세션 쿠키 0개");
+    await expect(globals.getByRole("button", { name: "쿠키 비우기", exact: true })).toBeDisabled();
     await page.keyboard.press("Escape");
 
     // AI authoring: copy the prompt for the user's own AI, check what it wrote, save scenarios and suite.
@@ -267,18 +268,23 @@ async function main() {
     await shot("run-result");
     // The session cookie from login reaches the next request.
     await expect(result).toContainText("SESSION=desktop-session");
-    // Raw values stay in the DOM; the default-on toggle hides only sensitive ones.
-    const masking = async (text: string) => result.locator("span", { hasText: text }).last().evaluate(node => getComputedStyle(node).webkitTextSecurity);
-    await expect(page.getByRole("switch", { name: "민감값 숨기기" })).toHaveAttribute("aria-checked", "true");
-    if (await masking("login-secret-token") !== "disc") throw new Error("Access token is not masked");
-    if (await masking("테스트 상품") === "disc") throw new Error("Ordinary response value is masked");
+    // Like Swagger, results show values as they are (no masking toggle any more).
+    await expect(page.getByRole("switch", { name: "민감값 숨기기" })).toHaveCount(0);
+    const tokenText = result.locator("span", { hasText: "login-secret-token" }).last();
+    if (await tokenText.evaluate(node => getComputedStyle(node).webkitTextSecurity) === "disc") throw new Error("Result values are masked");
 
     // The extracted token and the session cookie are shared by the project.
     await page.getByRole("button", { name: "{ } 전역변수", exact: true }).click();
     await shot("globals");
     const tokenRow = globals.locator(".api-global-row").filter({ hasText: "accessToken" });
     await expect(tokenRow).toBeVisible();
-    if (await tokenRow.locator(".api-global-value").evaluate(node => getComputedStyle(node).webkitTextSecurity) !== "disc") throw new Error("Token global is not masked");
+    // Values in the globals panel start hidden; [값 보기] shows them.
+    const tokenValue = tokenRow.locator(".api-global-value");
+    await expect(tokenValue).toHaveText("login-secret-token");
+    await expect(tokenValue).toHaveCSS("-webkit-text-security", "disc");
+    await globals.getByRole("button", { name: "값 보기", exact: true }).click();
+    await expect(tokenValue).toHaveCSS("-webkit-text-security", "none");
+    await globals.getByRole("button", { name: "값 숨기기", exact: true }).click();
     await expect(globals.getByRole("region", { name: "세션 쿠키" })).toContainText("SESSION");
     await expect(globals.getByRole("region", { name: "세션 쿠키" })).not.toContainText("desktop-session");
     await page.keyboard.press("Escape");
@@ -305,7 +311,9 @@ async function main() {
     await page.getByRole("button", { name: /AI 상점 흐름/ }).click();
     await expect(page.getByRole("button", { name: "실행", exact: true })).toBeEnabled();
     await shot("suite");
-    // Suite order uses the same sortable list; an unsaved order blocks running.
+    // A saved suite opens as a view; its order is edited after [수정], and an unsaved order blocks running.
+    await expect(page.getByRole("region", { name: "스위트 구성" })).toContainText("AI 로그인");
+    await page.getByRole("button", { name: "수정", exact: true }).click();
     await page.getByRole("button", { name: /^1번째 AI 로그인 순서 변경$/ }).press("ArrowDown");
     await expect(page.locator(".api-suite-order").nth(0)).toContainText("AI 상품 조회");
     await expect(page.getByRole("button", { name: "실행", exact: true })).toBeDisabled();
@@ -499,6 +507,7 @@ async function main() {
     const extra = copyFile.scenarios[0];
     copyFile.scenarios.push({ ...extra, id: "shared/extra", name: "공유로 추가된 시나리오", source: extra.source.replace(/^id: .*$/m, "id: shared/extra").replace(/^name: .*$/m, "name: 공유로 추가된 시나리오") });
     await writeFile(shareFile, JSON.stringify(copyFile));
+    await restored.getByRole("button", { name: "프로젝트 설정", exact: true }).click();
     await restored.getByRole("button", { name: "가져오기", exact: true }).click();
     const importDialog = restored.getByRole("dialog", { name: "프로젝트 가져오기" });
     await importDialog.getByLabel("업데이트할 프로젝트").selectOption({ label: "쇼핑몰 QA" });

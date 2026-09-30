@@ -15,7 +15,6 @@ import { readWorkspaceUrl, workspaceUrl, type ApiTab } from "./lib/workspace-url
 
 export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTesting }: { onRunAction: OnRunAction; bridge?: ApiTestingBridge }) {
   const [projects, setProjects] = useState<ApiProject[]>([]);
-  const [hideValues, setHideValues] = useState(true);
   const [runSaved, setRunSaved] = useState<SavedApiScenario | null>(null);
   // Opened (not run) when the scenarios tab mounts, e.g. the first scenario the AI helper saved.
   const [openSaved, setOpenSaved] = useState<SavedApiScenario | null>(null);
@@ -190,9 +189,9 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
   if (!bridge) return <section className="api-testing-page api-swagger-shell"><h1>API 테스트</h1><p>프로젝트 저장과 실제 API 호출은 Checkly 데스크톱 앱에서 사용할 수 있습니다.</p></section>;
   const locked = busy || scenarioComposerOpen;
   const environmentPicker = project && <div className="api-environments" role="group" aria-label={tab === "scenario-editor" ? "시나리오 전체 호출 환경" : "API 환경"}>{project.environments.map(e => <button key={e.id} aria-pressed={environmentId === e.id} disabled={busy || loading} title={tab === "scenario-editor" ? "이 시나리오의 전체 API 호출 환경" : undefined} onClick={() => { setEnvironmentId(e.id); setUrl(""); }}>{e.name}</button>)}</div>;
-  const valueActions = <div className="api-context-value-actions"><button type="button" role="switch" aria-checked={hideValues} aria-label="민감값 숨기기" className="api-value-visibility" title="토큰·비밀번호·인증 헤더 등 민감한 값만 화면에서 숨깁니다" onClick={() => setHideValues(value => !value)}><span className="api-value-switch-track" aria-hidden="true" /><span>민감값 숨기기</span></button><GlobalVariableMenu projectId={projectId} bridge={bridge} disabled={busy} /></div>;
-  return <ApiTestingProviders key={projectId} projectId={projectId} bridge={bridge}><section className={`api-testing-page api-swagger-shell${hideValues ? " api-hide-values" : ""}`}>
-    <header className="api-toolbar"><h1>API 테스트</h1><div className="api-actions"><select aria-label="API 프로젝트" disabled={locked || loading} value={projectId} onChange={e => selectProject(projects.find(p => p.id === e.target.value)!)}><option value="" disabled>프로젝트 선택</option>{projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select><button disabled={locked || loading} onClick={() => setForm("new")}>+ 프로젝트</button><button disabled={locked || loading} title="공유받은 프로젝트 파일(.checkly-api.json)을 새 프로젝트로 추가합니다" onClick={() => { setError(""); void importProject().catch(e => setError((e as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, ""))); }}>가져오기</button>{project && <button disabled={locked || loading} onClick={() => setForm("edit")}>프로젝트 설정</button>}</div></header>
+  const valueActions = <div className="api-context-value-actions"><GlobalVariableMenu projectId={projectId} bridge={bridge} disabled={busy} /></div>;
+  return <ApiTestingProviders key={projectId} projectId={projectId} bridge={bridge}><section className="api-testing-page api-swagger-shell">
+    <header className="api-toolbar"><h1>API 테스트</h1><div className="api-actions"><select aria-label="API 프로젝트" disabled={locked || loading} value={projectId} onChange={e => selectProject(projects.find(p => p.id === e.target.value)!)}><option value="" disabled>프로젝트 선택</option>{projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select><button disabled={locked || loading} onClick={() => setForm("new")}>+ 프로젝트</button>{project && <button disabled={locked || loading} onClick={() => setForm("edit")}>프로젝트 설정</button>}</div></header>
     {error && <p className="api-warning" role="alert">{error}</p>}
     {importPlan && <ProjectImportDialog plan={importPlan.plan} onCancel={() => setImportPlan(null)} onImport={async update => { await finishImport(await bridge.importProject(importPlan.text, update)); }} />}
     {notice && !form && <p className="api-page-notice" role="status">{notice}<button type="button" className="api-compose-link" onClick={() => setNotice("")}>닫기</button></p>}
@@ -208,18 +207,21 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
     onExport={async () => { const saved = await bridge.exportProject(projectId); return saved ? `저장했습니다 · ${saved}` : ""; }}
     onImport={importProject} /> : <>
       {!project ? <div className="api-empty"><h2>API 테스트를 시작하세요</h2><p>프로젝트를 만든 뒤 API 명세(OpenAPI) 파일이나 URL을 가져오세요.</p><button className="api-primary" onClick={() => setForm("new")}>프로젝트 만들기</button></div> : <>
-        <div className="api-context"><select aria-label="API 서버" value={serverId} disabled={locked || loading} onChange={e => { setServerId(e.target.value); setUrl(""); }}>{project.servers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select>{environmentPicker}<code>{project.environments.find(e => e.id === environmentId)?.baseUrls[serverId]}</code>{valueActions}</div>
-        <div className="api-tabs" role="tablist" aria-label="API 작업 영역">
-          <button role="tab" aria-selected={tab === "scenarios" || tab === "scenario-editor"} disabled={busy} onClick={() => {
-            if (tab !== "scenario-editor") { changeTab("scenarios"); return; }
-            if (scenarioDirty) setError("저장하지 않은 변경사항이 있습니다. 저장하거나 ← 목록에서 변경사항을 버리고 닫으세요.");
-            else backToScenarios();
-          }}>시나리오</button>
-          <button role="tab" aria-selected={tab === "api"} disabled={locked} onClick={() => changeTab("api")}>API 문서{catalog ? <small className="api-tab-count" title={`API ${catalog.operations.length}개`}>{catalog.operations.length}</small> : null}</button>
-          <button role="tab" aria-selected={tab === "ai"} disabled={locked} onClick={() => changeTab("ai")}>AI 작성 도우미</button>
+        {/* Tabs and the server/environment context share one row to keep the header short. */}
+        <div className="api-workbar">
+          <div className="api-tabs" role="tablist" aria-label="API 작업 영역">
+            <button role="tab" aria-selected={tab === "scenarios" || tab === "scenario-editor"} disabled={busy} onClick={() => {
+              if (tab !== "scenario-editor") { changeTab("scenarios"); return; }
+              if (scenarioDirty) setError("저장하지 않은 변경사항이 있습니다. 저장하거나 ← 목록에서 변경사항을 버리고 닫으세요.");
+              else backToScenarios();
+            }}>시나리오</button>
+            <button role="tab" aria-selected={tab === "api"} disabled={locked} onClick={() => changeTab("api")}>API 문서{catalog ? <small className="api-tab-count" title={`API ${catalog.operations.length}개`}>{catalog.operations.length}</small> : null}</button>
+            <button role="tab" aria-selected={tab === "ai"} disabled={locked} onClick={() => changeTab("ai")}>AI 작성 도우미</button>
+          </div>
+          <div className="api-context" title={`기본 주소 · ${project.environments.find(e => e.id === environmentId)?.baseUrls[serverId] ?? ""}`}><select aria-label="API 서버" value={serverId} disabled={locked || loading} onChange={e => { setServerId(e.target.value); setUrl(""); }}>{project.servers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select>{environmentPicker}{valueActions}</div>
         </div>
         {tab === "ai" && <AiAuthorPanel key={`${projectId}:${environmentId}`} project={project} scope={{ projectId, environmentId }} bridge={bridge} onBusy={setBusy} onSaved={first => { setBusy(false); setOpenSaved(first ?? null); setTab("scenarios"); }} />}
-        {tab === "scenarios" && <ScenarioPanel key={`${projectId}:${environmentId}:${serverId}`} project={project} scope={scope} bridge={bridge} onBusy={setBusy} onRunAction={onRunAction} runSaved={runSaved} onRunSavedConsumed={() => setRunSaved(null)} openSaved={openSaved} onOpenSavedConsumed={() => setOpenSaved(null)} onCreateScenario={() => openScenarioEditor()} onEditScenario={item => openScenarioEditor(item.id)} />}
+        {tab === "scenarios" && <ScenarioPanel key={`${projectId}:${environmentId}:${serverId}`} project={project} scope={scope} bridge={bridge} onBusy={setBusy} onRunAction={onRunAction} runSaved={runSaved} onRunSavedConsumed={() => setRunSaved(null)} openSaved={openSaved} onOpenSavedConsumed={() => setOpenSaved(null)} onOpenAi={() => changeTab("ai")} onCreateScenario={() => openScenarioEditor()} onEditScenario={item => openScenarioEditor(item.id)} />}
         {tab === "scenario-editor" && <ScenarioEditorPanel key={`${projectId}:${serverId}`} project={project} scope={scope} bridge={bridge} onBusy={setBusy} onRunAction={onRunAction} onBackToScenarios={backToScenarios} onExecuteSaved={executeSaved} startCreateRequest={scenarioCreateRequest} editScenarioId={scenarioEditorScenarioId} onCreateConsumed={() => setScenarioCreateRequest(0)} onComposerOpenChange={setScenarioComposerOpen} onUnsavedChange={setScenarioDirty} onCreateScenario={() => openScenarioEditor()} onEditScenario={item => openScenarioEditor(item.id)} composeContext={<div className="api-compose-context">{environmentPicker}{valueActions}</div>} />}
         {tab === "api" && <>
         {(catalog || sync || !loading) && <SpecSourcePanel key={`${projectId}:${serverId}:${environmentId}:${catalog ? "loaded" : "empty"}`}

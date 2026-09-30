@@ -5,6 +5,7 @@ import { RequestAuthPanel } from "../../../features/api-testing/configure-reques
 import { DescriptionMarkdown } from "./DescriptionMarkdown";
 import { type SwaggerMap, type SwaggerSystem, type Selection, type MutableRef, type SwaggerComponent } from "../model/swagger-types";
 import { updateDeepLinkHash } from "../lib/swagger-deep-link";
+import { explainApiSearch, highlightTerms, matchesApiSearch, parseApiSearch, type SearchableOperation } from "../lib/api-search";
 import { mapValue, textValue, buildRequest, requestUrl, displayRequest, responseFromApi, responseFromError, tagNames } from "../lib/swagger-request";
 
 export const submitMethods = ["get", "put", "post", "delete", "options", "head", "patch"];
@@ -43,24 +44,96 @@ export function createSwaggerPlugin(options: {
     if (input.body !== undefined) system.oas3Actions?.setRequestBodyValue({ pathMethod: [path, method], value: JSON.stringify(input.body, null, 2) });
   };
   // Filter the operation lists, not the spec: keep request editors and responses intact.
+  // After a call, bring its result into view: long parameter forms push it below the fold.
+  const revealResponse = (path: string, method: string) => window.setTimeout(() => {
+    const block = [...document.querySelectorAll<HTMLElement>(".api-swagger-renderer .opblock")].find(element => element.dataset.checklyPath === path && element.dataset.checklyMethod?.toLowerCase() === method.toLowerCase());
+    block?.querySelector(".live-responses-table, .responses-inner > div > div")?.scrollIntoView({ block: "start", behavior: "smooth" });
+  }, 50);
+  // Parameter and top-level body field names per operation, worked out once per catalog.
+  type Fields = Pick<SearchableOperation, "summary" | "description" | "parameters" | "bodyFields">;
+  const fieldCache = new WeakMap<ApiCatalog, Map<string, Fields>>();
+  const fieldsOf = (method: string, path: string): Fields => {
+    const catalog = options.catalogRef.current;
+    if (!catalog) return { parameters: [], bodyFields: [] };
+    let fields = fieldCache.get(catalog);
+    if (!fields) {
+      fields = new Map();
+      for (const operation of catalog.operations) {
+        const schema = operation.bodySchema as { properties?: Record<string, unknown> } | undefined;
+        const example = operation.bodyExample;
+        const body = [
+          ...Object.keys(schema && typeof schema === "object" && schema.properties && typeof schema.properties === "object" ? schema.properties : {}),
+          ...Object.keys(example && typeof example === "object" && !Array.isArray(example) ? example : {}),
+        ];
+        fields.set(`${operation.method.toUpperCase()} ${operation.path}`, { summary: operation.summary, description: operation.description, parameters: operation.parameters.map(parameter => parameter.name), bodyFields: [...new Set(body)] });
+      }
+      fieldCache.set(catalog, fields);
+    }
+    return fields.get(`${method.toUpperCase()} ${path}`) ?? { parameters: [], bodyFields: [] };
+  };
+  const searchable = (method: string, path: string, tag: string, operation: any): SearchableOperation => ({ method, path, tag,
+    summary: operation?.get?.("summary"), description: operation?.get?.("description"), ...fieldsOf(method, path) });
+  // The current search, for the operations to explain their match (they don't re-render on a new filter).
+  let searchPhrase = "";
+  const searchListeners = new Set<() => void>();
+  const useSearchPhrase = () => {
+    const [phrase, setPhrase] = useState(searchPhrase);
+    useEffect(() => {
+      const update = () => setPhrase(searchPhrase);
+      searchListeners.add(update);
+      update();
+      return () => { searchListeners.delete(update); };
+    }, []);
+    return phrase;
+  };
+  // Mark the searched words in tag names, paths, summaries and parameter names without touching
+  // Swagger's DOM (CSS Custom Highlight API; skipped where unsupported).
+  const highlightSearch = () => {
+    const registry = (globalThis.CSS as any)?.highlights as Map<string, unknown> | undefined;
+    const HighlightType = (globalThis as any).Highlight;
+    if (!registry || !HighlightType) return;
+    const terms = highlightTerms(parseApiSearch(searchPhrase, options.baseUrlRef.current));
+    if (!terms.length) { registry.delete("checkly-api-search"); return; }
+    const ranges: Range[] = [];
+    for (const element of document.querySelectorAll(".api-swagger-renderer :is(.opblock-tag > a, .opblock-summary-path, .opblock-summary-description, .opblock-description-wrapper, .parameter__name, .opblock-section-request-body :is(.property-row > td:first-child, .body-param__example))")) {
+      const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        const text = (node.textContent ?? "").toLocaleLowerCase();
+        for (const term of terms) {
+          for (let index = text.indexOf(term); index >= 0; index = text.indexOf(term, index + term.length)) {
+            const range = document.createRange();
+            range.setStart(node, index);
+            range.setEnd(node, index + term.length);
+            ranges.push(range);
+          }
+        }
+      }
+    }
+    registry.set("checkly-api-search", new HighlightType(...ranges));
+  };
   const filterOperations = (taggedOps: any, phrase: string) => {
-    const query = phrase.trim().toLocaleLowerCase();
-    if (!query) return taggedOps;
-    return taggedOps.map((group: any, tag: string) => {
-      if (tag.toLocaleLowerCase().includes(query)) return group;
-      return group.set("operations", group.get("operations").filter((op: any) => {
-        const operation = op.get("operation");
-        return [op.get("method"), op.get("path"), `${options.baseUrlRef.current.replace(/\/$/, "")}${op.get("path")}`,
-          operation?.get("operationId"), operation?.get("summary"), operation?.get("description")]
-          .some(value => typeof value === "string" && value.toLocaleLowerCase().includes(query));
-      }));
-    }).filter((group: any) => group.get("operations").size > 0);
+    const baseUrl = options.baseUrlRef.current;
+    const search = parseApiSearch(phrase, baseUrl);
+    if (!search.terms.length) return taggedOps;
+    return taggedOps.map((group: any, tag: string) => group.set("operations", group.get("operations").filter((op: any) => {
+      return matchesApiSearch(searchable(op.get("method"), op.get("path"), tag, op.get("operation")), search);
+    }))).filter((group: any) => group.get("operations").size > 0);
   };
   return () => ({
     fn: {
       opsFilter: (taggedOps: any, phrase: string) => filterOperations(taggedOps, phrase),
     },
     wrapComponents: {
+      // The spec's title stays, its long description folds so the operations start sooner.
+      // InfoContainer, not info: OAS 3.1 specs swap in their own info component.
+      InfoContainer: (Original: SwaggerComponent) => function CompactInfo(props: any) {
+        const [open, setOpen] = useState(false);
+        const description = textValue(mapValue(props.specSelectors?.info?.(), "description"));
+        return <div className={`api-doc-info${open ? " is-open" : ""}`}>
+          <Original {...props} />
+          {description.trim() && <button type="button" className="api-compose-link api-doc-info-toggle" aria-expanded={open} onClick={() => setOpen(value => !value)}>{open ? "설명 접기" : "설명 보기"}</button>}
+        </div>;
+      },
       parameters: (Original: SwaggerComponent) => function RememberedParameters(props: any) {
         const [path, method] = (props.pathMethod ?? []) as string[];
         const key = path && method ? `${method.toUpperCase()} ${path}` : "";
@@ -83,7 +156,7 @@ export function createSwaggerPlugin(options: {
           props.onResetClick?.([path, method]);
         };
         return <>
-          {props.tryItOutEnabled && remembered && !options.composingRef.current && <p className="api-doc-remembered" role="status">마지막으로 실행한 값을 채웠습니다. 비밀번호·토큰은 저장하지 않습니다.<button type="button" className="api-compose-link" onClick={forget}>기억한 값 지우기</button></p>}
+          {props.tryItOutEnabled && remembered && !options.composingRef.current && <p className="api-doc-remembered" role="status">마지막으로 실행한 값을 채웠습니다. <span title="이름에 authorization · cookie · password · token · secret · api key · otp · credential · session 이 들어간 값">이름이 password·token 등인 값은 저장하지 않습니다.</span><button type="button" className="api-compose-link" onClick={forget}>기억한 값 지우기</button></p>}
           <Original {...props} />
         </>;
       },
@@ -110,11 +183,49 @@ export function createSwaggerPlugin(options: {
           const matched = filterOperations(system.specSelectors.taggedOperations(), phrase);
           for (const tag of matched?.keySeq?.().toArray?.() ?? []) if (typeof tag === "string") system.layoutActions.show(["operations-tag", tag], true);
         }, [filter]);
+        useEffect(() => {
+          searchPhrase = typeof filter === "string" ? filter : "";
+          for (const listener of searchListeners) listener();
+          highlightSearch();
+        }, [filter]);
+        // Opening a tag or an operation renders more text to mark.
+        useEffect(() => {
+          const renderer = root.current?.closest(".api-swagger-renderer");
+          if (!renderer) return;
+          let timer = 0;
+          const observer = new MutationObserver(() => { window.clearTimeout(timer); timer = window.setTimeout(highlightSearch, 50); });
+          observer.observe(renderer, { childList: true, subtree: true });
+          return () => { observer.disconnect(); window.clearTimeout(timer); (globalThis.CSS as any)?.highlights?.delete("checkly-api-search"); };
+        }, []);
         useLayoutEffect(() => {
           const input = root.current?.querySelector("input");
-          input?.setAttribute("placeholder", "태그 · 메서드 · 경로 · 이름 · 설명 검색");
+          input?.setAttribute("placeholder", "검색: 경로·URL 붙여넣기, 제목, 파라미터, 태그 (/ 키)");
           input?.setAttribute("aria-label", "API 문서 검색");
         });
+        // "/" jumps to the search box (unless typing somewhere); Esc in it clears the search.
+        useEffect(() => {
+          const keydown = (event: KeyboardEvent) => {
+            const input = root.current?.querySelector("input");
+            if (!input || !input.isConnected || input.offsetParent === null) return;
+            const target = event.target as HTMLElement | null;
+            if (event.key === "/" && !event.metaKey && !event.ctrlKey && !event.altKey
+              && !(target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)))) {
+              event.preventDefault();
+              input.focus();
+              input.select();
+            } else if (event.key === "Escape" && target === input && input.value) {
+              event.preventDefault();
+              props.layoutActions.updateFilter("");
+            }
+          };
+          document.addEventListener("keydown", keydown);
+          return () => document.removeEventListener("keydown", keydown);
+        }, []);
+        const phrase = typeof filter === "string" ? filter.trim() : "";
+        const system = options.systemRef.current;
+        const count = phrase && system
+          ? (filterOperations(system.specSelectors.taggedOperations(), phrase)?.valueSeq?.().toArray?.() ?? []).reduce((sum: number, group: any) => sum + group.get("operations").size, 0)
+          : null;
         const setTags = (shown: boolean) => {
           const system = options.systemRef.current;
           const catalog = options.catalogRef.current;
@@ -122,11 +233,13 @@ export function createSwaggerPlugin(options: {
         };
         const Authorize = props.getComponent("AuthorizeBtnContainer", true);
         return <div ref={root} className="api-doc-search-tools"><Original {...props} />
-          {!props.specSelectors.securityDefinitions() && <Authorize />}
+          {count !== null && <span className={`api-doc-search-count${count ? "" : " empty"}`} role="status">{count ? `${count}개 API` : "맞는 API가 없습니다"}</span>}
           <div className="api-actions api-doc-controls">
             <button type="button" onClick={() => setTags(true)}>태그 모두 펼치기</button>
             <button type="button" onClick={() => setTags(false)}>태그 모두 접기</button>
           </div>
+          {/* Always here: the servers row (where Swagger puts it) is hidden, the environment picks the base URL. */}
+          <div className="api-doc-authorize"><Authorize /></div>
         </div>;
       },
       authorizationPopup: () => function GlobalAuthorization(props: any) {
@@ -162,6 +275,27 @@ export function createSwaggerPlugin(options: {
         const tag = textValue(mapValue(operation, "tag"));
         const operationId = textValue(mapValue(operation, "operationId")) || textValue(mapValue(operation, "id"));
         const isShown = props.isShown === true || mapValue(operation, "isShown") === true;
+        const phrase = useSearchPhrase();
+        // Say why it matched when the reason isn't on screen: a pasted URL's path values, or a parameter / body field.
+        useLayoutEffect(() => {
+          if (!operationId) return;
+          const block = [...document.querySelectorAll<HTMLElement>(".api-swagger-renderer .opblock")].find(element => element.id.endsWith(`-${operationId}`));
+          const wrapper = block?.querySelector(".opblock-summary-path-description-wrapper");
+          if (!wrapper) return;
+          const reason = explainApiSearch({ method, path, tag, ...fieldsOf(method, path) }, parseApiSearch(phrase, options.baseUrlRef.current));
+          if (!reason) return;
+          const parts = [
+            ...(reason.variables.length ? [`URL 경로 ${reason.variables.map(([name, value]) => `${name}=${value}`).join(", ")}`] : []),
+            ...(reason.description ? ["설명"] : []),
+            ...(reason.parameters.length ? [`파라미터 ${reason.parameters.join(", ")}`] : []),
+            ...(reason.bodyFields.length ? [`본문 필드 ${reason.bodyFields.join(", ")}`] : []),
+          ];
+          const note = document.createElement("span");
+          note.className = "api-search-reason";
+          note.textContent = `검색 일치 · ${parts.join(" · ")}`;
+          wrapper.appendChild(note);
+          return () => note.remove();
+        }, [phrase, operationId, isShown]);
         useLayoutEffect(() => {
           if (!tag || !operationId) return;
           const target = [...document.querySelectorAll<HTMLElement>(".api-swagger-renderer .opblock")]
@@ -247,8 +381,10 @@ export function createSwaggerPlugin(options: {
                 const response = await options.bridgeRef.current.execute(options.scopeRef.current, `${method.toUpperCase()} ${path}`, request);
                 if (response.httpStatus === undefined && response.error) system.specActions.setResponse(path, method, responseFromError(response.error, url));
                 else system.specActions.setResponse(path, method, responseFromApi(response, url));
+                revealResponse(path, method);
               } catch (error) {
                 system.specActions.setResponse(path, method, responseFromError(error, url));
+                revealResponse(path, method);
               } finally {
                 options.busyRef.current = false;
                 options.setBusy(false);

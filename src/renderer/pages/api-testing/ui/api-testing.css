@@ -1,14 +1,7 @@
 html:has(.api-diagram-dialog[open]) { overflow:hidden; }
 .api-context-value-actions { display:flex; align-items:center; gap:12px; margin-left:auto; flex:none; }
-.api-testing-page :is(.api-context,.api-compose-context) .api-value-visibility { display:inline-flex; align-items:center; gap:7px; padding:4px 0; margin:0; border:0; background:transparent; font-size:12px; white-space:nowrap; cursor:pointer; }
-.api-value-switch-track { display:block; position:relative; width:30px; height:18px; border-radius:var(--ck-dim-radius-pill); background:var(--ck-color-text-mute); transition:background .15s; }
-.api-value-switch-track::after { content:""; position:absolute; top:3px; left:3px; width:12px; height:12px; border-radius:50%; background:var(--ck-color-canvas); transition:transform .15s; }
-.api-value-visibility[aria-checked="true"] .api-value-switch-track { background:var(--ck-color-blue-action); }
-.api-value-visibility[aria-checked="true"] .api-value-switch-track::after { transform:translateX(12px); }
-.api-value-visibility:focus-visible { outline:2px solid var(--ck-color-blue-action); outline-offset:4px; border-radius:var(--ck-dim-radius-base); }
-/* Presentation-only: retain the original values for editing and transmission.
-   Only values marked sensitive (see shared/sensitive.ts) are hidden. */
-.api-hide-values :is(.api-sensitive-value, [data-value-visibility="sensitive"]) { -webkit-text-security:disc; }
+/* Like Swagger's Authorize: only inputs where a new secret is typed (docs token, docs password) are masked. */
+.api-secret-input { -webkit-text-security:disc; }
 /* Swagger's own request inputs and live responses stay as typed/received, like Swagger itself. */
 .api-accordion-editor .api-step-accordion { --method-color:var(--ck-color-text-mute); padding:0; margin:10px 0; border:1px solid var(--method-color); border-radius:var(--ck-dim-radius-base); }
 .api-accordion-editor .api-selected-get { --method-color:#61affe; } .api-accordion-editor .api-selected-post { --method-color:#49cc90; } .api-accordion-editor .api-selected-put { --method-color:#fca130; } .api-accordion-editor .api-selected-patch { --method-color:#50e3c2; } .api-accordion-editor .api-selected-delete { --method-color:#f93e3e; }
@@ -162,7 +155,7 @@ html:has(.api-diagram-dialog[open]) { overflow:hidden; }
 .api-diagram-zoom { margin:0 auto; }
 .api-diagram-zoom svg { display:block; width:100%!important; height:auto!important; max-width:none!important; }
 .api-spec-meta { color:var(--api-muted); margin:16px 0; }
-.api-columns { display:grid; grid-template-columns:270px minmax(0,1fr); border-top:1px solid var(--api-border); background:transparent; min-height:60vh; }
+.api-columns { position:relative; display:grid; grid-template-columns:clamp(200px, var(--api-list-width, 270px), 45%) minmax(0,1fr); border-top:1px solid var(--api-border); background:transparent; min-height:60vh; }
 .api-columns aside { border-right:1px solid var(--api-border); padding:16px 16px 0 0; }
 .api-columns aside input { width:100%; margin-bottom:12px; }
 .api-columns aside button { display:flex; flex-direction:column; align-items:flex-start; gap:7px; width:100%; text-align:left; border:0; border-bottom:1px solid var(--api-border); border-radius:0; background:transparent; padding:16px 8px; overflow-wrap:anywhere; }
@@ -192,7 +185,6 @@ html:has(.api-diagram-dialog[open]) { overflow:hidden; }
 .api-json-copy[data-state="copied"]::before { content:'✓'; color:var(--ck-color-log-pass); }
 .api-json-copy[data-state="failed"]::before { content:'!'; color:var(--ck-color-log-fail); }
 .api-testing-page button.api-json-copy:hover,.api-testing-page button.api-json-copy:focus-visible { border-color:var(--ck-color-blue-on-dark); color:var(--ck-color-canvas); background:var(--ck-color-dark-active); }
-.api-hide-values .api-json-view .api-json-copy { display:none; }
 .api-testing-page summary { cursor:pointer; padding:8px 0; }
 .api-response { margin-top:32px; border-top:1px solid var(--api-border); padding-top:24px; }
 .api-response h3 span { font-size:13px; font-weight:400; }
@@ -583,7 +575,7 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 .api-testing-page:has(.api-compose-layout) { padding-bottom:0; }
 .api-testing-page:has(.api-compose-layout) > .api-toolbar { display:none; }
 /* While composing, tabs and project/server controls are locked: the composer toolbar alone carries the header. */
-.api-testing-page:has(.api-compose-layout) > :is(.api-tabs,.api-context) { display:none; }
+.api-testing-page:has(.api-compose-layout) > :is(.api-tabs,.api-context,.api-workbar) { display:none; }
 .api-compose-context .api-context-value-actions { margin-left:0; gap:10px; }
 .api-testing-page:has(.api-compose-layout) .api-compose-meta { display:none; }
 .api-testing-page:has(.api-compose-layout) .api-documentation { display:flex; flex:1 1 auto; flex-direction:column; min-height:0; overflow:hidden; }
@@ -602,9 +594,9 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 .api-compose-editor .api-builder > footer { position:sticky; bottom:0; margin:12px -20px 0; padding:12px 20px max(12px,env(safe-area-inset-bottom,0px)); background:rgb(255 255 255 / 96%); box-shadow:none; border-top:var(--ck-fx-hairline); }
 @media(max-width:900px) { .api-compose-editor .api-builder > footer { margin-left:-12px; margin-right:-12px; padding-left:12px; padding-right:12px; } }
 @media(max-width:900px) { .api-testing-page:has(.api-compose-layout) .api-compose-layout { grid-template-columns:1fr; grid-template-rows:minmax(0,38%) minmax(0,62%); overflow:hidden; } }
-.api-testing-page:has(.api-compose-layout) .api-compose-layout.api-edit-layout { grid-template-columns:minmax(260px,33%) minmax(0,1fr); grid-template-rows:minmax(0,1fr); }
+.api-testing-page:has(.api-compose-layout) .api-compose-layout.api-edit-layout { grid-template-columns:clamp(240px, var(--api-summary-width, 33%), 60%) minmax(0,1fr); grid-template-rows:minmax(0,1fr); }
 .api-settings-summary { min-height:0; overflow:auto; padding:12px; border-right:1px solid var(--api-border); }
-.api-settings-summary > summary { font-weight:700; margin-bottom:12px; cursor:pointer; }
+.api-settings-summary-title { margin:0 0 12px; font-size:12.5px; font-weight:700; }
 .api-summary-card { --method-color:var(--ck-color-text-mute); border:1px solid var(--method-color); border-radius:var(--ck-dim-radius-base); padding:0; margin-bottom:12px; overflow:hidden; background:var(--ck-color-canvas); overflow-wrap:anywhere; }
 .api-summary-card.api-selected-get { --method-color:#61affe; } .api-summary-card.api-selected-post { --method-color:#49cc90; } .api-summary-card.api-selected-put { --method-color:#fca130; } .api-summary-card.api-selected-patch { --method-color:#50e3c2; } .api-summary-card.api-selected-delete { --method-color:#f93e3e; } .api-summary-card.api-selected-options { --method-color:#0d5aa7; } .api-summary-card.api-selected-head { --method-color:#9012fe; }
 .api-summary-heading { box-sizing:border-box; display:grid; grid-template-columns:auto auto minmax(0,1fr); gap:4px 10px; align-items:center; width:100%; min-height:48px; margin:0; padding:10px; border:0!important; border-radius:0!important; text-align:left; background:color-mix(in srgb,var(--method-color) 10%,var(--ck-color-canvas))!important; }
@@ -805,7 +797,6 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 @container composer (max-width:1180px) {
   .api-compose-wide { display:none; }
   .api-compose-toolbar { gap:8px 10px; }
-  .api-compose-context .api-value-visibility > span:not(.api-value-switch-track) { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
 }
 @container composer (max-width:720px) {
   .api-compose-toolbar { grid-template-columns:auto minmax(0,1fr); grid-template-areas:"back heading" "context context" "steps steps"; }
@@ -1018,3 +1009,85 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 .api-import-conflicts { display:grid; gap:6px; padding-top:8px; border-top:1px solid var(--api-border); }
 .api-project-import-dialog .api-import-conflicts label { display:flex; flex-direction:row; align-items:center; gap:8px; }
 .api-import-conflicts label small { margin-left:auto; color:var(--api-muted); }
+/* Detail header actions grouped by purpose: run | edit | manage, divided by a thin line. */
+.api-detail-actions { gap:12px; }
+.api-action-group { display:flex; align-items:center; gap:6px; }
+.api-action-group + .api-action-group { padding-left:12px; border-left:1px solid var(--api-border); }
+/* Status of the open scenario sits next to the view switch. */
+.api-run-view-bar { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px 12px; margin-top:12px; }
+.api-run-view-bar .api-run-view-switch { margin-top:0; }
+.api-run-view-bar .api-spec-meta { display:flex; align-items:center; gap:8px; margin:0; }
+.api-run-flow-tools { justify-content:flex-end; }
+/* The flow follows the view switch row directly; no second divider or title above it. */
+.api-run-flow { margin-top:8px; padding-top:0; border-top:0; }
+.api-run-flow-tools { margin-bottom:8px!important; }
+/* AI authoring: the three steps as a numbered row */
+.api-ai-steps { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:8px; margin:8px 0 12px; padding:0; list-style:none; counter-reset:ai-step; }
+.api-ai-steps li { display:grid; gap:2px; padding:10px 12px; border:1px solid var(--api-border); border-radius:var(--ck-dim-radius-base); counter-increment:ai-step; font-size:12px; word-break:keep-all; }
+.api-ai-steps strong::before { content:counter(ai-step) ". "; color:var(--api-primary); }
+.api-ai-steps span { color:var(--api-muted); }
+.api-scenario-detail > .api-empty .api-actions { justify-content:center; margin-top:12px; }
+/* Tabs (left) and server/environment/value controls (right) in one row under the title. */
+.api-workbar { display:flex; flex-wrap:wrap; align-items:flex-end; justify-content:space-between; gap:8px 16px; margin-bottom:16px; border-bottom:1px solid var(--ck-color-line-strong); }
+.api-swagger-shell .api-workbar > .api-tabs { margin:0; border-bottom:0; }
+.api-swagger-shell .api-workbar > .api-context { display:flex; align-items:center; gap:8px; margin:0 0 8px auto; padding:0; border-bottom:0; }
+.api-workbar .api-context-value-actions { margin-left:8px; }
+/* Saved suite, read-only view */
+.api-suite-view { display:grid; gap:8px; margin-top:12px; }
+.api-suite-view .api-spec-meta { margin:0; }
+.api-suite-view-list { display:grid; gap:6px; margin:0; padding:0; list-style:none; counter-reset:suite-step; }
+.api-suite-view-list li { display:flex; align-items:center; gap:10px; padding:10px 12px; border:1px solid var(--api-border); border-radius:var(--ck-dim-radius-base); counter-increment:suite-step; font-size:13px; }
+.api-suite-view-list li::before { content:counter(suite-step); display:inline-grid; place-items:center; width:22px; height:22px; border-radius:50%; background:var(--ck-color-line-faint); color:var(--api-muted); font-size:11px; font-weight:600; }
+/* Every delete trigger reads red; the destructive confirm stays in its popover. */
+.api-testing-page button.api-delete-trigger { color:var(--ck-color-fail-ink); }
+/* Flow / latest run: one segmented control, same look as the composer's step switch. */
+.api-run-view-bar .api-run-view-switch { display:inline-flex; gap:2px; padding:3px; border-radius:var(--ck-dim-radius-float); background:var(--ck-color-surface-hover); }
+.api-testing-page .api-run-view-switch button { min-height:28px; padding:3px 12px; border:0; border-radius:calc(var(--ck-dim-radius-float) - 2px); background:transparent; color:var(--api-muted); font-size:12px; font-weight:500; }
+.api-testing-page .api-run-view-switch button:hover:not(:disabled):not([aria-pressed=true]) { color:var(--api-ink); background:rgb(255 255 255 / 55%); }
+.api-testing-page .api-run-view-switch button[aria-pressed=true] { background:var(--ck-color-canvas); color:var(--api-ink); font-weight:600; box-shadow:0 1px 2px rgb(20 24 28 / 12%), 0 0 0 1px var(--ck-color-line); }
+.api-testing-page .api-run-view-switch button:disabled { opacity:.5; }
+/* The workbar already draws the line under the tabs; the columns below don't repeat it. */
+.api-workbar + .api-columns { border-top:0; }
+/* Drag handles on the left pane's edge (scenario list, compose step 2 summary). */
+.panel-resize-handle { position:absolute; z-index:5; top:0; bottom:0; width:9px; margin-left:-5px; cursor:col-resize; touch-action:none; }
+.panel-resize-handle::after { content:""; position:absolute; top:0; bottom:0; left:4px; width:1px; background:transparent; transition:background .12s; }
+.panel-resize-handle:hover::after, .panel-resize-handle:focus-visible::after, body.panel-resizing .panel-resize-handle::after { width:3px; left:3px; background:var(--ck-color-blue-action); }
+.panel-resize-handle:focus-visible { outline:none; }
+body.panel-resizing { cursor:col-resize; user-select:none; }
+.api-columns > .panel-resize-handle { left:clamp(200px, var(--api-list-width, 270px), 45%); }
+.api-compose-layout.api-edit-layout { position:relative; }
+.api-compose-layout.api-edit-layout > .panel-resize-handle { left:clamp(240px, var(--api-summary-width, 33%), 60%); }
+@media(max-width:900px) { .api-compose-layout > .panel-resize-handle { display:none; } }
+@media(max-width:800px) { .api-columns > .panel-resize-handle { display:none; } }
+/* Globals & cookies panel: one note, a heading row per section with its action on the right. */
+.api-globals-panel .api-globals-note { margin:0 0 8px; color:var(--api-muted); font-size:12px; }
+.api-globals-section-heading { display:flex; align-items:center; justify-content:space-between; gap:8px; margin:8px 0 6px; }
+.api-globals-section-heading h3 { margin:0; font-size:12px; }
+.api-globals-section-heading h3 small { margin-left:4px; color:var(--api-muted); font-weight:400; }
+.api-globals-empty { margin:0 0 4px; color:var(--api-muted); font-size:12px; }
+.api-global-editor { padding-top:8px; }
+.api-global-editor h4 { margin:0 0 8px; font-size:12px; color:var(--api-primary); }
+.api-globals-heading-actions { display:flex; gap:6px; }
+.api-global-list.is-values-hidden .api-global-value { -webkit-text-security:disc; }
+/* API docs: a compact header, the servers row hidden (the environment decides the base URL),
+   and the search/Authorize row stuck to the top while the long operation list scrolls. */
+.api-swagger-renderer .swagger-ui .scheme-container { display:none; }
+.api-swagger-renderer .swagger-ui .information-container .info { margin:12px 0 8px; }
+.api-swagger-renderer .swagger-ui .info .title { font-size:20px; }
+.api-doc-info { position:relative; }
+.api-doc-info:not(.is-open) .swagger-ui .info .description, .api-doc-info:not(.is-open) .info > .description, .api-doc-info:not(.is-open) .info .renderedMarkdown { display:none; }
+.api-doc-info-toggle { margin:0 0 8px; }
+.api-swagger-renderer .api-doc-search-tools { position:sticky; top:0; z-index:20; margin:0 0 12px; padding:10px 20px; background:var(--ck-color-canvas); border-bottom:1px solid var(--api-border); }
+/* Scrolled-to results land below the sticky tools row, not under it. */
+.api-swagger-renderer .swagger-ui :is(.live-responses-table, .responses-inner > div > div, .opblock) { scroll-margin-top:120px; }
+.api-secret-field { display:flex; gap:6px; }
+.api-secret-field > input { flex:1; min-width:0; }
+.api-secret-field > button { flex:none; }
+/* Docs search row: search · count · tag buttons, then Authorize on the far right. */
+.api-doc-search-count { font-size:12.5px; color:var(--api-muted, #667085); white-space:nowrap; }
+.api-doc-search-count.empty { color:var(--ck-color-danger, #c0362c); }
+.api-doc-search-tools .api-doc-authorize { margin-left:auto; }
+.api-doc-search-tools .api-doc-authorize .auth-wrapper { padding:0; margin:0; }
+/* Docs search: marked words and why an operation matched. */
+::highlight(checkly-api-search) { background-color:#ffe58a; color:inherit; }
+.api-swagger-renderer .api-search-reason { flex-basis:100%; font-size:12px; color:var(--api-muted, #667085); font-family:inherit; font-weight:400; }

@@ -1,11 +1,10 @@
 // Read-only views of a scenario's call flow (preview) and its latest run result.
 import { useEffect, useRef, useState } from "react";
 import type { ApiCatalog, ApiScenarioPreview, ApiScenarioResult } from "../../../../app/api-testing/shared/workspace";
-import { describeCheck, scenarioStepInputs, type Scenario } from "../../../../app/api-testing/shared/scenario";
+import { describeCheck, type Scenario } from "../../../../app/api-testing/shared/scenario";
 import { ScenarioStepSummary } from "./ScenarioStepSummary";
 import { JsonCode } from "./JsonCode";
 import { configuredFields } from "../lib/settings-summary-model";
-import { isSensitiveKey } from "../../../../app/api-testing/shared/sensitive";
 
 type RunStep = ApiScenarioResult["steps"][number];
 type ScenarioStep = Scenario["steps"][number];
@@ -19,11 +18,10 @@ function RunChecks({ runStep, step }: { runStep: RunStep; step?: ScenarioStep })
     <ul>{runStep.checks.map((check, index) => {
       const expectation = check.expect === undefined ? undefined : step?.expect?.[check.expect];
       const { target, rule } = describeCheck(expectation);
-      const secret = expectation?.source !== "status" && isSensitiveKey(String(target).split("/").pop() ?? "");
       return <li key={index} className={check.passed ? "is-passed" : "is-failed"}>
         <span aria-hidden="true">{check.passed ? "✓" : "✗"}</span>
         {expectation && expectation.source !== "status" ? <code>{target}</code> : <span>{target}</span>}<span className="api-run-check-rule">{rule}</span>
-        {!check.passed && check.actual !== undefined && <span className="api-run-check-actual">실제 <code className={secret ? "api-sensitive-value" : undefined}>{check.actual}</code></span>}
+        {!check.passed && check.actual !== undefined && <span className="api-run-check-actual">실제 <code>{check.actual}</code></span>}
       </li>;
     })}</ul>
   </section>;
@@ -58,7 +56,8 @@ export function ScenarioRunFlow({ preview, catalogs, bindings, focusRequest, onC
   });
   const setAllStepsOpen = (open: boolean) => setOpenSteps(open ? new Set(preview.scenario.steps.map(step => step.id)) : new Set());
   return <section ref={flow} className="api-run-flow" aria-label="시나리오 실행 흐름">
-    <header className="api-run-section-heading"><div><h3>실행 흐름</h3><small>{preview.scenario.steps.length}개 API · 순서대로 호출</small></div><div className="api-run-section-actions"><button type="button" onClick={() => setAllStepsOpen(true)}>모두 펼치기</button><button type="button" onClick={() => setAllStepsOpen(false)}>모두 접기</button></div></header>
+    {/* The view switch above already names this view and its step count. */}
+    <header className="api-run-section-heading api-run-flow-tools"><div className="api-run-section-actions"><button type="button" onClick={() => setAllStepsOpen(true)}>모두 펼치기</button><button type="button" onClick={() => setAllStepsOpen(false)}>모두 접기</button></div></header>
     <ol className="api-run-step-list">
       {preview.scenario.steps.map((step, index) => {
         const operation = operationForStep(step, catalogs, bindings);
@@ -104,12 +103,6 @@ export const shouldExpandResult = (step: ApiScenarioResult["steps"][number]) => 
 
 export function ScenarioRunResult({ result, preview, catalogs, bindings, focusRequest }: { result: ApiScenarioResult; preview: ApiScenarioPreview | null; catalogs: Record<string, ApiCatalog | null>; bindings: Record<string, string>; focusRequest: { stepId: string; request: number } | null }) {
   const stepsElement = useRef<HTMLDivElement>(null);
-  // Values typed into sensitive inputs are masked wherever they appear in the trace.
-  const sensitiveInputs = preview ? [
-    ...Object.entries(preview.scenario.inputs).filter(([, definition]) => definition.sensitive).map(([name]) => name),
-    ...preview.scenario.steps.flatMap(scenarioStepInputs).filter(input => input.sensitive).map(input => input.name),
-  ] : [];
-  const knownSecrets = sensitiveInputs.map(name => result.variables[name]).filter((value): value is string => typeof value === "string");
   const setAllOpen = (open: boolean) => {
     stepsElement.current?.querySelectorAll<HTMLDetailsElement>(".api-run-result-step").forEach(element => { element.open = open; });
   };
@@ -142,8 +135,8 @@ export function ScenarioRunResult({ result, preview, catalogs, bindings, focusRe
           <div className="api-run-result-step-body">
             {runStep.error && <p className="api-warning">{runStep.error}</p>}
             <RunChecks runStep={runStep} step={scenarioStep} />
-            <details className="api-run-payload" open><summary>요청{runStep.request && <span className="api-run-payload-meta"><strong>{runStep.request.method.toUpperCase()}</strong> <code>{runStep.request.url}</code></span>}</summary>{runStep.request ? <JsonCode value={{ body: runStep.request.body, headers: runStep.request.headers }} known={knownSecrets} /> : <p className="api-run-payload-empty">이 단계는 요청을 전송하지 않았습니다.</p>}</details>
-            <details className="api-run-payload" open><summary>응답<span className="api-run-payload-meta">{runStep.httpStatus !== undefined && <strong className={runStep.httpStatus < 400 ? "is-ok" : "is-error"}>HTTP {runStep.httpStatus}</strong>}<span>{runStep.durationMs}ms</span>{runStep.inputs ? <span>입력 {runStep.inputs.filter(input => input.provided).length}/{runStep.inputs.length}</span> : runStep.input ? <span>입력 {runStep.input.provided ? "완료" : "없음"}</span> : null}</span></summary>{runStep.headers !== undefined || runStep.body !== undefined ? <JsonCode value={{ body: runStep.body, headers: runStep.headers }} known={knownSecrets} /> : <p className="api-run-payload-empty">응답이 없습니다.</p>}</details>
+            <details className="api-run-payload" open><summary>요청{runStep.request && <span className="api-run-payload-meta"><strong>{runStep.request.method.toUpperCase()}</strong> <code>{runStep.request.url}</code></span>}</summary>{runStep.request ? <JsonCode value={{ body: runStep.request.body, headers: runStep.request.headers }} /> : <p className="api-run-payload-empty">이 단계는 요청을 전송하지 않았습니다.</p>}</details>
+            <details className="api-run-payload" open><summary>응답<span className="api-run-payload-meta">{runStep.httpStatus !== undefined && <strong className={runStep.httpStatus < 400 ? "is-ok" : "is-error"}>HTTP {runStep.httpStatus}</strong>}<span>{runStep.durationMs}ms</span>{runStep.inputs ? <span>입력 {runStep.inputs.filter(input => input.provided).length}/{runStep.inputs.length}</span> : runStep.input ? <span>입력 {runStep.input.provided ? "완료" : "없음"}</span> : null}</span></summary>{runStep.headers !== undefined || runStep.body !== undefined ? <JsonCode value={{ body: runStep.body, headers: runStep.headers }} /> : <p className="api-run-payload-empty">응답이 없습니다.</p>}</details>
           </div>
         </details>;
       })}

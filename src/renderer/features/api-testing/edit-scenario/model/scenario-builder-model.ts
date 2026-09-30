@@ -62,7 +62,6 @@ export function connectValue(scenario: Scenario, from: number, to: number, sourc
   const binding = {
     name: variable, step: scenario.steps[from].id, source, area,
     ...(pointer !== undefined ? { pointer } : {}), ...(header ? { header } : {}),
-    sensitive: /authorization|cookie|password|token|secret|api.?key|otp/i.test(variable) || area === "headers" || area === "cookies" || area === "header",
   } as ValueBinding;
   return {
     ...scenario,

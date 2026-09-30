@@ -8,7 +8,7 @@ import { responseDocuments, type ResponseField, type ResponseBadge, responseFiel
 
 export function ResponseGlobalNameField({ value, suggestions, onChange }: { value: string; suggestions: ResponseGlobalNameSuggestion[]; onChange: (value: string) => void }) {
   return <label>전역변수 이름
-    <input data-value-visibility="public" aria-label="응답 전역변수 이름" value={value} onChange={event => onChange(event.target.value)} placeholder="예: accessToken" />
+    <input aria-label="응답 전역변수 이름" value={value} onChange={event => onChange(event.target.value)} placeholder="예: accessToken" />
     <span className="api-global-name-quick-label">빠른 설정</span>
     <span className="api-global-name-quick" aria-label="전역변수 이름 빠른 설정">
       {suggestions.map(suggestion => <button type="button" key={suggestion.id} className={value === suggestion.name ? "is-selected" : ""} title={suggestion.detail} onClick={() => onChange(suggestion.name)}><strong>{suggestion.label}</strong><code>{suggestion.name}</code></button>)}

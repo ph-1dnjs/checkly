@@ -6,7 +6,6 @@ import { type RequestArea } from "../model/scenario-builder-model";
 import { objectValue } from "../../../../entities/api-testing";
 import { responseGlobalNameSuggestions } from "../lib/response-global-name";
 import { ScenarioValueLink } from "./ScenarioValueLink";
-import { isSensitiveKey } from "../../../../../app/api-testing/shared/sensitive";
 import { DraftInput, DraftTextarea } from "../../../../shared/ui/DraftFields";
 import { type RequestField, type VerificationOperator, type FieldState, suggestedInputName, inputTypeForField, isStructuredRequestField, requestFieldValueMatches, templateVariable, variableReferenceInValue, fieldState, jsonText, requestToken, verificationOperatorLabels, verificationSourceLabels, parseExpectedValue, expectedValueText } from "../model/step-request-model";
 import { type ResponseBadge } from "../model/step-response-model";
@@ -162,7 +161,6 @@ export function SimpleStep({ scenario, index, catalogs, bindings, scope, bridge,
       label: `${field.name} 입력`,
       type: inputTypeForField(field.type),
       required: field.required,
-      sensitive: isSensitiveKey(field.name),
     };
     update({
       request,
@@ -218,8 +216,8 @@ export function SimpleStep({ scenario, index, catalogs, bindings, scope, bridge,
       } catch { event.target.setCustomValidity("필드 타입에 맞는 JSON 값을 입력하세요."); }
     };
     const input = structured
-      ? <DraftTextarea id={fieldId} aria-label={`${index + 1}단계 ${field.name} JSON`} data-value-visibility={isSensitiveKey(field.name) ? "sensitive" : undefined} rows={4} spellCheck={false} placeholder={placeholder} value={typeof current === "string" ? current : jsonText(current)} onChange={onInputChange} />
-      : <DraftInput id={fieldId} aria-label={`${index + 1}단계 ${field.name}`} data-value-visibility={isSensitiveKey(field.name) ? "sensitive" : undefined} placeholder={placeholder} value={typeof current === "object" ? JSON.stringify(current) : current ?? ""} onChange={onInputChange} />;
+      ? <DraftTextarea id={fieldId} aria-label={`${index + 1}단계 ${field.name} JSON`} rows={4} spellCheck={false} placeholder={placeholder} value={typeof current === "string" ? current : jsonText(current)} onChange={onInputChange} />
+      : <DraftInput id={fieldId} aria-label={`${index + 1}단계 ${field.name}`} placeholder={placeholder} value={typeof current === "object" ? JSON.stringify(current) : current ?? ""} onChange={onInputChange} />;
     return <div key={fieldKey} data-summary-field={fieldKey} className={compact ? "api-json-field-row" : "api-request-field"}>
       <label className="api-request-field-label" htmlFor={fieldId}><span>{field.name}{field.required && field.area !== "cookies" ? " *" : ""} <small>{field.area} · {field.type}{field.area === "cookies" ? " · 자동 쿠키" : ""}</small></span>
         {field.description && <small className="api-request-field-description">{field.description}</small>}
@@ -284,7 +282,7 @@ export function SimpleStep({ scenario, index, catalogs, bindings, scope, bridge,
           {verificationPointer !== null && <button type="button" className="api-primary" onClick={() => {
             if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(globalName) || ["constructor", "prototype"].includes(globalName)) { setError("전역변수 이름은 영문으로 시작하는 영문·숫자·밑줄을 사용하세요."); return; }
             const previous = existingGlobalExtraction(verificationPointer);
-            update({ extract: [...step.extract.filter(e => e !== previous && e.target !== `globals.${globalName}`), { source: "body", pointer: verificationPointer, target: `globals.${globalName}`, sensitive: isSensitiveKey(globalName) }] }); closeResponseModal();
+            update({ extract: [...step.extract.filter(e => e !== previous && e.target !== `globals.${globalName}`), { source: "body", pointer: verificationPointer, target: `globals.${globalName}` }] }); closeResponseModal();
           }}>저장 설정 적용</button>}
           {existingGlobalExtraction(verificationPointer) && <button type="button" className="api-danger-action" onClick={() => { const existing = existingGlobalExtraction(verificationPointer); if (existing) update({ extract: step.extract.filter(extract => extract !== existing) }); closeResponseModal(); }}>전역변수 저장 해제</button>}
         </section>}

@@ -55,8 +55,8 @@ export function RequestAuthPanel({ scope, bridge }: { scope: ApiScope; bridge: A
         <option value={NEW_TOKEN}>+ 새 토큰 입력</option>
       </select></label> : <p className="api-auth-note">저장된 문자열 전역변수가 없어 새 토큰을 입력합니다.</p>}
       {newToken && <div className="api-auth-new">
-        <label>토큰 값<input aria-label="새 API 인증 토큰" data-value-visibility="sensitive" type="text" autoComplete="off" required placeholder="Bearer 없이 토큰만" value={token} onChange={e => setToken(e.target.value)} /></label>
-        <label>저장할 전역변수 이름<input aria-label="토큰 전역변수 이름" data-value-visibility="public" autoComplete="off" required value={tokenName} onChange={e => setTokenName(e.target.value)} /><small>같은 이름이면 값을 덮어씁니다.</small></label>
+        <label>토큰 값<input aria-label="새 API 인증 토큰" className="api-secret-input" type="text" autoComplete="off" required placeholder="Bearer 없이 토큰만" value={token} onChange={e => setToken(e.target.value)} /></label>
+        <label>저장할 전역변수 이름<input aria-label="토큰 전역변수 이름" autoComplete="off" required value={tokenName} onChange={e => setTokenName(e.target.value)} /><small>같은 이름이면 값을 덮어씁니다.</small></label>
       </div>}
       {error && <p role="alert" className="api-warning">{error}</p>}
       {/* Dialog footer like the app's other dialogs: note on the left, the action on the right. */}

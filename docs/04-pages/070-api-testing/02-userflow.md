@@ -12,7 +12,7 @@
 ### 프로젝트 공유
 
 - 프로젝트 설정 하단의 `프로젝트 내보내기`는 설정(서버·환경·기본 주소), 시나리오(초안·그룹·태그 포함), 스위트, 명세 URL을 파일 하나(`이름.checkly-api.json`)로 저장합니다. 전역변수 값, 저장된 문서 계정(Basic), 세션 쿠키, 기억한 Try it out 입력값, 받아 둔 명세 본문은 넣지 않습니다. 다만 시나리오와 명세 URL은 적힌 그대로 담기므로, 시나리오나 URL에 직접 입력한 비밀값(토큰·비밀번호·URL 쿼리 키 등)은 파일에 포함됩니다. 공유 전에 확인하고, 비밀값은 시나리오에 직접 적지 말고 전역변수(`{{globals.x}}`, `auth: globals.x`)로 쓰세요.
-- 상단 `가져오기`(또는 `+ 프로젝트`의 `파일에서 가져오기`)로 파일을 엽니다. 같은 프로젝트(원본이나 그 복사본)가 이 기기에 없으면 새 프로젝트로 추가합니다. 프로젝트·서버·환경 ID는 새로 만들고 시나리오·스위트 ID는 유지하며, 이름이 겹치면 `이름 (2)`처럼 붙입니다.
+- 프로젝트 설정 하단의 `가져오기`(또는 `+ 프로젝트`의 `파일에서 가져오기`)로 파일을 엽니다. 같은 프로젝트(원본이나 그 복사본)가 이 기기에 없으면 새 프로젝트로 추가합니다. 프로젝트·서버·환경 ID는 새로 만들고 시나리오·스위트 ID는 유지하며, 이름이 겹치면 `이름 (2)`처럼 붙입니다.
 - 같은 프로젝트가 있으면 `기존 프로젝트 업데이트`와 `새 프로젝트로 추가` 중에서 고릅니다. 업데이트는 파일에 담긴 **기준**(보낸 사람이 마지막으로 받거나 합친 버전)과 비교하는 3-way 방식입니다: 파일에만 있는 것은 추가, 파일 쪽만 바뀐 것은 반영, 내 쪽만 바뀐 것은 유지, 양쪽이 모두 바뀐 것은 **충돌**로 보여 항목마다 파일 내용으로 바꿀지 고릅니다(기본은 내 것 유지). 이미 합쳐 본 파일 버전은 다시 충돌로 묻지 않습니다. 삭제는 반영하지 않고, 서버·환경은 이름으로 맞춰 없는 것만 추가하며 내 기본 주소는 유지합니다.
 - 가져온 뒤에는 API 문서 탭에서 명세를 새로고침합니다(문서 인증이 있으면 계정 입력). 파일로 가져온 명세는 URL이 없어 다시 가져와야 합니다.
 
@@ -20,7 +20,7 @@
 
 ## 개별 요청
 
-1. 태그나 검색으로 API를 찾고 펼칩니다. 태그는 접힌 채로 시작하고(펼친 API가 많을수록 Try it out 입력이 느려짐), 검색하면 결과가 있는 태그가 자동으로 펼쳐집니다.
+1. 태그나 검색으로 API를 찾고 펼칩니다. 태그는 접힌 채로 시작하고(펼친 API가 많을수록 Try it out 입력이 느려짐), 검색하면 결과가 있는 태그가 자동으로 펼쳐지고 맞는 API 수(없으면 `맞는 API가 없습니다`)가 표시됩니다. 검색어는 띄어쓰기로 나눈 단어가 모두 들어간 API만 남기며(Swagger 화면에 보이는 것만: 태그·메서드·경로·제목, 펼치면 보이는 설명·파라미터·본문 최상위 필드), 실제 요청 URL이나 경로(`GET https://…/users/7?page=1`)를 붙여넣으면 호스트·기본 경로·쿼리를 떼고 `/users/{id}` 같은 경로 템플릿에 맞춰 찾습니다. 찾은 단어는 검색 대상 위치(태그 이름·경로·제목, 펼친 API의 설명·파라미터 이름·요청 본문)에 노란색으로 표시되고, 목록에서 안 보이는 이유로 맞은 API는 경로 아래에 `검색 일치 · 설명`, `URL 경로 platform=web`, `파라미터 …`, `본문 필드 …`처럼 적습니다. `/` 키로 검색칸으로 가고, 검색칸에서 Esc를 누르면 검색을 지웁니다. 명세 설명은 `설명 보기`로 펼치고, 검색·태그 펼치기·Authorize 줄은 스크롤해도 위에 고정됩니다. Swagger의 서버 선택은 숨깁니다(호출 주소는 환경의 기본 주소). 실행하면 결과 영역으로 자동 이동합니다.
 2. Authorize의 `토큰` 목록에서 기존 문자열 전역변수를 골라 `연결`하거나, `+ 새 토큰 입력`으로 토큰을 지정 이름(기본 `docsToken`, 같은 이름이면 덮어씀)의 전역변수로 `저장 후 연결`합니다. 맨 위에 연결 상태와 `연결 해제`가 있습니다.
 3. 요청 파라미터·JSON 본문을 편집하고 Execute 또는 Dock의 API 실행을 누릅니다.
 4. HTTP 상태·소요 시간·헤더·응답을 확인합니다.
@@ -59,7 +59,7 @@ Authorize의 연결은 API 문서의 개별 호출에만 적용됩니다. 시나
 
 API 단계의 값 연결에서 **실행 중 사용자 입력으로 받기**를 선택하면 입력 이름을 자동 생성하고 해당 요청 필드에 연결합니다. 설정 모달에서는 입력 안내 문구·타입·필수 여부·민감 여부를 바꾸며, 생성된 이름은 읽기 전용으로 표시합니다. YAML을 직접 작성할 때는 단계의 `inputs`에 `name`을 지정하고 요청 본문·경로·쿼리·헤더 등에서 `{{inputs.입력 이름}}`으로 참조합니다. 실행기가 해당 단계에 도달했을 때 값이 없으면 실행을 멈추고 입력 모달을 표시합니다. 제출한 값은 같은 요청과 이후 단계에서 사용할 수 있습니다.
 
-입력 모달의 실제 값은 시나리오 YAML에 저장하지 않습니다. 실행 결과와 변수는 원문으로 반환됩니다. `sensitive: true`인 입력값은 **민감값 숨기기** 토글이 켜져 있으면 입력칸과 실행 결과의 모든 위치에서 가립니다. 실행 취소·창 종료·5분 만료 시 대기를 해제합니다. 필수값이 만료되거나 비대화형 실행에 입력 공급자가 없으면 해당 단계는 차단됩니다.
+입력 모달의 실제 값은 시나리오 YAML에 저장하지 않습니다. 실행 결과와 변수는 원문으로 반환됩니다. 실행 취소·창 종료·5분 만료 시 대기를 해제합니다. 필수값이 만료되거나 비대화형 실행에 입력 공급자가 없으면 해당 단계는 차단됩니다.
 
 시나리오는 프로젝트 단위로 저장하며, 작성 툴바에서 고른 환경의 기본 주소로 모든 API를 호출합니다. YAML에 환경 제한이 없으면 모든 환경에서 재사용할 수 있습니다. 작성 중 프로젝트·서버·탭 전환은 막고 환경 전환은 허용합니다. 명세가 없는 환경으로 이동하거나 명세를 불러오지 못해도 작성 중인 단계·이름·요청값·그룹과 편집 화면을 유지합니다. API 문서 영역에는 현재 환경의 명세만 표시합니다. 명세를 확인할 수 없는 동안 요청 입력칸은 마지막으로 확인한 필드를 유지하므로 미완성 JSON도 이어서 작성할 수 있습니다. 저장·실행 검사는 현재 환경을 기준으로 수행합니다. 미저장 상태에서 닫으면 **계속 작성** 또는 **변경사항 버리고 닫기**를 고릅니다.
 
@@ -85,15 +85,15 @@ API 단계의 값 연결에서 **실행 중 사용자 입력으로 받기**를 �
 | API | `api: POST /bos/login` (명세의 메서드·경로) |
 | 요청 값 | 단계 바로 아래 `body` · `query` · `pathParams` · `headers` · `cookies` |
 | 앞 단계 값 | `{{steps.1.response.body./data/challengeToken}}`, 응답 헤더 `{{steps.1.response.header.X-Request-Id}}`, 앞 단계 요청값 `{{steps.1.request.body./loginId}}` (1부터 시작하는 단계 번호 + JSON Pointer, 앞선 단계만) |
-| 다른 시나리오와 공유 | 저장 `extract: [{ pointer: /data/accessToken, target: globals.accessToken, sensitive: true }]`, 사용 `{{globals.accessToken}}` |
-| 실행 중 입력 | 단계에 `inputs: [{ name: code, label: 인증번호, sensitive: true }]`, 사용 `{{inputs.code}}` |
+| 다른 시나리오와 공유 | 저장 `extract: [{ pointer: /data/accessToken, target: globals.accessToken }]`, 사용 `{{globals.accessToken}}` |
+| 실행 중 입력 | 단계에 `inputs: [{ name: code, label: 인증번호 }]`, 사용 `{{inputs.code}}` |
 | 인증 | 시나리오 또는 단계에 `auth: globals.accessToken`, 인증 없는 단계는 `auth: none` |
 | 검증 | 본문 `expect: [{ source: body, pointer: /data/status, operator: equals, value: ACTIVE }]`, 특정 상태 코드 `{ source: status, operator: equals, value: 201 }` (없으면 2xx 자동 확인) |
 
 - 시나리오 최상위: `id`(저장 식별자), `name`, `description`, `server`(모든 단계 공통일 때), `auth`, `onFailure`(`stop` 기본·`continue`), `steps`.
 - 단계 번호는 저장 시점의 순서입니다. 편집기에서 순서를 바꿔도 연결은 유지되고, 저장하면 번호가 새 순서로 다시 매겨집니다. 출처 단계가 사용 단계보다 뒤로 가거나 삭제되면 시나리오 검사에서 알려 줍니다.
 - 단계 id·내부 변수 이름은 파일에 쓰지 않습니다. 단계의 엔드포인트 설명은 명세에서 읽으므로 쓰지 않습니다.
-- `extract`의 `source: body`와 `sensitive: false`는 기본값이라 생략합니다.
+- `extract`의 `source: body`는 기본값이라 생략합니다. 예전 파일의 `sensitive:`는 읽을 때 무시하고 저장할 때 쓰지 않습니다.
 
 ```yaml
 id: items/read-again
@@ -145,7 +145,7 @@ steps:
     server: member
     api: POST /auth/login
     inputs:
-      - { name: memberLoginId, label: 회원 아이디, sensitive: false }
+      - { name: memberLoginId, label: 회원 아이디 }
       - { name: memberPassword, label: 회원 비밀번호 }
     body:
       loginId: "{{inputs.memberLoginId}}"
@@ -153,7 +153,7 @@ steps:
     expect:
       - { source: status, operator: equals, value: 200 }
     extract:
-      - { pointer: /accessToken, target: globals.memberAccessToken, sensitive: true }
+      - { pointer: /accessToken, target: globals.memberAccessToken }
 
   - name: 회원 문의 등록
     server: member
@@ -167,7 +167,7 @@ steps:
     server: admin
     api: POST /auth/login
     inputs:
-      - { name: adminLoginId, label: 관리자 아이디, sensitive: false }
+      - { name: adminLoginId, label: 관리자 아이디 }
       - { name: adminPassword, label: 관리자 비밀번호 }
     body:
       loginId: "{{inputs.adminLoginId}}"
@@ -175,7 +175,7 @@ steps:
     expect:
       - { source: status, operator: equals, value: 200 }
     extract:
-      - { pointer: /accessToken, target: globals.adminAccessToken, sensitive: true }
+      - { pointer: /accessToken, target: globals.adminAccessToken }
 
   - name: 관리자 문의 목록 조회
     server: admin

@@ -100,7 +100,11 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
   const nameOf = (id: string) => result?.drafts.find(draft => draft.id === id)?.name ?? id;
   return <section className="api-ai-author" aria-label="AI 시나리오 작성">
     <h2>AI 작성 도우미</h2>
-    <p>백엔드 프로젝트 폴더에서 Claude Code나 Codex를 열고 가이드를 붙여넣으세요. AI가 어떤 시나리오를 원하는지 물어본 뒤 작성해 저장합니다.</p>
+    <ol className="api-ai-steps" aria-label="AI 작성 순서">
+      <li><strong>가이드 복사</strong><span>백엔드 프로젝트 폴더에서 Claude Code나 Codex를 열고 붙여넣습니다.</span></li>
+      <li><strong>AI와 대화</strong><span>테스트할 흐름을 알려 주면 AI가 시나리오를 작성해 저장합니다.</span></li>
+      <li><strong>결과 불러오기</strong><span>검사 결과를 보고 저장할 시나리오를 고릅니다.</span></li>
+    </ol>
     {specWarnings.length > 0 && <div className="api-warning" role="note"><strong>명세를 다시 가져오세요</strong><ul>{specWarnings.map(warning => <li key={warning}>{warning}</li>)}</ul>AI는 명세에 있는 API와 필드만 사용합니다. API 문서 탭에서 ‘명세 새로고침’이나 가져오기를 다시 하세요.</div>}
     <div className="api-actions">
       <button type="button" className="api-primary" disabled={busy} onClick={() => void act(async () => { await bridge.copyAiPrompt(guideRequest()); setMessage("가이드를 복사했습니다. AI에 붙여넣으세요."); })}>AI 가이드 복사</button>

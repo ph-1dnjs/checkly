@@ -44,7 +44,7 @@ export function RunInputModal({ request, scope, bridge, context, onSubmitted, on
     <header><div><p className="api-input-kicker">실행 중 입력 · {context ? `${context} · ` : ""}{request.index + 1}/{request.totalSteps}단계</p><h2 id="api-input-title">{request.label ?? request.name}</h2></div><span>{request.stepId}</span></header>
     <p>앞 단계 실행이 완료되었습니다. 다음 API를 호출하기 전에 값을 입력하세요.</p>
     <p className="api-input-note">입력값은 이번 실행의 <code>vars.{request.name}</code>으로만 전달되며 YAML이나 실행 결과에 원문으로 저장되지 않습니다.</p>
-    <label>{request.name}{request.required ? " *" : ""}<input autoFocus autoComplete="off" data-value-visibility={request.sensitive ? "sensitive" : undefined} type={request.type === "number" ? "number" : "text"} value={value} disabled={submitting} placeholder={request.type === "string" ? "값 입력" : `${request.type} JSON 입력`} onChange={event => setValue(event.target.value)} /></label>
+    <label>{request.name}{request.required ? " *" : ""}<input autoFocus autoComplete="off" type={request.type === "number" ? "number" : "text"} value={value} disabled={submitting} placeholder={request.type === "string" ? "값 입력" : `${request.type} JSON 입력`} onChange={event => setValue(event.target.value)} /></label>
     {error && <p className="api-warning" role="alert">{error}</p>}
     <footer className="api-actions"><button type="button" disabled={submitting} onClick={onCancel}>실행 중단</button><button type="submit" className="api-primary" disabled={submitting}>{submitting ? "전달 중…" : "입력 완료 · 계속"}</button></footer>
   </form></div>;
