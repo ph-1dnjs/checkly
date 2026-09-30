@@ -59,8 +59,8 @@ export type ApiGlobal = { name: string; type: string; displayValue: string };
 export type ApiCookie = { name: string; domain: string; path: string };
 export type SavedApiScenario = { id: string; name: string; source: string; bindings: Record<string, string>; updatedAt: string; draft?: boolean; groupPath?: string[]; tags?: string[]; /** Old-title → new-title renames the user chose to keep as is. */ keptTitles?: Array<{ from: string; to: string }> };
 /**
- * A project shared as one file: settings, scenarios and suites, plus each spec's URL. Never
- * carries globals, saved docs accounts, tokens, cookies, remembered docs inputs or spec bodies.
+ * A project shared as one file: settings, scenarios and suites, plus each spec's URL, as written.
+ * Never carries globals, saved docs accounts, cookies, remembered docs inputs or spec bodies.
  */
 export type ApiProjectExport = {
   format: "checkly-api-project"; version: 1; exportedAt: string;

@@ -129,7 +129,7 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
     if (text === null) return;
     const plan = await bridge.planProjectImport(text);
     if (plan.targets.length) { setImportPlan({ text, plan }); return; }
-    finishImport(await bridge.importProject(text));
+    await finishImport(await bridge.importProject(text));
   };
   const finishImport = async (result: ApiProjectImportResult) => {
     setImportPlan(null);

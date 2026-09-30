@@ -23,8 +23,10 @@ const sidebarMetadataSchema = z.object({
 const suiteSchema = z.object({ id: z.string().uuid(), name: z.string().trim().min(1).max(100), scenarioIds: z.array(z.string().min(1).max(1000)).min(1).max(100), onFailure: z.enum(["stop", "continue"]) }).extend(sidebarMetadataSchema.shape).strict();
 type ShareBase = { scenarios: Record<string, string>; suites: Record<string, string> };
 const shareHash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex").slice(0, 32);
-const scenarioShareHash = (item: { source: string; draft?: boolean }) => shareHash([item.source, Boolean(item.draft)]);
-const suiteShareHash = (suite: { name: string; onFailure: string; scenarioIds: string[] }) => shareHash([suite.name, suite.onFailure, suite.scenarioIds]);
+// Folder and tags are part of what is shared, so a change to only them still counts.
+type ShareMetadata = { groupPath?: string[]; tags?: string[] };
+const scenarioShareHash = (item: { source: string; draft?: boolean } & ShareMetadata) => shareHash([item.source, Boolean(item.draft), item.groupPath ?? [], item.tags ?? []]);
+const suiteShareHash = (suite: { name: string; onFailure: string; scenarioIds: string[] } & ShareMetadata) => shareHash([suite.name, suite.onFailure, suite.scenarioIds, suite.groupPath ?? [], suite.tags ?? []]);
 /**
  * Three-way: what changed since the last version both sides had (`base`, from the file). `seen` is
  * the version this side last took in: a file version already merged once keeps the local choice.
@@ -134,7 +136,10 @@ export class ApiWorkspace {
     return parsed.success ? parsed.data : {};
   }
 
-  /** Share file text for a project (see ApiProjectExport for what is left out). */
+  /**
+   * Share file text for a project (see ApiProjectExport). Scenarios and spec URLs go as written,
+   * so secrets belong in globals, which stay local like saved docs accounts and cookies.
+   */
   async exportProject(rawProjectId: string): Promise<string> {
     const projectId = z.string().uuid().parse(rawProjectId);
     const project = (await this.listProjects()).find(p => p.id === projectId);
@@ -188,7 +193,7 @@ export class ApiWorkspace {
   }
 
   /** Remembers the version both sides now have, sent along in this project's next share file (call inside the queue). */
-  private async recordShareBase(projectId: string, scenarios: Array<{ id: string; source: string; draft?: boolean }>, suites: Array<{ id: string; name: string; onFailure: string; scenarioIds: string[] }>) {
+  private async recordShareBase(projectId: string, scenarios: Array<{ id: string } & Parameters<typeof scenarioShareHash>[0]>, suites: Array<{ id: string } & Parameters<typeof suiteShareHash>[0]>) {
     await this.save("share-bases.json", { ...await this.readShareBases(), [projectId]: {
       scenarios: Object.fromEntries(scenarios.map(item => [item.id, scenarioShareHash(item)])),
       suites: Object.fromEntries(suites.map(suite => [suite.id, suiteShareHash(suite)])),
@@ -216,7 +221,7 @@ export class ApiWorkspace {
       if (project.id !== data.origin && origins[project.id] !== data.origin) continue;
       targets.push({
         projectId: project.id, name: project.name,
-        scenarios: diff(data.scenarios, await this.listScenarios(project.id), item => item.id, item => scenarioShareHash(item as { source: string; draft?: boolean }), data.base.scenarios, seen[project.id]?.scenarios),
+        scenarios: diff(data.scenarios, await this.listScenarios(project.id), item => item.id, item => scenarioShareHash(item as Parameters<typeof scenarioShareHash>[0]), data.base.scenarios, seen[project.id]?.scenarios),
         suites: diff(data.suites, await this.listSuites(project.id), suite => suite.id, suite => suiteShareHash(suite as SavedApiSuite), data.base.suites, seen[project.id]?.suites),
         serversAdded: data.project.servers.filter(server => !project.servers.some(local => local.name === server.name)).map(server => server.name),
         environmentsAdded: data.project.environments.filter(environment => !project.environments.some(local => local.name === environment.name)).map(environment => environment.name),
@@ -241,7 +246,8 @@ export class ApiWorkspace {
       const environmentIds = new Map(data.project.environments.map(environment => [environment.id, randomUUID()]));
       const names = new Set(projects.map(p => p.name));
       let name = data.project.name;
-      for (let n = 2; names.has(name); n++) name = `${data.project.name} (${n})`.slice(0, 100);
+      // Shorten the name, not the number, so a 100-character name still gets a free " (n)".
+      for (let n = 2; names.has(name); n++) name = `${data.project.name.slice(0, 100 - ` (${n})`.length)} (${n})`;
       const project = projectSchema.parse({
         id: randomUUID(), name,
         servers: data.project.servers.map(server => ({ ...server, id: serverIds.get(server.id)! })),

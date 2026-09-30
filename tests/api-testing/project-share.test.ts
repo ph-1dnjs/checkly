@@ -118,3 +118,38 @@ test("a share file merges back into its copy: one-side changes apply, both-side 
     await assert.rejects(workspace.importProject(first, { projectId: other.project.id, scenarioIds: [], suiteIds: [] }), /같은 프로젝트가 아닙니다/);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
+
+test("share edge cases: long names still number, spec URLs go as written, folder/tag changes merge", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "checkly-share-edge-"));
+  try {
+    const workspace = new ApiWorkspace(dir);
+    const serverId = randomUUID(), dev = randomUUID();
+    const project = { id: randomUUID(), name: "가".repeat(100), servers: [{ id: serverId, name: "상점" }], environments: [{ id: dev, name: "dev", baseUrls: { [serverId]: "https://a.example.com" } }] };
+    await workspace.saveProject(project);
+    await workspace.importSpec({ projectId: project.id, environmentId: dev, serverId }, spec);
+    await writeFile(path.join(dir, `spec-source-${project.id}-${dev}-${serverId}.json`), JSON.stringify({ url: "https://a.example.com/v3/api-docs?group=shop" }));
+    const scope = { projectId: project.id, environmentId: dev };
+    await workspace.saveScenario(scope, read, {}, undefined, { groupPath: ["상품"] });
+
+    // Spec URLs go as written (secrets belong in globals, which never leave).
+    const file = await workspace.exportProject(project.id);
+    assert.equal(JSON.parse(file).specUrls[0].url, "https://a.example.com/v3/api-docs?group=shop");
+
+    // A 100-character name that already exists gets a numbered name within the limit.
+    const copy = (await workspace.importProject(file)).project;
+    assert.equal(copy.name, `${"가".repeat(96)} (2)`);
+    assert.equal((await workspace.importProject(file)).project.name, `${"가".repeat(96)} (3)`);
+
+    // Only the folder changed in the copy: it is an incoming change for the original, and applied.
+    await workspace.importSpec({ projectId: copy.id, environmentId: copy.environments[0].id, serverId: copy.servers[0].id }, spec);
+    const saved = (await workspace.listScenarios(copy.id))[0];
+    await workspace.saveScenario({ projectId: copy.id, environmentId: copy.environments[0].id }, saved.source, {}, saved.updatedAt, { groupPath: ["주문"], tags: ["smoke"] });
+    const fromCopy = await workspace.exportProject(copy.id);
+    const target = (await workspace.planProjectImport(fromCopy)).targets.find(item => item.projectId === project.id)!;
+    assert.deepEqual(target.scenarios.incoming.map(item => item.id), ["shop/read"]);
+    await workspace.importProject(fromCopy, { projectId: project.id, scenarioIds: [], suiteIds: [] });
+    const merged = (await workspace.listScenarios(project.id))[0];
+    assert.deepEqual([merged.groupPath, merged.tags], [["주문"], ["smoke"]]);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
