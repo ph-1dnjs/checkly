@@ -344,7 +344,7 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
         setSaved(await bridge.listScenarios(project.id)); setCurrent(null); setSource(""); setScenarioGroupPath([]); setDirty(false); setPreview(null); setResult(null); setBindings({}); setInputs({}); setNotice("시나리오를 삭제했습니다."); onRunAction(null);
       }} /></span></div>}</header>}
       {!current && <div className="api-empty"><h3>시나리오를 고르거나 새로 만드세요</h3><p>왼쪽 목록에서 고르면 실행 흐름과 최근 결과를 여기서 봅니다.</p>
-        <div className="api-actions">{onCreateScenario && <button type="button" className="api-primary" disabled={busy} onClick={onCreateScenario}>+ 새 시나리오</button>}{onOpenAi && <button type="button" disabled={busy} onClick={onOpenAi}>AI로 만들기</button>}</div>
+        <div className="api-actions">{onCreateScenario && <button type="button" className="api-primary" disabled={busy} onClick={onCreateScenario}>새 시나리오 만들기</button>}{onOpenAi && <button type="button" disabled={busy} onClick={onOpenAi}>AI로 만들기</button>}</div>
       </div>}
       {preview && <>
         <section className="api-run-summary" aria-label="시나리오 실행 준비">

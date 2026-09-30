@@ -305,7 +305,9 @@ async function main() {
     await page.getByRole("button", { name: /AI 상점 흐름/ }).click();
     await expect(page.getByRole("button", { name: "실행", exact: true })).toBeEnabled();
     await shot("suite");
-    // Suite order uses the same sortable list; an unsaved order blocks running.
+    // A saved suite opens as a view; its order is edited after [수정], and an unsaved order blocks running.
+    await expect(page.getByRole("region", { name: "스위트 구성" })).toContainText("AI 로그인");
+    await page.getByRole("button", { name: "수정", exact: true }).click();
     await page.getByRole("button", { name: /^1번째 AI 로그인 순서 변경$/ }).press("ArrowDown");
     await expect(page.locator(".api-suite-order").nth(0)).toContainText("AI 상품 조회");
     await expect(page.getByRole("button", { name: "실행", exact: true })).toBeDisabled();
