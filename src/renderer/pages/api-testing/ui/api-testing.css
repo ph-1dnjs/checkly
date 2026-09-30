@@ -1106,3 +1106,9 @@ body.panel-resizing { cursor:col-resize; user-select:none; }
 ::highlight(checkly-scenario-search) { background-color:#ffe58a; color:inherit; }
 .api-columns aside button.api-sidebar-entry.has-reason { flex-wrap:wrap; }
 .api-sidebar-entry-reason { flex-basis:100%; color:var(--api-muted); font-size:10.5px; font-weight:400; overflow-wrap:anywhere; }
+/* Docs tool buttons: icon + label, icon only in the narrow composer so the row stays on one line. */
+.api-doc-controls button { display:inline-flex; align-items:center; gap:4px; }
+.api-compose-layout .api-doc-controls button { padding:6px 7px; }
+.api-compose-layout .api-doc-controls button > span { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+.api-compose-layout .api-doc-search-tools > div:first-child { min-width:160px; }
+.api-copy-path { display:contents; }
