@@ -8,7 +8,7 @@
 renderer/app → pages → widgets → features → entities → shared
 ```
 
-- `entities`: API 시나리오 데이터의 표시·계산, 최근 실행 상태, 전역변수 조회를 통한 민감값 표시 Context.
+- `entities`: API 시나리오 데이터의 표시·계산, 최근 실행 상태.
 - `features`: 시나리오 편집, AI 작성, 프로젝트·명세·변수·인증 설정, 실행 입력 제출 같은 사용자 행동.
 - `pages`: 프로젝트·환경·탭·URL 상태와 기능을 연결하는 화면 전체 흐름, Swagger 화면 어댑터.
 - `widgets`: 여러 화면에서 사용할 기능 조합이 실제로 생길 때 사용합니다. 이번 분리에서는 새 widget을 만들지 않습니다.
@@ -37,7 +37,6 @@ src/renderer/
 │   ├── ui/                 # 요약·결과·트리·JSON/YAML 표현
 │   ├── lib/                # 응답 필드·설정 요약·전역변수 생산자 계산
 │   ├── model/              # 최근 실행 상태·상태 표시 이름
-│   ├── context/            # 민감값 조회·표시 상태
 │   └── index.ts
 └── shared/
     ├── hooks/useRunAction.ts

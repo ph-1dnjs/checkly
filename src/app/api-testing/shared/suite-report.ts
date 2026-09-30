@@ -16,7 +16,7 @@ export function usesInvalidatedGlobal(scenario: Scenario, names: ReadonlySet<str
 }
 
 // This projection intentionally does not accept request, response, variables or raw errors.
-// Report construction must remain independent of the on-screen sensitive-value toggle.
+// Reports never carry actual response values (only pass/fail per check), whatever the screen shows.
 export function reportScenario(id: string, name: string, result: ApiScenarioResult, references: Array<{ name: string; reference: string }>, durationMs: number, scenario?: Scenario): SuiteReportScenario {
   return {
     id, name, status: result.status, durationMs,

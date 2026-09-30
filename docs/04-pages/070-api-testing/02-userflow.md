@@ -59,7 +59,7 @@ Authorize의 연결은 API 문서의 개별 호출에만 적용됩니다. 시나
 
 API 단계의 값 연결에서 **실행 중 사용자 입력으로 받기**를 선택하면 입력 이름을 자동 생성하고 해당 요청 필드에 연결합니다. 설정 모달에서는 입력 안내 문구·타입·필수 여부·민감 여부를 바꾸며, 생성된 이름은 읽기 전용으로 표시합니다. YAML을 직접 작성할 때는 단계의 `inputs`에 `name`을 지정하고 요청 본문·경로·쿼리·헤더 등에서 `{{inputs.입력 이름}}`으로 참조합니다. 실행기가 해당 단계에 도달했을 때 값이 없으면 실행을 멈추고 입력 모달을 표시합니다. 제출한 값은 같은 요청과 이후 단계에서 사용할 수 있습니다.
 
-입력 모달의 실제 값은 시나리오 YAML에 저장하지 않습니다. 실행 결과와 변수는 원문으로 반환됩니다. `sensitive: true`인 입력값은 **민감값 숨기기** 토글이 켜져 있으면 입력칸과 실행 결과의 모든 위치에서 가립니다. 실행 취소·창 종료·5분 만료 시 대기를 해제합니다. 필수값이 만료되거나 비대화형 실행에 입력 공급자가 없으면 해당 단계는 차단됩니다.
+입력 모달의 실제 값은 시나리오 YAML에 저장하지 않습니다. 실행 결과와 변수는 원문으로 반환됩니다. 실행 취소·창 종료·5분 만료 시 대기를 해제합니다. 필수값이 만료되거나 비대화형 실행에 입력 공급자가 없으면 해당 단계는 차단됩니다.
 
 시나리오는 프로젝트 단위로 저장하며, 작성 툴바에서 고른 환경의 기본 주소로 모든 API를 호출합니다. YAML에 환경 제한이 없으면 모든 환경에서 재사용할 수 있습니다. 작성 중 프로젝트·서버·탭 전환은 막고 환경 전환은 허용합니다. 명세가 없는 환경으로 이동하거나 명세를 불러오지 못해도 작성 중인 단계·이름·요청값·그룹과 편집 화면을 유지합니다. API 문서 영역에는 현재 환경의 명세만 표시합니다. 명세를 확인할 수 없는 동안 요청 입력칸은 마지막으로 확인한 필드를 유지하므로 미완성 JSON도 이어서 작성할 수 있습니다. 저장·실행 검사는 현재 환경을 기준으로 수행합니다. 미저장 상태에서 닫으면 **계속 작성** 또는 **변경사항 버리고 닫기**를 고릅니다.
 
@@ -85,15 +85,15 @@ API 단계의 값 연결에서 **실행 중 사용자 입력으로 받기**를 �
 | API | `api: POST /bos/login` (명세의 메서드·경로) |
 | 요청 값 | 단계 바로 아래 `body` · `query` · `pathParams` · `headers` · `cookies` |
 | 앞 단계 값 | `{{steps.1.response.body./data/challengeToken}}`, 응답 헤더 `{{steps.1.response.header.X-Request-Id}}`, 앞 단계 요청값 `{{steps.1.request.body./loginId}}` (1부터 시작하는 단계 번호 + JSON Pointer, 앞선 단계만) |
-| 다른 시나리오와 공유 | 저장 `extract: [{ pointer: /data/accessToken, target: globals.accessToken, sensitive: true }]`, 사용 `{{globals.accessToken}}` |
-| 실행 중 입력 | 단계에 `inputs: [{ name: code, label: 인증번호, sensitive: true }]`, 사용 `{{inputs.code}}` |
+| 다른 시나리오와 공유 | 저장 `extract: [{ pointer: /data/accessToken, target: globals.accessToken }]`, 사용 `{{globals.accessToken}}` |
+| 실행 중 입력 | 단계에 `inputs: [{ name: code, label: 인증번호 }]`, 사용 `{{inputs.code}}` |
 | 인증 | 시나리오 또는 단계에 `auth: globals.accessToken`, 인증 없는 단계는 `auth: none` |
 | 검증 | 본문 `expect: [{ source: body, pointer: /data/status, operator: equals, value: ACTIVE }]`, 특정 상태 코드 `{ source: status, operator: equals, value: 201 }` (없으면 2xx 자동 확인) |
 
 - 시나리오 최상위: `id`(저장 식별자), `name`, `description`, `server`(모든 단계 공통일 때), `auth`, `onFailure`(`stop` 기본·`continue`), `steps`.
 - 단계 번호는 저장 시점의 순서입니다. 편집기에서 순서를 바꿔도 연결은 유지되고, 저장하면 번호가 새 순서로 다시 매겨집니다. 출처 단계가 사용 단계보다 뒤로 가거나 삭제되면 시나리오 검사에서 알려 줍니다.
 - 단계 id·내부 변수 이름은 파일에 쓰지 않습니다. 단계의 엔드포인트 설명은 명세에서 읽으므로 쓰지 않습니다.
-- `extract`의 `source: body`와 `sensitive: false`는 기본값이라 생략합니다.
+- `extract`의 `source: body`는 기본값이라 생략합니다. 예전 파일의 `sensitive:`는 읽을 때 무시하고 저장할 때 쓰지 않습니다.
 
 ```yaml
 id: items/read-again
@@ -145,7 +145,7 @@ steps:
     server: member
     api: POST /auth/login
     inputs:
-      - { name: memberLoginId, label: 회원 아이디, sensitive: false }
+      - { name: memberLoginId, label: 회원 아이디 }
       - { name: memberPassword, label: 회원 비밀번호 }
     body:
       loginId: "{{inputs.memberLoginId}}"
@@ -153,7 +153,7 @@ steps:
     expect:
       - { source: status, operator: equals, value: 200 }
     extract:
-      - { pointer: /accessToken, target: globals.memberAccessToken, sensitive: true }
+      - { pointer: /accessToken, target: globals.memberAccessToken }
 
   - name: 회원 문의 등록
     server: member
@@ -167,7 +167,7 @@ steps:
     server: admin
     api: POST /auth/login
     inputs:
-      - { name: adminLoginId, label: 관리자 아이디, sensitive: false }
+      - { name: adminLoginId, label: 관리자 아이디 }
       - { name: adminPassword, label: 관리자 비밀번호 }
     body:
       loginId: "{{inputs.adminLoginId}}"
@@ -175,7 +175,7 @@ steps:
     expect:
       - { source: status, operator: equals, value: 200 }
     extract:
-      - { pointer: /accessToken, target: globals.adminAccessToken, sensitive: true }
+      - { pointer: /accessToken, target: globals.adminAccessToken }
 
   - name: 관리자 문의 목록 조회
     server: admin

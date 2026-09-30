@@ -55,10 +55,10 @@ test("value links can point to any other step and keep request or response sourc
   const source = sample();
   const linked = connectValue(source, 2, 0, "request", "body", "/count", undefined, "seed", "query", "seed");
   assert.equal(linked.steps[0].request.query?.seed, "{{vars.seed}}");
-  assert.deepEqual(linked.valueBindings.at(-1), { name: "seed", step: "post__orders", source: "request", area: "body", pointer: "/count", sensitive: false });
+  assert.deepEqual(linked.valueBindings.at(-1), { name: "seed", step: "post__orders", source: "request", area: "body", pointer: "/count" });
   const response = connectValue(source, 0, 2, "response", "header", undefined, "X-Trace", "traceId", "headers", "X-Trace-Id");
   assert.equal(response.steps[2].request.headers?.["X-Trace-Id"], "{{vars.traceId}}");
-  assert.deepEqual(response.valueBindings.at(-1), { name: "traceId", step: "get__list", source: "response", area: "header", header: "X-Trace", sensitive: true });
+  assert.deepEqual(response.valueBindings.at(-1), { name: "traceId", step: "get__list", source: "response", area: "header", header: "X-Trace" });
   assert.match(stringifyScenario(response), /X-Trace-Id: "\{\{steps\.1\.response\.header\.X-Trace\}\}"/);
   stable(response);
 });

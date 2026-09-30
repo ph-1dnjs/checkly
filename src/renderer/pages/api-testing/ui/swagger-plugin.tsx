@@ -83,7 +83,7 @@ export function createSwaggerPlugin(options: {
           props.onResetClick?.([path, method]);
         };
         return <>
-          {props.tryItOutEnabled && remembered && !options.composingRef.current && <p className="api-doc-remembered" role="status">마지막으로 실행한 값을 채웠습니다. 비밀번호·토큰은 저장하지 않습니다.<button type="button" className="api-compose-link" onClick={forget}>기억한 값 지우기</button></p>}
+          {props.tryItOutEnabled && remembered && !options.composingRef.current && <p className="api-doc-remembered" role="status">마지막으로 실행한 값을 채웠습니다. <span title="이름에 authorization · cookie · password · token · secret · api key · otp · credential · session 이 들어간 값">이름이 password·token 등인 값은 저장하지 않습니다.</span><button type="button" className="api-compose-link" onClick={forget}>기억한 값 지우기</button></p>}
           <Original {...props} />
         </>;
       },

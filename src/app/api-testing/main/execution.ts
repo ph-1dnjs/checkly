@@ -19,7 +19,6 @@ export type RunOptions = {
   requestInput?: (request: ScenarioInputRequest) => Promise<Json | undefined>;
   onRequest?: (request: ApiRequestTrace, stepId: string) => void;
   onResponse?: (response: { headers: Record<string, string>; body: Json }, stepId: string) => void;
-  onValue?: (value: Json, sensitive: boolean) => void;
   onVariables?: (variables: Variables) => void;
   resolveOperation?: (server: string, api: Scenario["steps"][number]["api"]) => { method: string; path: string; bodySchema?: Json; parameters?: Array<{ name: string; location: string; type: string; style?: string; explode?: boolean }> };
 };
@@ -117,7 +116,6 @@ function applyBindings(scenario: Scenario, index: number, context: Context, requ
     const value = readBinding(binding, requests, responses);
     if (value === undefined) continue;
     context.vars[binding.name] = structuredClone(value);
-    options.onValue?.(structuredClone(value), binding.sensitive);
   }
 }
 

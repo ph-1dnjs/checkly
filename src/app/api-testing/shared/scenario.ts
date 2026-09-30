@@ -3,12 +3,15 @@ import { z } from "zod";
 
 const value = z.json();
 const pointer = z.string().regex(/^(?:\/(?:[^~]|~[01])*)*$/);
+// `sensitive:` once asked the screen to mask a value; nothing uses it now. Older files may still
+// carry it, so it is accepted and ignored (and never written back).
+const ignoredSensitive = z.boolean().optional();
 export const scenarioInputSchema = z.object({
   name: z.string().regex(/^[A-Za-z][A-Za-z0-9_]*$/),
   label: z.string().min(1).max(200).optional(),
   type: z.enum(["string", "number", "boolean", "object", "array"]).default("string"),
   required: z.boolean().default(true),
-  sensitive: z.boolean().default(true),
+  sensitive: ignoredSensitive,
 }).strict();
 export type ScenarioInput = z.infer<typeof scenarioInputSchema>;
 export type ScenarioInputRequest = ScenarioInput & {
@@ -48,7 +51,7 @@ const extraction = z.object({
   source: z.enum(["body", "header"]).default("body"),
   pointer: pointer.optional(), header: z.string().optional(),
   target: z.string().regex(/^(vars|globals)\.[A-Za-z][A-Za-z0-9_]*$/),
-  sensitive: z.boolean().default(false),
+  sensitive: ignoredSensitive,
 }).strict().superRefine((v, ctx) => {
   if (v.source === "body" ? v.pointer === undefined : !v.header)
     ctx.addIssue({ code: "custom", message: "추출할 pointer 또는 header가 필요합니다" });
@@ -60,7 +63,7 @@ const valueBinding = z.object({
   area: z.enum(["pathParams", "query", "headers", "cookies", "body", "header"]),
   pointer: pointer.optional(),
   header: z.string().min(1).optional(),
-  sensitive: z.boolean().default(false),
+  sensitive: ignoredSensitive,
 }).strict().superRefine((v, ctx) => {
   if (v.source === "request") {
     if (v.area === "header") ctx.addIssue({ code: "custom", path: ["area"], message: "요청 출처는 요청 영역을 사용하세요" });
@@ -81,7 +84,7 @@ export const scenarioSchema = z.object({
   environments: z.array(z.string().min(1)).min(1).optional(),
   inputs: z.record(z.string(), z.object({
     type: z.enum(["string", "number", "boolean", "object", "array"]),
-    required: z.boolean().default(false), sensitive: z.boolean().default(false),
+    required: z.boolean().default(false), sensitive: ignoredSensitive,
   }).strict()).default({}),
   vars: z.record(z.string(), value).default({}),
   steps: z.array(z.object({
@@ -179,7 +182,7 @@ const authoringExtraction = z.object({
   source: z.enum(["body", "header"]).default("body"),
   pointer: pointer.optional(), header: z.string().optional(),
   target: globalsRef,
-  sensitive: z.boolean().default(false),
+  sensitive: ignoredSensitive,
 }).strict().superRefine((v, ctx) => {
   if (v.source === "body" ? v.pointer === undefined : !v.header)
     ctx.addIssue({ code: "custom", message: "추출할 pointer 또는 header가 필요합니다" });
@@ -312,7 +315,7 @@ function expandStepReferences(scenario: Scenario): Scenario {
         let name = base;
         for (let suffix = 2; occupied.has(name); suffix++) name = `${base}_${suffix}`;
         occupied.add(name);
-        binding = { name, step: scenario.steps[from].id, source, area, ...(area === "header" ? { header: path } : { pointer: path }), sensitive: true };
+        binding = { name, step: scenario.steps[from].id, source, area, ...(area === "header" ? { header: path } : { pointer: path }) };
         bindings.push(binding!);
       }
       return `{{vars.${binding!.name}}}`;
@@ -346,7 +349,7 @@ export function stringifyScenario(scenario: Scenario, preserveIds = false, resol
   const { id, name, description, environments, steps, onFailure, auth } = normalized;
   const commonServer = steps.every(step => step.server === steps[0].server) ? steps[0].server : undefined;
   const extractFor = (extract: Scenario["steps"][number]["extract"]) =>
-    extract.map(({ source, sensitive, ...e }) => ({ ...(source !== "body" ? { source } : {}), ...e, ...(sensitive ? { sensitive } : {}) }));
+    extract.map(({ source, sensitive: _ignored, ...e }) => ({ ...(source !== "body" ? { source } : {}), ...e }));
   return stringify({
     ...(preserveIds ? { id } : {}), name,
     ...(description !== undefined ? { description } : {}),
@@ -363,8 +366,8 @@ export function stringifyScenario(scenario: Scenario, preserveIds = false, resol
         ...(!commonServer ? { server: serverNames[server] ?? server } : {}),
         api: resolved ? `${resolved.method.toUpperCase()} ${resolved.path}` : api,
         ...(stepAuth ? { auth: stepAuth } : {}),
-        // Defaults (string, required, sensitive) are omitted.
-        ...(inputs.length ? { inputs: inputs.map(({ type, required, sensitive, ...input }) => ({ ...input, ...(type !== "string" ? { type } : {}), ...(!required ? { required } : {}), ...(!sensitive ? { sensitive } : {}) })) } : {}),
+        // Defaults (string, required) are omitted; the ignored `sensitive` is never written.
+        ...(inputs.length ? { inputs: inputs.map(({ type, required, sensitive: _ignored, ...input }) => ({ ...input, ...(type !== "string" ? { type } : {}), ...(!required ? { required } : {}) })) } : {}),
         // Fixed order so saving is stable regardless of edit order.
         ...Object.fromEntries((["pathParams", "query", "headers", "cookies", "body"] as const).filter(area => request[area] !== undefined).map(area => [area, request[area]])),
         ...(expect?.length ? { expect } : {}),

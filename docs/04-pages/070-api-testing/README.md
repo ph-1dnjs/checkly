@@ -26,7 +26,7 @@ API 테스트 기능 문서는 이 디렉터리에서 관리합니다. 디자인
 | AI 작성 | `features/api-testing/author-scenarios/` | 가이드·결과 가져오기·검사·선택 저장 |
 | 설정 | `features/api-testing/configure-project/`, `configure-spec/`, `configure-globals/`, `configure-request-auth/` | 프로젝트·명세·변수·인증 설정 |
 | 실행 중 입력 | `features/api-testing/submit-run-input/` | 입력 모달·제출 |
-| 데이터 표현·계산 | `entities/api-testing/` | 실행 흐름/결과·설정 요약·JSON/YAML·트리·전역변수 후보·민감값 Context |
+| 데이터 표현·계산 | `entities/api-testing/` | 실행 흐름/결과·설정 요약·JSON/YAML·트리·전역변수 후보 |
 | 공통 UI·실행 버튼 | `shared/ui/`, `shared/hooks/useRunAction.ts`, `shared/model/run-action.ts` | Popover·정렬·임시 입력값·Dock 연결 |
 | 웹 개발 진입점 | `app/api-web/` | 개발용 앱 조립·웹 브리지 |
 

@@ -14,8 +14,6 @@ export { ScenarioRunFlow } from "./ui/ScenarioRunViews";
 export { ScenarioRunResult } from "./ui/ScenarioRunViews";
 export { ScenarioSidebarTree } from "./ui/ScenarioSidebarTree";
 export { ScenarioStepSummary } from "./ui/ScenarioStepSummary";
-export { SensitiveValuesProvider } from "./context/sensitive-values";
 export { SidebarMetadataFields } from "./ui/SidebarMetadataFields";
-export { useSensitiveValues } from "./context/sensitive-values";
 export { writeLastRun } from "./model/scenario-last-run";
 export { YamlCode } from "./ui/YamlCode";

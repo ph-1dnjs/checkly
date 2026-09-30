@@ -1,7 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { type Scenario, type Json, type ScenarioInput } from "../../../../../app/api-testing/shared/scenario";
 import type { ApiOperation, ApiScope, ApiTestingBridge } from "../../../../../app/api-testing/shared/workspace";
-import { isSensitiveKey } from "../../../../../app/api-testing/shared/sensitive";
 import { DraftInput, DraftTextarea } from "../../../../shared/ui/DraftFields";
 import { type RequestField, type FieldState, suggestedInputName, isStructuredRequestField, requestFieldValueMatches, templateVariable, jsonText } from "../model/step-request-model";
 import { jsonValueType } from "../model/step-response-model";
@@ -94,9 +93,9 @@ export function GlobalVariableCreateForm({ index, field, scope, bridge, onCreate
     }
   };
   return <div className="api-global-variable-form">
-    <label>변수 이름<input data-value-visibility="public" aria-label={`${index + 1}단계 ${field.name} 새 전역변수 이름`} value={name} disabled={saving} onChange={event => setName(event.target.value)} /></label>
+    <label>변수 이름<input aria-label={`${index + 1}단계 ${field.name} 새 전역변수 이름`} value={name} disabled={saving} onChange={event => setName(event.target.value)} /></label>
     <label>값 형식<select aria-label={`${index + 1}단계 ${field.name} 새 전역변수 형식`} value={type} disabled={saving} onChange={event => setType(event.target.value as "string" | "json")}><option value="string">문자열</option><option value="json">JSON · 숫자, 불리언, 객체, 배열</option></select></label>
-    <label>값<input aria-label={`${index + 1}단계 ${field.name} 새 전역변수 값`} data-value-visibility={isSensitiveKey(name) || isSensitiveKey(field.name) ? "sensitive" : undefined} type="text" autoComplete="off" spellCheck={false} value={value} disabled={saving} placeholder={type === "string" ? "값 입력" : '{"key":"value"}'} onChange={event => setValue(event.target.value)} /></label>
+    <label>값<input aria-label={`${index + 1}단계 ${field.name} 새 전역변수 값`} type="text" autoComplete="off" spellCheck={false} value={value} disabled={saving} placeholder={type === "string" ? "값 입력" : '{"key":"value"}'} onChange={event => setValue(event.target.value)} /></label>
     {error && <p className="api-field-menu-error" role="alert">{error}</p>}
     <div className="api-actions"><button type="button" className="api-primary" disabled={saving} onClick={() => void save()}>{saving ? "저장 중…" : "추가 후 이 키에 연결"}</button><button type="button" disabled={saving} onClick={() => { onClose(); setError(""); }}>취소</button></div>
   </div>;
@@ -153,8 +152,8 @@ export function ValueActionModal({ index, field, current, state, globalNames, ha
       <section className="api-value-direct-editor" aria-label={`${index + 1}단계 ${field.name} 직접 입력`}>
         <header><strong>직접 입력</strong><small>입력한 값을 요청에 사용</small></header>
         <div>{structured
-          ? <DraftTextarea aria-label={`${index + 1}단계 ${field.name} 직접 입력 JSON`} data-value-visibility={isSensitiveKey(field.name) ? "sensitive" : undefined} rows={4} spellCheck={false} value={directText} placeholder={directPlaceholder} onChange={event => { setDirectText(event.target.value); setDirectError(""); }} />
-          : <DraftInput aria-label={`${index + 1}단계 ${field.name} 직접 입력값`} data-value-visibility={isSensitiveKey(field.name) ? "sensitive" : undefined} value={directText} placeholder={directPlaceholder} onChange={event => { setDirectText(event.target.value); setDirectError(""); }} />}
+          ? <DraftTextarea aria-label={`${index + 1}단계 ${field.name} 직접 입력 JSON`} rows={4} spellCheck={false} value={directText} placeholder={directPlaceholder} onChange={event => { setDirectText(event.target.value); setDirectError(""); }} />
+          : <DraftInput aria-label={`${index + 1}단계 ${field.name} 직접 입력값`} value={directText} placeholder={directPlaceholder} onChange={event => { setDirectText(event.target.value); setDirectError(""); }} />}
           <button type="button" className="api-primary" onClick={applyDirectValue}>입력값 적용</button></div>
         {directError && <p className="api-field-menu-error" role="alert">{directError}</p>}
       </section>
@@ -195,11 +194,10 @@ export function ScenarioInputSettingsModal({ index, field, userInput, onChange, 
         <button type="button" aria-label="사용자 입력 설정 닫기" onClick={onClose}>×</button>
       </header>
       <p className="api-value-modal-note">이 API를 실행하기 직전에 값을 입력받아 <code>{field.name}</code>에 사용합니다. 입력값 원문은 시나리오 YAML에 저장하지 않습니다.</p>
-      <label>입력 안내 문구<input data-value-visibility="public" aria-label={`${index + 1}단계 ${field.name} 사용자 입력 안내`} value={userInput.label ?? ""} placeholder={`${field.name} 입력`} onChange={event => onChange({ label: event.target.value || undefined })} /></label>
+      <label>입력 안내 문구<input aria-label={`${index + 1}단계 ${field.name} 사용자 입력 안내`} value={userInput.label ?? ""} placeholder={`${field.name} 입력`} onChange={event => onChange({ label: event.target.value || undefined })} /></label>
       <div className="api-input-settings-grid">
         <label>값 형식<select aria-label={`${index + 1}단계 ${field.name} 사용자 입력 형식`} value={userInput.type} onChange={event => onChange({ type: event.target.value as ScenarioInput["type"] })}><option value="string">문자열</option><option value="number">숫자</option><option value="boolean">불리언</option><option value="object">JSON 객체</option><option value="array">JSON 배열</option></select></label>
         <label className="api-check-row"><input type="checkbox" checked={userInput.required} onChange={event => onChange({ required: event.target.checked })} />필수 입력</label>
-        <label className="api-check-row"><input type="checkbox" checked={userInput.sensitive} onChange={event => onChange({ sensitive: event.target.checked })} />민감값 마스킹</label>
       </div>
       <div className="api-value-preview"><span className="api-field-state api-field-state-user-input"><strong>사용자 입력</strong><code>{userInput.name}</code></span><small>필드에는 실행 시 <code>{`{{vars.${userInput.name}}}`}</code>로 전달됩니다.</small></div>
       <footer><button type="button" className="api-danger-action" onClick={onRemove}>사용자 입력 해제</button><button type="button" className="api-primary" onClick={onClose}>완료</button></footer>

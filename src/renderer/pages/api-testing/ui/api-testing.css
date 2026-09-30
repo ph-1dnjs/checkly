@@ -1,14 +1,7 @@
 html:has(.api-diagram-dialog[open]) { overflow:hidden; }
 .api-context-value-actions { display:flex; align-items:center; gap:12px; margin-left:auto; flex:none; }
-.api-testing-page :is(.api-context,.api-compose-context) .api-value-visibility { display:inline-flex; align-items:center; gap:7px; padding:4px 0; margin:0; border:0; background:transparent; font-size:12px; white-space:nowrap; cursor:pointer; }
-.api-value-switch-track { display:block; position:relative; width:30px; height:18px; border-radius:var(--ck-dim-radius-pill); background:var(--ck-color-text-mute); transition:background .15s; }
-.api-value-switch-track::after { content:""; position:absolute; top:3px; left:3px; width:12px; height:12px; border-radius:50%; background:var(--ck-color-canvas); transition:transform .15s; }
-.api-value-visibility[aria-checked="true"] .api-value-switch-track { background:var(--ck-color-blue-action); }
-.api-value-visibility[aria-checked="true"] .api-value-switch-track::after { transform:translateX(12px); }
-.api-value-visibility:focus-visible { outline:2px solid var(--ck-color-blue-action); outline-offset:4px; border-radius:var(--ck-dim-radius-base); }
-/* Presentation-only: retain the original values for editing and transmission.
-   Only values marked sensitive (see shared/sensitive.ts) are hidden. */
-.api-hide-values :is(.api-sensitive-value, [data-value-visibility="sensitive"]) { -webkit-text-security:disc; }
+/* Like Swagger's Authorize: only inputs where a new secret is typed (docs token, docs password) are masked. */
+.api-secret-input { -webkit-text-security:disc; }
 /* Swagger's own request inputs and live responses stay as typed/received, like Swagger itself. */
 .api-accordion-editor .api-step-accordion { --method-color:var(--ck-color-text-mute); padding:0; margin:10px 0; border:1px solid var(--method-color); border-radius:var(--ck-dim-radius-base); }
 .api-accordion-editor .api-selected-get { --method-color:#61affe; } .api-accordion-editor .api-selected-post { --method-color:#49cc90; } .api-accordion-editor .api-selected-put { --method-color:#fca130; } .api-accordion-editor .api-selected-patch { --method-color:#50e3c2; } .api-accordion-editor .api-selected-delete { --method-color:#f93e3e; }
@@ -192,7 +185,6 @@ html:has(.api-diagram-dialog[open]) { overflow:hidden; }
 .api-json-copy[data-state="copied"]::before { content:'✓'; color:var(--ck-color-log-pass); }
 .api-json-copy[data-state="failed"]::before { content:'!'; color:var(--ck-color-log-fail); }
 .api-testing-page button.api-json-copy:hover,.api-testing-page button.api-json-copy:focus-visible { border-color:var(--ck-color-blue-on-dark); color:var(--ck-color-canvas); background:var(--ck-color-dark-active); }
-.api-hide-values .api-json-view .api-json-copy { display:none; }
 .api-testing-page summary { cursor:pointer; padding:8px 0; }
 .api-response { margin-top:32px; border-top:1px solid var(--api-border); padding-top:24px; }
 .api-response h3 span { font-size:13px; font-weight:400; }
@@ -805,7 +797,6 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 @container composer (max-width:1180px) {
   .api-compose-wide { display:none; }
   .api-compose-toolbar { gap:8px 10px; }
-  .api-compose-context .api-value-visibility > span:not(.api-value-switch-track) { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
 }
 @container composer (max-width:720px) {
   .api-compose-toolbar { grid-template-columns:auto minmax(0,1fr); grid-template-areas:"back heading" "context context" "steps steps"; }
@@ -1076,3 +1067,5 @@ body.panel-resizing { cursor:col-resize; user-select:none; }
 .api-globals-empty { margin:0 0 4px; color:var(--api-muted); font-size:12px; }
 .api-global-editor { padding-top:8px; }
 .api-global-editor h4 { margin:0 0 8px; font-size:12px; color:var(--api-primary); }
+.api-globals-heading-actions { display:flex; gap:6px; }
+.api-global-list.is-values-hidden .api-global-value { -webkit-text-security:disc; }

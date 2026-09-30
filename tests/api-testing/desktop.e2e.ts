@@ -268,18 +268,23 @@ async function main() {
     await shot("run-result");
     // The session cookie from login reaches the next request.
     await expect(result).toContainText("SESSION=desktop-session");
-    // Raw values stay in the DOM; the default-on toggle hides only sensitive ones.
-    const masking = async (text: string) => result.locator("span", { hasText: text }).last().evaluate(node => getComputedStyle(node).webkitTextSecurity);
-    await expect(page.getByRole("switch", { name: "민감값 숨기기" })).toHaveAttribute("aria-checked", "true");
-    if (await masking("login-secret-token") !== "disc") throw new Error("Access token is not masked");
-    if (await masking("테스트 상품") === "disc") throw new Error("Ordinary response value is masked");
+    // Like Swagger, results show values as they are (no masking toggle any more).
+    await expect(page.getByRole("switch", { name: "민감값 숨기기" })).toHaveCount(0);
+    const tokenText = result.locator("span", { hasText: "login-secret-token" }).last();
+    if (await tokenText.evaluate(node => getComputedStyle(node).webkitTextSecurity) === "disc") throw new Error("Result values are masked");
 
     // The extracted token and the session cookie are shared by the project.
     await page.getByRole("button", { name: "{ } 전역변수", exact: true }).click();
     await shot("globals");
     const tokenRow = globals.locator(".api-global-row").filter({ hasText: "accessToken" });
     await expect(tokenRow).toBeVisible();
-    if (await tokenRow.locator(".api-global-value").evaluate(node => getComputedStyle(node).webkitTextSecurity) !== "disc") throw new Error("Token global is not masked");
+    // Values in the globals panel start hidden; [값 보기] shows them.
+    const tokenValue = tokenRow.locator(".api-global-value");
+    await expect(tokenValue).toHaveText("login-secret-token");
+    await expect(tokenValue).toHaveCSS("-webkit-text-security", "disc");
+    await globals.getByRole("button", { name: "값 보기", exact: true }).click();
+    await expect(tokenValue).toHaveCSS("-webkit-text-security", "none");
+    await globals.getByRole("button", { name: "값 숨기기", exact: true }).click();
     await expect(globals.getByRole("region", { name: "세션 쿠키" })).toContainText("SESSION");
     await expect(globals.getByRole("region", { name: "세션 쿠키" })).not.toContainText("desktop-session");
     await page.keyboard.press("Escape");

@@ -3,7 +3,6 @@ import { useEffect, useRef, useState } from "react";
 import type { ApiProject, ApiScope, ApiScenarioInputRequest, ApiTestingBridge, SavedApiScenario, SavedApiSuite } from "../../../../app/api-testing/shared/workspace";
 import { producedGlobalNames, renderSuiteReport, reportScenario, usesInvalidatedGlobal, type SuiteReport, type SuiteReportScenario } from "../../../../app/api-testing/shared/suite-report";
 import { SidebarMetadataFields } from "../../../entities/api-testing";
-import { useSensitiveValues } from "../../../entities/api-testing";
 
 import { DeleteAction } from "../../../entities/api-testing";
 import { SortableList } from "../../../shared/ui/SortableList";
@@ -17,7 +16,6 @@ class SuiteDependencyError extends Error {}
 
 export function SuitePanel({ project, scope, bridge, scenarios, suites, selectedId, onSuitesChange, onSelectedIdChange, onBusy }: Props) {
   const selected = suites.find(suite => suite.id === selectedId);
-  const sensitiveValues = useSensitiveValues();
   const [name, setName] = useState(selected?.name ?? "");
   const [ids, setIds] = useState<string[]>(selected?.scenarioIds ?? []);
   const [groupPath, setGroupPath] = useState(selected?.groupPath ?? []);
@@ -91,7 +89,6 @@ export function SuitePanel({ project, scope, bridge, scenarios, suites, selected
           if (cancelRequested.current) throw new Error("실행 취소");
           const catalogs = Object.fromEntries(await Promise.all([...new Set(preview.scenario.steps.map(step => step.server))].map(async serverId => [serverId, await bridge.getCatalog({ projectId: scope.projectId, environmentId: scope.environmentId, serverId })] as const)));
           const result = await bridge.runScenario({ projectId: scope.projectId, environmentId: scope.environmentId }, item.source, item.bindings, {});
-          sensitiveValues.refresh();
           const references = preview.scenario.steps.map(step => {
             const operation = catalogs[step.server]?.operations.find(candidate => "operationId" in step.api ? candidate.operationId === step.api.operationId : candidate.method === step.api.method && candidate.path === step.api.path);
             return { name: step.name ?? operation?.summary ?? step.id, reference: operation ? `${operation.method.toUpperCase()} ${operation.path}` : "operationId" in step.api ? step.api.operationId : `${step.api.method} ${step.api.path}` };
