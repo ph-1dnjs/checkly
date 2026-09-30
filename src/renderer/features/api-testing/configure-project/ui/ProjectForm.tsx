@@ -3,8 +3,12 @@ import { projectSchema, type ApiProject } from "../../../../../app/api-testing/s
 import { Icon } from "../../../../shared/ui/Icon";
 import { DeleteAction } from "../../../../entities/api-testing";
 
-export function ProjectForm({ initial, onSave, onCancel, onDelete }: {
+export function ProjectForm({ initial, onSave, onCancel, onDelete, onExport, onImport }: {
   initial?: ApiProject; onSave: (project: ApiProject) => Promise<void>; onCancel: () => void; onDelete?: () => Promise<void>;
+  /** Saves the stored project as a share file; resolves to a short result, or "" when cancelled. */
+  onExport?: () => Promise<string>;
+  /** Adds a shared project file as a new project instead of filling in this form. */
+  onImport?: () => Promise<void>;
 }) {
   const [draft, setDraft] = useState<ApiProject>(() => {
     const serverId = crypto.randomUUID();
@@ -16,6 +20,11 @@ export function ProjectForm({ initial, onSave, onCancel, onDelete }: {
   const leave = () => { if (JSON.stringify(draft) !== original) setConfirmLeave(true); else onCancel(); };
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [exported, setExported] = useState("");
+  const runFileAction = async (action: () => Promise<void>) => {
+    setSaving(true); setError(""); setExported("");
+    try { await action(); } catch (e) { setError((e as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, "")); } finally { setSaving(false); }
+  };
   const removed = initial ? [...initial.servers.filter(s => !draft.servers.some(n => n.id === s.id)).map(s => `서버 ${s.name}`), ...initial.environments.filter(e => !draft.environments.some(n => n.id === e.id)).map(e => `환경 ${e.name}`)] : [];
   const setServerName = (id: string, name: string) => setDraft({ ...draft, servers: draft.servers.map(s => s.id === id ? { ...s, name } : s) });
   const removeServer = (id: string) => setDraft({ ...draft, servers: draft.servers.filter(s => s.id !== id), environments: draft.environments.map(e => ({ ...e, baseUrls: Object.fromEntries(Object.entries(e.baseUrls).filter(([key]) => key !== id)) })) });
@@ -37,6 +46,7 @@ export function ProjectForm({ initial, onSave, onCancel, onDelete }: {
       <button type="button" className="api-project-back" disabled={saving} onClick={leave}>← 돌아가기</button>
       <h2>{initial ? "프로젝트 설정" : "새 API 프로젝트"}</h2>
       <p>서버마다 API 명세를 등록하고, 실행할 때 고른 환경의 기본 주소로 호출합니다.</p>
+      {!initial && onImport && <div className="api-project-import"><span>공유받은 프로젝트 파일이 있으면 직접 만들지 않고 가져올 수 있습니다.</span><button type="button" disabled={saving} onClick={() => void runFileAction(onImport)}>파일에서 가져오기</button></div>}
     </header>
     <fieldset disabled={saving}>
       <label className="api-project-field">프로젝트 이름<input required value={draft.name} onChange={e => setDraft({ ...draft, name: e.target.value })} placeholder="예: 쇼핑몰 QA" /></label>
@@ -69,6 +79,10 @@ export function ProjectForm({ initial, onSave, onCancel, onDelete }: {
       {error && <p role="alert" className="api-warning">{error}</p>}
     </fieldset>
     <footer className="api-project-form-footer">
+      {initial && onExport && <span className="api-project-export">
+        <button type="button" disabled={saving} title="설정·시나리오·스위트·명세 주소를 적힌 그대로 파일로 저장합니다. 전역변수·저장된 계정·쿠키는 넣지 않으니, 비밀값은 시나리오에 직접 적지 말고 전역변수로 쓰세요." onClick={() => void runFileAction(async () => setExported(await onExport()))}>프로젝트 내보내기</button>
+        {exported && <small role="status">{exported}</small>}
+      </span>}
       {initial && onDelete && <DeleteAction label="프로젝트 삭제" disabled={saving} description={`‘${initial.name}’의 모든 서버·환경, API 명세, 시나리오·초안, 저장된 문서 계정과 전역변수를 삭제합니다. 실제 API 서버의 데이터는 삭제하지 않습니다.`} onDelete={onDelete} />}
       <span className="api-project-form-actions"><button type="button" disabled={saving} onClick={leave}>취소</button><button className="api-primary" disabled={saving}>{saving ? "저장 중…" : "프로젝트 저장"}</button></span>
     </footer>

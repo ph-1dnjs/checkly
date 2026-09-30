@@ -58,6 +58,37 @@ export type ApiGlobal = { name: string; type: string; displayValue: string };
 /** Session cookie scope only; values never leave the main process. */
 export type ApiCookie = { name: string; domain: string; path: string };
 export type SavedApiScenario = { id: string; name: string; source: string; bindings: Record<string, string>; updatedAt: string; draft?: boolean; groupPath?: string[]; tags?: string[]; /** Old-title → new-title renames the user chose to keep as is. */ keptTitles?: Array<{ from: string; to: string }> };
+/**
+ * A project shared as one file: settings, scenarios and suites, plus each spec's URL, as written.
+ * Never carries globals, saved docs accounts, cookies, remembered docs inputs or spec bodies.
+ */
+export type ApiProjectExport = {
+  format: "checkly-api-project"; version: 1; exportedAt: string;
+  /** Id of the project this one was first shared from (its own id for the original). */
+  origin: string;
+  /** Content hashes of the version the sender last received/merged, to tell who changed what. */
+  base: { scenarios: Record<string, string>; suites: Record<string, string> };
+  project: ApiProject;
+  specUrls: Array<{ serverId: string; environmentId: string; url: string }>;
+  scenarios: Array<{ id: string; name: string; source: string; draft?: boolean; groupPath?: string[]; tags?: string[] }>;
+  suites: Array<{ id: string; name: string; scenarioIds: string[]; onFailure: "stop" | "continue"; groupPath?: string[]; tags?: string[] }>;
+};
+export type ApiProjectImportResult = {
+  project: ApiProject; scenarios: number; suites: number; specUrls: number;
+  /** Set when merged into an existing copy: what came from the file and what stayed local. */
+  merged?: { added: number; updated: number; kept: number };
+};
+/**
+ * Scenario/suite changes against the last version both sides had (the "base"): `incoming` changed
+ * only in the file and is applied, `mine` changed only locally and is kept, `conflicts` changed on
+ * both sides (or have no base yet) and need a choice.
+ */
+export type ApiShareDiff = { added: Array<{ id: string; name: string }>; incoming: Array<{ id: string; name: string }>; conflicts: Array<{ id: string; name: string }>; mine: number; same: number };
+export type ApiProjectImportPlan = {
+  name: string; scenarios: number; suites: number;
+  /** Local copies of the same project that the file can update. */
+  targets: Array<{ projectId: string; name: string; scenarios: ApiShareDiff; suites: ApiShareDiff; serversAdded: string[]; environmentsAdded: string[] }>;
+};
 export type SavedApiSuite = { id: string; name: string; scenarioIds: string[]; onFailure: "stop" | "continue"; updatedAt: string; groupPath?: string[]; tags?: string[] };
 export type ApiSidebarMetadata = { groupPath?: string[]; tags?: string[] };
 export type ApiScenarioPreview = { scenario: Scenario; issues: string[]; executionIssues?: string[] };
@@ -106,6 +137,13 @@ export type ApiTestingBridge = {
   /** Last "Try it out" values per operation key of the scope's server; secrets are never kept. */
   getDocInputs(scope: ApiScope): Promise<Record<string, ApiDocInput>>;
   forgetDocInput(scope: ApiScope, operationKey: string): Promise<void>;
+  /** Saves the project as a share file; resolves to where it was saved, or null when cancelled. */
+  exportProject(projectId: string): Promise<string | null>;
+  /** Picks a share file; resolves to its text, or null when cancelled. */
+  readProjectFile(): Promise<string | null>;
+  planProjectImport(text: string): Promise<ApiProjectImportPlan>;
+  /** New project without `update`; with it, merges into that copy taking the file side for the listed conflicts. */
+  importProject(text: string, update?: { projectId: string; scenarioIds: string[]; suiteIds: string[] }): Promise<ApiProjectImportResult>;
   listGlobals(scope: ApiProjectScope): Promise<ApiGlobal[]>;
   setGlobal(scope: ApiProjectScope, name: string, value: Json): Promise<void>;
   deleteGlobal(scope: ApiProjectScope, name: string): Promise<void>;

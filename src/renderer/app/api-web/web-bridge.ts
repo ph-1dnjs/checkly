@@ -36,6 +36,13 @@ function download(filename: string, text: string, type: string): string {
 
 export const webBridge: ApiTestingBridge = new Proxy({} as ApiTestingBridge, {
   get(_target, method: string) {
+    // Files go through the browser here: the dev server only sees the text.
+    if (method === "exportProject") return async (projectId: string) => {
+      const text: string = await rpc("exportProject", [projectId]);
+      const name = (JSON.parse(text) as { project: { name: string } }).project.name.replace(/[\\/:*?"<>|]/g, "_");
+      return download(`${name}.checkly-api.json`, text, "application/json;charset=utf-8");
+    };
+    if (method === "readProjectFile") return () => pickText(".json", 10_000_000);
     if (method === "readScenarioFile") return () => pickText(".yaml,.yml", 1_000_000);
     if (method === "saveSuiteReport") return async (filename: string, html: string) => download(filename, html, "text/html;charset=utf-8");
     if (method === "getAiPrompt") return (request: unknown) => rpc("buildAiPrompt", [request]);

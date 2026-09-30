@@ -456,6 +456,59 @@ async function main() {
     await restored.getByRole("button", { name: "시나리오 목록으로", exact: true }).click();
     await restored.getByRole("button", { name: "변경사항 버리고 닫기", exact: true }).click();
     await expect(warnedEntry).toBeVisible();
+    // A project exports to one share file and imports back as a new project.
+    const shareFile = path.join(dir, "share.checkly-api.json");
+    await app.evaluate(({ dialog }, file) => {
+      dialog.showSaveDialog = (async () => ({ canceled: false, filePath: file })) as unknown as typeof dialog.showSaveDialog;
+      dialog.showOpenDialog = (async () => ({ canceled: false, filePaths: [file] })) as unknown as typeof dialog.showOpenDialog;
+    }, shareFile);
+    await restored.getByRole("button", { name: "프로젝트 설정", exact: true }).click();
+    await restored.getByRole("button", { name: "프로젝트 내보내기", exact: true }).click();
+    await expect(restored.getByRole("status").filter({ hasText: "저장했습니다" })).toContainText(shareFile);
+    const shared = await readFile(shareFile, "utf8");
+    if (shared.includes("desktop-api-token") || shared.includes("docs-test-password")) throw new Error("Share file carries secrets");
+    await restored.getByRole("button", { name: "← 돌아가기", exact: true }).click();
+    await restored.getByRole("button", { name: "+ 프로젝트", exact: true }).click();
+    await restored.getByRole("button", { name: "파일에서 가져오기", exact: true }).click();
+    // The original is on this machine too, so it asks; a second copy is what this step wants.
+    const firstImport = restored.getByRole("dialog", { name: "프로젝트 가져오기" });
+    await expect(firstImport).toContainText("대상 · 쇼핑몰 QA");
+    await firstImport.getByLabel("새 프로젝트로 추가").check();
+    await firstImport.getByRole("button", { name: "새 프로젝트로 가져오기", exact: true }).click();
+    await expect(restored.getByRole("status").filter({ hasText: "프로젝트를 가져왔습니다" })).toContainText("‘쇼핑몰 QA (2)’");
+    await expect(restored.getByLabel("API 프로젝트").locator("option:checked")).toHaveText("쇼핑몰 QA (2)");
+    await expect(restored.locator(".api-sidebar-entry").filter({ hasText: "로그인 후 상품 조회" })).toBeVisible();
+    // The imported project works once its spec is refreshed from the carried URL: the scenario runs.
+    await restored.getByRole("tab", { name: /^API 문서/ }).click();
+    await expect(refreshedSource).toContainText("/openapi.json");
+    await refreshSpec();
+    await expect(refreshedSource).toContainText("최근 동기화 성공");
+    await restored.getByRole("tab", { name: "시나리오", exact: true }).click();
+    await restored.getByRole("button", { name: /로그인 후 상품 조회/ }).click();
+    await restored.getByRole("button", { name: "실행", exact: true }).click();
+    const importedInput = restored.getByRole("dialog", { name: "loginId 입력", exact: true });
+    await importedInput.getByRole("textbox").fill("tester");
+    await importedInput.getByRole("button", { name: "입력 완료 · 계속", exact: true }).click();
+    await expect(restored.getByRole("region", { name: "시나리오 실행 결과" })).toContainText("통과");
+    // The copy's file (with one more scenario) goes back into the original through the update dialog.
+    await restored.getByRole("button", { name: "프로젝트 설정", exact: true }).click();
+    await restored.getByRole("button", { name: "프로젝트 내보내기", exact: true }).click();
+    await expect(restored.getByRole("status").filter({ hasText: "저장했습니다" })).toBeVisible();
+    await restored.getByRole("button", { name: "← 돌아가기", exact: true }).click();
+    const copyFile = JSON.parse(await readFile(shareFile, "utf8")) as { scenarios: Array<{ id: string; name: string; source: string }> };
+    const extra = copyFile.scenarios[0];
+    copyFile.scenarios.push({ ...extra, id: "shared/extra", name: "공유로 추가된 시나리오", source: extra.source.replace(/^id: .*$/m, "id: shared/extra").replace(/^name: .*$/m, "name: 공유로 추가된 시나리오") });
+    await writeFile(shareFile, JSON.stringify(copyFile));
+    await restored.getByRole("button", { name: "가져오기", exact: true }).click();
+    const importDialog = restored.getByRole("dialog", { name: "프로젝트 가져오기" });
+    await importDialog.getByLabel("업데이트할 프로젝트").selectOption({ label: "쇼핑몰 QA" });
+    await expect(importDialog).toContainText("추가 1");
+    if (process.env.CHECKLY_E2E_SHOTS) await restored.screenshot({ path: path.join(process.env.CHECKLY_E2E_SHOTS, "project-import.png") });
+    await importDialog.getByRole("button", { name: "업데이트", exact: true }).click();
+    await expect(restored.getByRole("status").filter({ hasText: "에 합쳤습니다" })).toContainText("‘쇼핑몰 QA’에 합쳤습니다 · 추가 1");
+    await expect(restored.getByLabel("API 프로젝트").locator("option:checked")).toHaveText("쇼핑몰 QA");
+    // It keeps the copied scenario's group, which starts folded in the sidebar.
+    await expect(restored.locator(".api-sidebar-entry").filter({ hasText: "공유로 추가된 시나리오" })).toHaveCount(1);
   } finally {
     try {
       const electronProcess = app?.process();
