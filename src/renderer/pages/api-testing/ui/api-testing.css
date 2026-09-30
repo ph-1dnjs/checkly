@@ -583,7 +583,7 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 .api-testing-page:has(.api-compose-layout) { padding-bottom:0; }
 .api-testing-page:has(.api-compose-layout) > .api-toolbar { display:none; }
 /* While composing, tabs and project/server controls are locked: the composer toolbar alone carries the header. */
-.api-testing-page:has(.api-compose-layout) > :is(.api-tabs,.api-context) { display:none; }
+.api-testing-page:has(.api-compose-layout) > :is(.api-tabs,.api-context,.api-workbar) { display:none; }
 .api-compose-context .api-context-value-actions { margin-left:0; gap:10px; }
 .api-testing-page:has(.api-compose-layout) .api-compose-meta { display:none; }
 .api-testing-page:has(.api-compose-layout) .api-documentation { display:flex; flex:1 1 auto; flex-direction:column; min-height:0; overflow:hidden; }
@@ -1036,3 +1036,8 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 .api-ai-steps strong::before { content:counter(ai-step) ". "; color:var(--api-primary); }
 .api-ai-steps span { color:var(--api-muted); }
 .api-scenario-detail > .api-empty .api-actions { justify-content:center; margin-top:12px; }
+/* Tabs (left) and server/environment/value controls (right) in one row under the title. */
+.api-workbar { display:flex; flex-wrap:wrap; align-items:flex-end; justify-content:space-between; gap:8px 16px; margin-bottom:16px; border-bottom:1px solid var(--ck-color-line-strong); }
+.api-swagger-shell .api-workbar > .api-tabs { margin:0; border-bottom:0; }
+.api-swagger-shell .api-workbar > .api-context { display:flex; align-items:center; gap:8px; margin:0 0 8px auto; padding:0; border-bottom:0; }
+.api-workbar .api-context-value-actions { margin-left:8px; }
