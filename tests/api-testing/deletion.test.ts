@@ -41,7 +41,13 @@ test("deletion protects references, revisions and sync; cleans only the selected
     await workspace.deleteScenario(project.id, item.id, item.updatedAt);
     assert.deepEqual(await workspace.listScenarios(project.id), []);
     await workspace.saveProject({ ...project, environments: [project.environments[0]] });
+    // Leftovers no step names: an old format backup and a spec of a pair no longer in the project.
+    await writeFile(path.join(dir, `scenarios-${project.id}.json.bak-2026-09-25T09-56-04-383Z`), "[]");
+    await writeFile(path.join(dir, `catalog-${project.id}-${randomUUID()}-${serverId}.json`), "null");
+    const otherBackup = `scenarios-${other.id}.json.bak-2026-09-25T09-56-04-383Z`;
+    await writeFile(path.join(dir, otherBackup), "[]");
     await workspace.deleteProject(project.id);
+    assert.ok((await readdir(dir)).includes(otherBackup));
     assert.deepEqual((await workspace.listProjects()).map(p => p.id), [other.id]);
     assert.ok(await workspace.getCatalog({ ...scope, projectId: other.id }));
     assert.ok((await readdir(dir)).every(file => !file.includes(project.id)));
