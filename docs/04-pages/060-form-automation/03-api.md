@@ -23,6 +23,7 @@
 | `form-automation:http-request` | preload→main | CORS와 무관하게 OpenAPI URL 조회 |
 | `form-automation:pick-openapi` | preload→main | 로컬 OpenAPI JSON 선택 |
 | `form-automation:network-event` | 웹뷰 preload→renderer | fetch/XHR 및 페이지 오류 전달 |
+| `form-automation:capture-shortcut` | 웹뷰 preload→renderer | 웹뷰에서 누른 `⌘/Ctrl + Shift + S`를 캡처 흐름으로 전달 |
 
 폼 자동완성용 persistent partition은 `persist:checkly-form-automation*` 이름을 사용해 기존 편집기 웹뷰와 저장소를 공유하지 않습니다.
 

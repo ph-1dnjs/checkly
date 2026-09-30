@@ -438,9 +438,26 @@ export const FormAutomationPage = (): ReactElement => {
       switchBrowserTab(browserTabs[0].id);
   }, [activeTabId, browserTabs, switchBrowserTab]);
 
+  const startCapture = useCallback(async () => {
+    if (!window.electronAPI?.captureFormAutomationPage) {
+      showToast("화면 캡처는 Electron 앱에서 사용할 수 있습니다.");
+      return;
+    }
+    if (capture || captureBusy) return;
+    setCaptureBusy(true);
+    try { setCapture(await window.electronAPI.captureFormAutomationPage()); }
+    catch (error) { showToast(`화면 캡처 실패: ${error instanceof Error ? error.message : String(error)}`); }
+    finally { setCaptureBusy(false); }
+  }, [capture, captureBusy, showToast]);
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
+      if (event.shiftKey && event.key.toLowerCase() === "s") {
+        event.preventDefault();
+        void startCapture();
+        return;
+      }
       if (event.key.toLowerCase() === "t") {
         event.preventDefault();
         addBrowserTab();
@@ -454,7 +471,7 @@ export const FormAutomationPage = (): ReactElement => {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [addBrowserTab, switchBrowserTab]);
+  }, [addBrowserTab, startCapture, switchBrowserTab]);
 
   const tabIds = browserTabs.map((item) => item.id).join("|");
   useEffect(() => {
@@ -531,8 +548,12 @@ export const FormAutomationPage = (): ReactElement => {
         void window.electronAPI?.saveFormAutomationSessionEvent?.(payload).catch(() => undefined);
       };
       const message = (event: Event & { channel?: string; args?: unknown[] }) => {
-        if (event.channel !== "form-automation:network-event") return;
-        recordGuestNetworkEvent(event.args?.[0] as Omit<NetworkEvent, "id">, sessionForTab());
+        if (event.channel === "form-automation:capture-shortcut") {
+          void startCapture();
+          return;
+        }
+        if (event.channel === "form-automation:network-event")
+          recordGuestNetworkEvent(event.args?.[0] as Omit<NetworkEvent, "id">, sessionForTab());
       };
       webview.addEventListener("dom-ready", ready);
       webview.addEventListener("did-stop-loading", ready);
@@ -553,7 +574,7 @@ export const FormAutomationPage = (): ReactElement => {
       });
     }
     return () => cleanups.forEach((cleanup) => cleanup());
-  }, [discoverFields, recordGuestNetworkEvent, sendGuestConfig, setTargetUrl, tabIds, updateBrowserTab, zoomPercent]);
+  }, [discoverFields, recordGuestNetworkEvent, sendGuestConfig, setTargetUrl, startCapture, tabIds, updateBrowserTab, zoomPercent]);
 
   const currentPageUrl = activeTab?.currentPageUrl || activeTab?.url || targetUrl;
   const currentPageScope = pageScopeFromUrl(currentPageUrl);
@@ -639,18 +660,6 @@ export const FormAutomationPage = (): ReactElement => {
         ? "API 오류 내용을 클립보드에 복사했습니다."
         : "API 요청·응답 스펙을 클립보드에 복사했습니다.",
     );
-  };
-
-  const startCapture = async () => {
-    if (!window.electronAPI?.captureFormAutomationPage) {
-      showToast("화면 캡처는 Electron 앱에서 사용할 수 있습니다.");
-      return;
-    }
-    if (captureBusy) return;
-    setCaptureBusy(true);
-    try { setCapture(await window.electronAPI.captureFormAutomationPage()); }
-    catch (error) { showToast(`화면 캡처 실패: ${error instanceof Error ? error.message : String(error)}`); }
-    finally { setCaptureBusy(false); }
   };
 
   const copyCapture = async (dataUrl: string) => {
@@ -1041,8 +1050,16 @@ export const FormAutomationPage = (): ReactElement => {
           <p>실제 화면의 입력 필드를 감지하고 정상값·오류값 케이스를 즉시 적용합니다.</p>
         </div>
         <div className="fa-header-actions">
-          <button className="button fa-header-action secondary" disabled={captureBusy} onClick={() => void startCapture()}>
+          <button
+            className="button fa-header-action secondary"
+            disabled={captureBusy}
+            onClick={() => void startCapture()}
+            aria-label="화면 캡처"
+            aria-keyshortcuts="Control+Shift+S Meta+Shift+S"
+            title="화면 캡처 (⌘/Ctrl + Shift + S)"
+          >
             <MaterialIcon name="photo_camera" /> {captureBusy ? "캡처 중…" : "화면 캡처"}
+            {!captureBusy && <span className="fa-shortcut-hint" aria-hidden="true">⌘/Ctrl ⇧ S</span>}
           </button>
           <button className="button fa-header-action secondary" onClick={() => setOpenApiDialog(true)}>
             <MaterialIcon name="data_object" /> {openApi ? "Swagger 연결됨" : "Swagger 연결"}

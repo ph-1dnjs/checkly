@@ -5,6 +5,19 @@ contextBridge.exposeInMainWorld("__CHECKLY_FORM_AUTOMATION__", {
     ipcRenderer.sendToHost("form-automation:network-event", payload),
 });
 
+window.addEventListener("keydown", (event) => {
+  if (
+    (event.metaKey || event.ctrlKey)
+    && event.shiftKey
+    && !event.altKey
+    && event.key.toLowerCase() === "s"
+  ) {
+    event.preventDefault();
+    event.stopPropagation();
+    ipcRenderer.sendToHost("form-automation:capture-shortcut");
+  }
+}, true);
+
 const endpointMatches = (requestUrl: string, ruleMatch: string, baseUrl = "https://qa.local") => {
   const match = String(ruleMatch || "").trim();
   if (!match) return false;
