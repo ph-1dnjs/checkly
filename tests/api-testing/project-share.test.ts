@@ -152,4 +152,3 @@ test("share edge cases: long names still number, spec URLs go as written, folder
     assert.deepEqual([merged.groupPath, merged.tags], [["주문"], ["smoke"]]);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
-
