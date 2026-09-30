@@ -1,5 +1,6 @@
 import { runStatusName } from "../../../entities/api-testing";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { ResizeHandle, useStoredWidth } from "../../../shared/ui/ResizeHandle";
 import type { ApiCatalog, ApiProject, ApiScope, ApiTestingBridge, ApiScenarioInputRequest, ApiScenarioPreview, ApiScenarioResult, SavedApiScenario, SavedApiSuite } from "../../../../app/api-testing/shared/workspace";
 import { parseScenario, stringifyScenario, type Json, type Scenario } from "../../../../app/api-testing/shared/scenario";
 import { useSensitiveValues } from "../../../entities/api-testing";
@@ -324,8 +325,10 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
   const matchesSidebarItem = (item: SavedApiScenario | SavedApiSuite) => sidebarSearchText(item).includes(normalizedQuery);
   const sidebarScenarios = saved.filter(matchesSidebarItem);
   const sidebarSuites = suites.filter(matchesSidebarItem);
+  const columnsRef = useRef<HTMLDivElement>(null);
+  const [listWidth, setListWidth] = useStoredWidth("api-testing-scenario-list");
 
-  return <div className="api-columns api-scenarios api-scenario-run">
+  return <div ref={columnsRef} className="api-columns api-scenarios api-scenario-run" style={listWidth === null ? undefined : { "--api-list-width": `${listWidth}px` } as CSSProperties}>
     <aside aria-label="저장된 시나리오와 스위트">
       <input data-value-visibility="public" aria-label="시나리오·스위트 검색" placeholder="이름·설명·그룹 검색" value={query} onChange={event => setQuery(event.target.value)} />
       <section className="api-sidebar-section">
@@ -383,5 +386,6 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
       </details>}
     </article>
     {pendingInput && <RunInputModal key={pendingInput.requestId} request={pendingInput} scope={scenarioScope} bridge={bridge} onSubmitted={() => setPendingInput(null)} onCancel={() => { setPendingInput(null); void bridge.cancel(scope); }} />}</>}
+    <ResizeHandle label="시나리오 목록 폭" container={columnsRef} min={200} max={0.45} onChange={setListWidth} />
   </div>;
 }

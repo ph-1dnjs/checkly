@@ -31,7 +31,8 @@ export function ScenarioSettingsSummary({ scenario, catalogs, projectId, bridge,
       observer.observe(step, { childList: true, subtree: true }); pending.current = observer;
     }
   };
-  return <details className="api-settings-summary" open><summary>설정 요약</summary><div>
+  // Always shown: the pane is resized instead of folded.
+  return <section className="api-settings-summary" aria-labelledby="api-settings-summary-title"><h3 id="api-settings-summary-title" className="api-settings-summary-title">설정 요약</h3><div>
     {scenario.steps.map((step, index) => {
       const op = catalogs[step.server]?.operations.find(o => "operationId" in step.api ? o.operationId === step.api.operationId : o.path === step.api.path && o.method.toUpperCase() === step.api.method);
       const method = op?.method ?? ("method" in step.api ? step.api.method : "API");
@@ -41,5 +42,5 @@ export function ScenarioSettingsSummary({ scenario, catalogs, projectId, bridge,
         <div className="api-summary-content"><ScenarioStepSummary onConfigureGlobal={onConfigureGlobal} scenario={scenario} stepIndex={index} operation={op} catalog={catalogs[step.server]} globals={globals} onSelect={focus} /></div>
       </section>;
     })}
-  </div></details>;
+  </div></section>;
 }

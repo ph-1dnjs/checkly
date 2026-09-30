@@ -1,4 +1,5 @@
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties, type ReactNode } from "react";
+import { ResizeHandle, useStoredWidth } from "../../../shared/ui/ResizeHandle";
 import SwaggerUI from "swagger-ui-react";
 import "swagger-ui-react/swagger-ui.css";
 import type { Scenario } from "../../../../app/api-testing/shared/scenario";
@@ -71,6 +72,8 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
   }, [bridge, composing, project.servers, scope.environmentId, scope.projectId]);
   useEffect(() => { if (initialEdit) onEditConsumed?.(); }, []);
   // A saved scenario is opened to change values, so it starts on step 2; a new one picks APIs first.
+  const layoutRef = useRef<HTMLDivElement>(null);
+  const [summaryWidth, setSummaryWidth] = useStoredWidth("api-testing-compose-summary");
   const [composeView, setComposeView] = useState<"select" | "edit">(initialEdit?.scenario.steps.length ? "edit" : "select");
   const [activeStepId, setActiveStepId] = useState<string | null>(null);
   const [Markdown, setMarkdown] = useState<ComponentType<any> | undefined>();
@@ -325,7 +328,7 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
       </section>
     </div>}
     {!(composing && composeView === "edit") && <p className={`api-spec-meta${composing ? " api-compose-meta" : ""}`}>API 문서의 응답은 원문 그대로 보이고 저장되지 않습니다. 화면 공유에 주의하세요.</p>}
-    <div className={composing ? `api-compose-layout${composeView === "select" ? " api-selection-layout" : " api-edit-layout"}` : undefined}>
+    <div ref={layoutRef} className={composing ? `api-compose-layout${composeView === "select" ? " api-selection-layout" : " api-edit-layout"}` : undefined} style={composing && composeView === "edit" && summaryWidth !== null ? { "--api-summary-width": `${summaryWidth}px` } as CSSProperties : undefined}>
     <div className="api-swagger-renderer" hidden={composing && composeView === "edit"} data-scroll="light">
       {composing && project.servers.length > 1 && <div className="api-compose-server-switch">
         <label>API 문서 서버<select aria-label="Swagger 서버" value={composeServerId} disabled={saving || composeCatalogLoading} onChange={event => {
@@ -369,6 +372,8 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
       {notice && <p role="status">{notice}</p>}
       <button type="button" className="api-primary" disabled={saving || !draft.steps.length} onClick={() => setComposeView("edit")}>선택 및 순서 설정 완료</button>
     </aside>}
+    {/* Only step 2 is resizable: step 1's Swagger | list ratio stays fixed. */}
+    {composing && composeView === "edit" && <ResizeHandle label="설정 요약 폭" container={layoutRef} pane=".api-settings-summary" min={240} max={0.6} onChange={setSummaryWidth} />}
     {composing && composeView === "edit" && <ScenarioSettingsSummary globalRevision={globalAccess.revision} onConfigureGlobal={globalAccess.open} scenario={draft} catalogs={composeCatalogs} projectId={scope.projectId} bridge={bridge} onSelect={setActiveStepId} />}
     {composing && <aside hidden={composeView !== "edit"} className="api-compose-editor" aria-label="Swagger 시나리오 작성" data-scroll="light" onChangeCapture={() => { setDirty(true); setNotice(""); }}>
       <div ref={editorFormHost}><ScenarioBuilder catalogLoading={composeCatalogLoading} globalRevision={globalAccess.revision} onConfigureGlobal={globalAccess.open} key={editorVersion} suppliedCatalogs={composeCatalogs} value={draft} onChange={changeDraft} Markdown={Markdown} onStepFocus={step => setActiveStepId(step.id)} saving={saving} bindings={{}} project={project} scope={scope} bridge={bridge}
