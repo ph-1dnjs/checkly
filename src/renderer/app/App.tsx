@@ -111,7 +111,7 @@ export const App = (): ReactElement => {
 
   return (
     <main
-      className={`workspace${route === "editor" && editorMode === "marker" ? " screen-extract-workspace" : ""}${route === "run" ? " run-workspace" : ""}`}
+      className={`workspace${route === "editor" && editorMode === "marker" ? " screen-extract-workspace" : ""}${route === "run" ? " run-workspace" : ""}${route === "form-automation" ? " form-automation-workspace" : ""}`}
     >
       <section className="content">
         {route === "api-testing" && <ApiTestingPage onRunAction={setApiRunAction} />}
