@@ -75,6 +75,28 @@ export function createSwaggerPlugin(options: {
   const searchable = (method: string, path: string, tag: string, operation: any): SearchableOperation => ({ method, path, tag,
     summary: operation?.get?.("summary"), description: operation?.get?.("description"), ...fieldsOf(method, path) });
   // The current search, for the operations to explain their match (they don't re-render on a new filter).
+  // The global the docs' own calls send as a Bearer token (null = none), shared by the lock icons,
+  // curl and the 401 hint; re-read whenever the Authorize dialog closes.
+  let docsAuth: string | null = null;
+  const authListeners = new Set<() => void>();
+  const refreshDocsAuth = async () => {
+    try { docsAuth = await options.bridgeRef.current.getRequestAuth(options.scopeRef.current); } catch { docsAuth = null; }
+    for (const listener of authListeners) listener();
+  };
+  const useDocsAuth = () => {
+    const [value, setValue] = useState(docsAuth);
+    useEffect(() => {
+      const update = () => setValue(docsAuth);
+      authListeners.add(update);
+      update();
+      return () => { authListeners.delete(update); };
+    }, []);
+    return value;
+  };
+  const openAuthorize = () => {
+    const system = options.systemRef.current as any;
+    system?.authActions.showDefinitions(system.authSelectors.definitionsToAuthorize());
+  };
   let searchPhrase = "";
   const searchListeners = new Set<() => void>();
   const useSearchPhrase = () => {
@@ -169,8 +191,11 @@ export function createSwaggerPlugin(options: {
       },
       AuthorizeBtnContainer: () => function WorkspaceAuthorize(props: any) {
         const Button = props.getComponent("authorizeBtn");
-        return <Button getComponent={props.getComponent} isAuthorized={false}
-          showPopup={!!props.authSelectors.shownDefinitions()}
+        const shown = !!props.authSelectors.shownDefinitions();
+        useEffect(() => { if (!shown) void refreshDocsAuth(); }, [shown]);
+        const connected = useDocsAuth();
+        return <Button getComponent={props.getComponent} isAuthorized={Boolean(connected)}
+          showPopup={shown}
           onClick={() => props.authActions.showDefinitions(props.authSelectors.definitionsToAuthorize())} />;
       },
       FilterContainer: (Original: SwaggerComponent) => function SearchOperations(props: any) {
@@ -305,6 +330,8 @@ export function createSwaggerPlugin(options: {
             ...(reason.parameters.length ? [`파라미터 ${reason.parameters.join(", ")}`] : []),
             ...(reason.bodyFields.length ? [`본문 필드 ${reason.bodyFields.join(", ")}`] : []),
           ];
+          // A pasted path without variables matched plainly: nothing hidden to explain.
+          if (!parts.length) return;
           const note = document.createElement("span");
           note.className = "api-search-reason";
           note.textContent = `검색 일치 · ${parts.join(" · ")}`;
@@ -322,6 +349,19 @@ export function createSwaggerPlugin(options: {
             target.dataset.checklyDeepLinkOperation = operationId;
           }
         }, [operationId, tag]);
+        // APIs Checkly can't call yet (e.g. multipart bodies): say so on the row and offer no Try it out.
+        useLayoutEffect(() => {
+          const block = [...document.querySelectorAll<HTMLElement>(".api-swagger-renderer .opblock")].find(element => element.id.endsWith(`-${operationId}`));
+          const catalogOperation = options.catalogRef.current?.operations.find(item => item.path === path && item.method.toLowerCase() === method.toLowerCase());
+          const wrapper = block?.querySelector(".opblock-summary-path-description-wrapper");
+          if (!block || !wrapper || !catalogOperation?.warnings.length) return;
+          block.dataset.checklyUnsupported = "true";
+          const note = document.createElement("span");
+          note.className = "api-unsupported-note";
+          note.textContent = `실행 미지원 · ${catalogOperation.warnings.join(" · ")}`;
+          wrapper.appendChild(note);
+          return () => { note.remove(); delete block.dataset.checklyUnsupported; };
+        }, [operationId, path, method, isShown]);
         useEffect(() => {
           if (isShown && path && method) options.publishSelection({ path, method });
           else if (options.selectedRef.current?.path === path && options.selectedRef.current?.method === method) options.publishSelection(null);
@@ -344,7 +384,25 @@ export function createSwaggerPlugin(options: {
         return <Original {...props} />;
       },
       liveResponse: (Original: SwaggerComponent) => function AccessibleLiveResponse(props: any) {
-        return <div role="region" aria-label="API 응답"><Original {...props} /></div>;
+        const connected = useDocsAuth();
+        const status = props.response?.get?.("status");
+        return <div role="region" aria-label="API 응답">
+          {status === 401 && <p className="api-auth-hint" role="note">{connected
+            ? <>연결한 토큰(<code>{connected}</code>)이 만료됐거나 맞지 않을 수 있습니다. <button type="button" className="api-compose-link" onClick={openAuthorize}>Authorize</button>에서 확인하세요.</>
+            : <>인증이 필요한 API입니다. <button type="button" className="api-compose-link" onClick={openAuthorize}>Authorize</button>에서 토큰을 연결하세요.</>}</p>}
+          <Original {...props} />
+        </div>;
+      },
+      // The docs' calls carry the connected token; show it in curl by its global's name, never the value.
+      curl: (Original: SwaggerComponent) => function CurlWithAuth(props: any) {
+        const connected = useDocsAuth();
+        const request = connected && props.request?.setIn ? props.request.setIn(["headers", "Authorization"], `Bearer {{${connected}}}`) : props.request;
+        return <Original {...props} request={request} />;
+      },
+      // Lock icons on each API follow the same connection as the Authorize button.
+      authorizeOperationBtn: (Original: SwaggerComponent) => function OperationLock(props: any) {
+        const connected = useDocsAuth();
+        return <Original {...props} isAuthorized={Boolean(connected)} />;
       },
       responses: (Original: SwaggerComponent) => function AccessibleResponses(props: any) {
         return <div role="region" aria-label="Responses 응답 명세"><Original {...props} /></div>;

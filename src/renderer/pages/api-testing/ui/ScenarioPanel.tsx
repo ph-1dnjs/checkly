@@ -295,6 +295,7 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
     else registry.delete("checkly-scenario-search");
   });
   useEffect(() => () => { (globalThis.CSS as any)?.highlights?.delete("checkly-scenario-search"); }, []);
+  const serverNames = Object.fromEntries(project.servers.map(server => [server.id, server.name]));
   if (composer) {
     const initialEdit = composer.saved && composer.scenario ? { saved: composer.saved, scenario: composer.scenario } : undefined;
     return <ApiDocumentation
@@ -373,7 +374,7 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
         {suitesExpanded && <ScenarioSidebarTree kind="suite" expandAll={Boolean(normalizedQuery)} reasons={sidebarReasons} items={sidebarSuites} selectedId={suiteSelection || null} disabled={busy} onSelect={item => setSuiteSelection(item.id)} />}
       </section>
     </aside>
-    {suiteSelection !== null ? <SuitePanel key={suiteSelection} project={project} scope={scope} bridge={bridge} scenarios={saved} suites={suites} selectedId={suiteSelection} onSuitesChange={setSuites} onSelectedIdChange={setSuiteSelection} onBusy={working} /> : <>
+    {suiteSelection !== null ? <SuitePanel key={suiteSelection} project={project} scope={scope} bridge={bridge} scenarios={saved} suites={suites} selectedId={suiteSelection} onSuitesChange={setSuites} onSelectedIdChange={setSuiteSelection} onBusy={working} onOpenScenario={id => { const item = saved.find(scenario => scenario.id === id); if (item) { setSuiteSelection(null); setRunView("result"); void load(item); } }} /> : <>
     <article className="api-request-panel api-scenario-detail">
       {(current || preview) && <header className="api-detail-heading"><div><h2>{preview?.scenario.name ?? current?.name}</h2><p className="api-description">{preview?.scenario.description ?? ""}</p></div>{current && <div className="api-actions api-detail-actions"><span className="api-action-group" role="group" aria-label="실행"><button type="button" ref={runButton} className="api-primary" disabled={busy || !canUse} onClick={() => void runScenario()}>{running ? "실행 중…" : result ? "다시 실행" : "실행"}</button>{running && <button type="button" onClick={() => void bridge.cancel(scope)}>실행 중단</button>}</span><span className="api-action-group" role="group" aria-label="편집"><button type="button" disabled={busy} onClick={() => onEditScenario?.(current)}>수정</button><button type="button" disabled={busy || !preview} title="이 시나리오를 복사해 새 시나리오로 저장합니다" onClick={() => void duplicate(current)}>복제</button></span><span className="api-action-group" role="group" aria-label="관리"><DeleteAction key={current.id} label="시나리오 삭제" text="삭제" disabled={busy} description={`‘${current.name}’${current.draft ? " 초안" : ""}을 프로젝트에서 삭제합니다. API 명세와 전역변수는 유지됩니다.`} onDelete={async () => {
         await bridge.deleteScenario(project.id, current.id, current.updatedAt);
@@ -400,13 +401,13 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
         {/* One row: which view, and what this scenario is (step count, environment, readiness). */}
         <div className="api-run-view-bar">
           <div className="api-run-view-switch" role="group" aria-label="시나리오 보기"><button type="button" aria-pressed={runView === "preview" || !result} onClick={() => setRunView("preview")}>실행 흐름</button><button type="button" aria-pressed={runView === "result" && Boolean(result)} disabled={!result || running} onClick={() => setRunView("result")}>최근 실행</button></div>
-          <p className="api-spec-meta">{preview.scenario.steps.length}개 API · 순서대로 호출 · {project.environments.find(e => e.id === scope.environmentId)?.name}<span className={`api-run-status${current?.draft ? " is-draft" : canUse ? " is-ready" : " is-review"}`}>{current?.draft ? "초안" : canUse ? "실행 가능" : "설정 필요"}</span></p>
+          <p className="api-spec-meta">{preview.scenario.steps.length}개 API · 순서대로 호출 · {project.environments.find(e => e.id === scope.environmentId)?.name}{/* While showing the last run, its result carries the status; this badge is about running again. */}{!(runView === "result" && result) && <span className={`api-run-status${current?.draft ? " is-draft" : canUse ? " is-ready" : " is-review"}`}>{current?.draft ? "초안" : canUse ? "실행 가능" : "설정 필요"}</span>}</p>
         </div>
-        <div hidden={runView === "result" && Boolean(result)}><ScenarioRunFlow onConfigureGlobal={globalAccess.open} key={current?.id} preview={preview} catalogs={catalogs} bindings={bindings} focusRequest={focusRequest} /></div>
+        <div hidden={runView === "result" && Boolean(result)}><ScenarioRunFlow serverNames={serverNames} onConfigureGlobal={globalAccess.open} key={current?.id} preview={preview} catalogs={catalogs} bindings={bindings} focusRequest={focusRequest} /></div>
       </>}
       {notice && <p role="status">{notice}</p>}{error && <p className="api-warning" role="alert">{error}</p>}
       {(running || result) && <section hidden={!running && runView === "preview"} className={`api-response${running ? " api-response-running" : ""}`} aria-label={running ? "시나리오 실행 중" : "시나리오 실행 결과"}>
-        {running ? <><h2>실행 중</h2><ProgressBar label={pendingInput ? "입력 대기 중" : "시나리오 실행 중"} detail={pendingInput ? `${pendingInput.index + 1}/${pendingInput.totalSteps}단계 · ${pendingInput.label ?? pendingInput.name}` : preview ? `${preview.scenario.steps.length}개 API · 순서대로 실행 중` : "순서대로 실행 중"} /></> : result && <>{lastRun && <p className="api-spec-meta">마지막 실행 {new Date(lastRun.completedAt).toLocaleString()} · 새로고침하면 사라집니다</p>}<ScenarioRunResult result={result} preview={lastRun?.preview ?? preview} catalogs={catalogs} bindings={lastRun?.bindings ?? bindings} focusRequest={resultFocusRequest} /></>}
+        {running ? <><h2>실행 중</h2><ProgressBar label={pendingInput ? "입력 대기 중" : "시나리오 실행 중"} detail={pendingInput ? `${pendingInput.index + 1}/${pendingInput.totalSteps}단계 · ${pendingInput.label ?? pendingInput.name}` : preview ? `${preview.scenario.steps.length}개 API · 순서대로 실행 중` : "순서대로 실행 중"} /></> : result && <><ScenarioRunResult serverNames={serverNames} completedAt={lastRun?.completedAt} result={result} preview={lastRun?.preview ?? preview} catalogs={catalogs} bindings={lastRun?.bindings ?? bindings} focusRequest={resultFocusRequest} /></>}
       </section>}
       {preview && <details key={current?.id} className="api-scenario-yaml" onToggle={event => setYamlOpen(event.currentTarget.open)}>
         <summary>YAML 보기</summary>
