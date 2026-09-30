@@ -4,8 +4,8 @@ import { docInputFromRequest } from "../../../../app/api-testing/shared/doc-inpu
 import { RequestAuthPanel } from "../../../features/api-testing/configure-request-auth";
 import { DescriptionMarkdown } from "./DescriptionMarkdown";
 import { type SwaggerMap, type SwaggerSystem, type Selection, type MutableRef, type SwaggerComponent } from "../model/swagger-types";
-import { updateDeepLinkHash } from "../lib/swagger-deep-link";
-import { explainApiSearch, highlightTerms, matchesApiSearch, parseApiSearch, type SearchableOperation } from "../lib/api-search";
+import { deepLinkQuiet, updateDeepLinkHash, withoutDeepLink } from "../lib/swagger-deep-link";
+import { explainApiSearch, highlightTerms, matchesApiSearch, parseApiSearch, type SearchableOperation } from "../../../entities/api-testing";
 import { mapValue, textValue, buildRequest, requestUrl, displayRequest, responseFromApi, responseFromError, tagNames } from "../lib/swagger-request";
 
 export const submitMethods = ["get", "put", "post", "delete", "options", "head", "patch"];
@@ -181,7 +181,7 @@ export function createSwaggerPlugin(options: {
           const phrase = typeof filter === "string" ? filter.trim() : "";
           if (!system || !phrase) return;
           const matched = filterOperations(system.specSelectors.taggedOperations(), phrase);
-          for (const tag of matched?.keySeq?.().toArray?.() ?? []) if (typeof tag === "string") system.layoutActions.show(["operations-tag", tag], true);
+          withoutDeepLink(() => { for (const tag of matched?.keySeq?.().toArray?.() ?? []) if (typeof tag === "string") system.layoutActions.show(["operations-tag", tag], true); });
         }, [filter]);
         useEffect(() => {
           searchPhrase = typeof filter === "string" ? filter : "";
@@ -199,7 +199,7 @@ export function createSwaggerPlugin(options: {
         }, []);
         useLayoutEffect(() => {
           const input = root.current?.querySelector("input");
-          input?.setAttribute("placeholder", "검색: 경로·URL 붙여넣기, 제목, 파라미터, 태그 (/ 키)");
+          input?.setAttribute("placeholder", "태그·경로·제목·설명·파라미터·본문 필드 검색 (/ 키)");
           input?.setAttribute("aria-label", "API 문서 검색");
         });
         // "/" jumps to the search box (unless typing somewhere); Esc in it clears the search.
@@ -229,7 +229,7 @@ export function createSwaggerPlugin(options: {
         const setTags = (shown: boolean) => {
           const system = options.systemRef.current;
           const catalog = options.catalogRef.current;
-          if (system && catalog) for (const tag of tagNames(system, catalog)) system.layoutActions.show(["operations-tag", tag], shown);
+          if (system && catalog) withoutDeepLink(() => { for (const tag of tagNames(system, catalog)) system.layoutActions.show(["operations-tag", tag], shown); });
         };
         const Authorize = props.getComponent("AuthorizeBtnContainer", true);
         return <div ref={root} className="api-doc-search-tools"><Original {...props} />
@@ -347,7 +347,7 @@ export function createSwaggerPlugin(options: {
         wrapActions: {
           show: (original: (...args: any[]) => unknown) => (...args: any[]) => {
             const result = original(...args);
-            updateDeepLinkHash(args[0], args[1]);
+            if (!deepLinkQuiet()) updateDeepLinkHash(args[0], args[1]);
             return result;
           },
         },

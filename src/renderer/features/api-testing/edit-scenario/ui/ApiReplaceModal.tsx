@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { ApiOperation } from "../../../../../app/api-testing/shared/workspace";
+import { searchesVisibleList } from "../../../../entities/api-testing";
 
 /**
  * Picks another API for a step (e.g. after a path was renamed). Only the API reference changes;
@@ -14,8 +15,8 @@ export function ApiReplaceModal({ stepNumber, current, operations, onPick, onClo
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
-  const needle = query.trim().toLocaleLowerCase();
-  const matches = operations.filter(operation => !operation.warnings.length && `${operation.method} ${operation.path} ${operation.summary} ${operation.tag}`.toLocaleLowerCase().includes(needle));
+  const fits = searchesVisibleList(query);
+  const matches = operations.filter(operation => !operation.warnings.length && fits(operation, operation.tag));
   return <div className="api-value-modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
     <section className="api-value-modal api-replace-modal" role="dialog" aria-modal="true" aria-label={`${stepNumber}단계 API 바꾸기`} onMouseDown={event => event.stopPropagation()}>
       <header>
@@ -23,7 +24,7 @@ export function ApiReplaceModal({ stepNumber, current, operations, onPick, onClo
         <button type="button" aria-label="API 바꾸기 닫기" onClick={onClose}>×</button>
       </header>
       <p className="api-value-modal-note">요청값·응답 연결·검증은 그대로 둡니다. 새 API 명세에 없는 요청값은 편집 화면에 따로 표시되어 제거할 수 있습니다.</p>
-      <input type="search" autoFocus aria-label="바꿀 API 검색" placeholder="경로·제목·태그로 검색" value={query} onChange={event => setQuery(event.target.value)} />
+      <input type="search" autoFocus aria-label="바꿀 API 검색" placeholder="태그·경로·제목 검색" value={query} onChange={event => setQuery(event.target.value)} />
       <ul className="api-replace-list" data-scroll="light">
         {matches.slice(0, 80).map(operation => <li key={operation.key}><button type="button" onClick={() => onPick(operation)}>
           <span className="api-method" data-method={operation.method}>{operation.method}</span><code>{operation.path}</code><span>{operation.summary}</span>

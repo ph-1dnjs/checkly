@@ -17,7 +17,7 @@ import { ScenarioSettingsSummary } from "../../../features/api-testing/edit-scen
 import { globalProducerScenarios } from "../../../entities/api-testing";
 import { SidebarMetadataFields } from "../../../entities/api-testing";
 import { type SwaggerSystem, type Selection } from "../model/swagger-types";
-import { updateDeepLinkHash, applyDeepLink, handleSwaggerClick } from "../lib/swagger-deep-link";
+import { updateDeepLinkHash, applyDeepLink, handleSwaggerClick, withoutDeepLink } from "../lib/swagger-deep-link";
 import { buildSpec } from "../lib/swagger-request";
 import { submitMethods, createSwaggerPlugin } from "./swagger-plugin";
 import { LoadingSpinner } from "../../../shared/ui/LoadingSpinner";
@@ -166,7 +166,7 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
     if (!system || !operation) { setNotice("현재 API 명세에서 이 API를 찾을 수 없습니다."); return; }
     setActiveStepId(step.id);
     system.layoutActions.updateFilter("");
-    for (const tag of operation.tags?.length ? operation.tags : [operation.tag]) system.layoutActions.show(["operations-tag", tag], true);
+    withoutDeepLink(() => { for (const tag of operation.tags?.length ? operation.tags : [operation.tag]) system.layoutActions.show(["operations-tag", tag], true); });
     const root = document.querySelector(".api-swagger-renderer");
     if (!root) return;
     let highlighted: HTMLElement | undefined;
@@ -308,7 +308,7 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
       }} aria-label={composing ? "시나리오 목록으로" : undefined} title={composing ? "시나리오 목록으로" : undefined}>{composing ? <>← <span className="api-compose-wide">시나리오 </span>목록</> : "수정"}</button> : null}
       {composing && <div className="api-compose-heading">
         <strong className="api-compose-title" title={saved ? `시나리오 수정 · ${saved.name}` : "새 시나리오"}>{saved ? `시나리오 수정 · ${saved.name}` : "새 시나리오"}</strong>
-        <span className="api-compose-status"><span role="status">{draft.steps.length ? `${draft.steps.length}개 단계` : "API를 선택하세요"}{draft.steps.length ? dirty ? " · 저장 안 됨" : saved ? saved.draft ? " · 초안 저장됨 (실행 불가)" : " · 저장됨" : "" : ""}</span>{saved && <button type="button" className="api-compose-link" disabled={saving || dirty} title={dirty ? "저장한 뒤 새 시나리오를 시작할 수 있습니다" : undefined} onClick={newScenario}>+ 이어서 새 시나리오</button>}</span>
+        <span className="api-compose-status"><span role="status">{draft.steps.length ? `${draft.steps.length}개 단계` : "API를 선택하세요"}{draft.steps.length ? dirty ? " · 저장 안 됨" : saved ? saved.draft ? " · 초안 저장됨 (실행 불가)" : " · 저장됨" : "" : ""}</span></span>
       </div>}
       {composing && <nav className="api-compose-steps" aria-label="시나리오 작성 단계">
         <button type="button" aria-current={composeView === "select" ? "step" : undefined} disabled={saving} onClick={() => setComposeView("select")} title="API 추가·삭제와 순서 정하기"><span>1</span>API 선택</button>
@@ -348,7 +348,9 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
         // Docs start folded: every rendered operation re-computes on each keystroke in Try it out.
         // The composer has no Try it out, so it keeps the list open for picking APIs.
         docExpansion={composing ? "list" : "none"}
-        deepLinking
+        // The URL hash is kept by swagger-deep-link (user clicks only); Swagger's own deep linking
+        // would also rewrite it whenever search or "expand all" opens tags.
+        deepLinking={false}
         filter
         displayRequestDuration
         validatorUrl={null}

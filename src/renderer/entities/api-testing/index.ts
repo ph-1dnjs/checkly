@@ -1,3 +1,7 @@
+export { explainApiSearch, highlightTerms, matchesApiSearch, parseApiSearch, searchesVisibleList } from "./lib/api-search";
+export type { SearchableOperation } from "./lib/api-search";
+export { scenarioSearch } from "./lib/scenario-search";
+export type { SearchableScenario } from "./lib/scenario-search";
 export { configuredFields } from "./lib/settings-summary-model";
 export { DeleteAction } from "./ui/DeleteAction";
 export { globalOptions } from "./lib/global-options";

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { explainApiSearch, matchesApiSearch, parseApiSearch, type SearchableOperation } from "../../src/renderer/pages/api-testing/lib/api-search";
+import { explainApiSearch, matchesApiSearch, parseApiSearch, searchesVisibleList, type SearchableOperation } from "../../src/renderer/entities/api-testing/lib/api-search";
 
 const base = "https://api.example.com/gateway";
 const detail: SearchableOperation = { method: "get", path: "/users/{userId}/orders", tag: "주문", summary: "사용자 주문 목록", description: "취소된 주문도 포함", parameters: ["userId", "page"], bodyFields: [] };
@@ -39,4 +39,13 @@ test("explains matches the list doesn't show", () => {
   assert.equal(explainApiSearch(detail, parseApiSearch("주문", base)), null);
   // userId is already visible in the path.
   assert.equal(explainApiSearch(detail, parseApiSearch("userid", base)), null);
+});
+
+test("short API lists (AI picker, API 바꾸기) search what they show", () => {
+  const fits = searchesVisibleList("주문 post");
+  assert.equal(fits(create, create.tag), true);
+  assert.equal(fits(detail, detail.tag), false);
+  assert.equal(searchesVisibleList("/users/9/orders")(detail, detail.tag), true);
+  // Parameter and body field names aren't shown there, so they don't match.
+  assert.equal(searchesVisibleList("productCode")(create, create.tag), false);
 });

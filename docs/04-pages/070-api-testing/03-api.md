@@ -35,11 +35,11 @@
 | get-pending-input | 프로젝트·환경 → 현재 실행 입력 요청 또는 null |
 | submit-input | 프로젝트·환경, requestId·runId·stepId·name·JSON value → 대기 해제 |
 
-`ApiResponse` 공통 타입에는 status, httpStatus, durationMs, request, headers, body, error와 선택적인 checks·failure·input·inputs가 있습니다. `execute`는 상태·시간·오류와 수집된 요청/응답 원문을 반환하며 checks·failure·입력 결과는 반환하지 않습니다. `ApiScenarioResult`는 전체 status, 단계별 결과, 실행 중 값 변수인 variables를 반환합니다. 단계별 `checks`는 `{ expect?: 인덱스, passed, actual? }`이며 `expect`가 없으면 자동 2xx 확인, `actual`은 실패 시에만 80자까지 담습니다. request는 `{ method, url, headers, body? }`, 응답은 headers와 body로 반환됩니다. 전역변수 목록과 실행 결과는 민감값이 포함된 원문이며 화면의 숨기기 토글이 표시만 가립니다. 자동으로 저장하거나 AI 데이터에 포함하지 않습니다.
+`ApiResponse` 공통 타입에는 status, httpStatus, durationMs, request, headers, body, error와 선택적인 checks·failure·input·inputs가 있습니다. `execute`는 상태·시간·오류와 수집된 요청/응답 원문을 반환하며 checks·failure·입력 결과는 반환하지 않습니다. `ApiScenarioResult`는 전체 status, 단계별 결과, 실행 중 값 변수인 variables를 반환합니다. 단계별 `checks`는 `{ expect?: 인덱스, passed, actual? }`이며 `expect`가 없으면 자동 2xx 확인, `actual`은 실패 시에만 80자까지 담습니다. request는 `{ method, url, headers, body? }`, 응답은 headers와 body로 반환됩니다. 전역변수 목록과 실행 결과는 원문이며 화면에서도 가리지 않고 그대로 표시합니다(전역변수 패널의 값 보기/숨기기만 예외). 실행 결과는 자동으로 저장하거나 AI 데이터에 포함하지 않습니다.
 
 `preview-scenario`의 `issues`는 API 연결·필수 요청값 등 시나리오 구성 문제이고, `executionIssues`는 전역변수·서버 기본 URL 등 실행 전 준비 문제입니다. 일반 저장은 issues가 없어야 하며 executionIssues만 있으면 저장할 수 있습니다. 초안 저장은 issues를 허용하지만 YAML 파싱과 저장 충돌 검사는 통과해야 합니다. 실행은 두 종류의 문제를 모두 해결해야 합니다. 브리지 오류와 실행 전 검사 실패는 Promise rejection으로, 실행을 시작한 뒤 검증·요청 실패는 결과 상태로 반환합니다. 단계별 progress 이벤트는 아직 없으며, renderer는 대기 중인 입력 요청을 조회해 모달을 표시합니다.
 
-`get-pending-input`은 값이 아니라 `requestId`, `runId`, `stepId`, 입력 이름·라벨·타입·필수/민감 여부, 0부터 시작하는 index와 totalSteps를 반환합니다. `submit-input`은 이 식별자들이 현재 실행과 일치하는지와 JSON 타입을 확인한 뒤 실행을 재개합니다. 입력값은 실행 중 메모리와 renderer에 전달되는 원문 결과에 포함될 수 있지만 YAML에는 기록하지 않습니다. Electron은 IPC 채널로, 웹 개발 모드는 같은-origin 개발 RPC로 제공합니다.
+`get-pending-input`은 값이 아니라 `requestId`, `runId`, `stepId`, 입력 이름·라벨·타입·필수 여부, 0부터 시작하는 index와 totalSteps를 반환합니다. `submit-input`은 이 식별자들이 현재 실행과 일치하는지와 JSON 타입을 확인한 뒤 실행을 재개합니다. 입력값은 실행 중 메모리와 renderer에 전달되는 원문 결과에 포함될 수 있지만 YAML에는 기록하지 않습니다. Electron은 IPC 채널로, 웹 개발 모드는 같은-origin 개발 RPC로 제공합니다.
 
 ## 실행 계약
 

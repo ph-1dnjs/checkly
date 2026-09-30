@@ -291,6 +291,8 @@ html:has(.api-diagram-dialog[open]) { overflow:hidden; }
 .api-run-result-step > summary small { grid-column:3 / 5; grid-row:2; min-width:0; color:var(--api-muted); overflow-wrap:anywhere; }
 .api-run-result-step-status { flex:none; color:var(--ck-color-pass); font-size:11px; white-space:nowrap; }
 .api-run-result-step.is-failed .api-run-result-step-status,.api-run-result-step.is-error .api-run-result-step-status { color:var(--ck-color-fail-ink); }
+.api-run-result-step:is(.is-skipped,.is-cancelled) .api-run-result-step-status { color:var(--api-muted); }
+.api-run-result-step.is-blocked .api-run-result-step-status { color:var(--ck-color-wait-ink); }
 .api-run-result-duration { flex:none; color:var(--api-muted); font-size:11px; white-space:nowrap; }
 .api-run-result-step-body { padding:0 14px 14px; }
 .api-run-result-step-body .api-warning { margin:0 0 10px; }
@@ -1022,10 +1024,17 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 .api-run-flow { margin-top:8px; padding-top:0; border-top:0; }
 .api-run-flow-tools { margin-bottom:8px!important; }
 /* AI authoring: the three steps as a numbered row */
-.api-ai-steps { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:8px; margin:8px 0 12px; padding:0; list-style:none; counter-reset:ai-step; }
-.api-ai-steps li { display:grid; gap:2px; padding:10px 12px; border:1px solid var(--api-border); border-radius:var(--ck-dim-radius-base); counter-increment:ai-step; font-size:12px; word-break:keep-all; }
-.api-ai-steps strong::before { content:counter(ai-step) ". "; color:var(--api-primary); }
-.api-ai-steps span { color:var(--api-muted); }
+/* AI author: three steps top to bottom, each with its own actions. */
+.api-ai-steps { display:grid; gap:10px; margin:8px 0 0; padding:0; list-style:none; counter-reset:ai-step; }
+.api-ai-steps > li { min-width:0; padding:14px 16px; border:1px solid var(--api-border); border-radius:var(--ck-dim-radius-base); background:var(--api-surface); counter-increment:ai-step; }
+.api-ai-steps > li > header { display:grid; gap:2px; font-size:12.5px; word-break:keep-all; }
+.api-ai-steps > li > header strong { color:var(--api-ink); font-size:13.5px; }
+.api-ai-steps > li > header strong::before { content:counter(ai-step) ". "; color:var(--api-primary); }
+.api-ai-steps > li > header span { color:var(--api-muted); }
+.api-ai-steps > li > .api-actions { display:flex; flex-wrap:wrap; gap:8px; margin:10px 0 0; }
+.api-ai-steps > li > .api-warning { margin:10px 0 0; }
+.api-ai-step-status { margin:8px 0 0; color:var(--api-muted); font-size:12px; }
+.api-ai-steps .api-ai-author-result { margin-top:14px; }
 .api-scenario-detail > .api-empty .api-actions { justify-content:center; margin-top:12px; }
 /* Tabs (left) and server/environment/value controls (right) in one row under the title. */
 .api-workbar { display:flex; flex-wrap:wrap; align-items:flex-end; justify-content:space-between; gap:8px 16px; margin-bottom:16px; border-bottom:1px solid var(--ck-color-line-strong); }
@@ -1091,3 +1100,9 @@ body.panel-resizing { cursor:col-resize; user-select:none; }
 /* Docs search: marked words and why an operation matched. */
 ::highlight(checkly-api-search) { background-color:#ffe58a; color:inherit; }
 .api-swagger-renderer .api-search-reason { flex-basis:100%; font-size:12px; color:var(--api-muted, #667085); font-family:inherit; font-weight:400; }
+/* Last run's problem: a line of links to the failed steps. */
+.api-run-last-problem { display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 12px; white-space:normal; }
+/* Scenario sidebar search: marked words and why a row matched. */
+::highlight(checkly-scenario-search) { background-color:#ffe58a; color:inherit; }
+.api-columns aside button.api-sidebar-entry.has-reason { flex-wrap:wrap; }
+.api-sidebar-entry-reason { flex-basis:100%; color:var(--api-muted); font-size:10.5px; font-weight:400; overflow-wrap:anywhere; }

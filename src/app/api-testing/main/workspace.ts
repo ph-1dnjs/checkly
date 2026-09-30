@@ -488,10 +488,11 @@ export class ApiWorkspace {
       if (existingIds.has(id)) issues.push(`id '${id}'가 기존 시나리오와 겹칩니다. id를 지우면 Checkly가 새로 붙입니다`);
       if (drafts.some(draft => draft.id === id)) issues.push(`id '${id}'가 이번 결과의 다른 시나리오와 겹칩니다`);
       if (drafts.some(draft => draft.name === name)) issues.push(`이름 '${name}'이 이번 결과의 다른 시나리오와 겹칩니다. 스위트 순서를 알 수 없습니다`);
-      if (existingNames.has(name)) notices.push(`같은 이름의 시나리오가 이미 있습니다`);
+      const sameName = existingNames.has(name);
+      if (sameName) notices.push("같은 이름의 시나리오가 이미 있습니다. 저장하면 같은 이름이 하나 더 생깁니다");
       const group = aiGroupPath(written.group);
       if (group.error) issues.push(group.error);
-      drafts.push({ id, name, yaml, stepCount, issues, notices, executionIssues, ...(group.path ? { groupPath: group.path } : {}) });
+      drafts.push({ id, name, yaml, stepCount, issues, notices, executionIssues, ...(group.path ? { groupPath: group.path } : {}), ...(sameName ? { sameName: true as const } : {}) });
     }
     let suite: ApiAiImportResult["suite"] = null;
     if (answer.suite) {

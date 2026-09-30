@@ -1,4 +1,7 @@
-/** What the API docs search looks at for one operation: only what Swagger shows (in the list or opened). */
+/**
+ * What an API search looks at for one operation: only what the screen shows (the API docs also show
+ * the description, parameters and body once opened; short pickers only method, path, title and tag).
+ */
 export type SearchableOperation = {
   method: string;
   path: string;
@@ -38,7 +41,7 @@ export function parseApiSearch(phrase: string, baseUrl: string): ApiSearch {
 }
 
 /** A concrete path fits a template when every segment is equal or a `{variable}`. */
-function pathFits(template: string, segments: string[]): boolean {
+export function pathFits(template: string, segments: string[]): boolean {
   const parts = template.replace(/\/+$/, "").split("/").slice(1);
   return parts.length === segments.length && parts.every((part, index) => /^\{[^}]+\}$/.test(part) || part === segments[index]);
 }
@@ -80,3 +83,13 @@ export function explainApiSearch(operation: SearchableOperation, search: ApiSear
 
 /** The words worth marking in the visible text (a pasted URL is matched structurally instead). */
 export const highlightTerms = (search: ApiSearch) => search.request ? [] : search.terms;
+
+/**
+ * The same search for a short API list that shows method, path, title and tag only (AI API picker,
+ * "API 바꾸기"): several words must all appear, or a pasted URL/path matches its template.
+ */
+export function searchesVisibleList(phrase: string, baseUrl = "") {
+  const search = parseApiSearch(phrase, baseUrl);
+  return (operation: { method: string; path: string; summary?: string }, tag: string) =>
+    matchesApiSearch({ method: operation.method, path: operation.path, tag, summary: operation.summary, parameters: [], bodyFields: [] }, search);
+}

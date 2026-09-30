@@ -1,5 +1,5 @@
 import { runStatusName } from "../../../entities/api-testing";
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { ResizeHandle, useStoredWidth } from "../../../shared/ui/ResizeHandle";
 import type { ApiCatalog, ApiProject, ApiScope, ApiTestingBridge, ApiScenarioInputRequest, ApiScenarioPreview, ApiScenarioResult, SavedApiScenario, SavedApiSuite } from "../../../../app/api-testing/shared/workspace";
 import { parseScenario, stringifyScenario, type Json, type Scenario } from "../../../../app/api-testing/shared/scenario";
@@ -19,17 +19,22 @@ import { ScenarioSidebarTree } from "../../../entities/api-testing";
 import { Icon } from "../../../shared/ui/Icon";
 import { operationForStep, ScenarioRunFlow, ScenarioRunResult } from "../../../entities/api-testing";
 import { YamlCode } from "../../../entities/api-testing";
+import { highlightTerms, parseApiSearch, scenarioSearch, type SearchableScenario } from "../../../entities/api-testing";
 
 const errorText = (e: unknown) => (e as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, "");
 
-function sidebarSearchText(item: SavedApiScenario | SavedApiSuite): string {
-  let description = "";
-  if ("source" in item) {
-    try { description = parseScenario(item.source).description ?? ""; }
-    catch { /* Invalid drafts are still searchable by their saved name and group. */ }
-  }
-  return [item.name, item.id, ...(item.groupPath ?? []), description].join(" ").toLocaleLowerCase();
+/** What the sidebar search reads from a saved scenario or suite (not the id: it's not on screen). */
+function sidebarSearchable(item: SavedApiScenario | SavedApiSuite): SearchableScenario {
+  const searchable: SearchableScenario = { name: item.name, groupPath: item.groupPath ?? [], apis: [] };
+  if (!("source" in item)) return searchable;
+  try {
+    const scenario = parseScenario(item.source);
+    return { ...searchable, description: scenario.description, apis: [...new Set(scenario.steps.map(step => "operationId" in step.api ? step.api.operationId : `${step.api.method.toUpperCase()} ${step.api.path}`))] };
+  } catch { return searchable; /* Invalid drafts are still searchable by their saved name and group. */ }
 }
+
+const reasonText = (reason: { description?: true; apis: string[] }) =>
+  [...(reason.description ? ["설명"] : []), ...(reason.apis.length ? [`API ${reason.apis.slice(0, 2).join(", ")}${reason.apis.length > 2 ? ` 외 ${reason.apis.length - 2}개` : ""}`] : [])].join(" · ");
 
 export type ScenarioPanelProps = {
   project: ApiProject;
@@ -255,6 +260,41 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
     for (let depth = 1; depth <= path.length; depth++) groupPathMap.set(JSON.stringify(path.slice(0, depth)), path.slice(0, depth));
   }
   const availableGroupPaths = [...groupPathMap.values()].sort((left, right) => left.join(" › ").localeCompare(right.join(" › "), "ko"));
+  const normalizedQuery = query.trim();
+  const searchables = useMemo(() => new Map([...saved, ...suites].map(item => [item, sidebarSearchable(item)] as const)), [saved, suites]);
+  const environmentBaseUrls = Object.values(project.environments.find(environment => environment.id === scope.environmentId)?.baseUrls ?? {});
+  const sidebarMatch = scenarioSearch(query, environmentBaseUrls);
+  const sidebarReasons = new Map<string, string>();
+  const matchesSidebarItem = (item: SavedApiScenario | SavedApiSuite) => {
+    const reason = sidebarMatch(searchables.get(item) ?? sidebarSearchable(item));
+    if (reason && normalizedQuery) { const text = reasonText(reason); if (text) sidebarReasons.set(item.id, text); }
+    return reason !== null;
+  };
+  const sidebarScenarios = saved.filter(matchesSidebarItem);
+  const sidebarSuites = suites.filter(matchesSidebarItem);
+  const sidebarRef = useRef<HTMLElement>(null);
+  // Mark the searched words in the listed names and folders (CSS Custom Highlight API; skipped where unsupported).
+  useEffect(() => {
+    const registry = (globalThis.CSS as any)?.highlights as Map<string, unknown> | undefined;
+    const HighlightType = (globalThis as any).Highlight;
+    if (!registry || !HighlightType) return;
+    const terms = highlightTerms(parseApiSearch(query, ""));
+    const ranges: Range[] = [];
+    if (terms.length) for (const element of sidebarRef.current?.querySelectorAll(".api-sidebar-entry > strong, .api-sidebar-folder > summary > span") ?? []) {
+      const node = element.firstChild;
+      if (!node || node.nodeType !== Node.TEXT_NODE) continue;
+      const text = (node.textContent ?? "").toLocaleLowerCase();
+      for (const term of terms) for (let index = text.indexOf(term); index >= 0; index = text.indexOf(term, index + term.length)) {
+        const range = document.createRange();
+        range.setStart(node, index);
+        range.setEnd(node, index + term.length);
+        ranges.push(range);
+      }
+    }
+    if (ranges.length) registry.set("checkly-scenario-search", new HighlightType(...ranges));
+    else registry.delete("checkly-scenario-search");
+  });
+  useEffect(() => () => { (globalThis.CSS as any)?.highlights?.delete("checkly-scenario-search"); }, []);
   if (composer) {
     const initialEdit = composer.saved && composer.scenario ? { saved: composer.saved, scenario: composer.scenario } : undefined;
     return <ApiDocumentation
@@ -318,23 +358,19 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
     } catch (e) { if (live.current) setError(errorText(e)); }
     finally { if (live.current) working(false); }
   };
-  const normalizedQuery = query.trim().toLocaleLowerCase();
-  const matchesSidebarItem = (item: SavedApiScenario | SavedApiSuite) => sidebarSearchText(item).includes(normalizedQuery);
-  const sidebarScenarios = saved.filter(matchesSidebarItem);
-  const sidebarSuites = suites.filter(matchesSidebarItem);
   const columnsRef = useRef<HTMLDivElement>(null);
   const [listWidth, setListWidth] = useStoredWidth("api-testing-scenario-list");
 
   return <div ref={columnsRef} className="api-columns api-scenarios api-scenario-run" style={listWidth === null ? undefined : { "--api-list-width": `${listWidth}px` } as CSSProperties}>
-    <aside aria-label="저장된 시나리오와 스위트">
-      <input aria-label="시나리오·스위트 검색" placeholder="이름·설명·그룹 검색" value={query} onChange={event => setQuery(event.target.value)} />
+    <aside ref={sidebarRef} aria-label="저장된 시나리오와 스위트">
+      <input aria-label="시나리오·스위트 검색" placeholder="이름·그룹·설명·API 검색" value={query} onChange={event => setQuery(event.target.value)} />
       <section className="api-sidebar-section">
         <header><button type="button" className="api-sidebar-section-toggle" aria-expanded={scenariosExpanded} onClick={() => setScenariosExpanded(value => !value)}><span className="api-sidebar-section-label">시나리오<small>{sidebarScenarios.length}{sidebarScenarios.length !== saved.length ? ` / ${saved.length}` : ""}</small></span><Icon name="expand_more" size={18} className="api-sidebar-chevron" /></button><button type="button" className="api-sidebar-add" disabled={busy} onClick={openNewScenario}>+ 새 시나리오</button></header>
-        {scenariosExpanded && <ScenarioSidebarTree kind="scenario" expandAll={Boolean(normalizedQuery)} warnings={specWarnings} items={sidebarScenarios} selectedId={suiteSelection === null ? current?.id : null} disabled={busy} onSelect={item => { setSuiteSelection(null); void load(item); }} />}
+        {scenariosExpanded && <ScenarioSidebarTree kind="scenario" expandAll={Boolean(normalizedQuery)} warnings={specWarnings} reasons={sidebarReasons} items={sidebarScenarios} selectedId={suiteSelection === null ? current?.id : null} disabled={busy} onSelect={item => { setSuiteSelection(null); void load(item); }} />}
       </section>
       <section className="api-sidebar-section api-sidebar-suite-section">
         <header><button type="button" className="api-sidebar-section-toggle" aria-expanded={suitesExpanded} onClick={() => setSuitesExpanded(value => !value)}><span className="api-sidebar-section-label">스위트<small>{sidebarSuites.length}{sidebarSuites.length !== suites.length ? ` / ${suites.length}` : ""}</small></span><Icon name="expand_more" size={18} className="api-sidebar-chevron" /></button><button type="button" className="api-sidebar-add" disabled={busy} onClick={() => setSuiteSelection("")}>+ 새 스위트</button></header>
-        {suitesExpanded && <ScenarioSidebarTree kind="suite" expandAll={Boolean(normalizedQuery)} items={sidebarSuites} selectedId={suiteSelection || null} disabled={busy} onSelect={item => setSuiteSelection(item.id)} />}
+        {suitesExpanded && <ScenarioSidebarTree kind="suite" expandAll={Boolean(normalizedQuery)} reasons={sidebarReasons} items={sidebarSuites} selectedId={suiteSelection || null} disabled={busy} onSelect={item => setSuiteSelection(item.id)} />}
       </section>
     </aside>
     {suiteSelection !== null ? <SuitePanel key={suiteSelection} project={project} scope={scope} bridge={bridge} scenarios={saved} suites={suites} selectedId={suiteSelection} onSuitesChange={setSuites} onSelectedIdChange={setSuiteSelection} onBusy={working} /> : <>
@@ -354,7 +390,8 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
             const producers = variable ? globalProducerScenarios(variable, saved, preview.scenario.id, scope.environmentId) : [];
             return <li key={issue}>{variable ? <>{stepNumber && Number(stepNumber) <= preview.scenario.steps.length && <><button type="button" className="api-issue-step-link" onClick={() => focusPreview(Number(stepNumber) - 1)}>{stepNumber}단계</button> · </>}<code>{variable}</code> 값 없음 <GlobalVariableSetupLink onConfigure={globalAccess.open} name={variable} />{producers.length > 0 && <span> · 이 값을 추출하는 시나리오: {producers.join(", ")}. 먼저 실행한 뒤 다시 확인하세요.</span>}</> : issue}</li>;
           })}</ul><button type="button" disabled={busy} onClick={() => void check().catch(e => setError(errorText(e)))}>설정 다시 확인</button></div>}
-          {result && result.status !== "passed" && <div role="alert" className="api-warning"><strong>최근 실행 · {runStatusName(result.status)}</strong><ul>{result.steps.map((step, index) => step.error && <li key={step.id}><button type="button" className="api-result-error-link" disabled={running} onClick={() => focusResult(step.id)}>{index + 1}단계 · {step.name}: {step.error}</button></li>)}</ul></div>}
+          {/* Only where it went wrong: the result below has the status and each step's message. */}
+          {result && result.status !== "passed" && <div role="alert" className="api-warning api-run-last-problem"><strong>최근 실행 {runStatusName(result.status)}</strong>{result.steps.map((step, index) => step.error && <button key={step.id} type="button" className="api-result-error-link" disabled={running} title={step.error} onClick={() => focusResult(step.id)}>{index + 1}단계 · {step.name}</button>)}</div>}
           {current?.draft && <p className="api-run-notice">초안은 아직 실행할 수 없습니다. <strong>수정</strong>에서 요청값과 검증을 보완한 뒤 <strong>저장</strong>을 누르세요.</p>}
           {preview.issues.length > 0 && <details className="api-run-issues" open={Boolean(current?.draft)}><summary>보완이 필요한 항목 {preview.issues.length}개</summary><ul>{preview.issues.map(issue => <li key={issue}>{issue}</li>)}</ul></details>}
           {current?.draft && preview.issues.length === 0 && <p className="api-run-notice">현재 검사는 통과했지만 아직 초안으로 저장되어 있습니다. <strong>수정</strong>에서 <strong>저장</strong>을 누르면 실행할 수 있습니다.</p>}

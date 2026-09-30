@@ -71,7 +71,8 @@ test("scenarios without an id get one, the suite follows names, and name clashes
     assert.match(first.yaml, /^id: scenario-/);
     assert.notEqual(second.id, third.id);
     assert.deepEqual(first.issues, []);
-    assert.deepEqual(second.notices, ["같은 이름의 시나리오가 이미 있습니다"]);
+    assert.deepEqual(second.notices, ["같은 이름의 시나리오가 이미 있습니다. 저장하면 같은 이름이 하나 더 생깁니다"]);
+    assert.equal(second.sameName, true);
     assert.match(third.issues.join(), /이름 '상품 조회'이 이번 결과의 다른 시나리오와 겹칩니다/);
     assert.deepEqual(result.suite?.scenarioIds, [first.id, second.id]);
     assert.deepEqual(result.suite?.problems, []);
