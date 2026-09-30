@@ -165,7 +165,7 @@ async function main() {
     await page.getByRole("button", { name: "AI 결과 불러오기", exact: true }).click();
     await expect(page.getByRole("alert")).toContainText("아직 AI 결과가 없습니다");
     // Pasting what the AI printed in chat works too.
-    await page.getByText("YAML 직접 붙여넣기·파일 가져오기", { exact: true }).click();
+    await page.getByText("또는 YAML 직접 붙여넣기·파일 가져오기", { exact: true }).click();
     await page.getByLabel("AI가 만든 YAML", { exact: true }).fill(aiOutput("GET /missing"));
     await page.getByRole("button", { name: "검사", exact: true }).click();
     const aiResult = page.getByRole("region", { name: "AI 작성 결과" });

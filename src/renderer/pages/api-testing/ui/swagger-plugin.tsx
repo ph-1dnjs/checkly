@@ -5,7 +5,7 @@ import { RequestAuthPanel } from "../../../features/api-testing/configure-reques
 import { DescriptionMarkdown } from "./DescriptionMarkdown";
 import { type SwaggerMap, type SwaggerSystem, type Selection, type MutableRef, type SwaggerComponent } from "../model/swagger-types";
 import { updateDeepLinkHash } from "../lib/swagger-deep-link";
-import { explainApiSearch, highlightTerms, matchesApiSearch, parseApiSearch, type SearchableOperation } from "../lib/api-search";
+import { explainApiSearch, highlightTerms, matchesApiSearch, parseApiSearch, type SearchableOperation } from "../../../entities/api-testing";
 import { mapValue, textValue, buildRequest, requestUrl, displayRequest, responseFromApi, responseFromError, tagNames } from "../lib/swagger-request";
 
 export const submitMethods = ["get", "put", "post", "delete", "options", "head", "patch"];

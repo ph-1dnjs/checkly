@@ -1,26 +1,28 @@
 import { useState } from "react";
+import { searchesVisibleList } from "../../../../entities/api-testing";
 
 /** `unavailable` = listed like Swagger but not offered to the AI (e.g. non-JSON bodies Checkly cannot run yet). */
 export type PickableOperation = { id: string; method: string; path: string; summary: string; tags: string[]; unavailable?: string };
 
 /**
  * Swagger-like picker: operations grouped by tag in collapsible sections, searchable by tag,
- * path or title. A tag checkbox picks every operation in it; rows pick single operations.
+ * path (or a pasted URL) or title; several words must all appear. A tag checkbox picks every operation in it; rows pick single operations.
  */
 export function ApiPicker({ operations, picked, disabled, onChange }: {
   operations: PickableOperation[]; picked: string[]; disabled?: boolean; onChange: (next: string[]) => void;
 }) {
   const [query, setQuery] = useState("");
   const selected = new Set(picked);
-  const needle = query.trim().toLocaleLowerCase();
+  const needle = query.trim();
+  const fits = searchesVisibleList(query);
   const groups = new Map<string, PickableOperation[]>();
   for (const operation of operations) for (const tag of operation.tags.length ? operation.tags : ["태그 없음"]) {
     if (!groups.has(tag)) groups.set(tag, []);
     groups.get(tag)!.push(operation);
   }
   const visible = [...groups].sort(([left], [right]) => left.localeCompare(right, "ko")).flatMap(([tag, items]) => {
-    if (!needle || tag.toLocaleLowerCase().includes(needle)) return [[tag, items] as const];
-    const matched = items.filter(item => `${item.method} ${item.path} ${item.summary}`.toLocaleLowerCase().includes(needle));
+    if (!needle) return [[tag, items] as const];
+    const matched = items.filter(item => fits(item, tag));
     return matched.length ? [[tag, matched] as const] : [];
   });
   const usable = operations.filter(item => !item.unavailable).length;
@@ -28,7 +30,7 @@ export function ApiPicker({ operations, picked, disabled, onChange }: {
   const toggle = (ids: string[], on: boolean) => onChange(on ? [...new Set([...picked, ...ids])] : picked.filter(id => !ids.includes(id)));
   return <div className="api-tag-picker">
     <div className="api-tag-picker-tools">
-      <input type="search" aria-label="API 검색" placeholder={`태그·경로·제목으로 API ${usable}개 검색`} value={query} onChange={event => setQuery(event.target.value)} />
+      <input type="search" aria-label="API 검색" placeholder={`API ${usable}개 검색: 경로·URL 붙여넣기, 제목, 태그`} value={query} onChange={event => setQuery(event.target.value)} />
       <button type="button" disabled={disabled || !visibleIds.length} onClick={() => toggle(visibleIds, true)}>{needle ? `검색 결과 ${visibleIds.length}개 선택` : "모두 선택"}</button>
       <button type="button" disabled={disabled || !picked.length} onClick={() => onChange([])}>선택 해제</button>
     </div>
