@@ -74,4 +74,4 @@ src/renderer/
 
 `npm run test:api`의 `module-boundaries.test.ts`는 API 테스트 관련 renderer의 상향 의존성·feature 간 직접 import·공개 API 우회·main 코드 참조·순환 참조를 검사합니다. 타입 import와 동적 import도 포함합니다. 기존 다른 화면 전체를 새 규칙으로 강제하지 않습니다.
 
-타입 검사(`npx tsc --noEmit --types node,electron`), 빌드(`npm run build`), 브라우저 테스트(`npm test`)도 함께 확인합니다. 브라우저 회귀 테스트는 환경 전환 중 초안 보존, 전역변수 설정 링크와 저장 후 편집·요약 갱신, 이미 표시된 응답의 민감값 가림 갱신을 검증합니다.
+타입 검사(`npx tsc --noEmit --types node,electron`), 빌드(`npm run build`), 브라우저 테스트(`npm test`)도 함께 확인합니다. 브라우저 회귀 테스트는 환경 전환 중 초안 보존, 명세 로딩·실패 중 이전 환경 명세 미표시, 작성 중인 배열·본문 JSON 유지, 전역변수 설정 후 편집·요약·인증 선택 갱신을 검증합니다.
