@@ -58,7 +58,8 @@ export function ScenarioRunFlow({ preview, catalogs, bindings, focusRequest, onC
   });
   const setAllStepsOpen = (open: boolean) => setOpenSteps(open ? new Set(preview.scenario.steps.map(step => step.id)) : new Set());
   return <section ref={flow} className="api-run-flow" aria-label="시나리오 실행 흐름">
-    <header className="api-run-section-heading"><div><h3>실행 흐름</h3><small>{preview.scenario.steps.length}개 API · 순서대로 호출</small></div><div className="api-run-section-actions"><button type="button" onClick={() => setAllStepsOpen(true)}>모두 펼치기</button><button type="button" onClick={() => setAllStepsOpen(false)}>모두 접기</button></div></header>
+    {/* The view switch above already names this view and its step count. */}
+    <header className="api-run-section-heading api-run-flow-tools"><div className="api-run-section-actions"><button type="button" onClick={() => setAllStepsOpen(true)}>모두 펼치기</button><button type="button" onClick={() => setAllStepsOpen(false)}>모두 접기</button></div></header>
     <ol className="api-run-step-list">
       {preview.scenario.steps.map((step, index) => {
         const operation = operationForStep(step, catalogs, bindings);

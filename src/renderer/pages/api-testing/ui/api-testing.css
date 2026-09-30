@@ -1018,3 +1018,15 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 .api-import-conflicts { display:grid; gap:6px; padding-top:8px; border-top:1px solid var(--api-border); }
 .api-project-import-dialog .api-import-conflicts label { display:flex; flex-direction:row; align-items:center; gap:8px; }
 .api-import-conflicts label small { margin-left:auto; color:var(--api-muted); }
+/* Detail header actions grouped by purpose: run | edit | manage, divided by a thin line. */
+.api-detail-actions { gap:12px; }
+.api-action-group { display:flex; align-items:center; gap:6px; }
+.api-action-group + .api-action-group { padding-left:12px; border-left:1px solid var(--api-border); }
+/* Status of the open scenario sits next to the view switch. */
+.api-run-view-bar { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px 12px; margin-top:12px; }
+.api-run-view-bar .api-run-view-switch { margin-top:0; }
+.api-run-view-bar .api-spec-meta { display:flex; align-items:center; gap:8px; margin:0; }
+.api-run-flow-tools { justify-content:flex-end; }
+/* The flow follows the view switch row directly; no second divider or title above it. */
+.api-run-flow { margin-top:8px; padding-top:0; border-top:0; }
+.api-run-flow-tools { margin-bottom:8px!important; }

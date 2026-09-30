@@ -70,7 +70,8 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
     return () => { live = false; };
   }, [bridge, composing, project.servers, scope.environmentId, scope.projectId]);
   useEffect(() => { if (initialEdit) onEditConsumed?.(); }, []);
-  const [composeView, setComposeView] = useState<"select" | "edit">("select");
+  // A saved scenario is opened to change values, so it starts on step 2; a new one picks APIs first.
+  const [composeView, setComposeView] = useState<"select" | "edit">(initialEdit?.scenario.steps.length ? "edit" : "select");
   const [activeStepId, setActiveStepId] = useState<string | null>(null);
   const [Markdown, setMarkdown] = useState<ComponentType<any> | undefined>();
   const composeToolbar = useRef<HTMLDivElement>(null);
