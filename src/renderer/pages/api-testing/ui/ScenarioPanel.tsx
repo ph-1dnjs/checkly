@@ -44,6 +44,8 @@ export type ScenarioPanelProps = {
   onComposerOpenChange?: (open: boolean) => void;
   onUnsavedChange?: (dirty: boolean) => void;
   onCreateScenario?: () => void;
+  /** Opens the AI authoring tab (a shortcut from the empty detail). */
+  onOpenAi?: () => void;
   onEditScenario?: (item: SavedApiScenario) => void;
   onExecuteSaved?: (item: SavedApiScenario) => void;
   runSaved?: SavedApiScenario | null;
@@ -55,7 +57,7 @@ export type ScenarioPanelProps = {
   composeContext?: ReactNode;
 };
 
-export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mode = "run", startCreateRequest = 0, editScenarioId, onCreateConsumed, onComposerOpenChange, onUnsavedChange, onCreateScenario, onEditScenario, onExecuteSaved, runSaved, onRunSavedConsumed, openSaved, onOpenSavedConsumed, onBackToScenarios, composeContext }: ScenarioPanelProps) {
+export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mode = "run", startCreateRequest = 0, editScenarioId, onCreateConsumed, onComposerOpenChange, onUnsavedChange, onCreateScenario, onOpenAi, onEditScenario, onExecuteSaved, runSaved, onRunSavedConsumed, openSaved, onOpenSavedConsumed, onBackToScenarios, composeContext }: ScenarioPanelProps) {
   const editorMode = mode === "editor";
   const globalAccess = useGlobalVariableAccess();
   const sensitiveValues = useSensitiveValues();
@@ -337,11 +339,13 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
     </aside>
     {suiteSelection !== null ? <SuitePanel key={suiteSelection} project={project} scope={scope} bridge={bridge} scenarios={saved} suites={suites} selectedId={suiteSelection} onSuitesChange={setSuites} onSelectedIdChange={setSuiteSelection} onBusy={working} /> : <>
     <article className="api-request-panel api-scenario-detail">
-      <header className="api-detail-heading"><div><h2>{preview?.scenario.name ?? current?.name ?? "시나리오를 선택하세요"}</h2><p className="api-description">{preview?.scenario.description ?? ""}</p></div>{current && <div className="api-actions api-detail-actions"><span className="api-action-group" role="group" aria-label="실행"><button type="button" ref={runButton} className="api-primary" disabled={busy || !canUse} onClick={() => void runScenario()}>{running ? "실행 중…" : result ? "다시 실행" : "실행"}</button>{running && <button type="button" onClick={() => void bridge.cancel(scope)}>실행 중단</button>}</span><span className="api-action-group" role="group" aria-label="편집"><button type="button" disabled={busy} onClick={() => onEditScenario?.(current)}>수정</button><button type="button" disabled={busy || !preview} title="이 시나리오를 복사해 새 시나리오로 저장합니다" onClick={() => void duplicate(current)}>복제</button></span><span className="api-action-group" role="group" aria-label="관리"><DeleteAction key={current.id} label="시나리오 삭제" disabled={busy} description={`‘${current.name}’${current.draft ? " 초안" : ""}을 프로젝트에서 삭제합니다. API 명세와 전역변수는 유지됩니다.`} onDelete={async () => {
+      {(current || preview) && <header className="api-detail-heading"><div><h2>{preview?.scenario.name ?? current?.name}</h2><p className="api-description">{preview?.scenario.description ?? ""}</p></div>{current && <div className="api-actions api-detail-actions"><span className="api-action-group" role="group" aria-label="실행"><button type="button" ref={runButton} className="api-primary" disabled={busy || !canUse} onClick={() => void runScenario()}>{running ? "실행 중…" : result ? "다시 실행" : "실행"}</button>{running && <button type="button" onClick={() => void bridge.cancel(scope)}>실행 중단</button>}</span><span className="api-action-group" role="group" aria-label="편집"><button type="button" disabled={busy} onClick={() => onEditScenario?.(current)}>수정</button><button type="button" disabled={busy || !preview} title="이 시나리오를 복사해 새 시나리오로 저장합니다" onClick={() => void duplicate(current)}>복제</button></span><span className="api-action-group" role="group" aria-label="관리"><DeleteAction key={current.id} label="시나리오 삭제" disabled={busy} description={`‘${current.name}’${current.draft ? " 초안" : ""}을 프로젝트에서 삭제합니다. API 명세와 전역변수는 유지됩니다.`} onDelete={async () => {
         await bridge.deleteScenario(project.id, current.id, current.updatedAt);
         setSaved(await bridge.listScenarios(project.id)); setCurrent(null); setSource(""); setScenarioGroupPath([]); setDirty(false); setPreview(null); setResult(null); setBindings({}); setInputs({}); setNotice("시나리오를 삭제했습니다."); onRunAction(null);
-      }} /></span></div>}</header>
-      {!current && <div className="api-empty"><h3>실행할 시나리오를 선택하세요</h3><p>왼쪽 목록에서 고르거나 <strong>+ 새 시나리오</strong>로 만드세요. AI 작성 도우미로 만들 수도 있습니다.</p></div>}
+      }} /></span></div>}</header>}
+      {!current && <div className="api-empty"><h3>시나리오를 고르거나 새로 만드세요</h3><p>왼쪽 목록에서 고르면 실행 흐름과 최근 결과를 여기서 봅니다.</p>
+        <div className="api-actions">{onCreateScenario && <button type="button" className="api-primary" disabled={busy} onClick={onCreateScenario}>+ 새 시나리오</button>}{onOpenAi && <button type="button" disabled={busy} onClick={onOpenAi}>AI로 만들기</button>}</div>
+      </div>}
       {preview && <>
         <section className="api-run-summary" aria-label="시나리오 실행 준비">
           {!!preview.executionIssues?.length && <div role="alert" className="api-warning"><strong>실행 전 설정 필요</strong><ul>{preview.executionIssues.map(issue => {

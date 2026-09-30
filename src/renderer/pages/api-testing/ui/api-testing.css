@@ -1030,3 +1030,9 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 /* The flow follows the view switch row directly; no second divider or title above it. */
 .api-run-flow { margin-top:8px; padding-top:0; border-top:0; }
 .api-run-flow-tools { margin-bottom:8px!important; }
+/* AI authoring: the three steps as a numbered row */
+.api-ai-steps { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:8px; margin:8px 0 12px; padding:0; list-style:none; counter-reset:ai-step; }
+.api-ai-steps li { display:grid; gap:2px; padding:10px 12px; border:1px solid var(--api-border); border-radius:var(--ck-dim-radius-base); counter-increment:ai-step; font-size:12px; word-break:keep-all; }
+.api-ai-steps strong::before { content:counter(ai-step) ". "; color:var(--api-primary); }
+.api-ai-steps span { color:var(--api-muted); }
+.api-scenario-detail > .api-empty .api-actions { justify-content:center; margin-top:12px; }
