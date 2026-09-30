@@ -85,7 +85,7 @@ export function ProjectForm({ initial, onSave, onCancel, onDelete, onExport, onI
         {exported && <small role="status">{exported}</small>}
       </span>}
       {initial && onDelete && <DeleteAction label="프로젝트 삭제" disabled={saving} description={`‘${initial.name}’의 모든 서버·환경, API 명세, 시나리오·초안, 저장된 문서 계정과 전역변수를 삭제합니다. 실제 API 서버의 데이터는 삭제하지 않습니다.`} onDelete={onDelete} />}
-      <span className="api-project-form-actions"><button type="button" disabled={saving} onClick={leave}>취소</button><button className="api-primary" disabled={saving}>{saving ? "저장 중…" : "프로젝트 저장"}</button></span>
+      <span className="api-project-form-actions"><button className="api-primary" disabled={saving}>{saving ? "저장 중…" : "프로젝트 저장"}</button></span>
     </footer>
     {confirmLeave && <div className="api-confirm-dialog-backdrop">
       <section className="api-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="api-project-leave-title">

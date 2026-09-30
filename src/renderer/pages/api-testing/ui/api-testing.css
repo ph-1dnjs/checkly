@@ -1141,3 +1141,11 @@ body.panel-resizing { cursor:col-resize; user-select:none; }
 .api-auth-status { padding:0; border-bottom:0; color:var(--api-muted); font-weight:400; }
 .api-auth-status.is-connected { color:var(--api-ink); font-weight:600; }
 .api-auth-new { padding:0; background:transparent; }
+/* Suite: pre-run needs per scenario, and the same status pills as scenario results. */
+.api-suite-readiness { white-space:normal; margin:12px 0 0; }
+.api-suite-readiness > ul { margin:6px 0 0; padding-left:18px; }
+.api-suite-readiness ul ul, .api-suite-blocked { margin:4px 0 6px; padding-left:18px; color:var(--api-body); }
+.api-suite-readiness code, .api-suite-blocked code { font-family:var(--ck-font-mono); }
+.api-run-result-status:is(.is-skipped,.is-cancelled) { color:var(--api-muted); background:var(--ck-color-line-soft); }
+.api-suite-results summary .api-run-result-status { margin-left:6px; padding:2px 7px; font-size:10.5px; }
+.api-suite-results summary small { color:var(--api-muted); }
