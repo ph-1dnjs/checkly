@@ -17,7 +17,7 @@ import { ScenarioSettingsSummary } from "../../../features/api-testing/edit-scen
 import { globalProducerScenarios } from "../../../entities/api-testing";
 import { SidebarMetadataFields } from "../../../entities/api-testing";
 import { type SwaggerSystem, type Selection } from "../model/swagger-types";
-import { updateDeepLinkHash, applyDeepLink, handleSwaggerClick } from "../lib/swagger-deep-link";
+import { updateDeepLinkHash, applyDeepLink, handleSwaggerClick, withoutDeepLink } from "../lib/swagger-deep-link";
 import { buildSpec } from "../lib/swagger-request";
 import { submitMethods, createSwaggerPlugin } from "./swagger-plugin";
 import { LoadingSpinner } from "../../../shared/ui/LoadingSpinner";
@@ -166,7 +166,7 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
     if (!system || !operation) { setNotice("현재 API 명세에서 이 API를 찾을 수 없습니다."); return; }
     setActiveStepId(step.id);
     system.layoutActions.updateFilter("");
-    for (const tag of operation.tags?.length ? operation.tags : [operation.tag]) system.layoutActions.show(["operations-tag", tag], true);
+    withoutDeepLink(() => { for (const tag of operation.tags?.length ? operation.tags : [operation.tag]) system.layoutActions.show(["operations-tag", tag], true); });
     const root = document.querySelector(".api-swagger-renderer");
     if (!root) return;
     let highlighted: HTMLElement | undefined;
@@ -348,7 +348,9 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
         // Docs start folded: every rendered operation re-computes on each keystroke in Try it out.
         // The composer has no Try it out, so it keeps the list open for picking APIs.
         docExpansion={composing ? "list" : "none"}
-        deepLinking
+        // The URL hash is kept by swagger-deep-link (user clicks only); Swagger's own deep linking
+        // would also rewrite it whenever search or "expand all" opens tags.
+        deepLinking={false}
         filter
         displayRequestDuration
         validatorUrl={null}

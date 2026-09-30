@@ -20,6 +20,18 @@ export function deepLinkKeyFromHash(hash: string): SwaggerDeepLinkKey | undefine
   return undefined;
 }
 
+// While > 0, Swagger's show action is ours (search, expand all, locating a step's API), not the
+// user opening a tag or operation, so the URL and browser history are left alone.
+let quiet = 0;
+
+/** Runs Swagger layout changes that shouldn't move the URL hash. */
+export function withoutDeepLink(change: () => void): void {
+  quiet++;
+  try { change(); } finally { quiet--; }
+}
+
+export const deepLinkQuiet = () => quiet > 0;
+
 export function updateDeepLinkHash(key: unknown, shown: unknown): void {
   if (!Array.isArray(key) || typeof shown !== "boolean") return;
   const [kind, tag, operationId] = key;
@@ -55,7 +67,11 @@ export function scrollToDeepLink(key: SwaggerDeepLinkKey): void {
 export function applyDeepLink(system: SwaggerSystem | null, hash: string): void {
   const key = deepLinkKeyFromHash(hash);
   if (!key || !system) return;
-  system.layoutActions.show(key, true);
+  // Tags start folded: an operation link opens its tag too. Quiet: the hash already says where we are.
+  withoutDeepLink(() => {
+    if (key[0] === "operations") system.layoutActions.show(["operations-tag", key[1]], true);
+    system.layoutActions.show(key, true);
+  });
   window.setTimeout(() => scrollToDeepLink(key), 0);
 }
 
