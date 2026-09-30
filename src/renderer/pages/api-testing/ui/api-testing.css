@@ -1080,3 +1080,6 @@ body.panel-resizing { cursor:col-resize; user-select:none; }
 .api-swagger-renderer .api-doc-search-tools { position:sticky; top:0; z-index:20; margin:0 0 12px; padding:10px 20px; background:var(--ck-color-canvas); border-bottom:1px solid var(--api-border); }
 /* Scrolled-to results land below the sticky tools row, not under it. */
 .api-swagger-renderer .swagger-ui :is(.live-responses-table, .responses-inner > div > div, .opblock) { scroll-margin-top:120px; }
+.api-secret-field { display:flex; gap:6px; }
+.api-secret-field > input { flex:1; min-width:0; }
+.api-secret-field > button { flex:none; }

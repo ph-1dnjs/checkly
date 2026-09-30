@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ApiCookie, ApiGlobal, ApiProjectScope, ApiTestingBridge } from "../../../../../app/api-testing/shared/workspace";
 import type { Json } from "../../../../../app/api-testing/shared/scenario";
+import { useGlobalValuesVisible } from "../../../../entities/api-testing";
 
 export function GlobalVariablesPanel({ scope, bridge, targetName = "", targetRequest = 0, onSaved }: { scope: ApiProjectScope; bridge: ApiTestingBridge; targetName?: string; targetRequest?: number; onSaved?: () => void }) {
   const formRef = useRef<HTMLFormElement>(null);
@@ -13,8 +14,7 @@ export function GlobalVariablesPanel({ scope, bridge, targetName = "", targetReq
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   // Tokens gather here, so values start hidden (for screen sharing); the choice is remembered.
-  const [showValues, setShowValues] = useState(() => { try { return localStorage.getItem("checkly:api-globals-show-values") === "1"; } catch { return false; } });
-  const toggleValues = () => setShowValues(value => { try { localStorage.setItem("checkly:api-globals-show-values", value ? "0" : "1"); } catch { /* This session only. */ } return !value; });
+  const [showValues, toggleValues] = useGlobalValuesVisible();
   const focusForm = () => {
     setFormOpen(true);
     requestAnimationFrame(() => {

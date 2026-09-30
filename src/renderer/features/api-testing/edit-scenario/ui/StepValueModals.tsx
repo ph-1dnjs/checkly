@@ -4,6 +4,7 @@ import type { ApiOperation, ApiScope, ApiTestingBridge } from "../../../../../ap
 import { DraftInput, DraftTextarea } from "../../../../shared/ui/DraftFields";
 import { type RequestField, type FieldState, suggestedInputName, isStructuredRequestField, requestFieldValueMatches, templateVariable, jsonText } from "../model/step-request-model";
 import { jsonValueType } from "../model/step-response-model";
+import { useGlobalValuesVisible } from "../../../../entities/api-testing";
 
 export function RequestBodyEditor({ operation, step, update, bodyFields, renderField }: {
   operation: ApiOperation;
@@ -70,6 +71,8 @@ export function GlobalVariableCreateForm({ index, field, scope, bridge, onCreate
 }) {
   const [name, setName] = useState(() => suggestedInputName(field, index));
   const [value, setValue] = useState("");
+  // Same show/hide choice as the globals panel: this is where a token is usually pasted.
+  const [showValues, toggleValues] = useGlobalValuesVisible();
   const [type, setType] = useState<"string" | "json">("string");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -95,7 +98,7 @@ export function GlobalVariableCreateForm({ index, field, scope, bridge, onCreate
   return <div className="api-global-variable-form">
     <label>변수 이름<input aria-label={`${index + 1}단계 ${field.name} 새 전역변수 이름`} value={name} disabled={saving} onChange={event => setName(event.target.value)} /></label>
     <label>값 형식<select aria-label={`${index + 1}단계 ${field.name} 새 전역변수 형식`} value={type} disabled={saving} onChange={event => setType(event.target.value as "string" | "json")}><option value="string">문자열</option><option value="json">JSON · 숫자, 불리언, 객체, 배열</option></select></label>
-    <label>값<input aria-label={`${index + 1}단계 ${field.name} 새 전역변수 값`} type="text" autoComplete="off" spellCheck={false} value={value} disabled={saving} placeholder={type === "string" ? "값 입력" : '{"key":"value"}'} onChange={event => setValue(event.target.value)} /></label>
+    <label>값<span className="api-secret-field"><input aria-label={`${index + 1}단계 ${field.name} 새 전역변수 값`} className={showValues ? undefined : "api-secret-input"} type="text" autoComplete="off" spellCheck={false} value={value} disabled={saving} placeholder={type === "string" ? "값 입력" : '{"key":"value"}'} onChange={event => setValue(event.target.value)} /><button type="button" aria-pressed={showValues} onClick={toggleValues}>{showValues ? "숨기기" : "보기"}</button></span></label>
     {error && <p className="api-field-menu-error" role="alert">{error}</p>}
     <div className="api-actions"><button type="button" className="api-primary" disabled={saving} onClick={() => void save()}>{saving ? "저장 중…" : "추가 후 이 키에 연결"}</button><button type="button" disabled={saving} onClick={() => { onClose(); setError(""); }}>취소</button></div>
   </div>;

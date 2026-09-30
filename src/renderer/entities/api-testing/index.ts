@@ -16,4 +16,5 @@ export { ScenarioSidebarTree } from "./ui/ScenarioSidebarTree";
 export { ScenarioStepSummary } from "./ui/ScenarioStepSummary";
 export { SidebarMetadataFields } from "./ui/SidebarMetadataFields";
 export { writeLastRun } from "./model/scenario-last-run";
+export { useGlobalValuesVisible } from "./model/global-values-visibility";
 export { YamlCode } from "./ui/YamlCode";
