@@ -41,7 +41,7 @@ export function parseApiSearch(phrase: string, baseUrl: string): ApiSearch {
 }
 
 /** A concrete path fits a template when every segment is equal or a `{variable}`. */
-function pathFits(template: string, segments: string[]): boolean {
+export function pathFits(template: string, segments: string[]): boolean {
   const parts = template.replace(/\/+$/, "").split("/").slice(1);
   return parts.length === segments.length && parts.every((part, index) => /^\{[^}]+\}$/.test(part) || part === segments[index]);
 }

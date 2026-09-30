@@ -1102,3 +1102,7 @@ body.panel-resizing { cursor:col-resize; user-select:none; }
 .api-swagger-renderer .api-search-reason { flex-basis:100%; font-size:12px; color:var(--api-muted, #667085); font-family:inherit; font-weight:400; }
 /* Last run's problem: a line of links to the failed steps. */
 .api-run-last-problem { display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 12px; white-space:normal; }
+/* Scenario sidebar search: marked words and why a row matched. */
+::highlight(checkly-scenario-search) { background-color:#ffe58a; color:inherit; }
+.api-columns aside button.api-sidebar-entry.has-reason { flex-wrap:wrap; }
+.api-sidebar-entry-reason { flex-basis:100%; color:var(--api-muted); font-size:10.5px; font-weight:400; overflow-wrap:anywhere; }

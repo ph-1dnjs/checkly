@@ -17,6 +17,8 @@ type Props<T extends ScenarioSidebarEntry> = {
   expandAll?: boolean;
   /** Item id → short warning shown as a dot (e.g. steps whose API left the spec). */
   warnings?: Map<string, string>;
+  /** Item id → why a search matched when the row doesn't show it (e.g. "설명 · API GET /items"). */
+  reasons?: Map<string, string>;
   onSelect: (item: T) => void;
 };
 
@@ -49,11 +51,12 @@ function makeTree<T extends ScenarioSidebarEntry>(items: T[]): Folder<T> {
   return root;
 }
 
-export function ScenarioSidebarTree<T extends ScenarioSidebarEntry>({ items, selectedId, disabled = false, kind, expandAll = false, warnings, onSelect }: Props<T>) {
+export function ScenarioSidebarTree<T extends ScenarioSidebarEntry>({ items, selectedId, disabled = false, kind, expandAll = false, warnings, reasons, onSelect }: Props<T>) {
   const tree = useMemo(() => makeTree(items), [items]);
   const renderRows = (folder: Folder<T>) => [...folder.items].sort((left, right) => left.name.localeCompare(right.name, "ko")).map(item =>
-    <button type="button" key={item.id} disabled={disabled} className={`api-sidebar-entry${selectedId === item.id ? " selected" : ""}`} onClick={() => onSelect(item)}>
+    <button type="button" key={item.id} disabled={disabled} className={`api-sidebar-entry${selectedId === item.id ? " selected" : ""}${reasons?.has(item.id) ? " has-reason" : ""}`} onClick={() => onSelect(item)}>
       <strong>{item.name}</strong>
+      {reasons?.has(item.id) && <small className="api-sidebar-entry-reason">검색 일치 · {reasons.get(item.id)}</small>}
       {warnings?.has(item.id) && <span className="api-sidebar-warning" role="img" aria-label={warnings.get(item.id)} title={warnings.get(item.id)} />}
       {item.draft && <span className="api-sidebar-entry-meta"><small className="api-sidebar-draft">초안</small></span>}
     </button>);
