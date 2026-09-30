@@ -120,7 +120,12 @@ export const splitScenarioBlocks = (markdown: string): string[] =>
     // 이 상태는 시나리오 블록이 아니므로 파싱/교체 대상에서 제외한다.
     .filter((block) => block.trim());
 
-export const parseMarkdown = (markdown: string): Scenario[] =>
+// source는 시나리오가 속한 파일을 구분하기 위한 네임스페이스(예: 파일 경로)다.
+// 지정하지 않으면 기존과 동일하게 `scenario-0`, `scenario-1`... 형태의 id를 쓴다.
+// 여러 파일을 함께 실행할 때 파일별로 `scenario-0`부터 다시 매겨지는 id가 겹치면
+// 스텝 캡처·재실행 결과·영상 매칭이 서로 다른 시나리오를 같은 것으로 착각할 수 있어,
+// 실행 파이프라인에 전달되는 id에는 반드시 파일 단위 네임스페이스를 포함해야 한다.
+export const parseMarkdown = (markdown: string, source?: string): Scenario[] =>
   splitScenarioBlocks(markdown)
     .map((block, index) => {
       const lines = block
@@ -276,5 +281,6 @@ export const parseMarkdown = (markdown: string): Scenario[] =>
             connected: true,
           };
         });
-      return { id: `scenario-${index}`, title, url, tag, steps };
+      const id = source ? `${source}::scenario-${index}` : `scenario-${index}`;
+      return { id, title, url, tag, steps };
     });

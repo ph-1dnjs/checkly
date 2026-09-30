@@ -30,7 +30,7 @@ export const ScenarioPickerPage = ({ onOpenEditor, onRun }: Props) => {
     const entries = await Promise.all(
       result.files.map(async (file) => {
         const markdown = await window.electronAPI.readScenarioFile(file.path);
-        return { file, scenarios: markdown ? parseMarkdown(markdown) : [] };
+        return { file, scenarios: markdown ? parseMarkdown(markdown, file.path) : [] };
       }),
     );
     // 시나리오 단계가 하나도 없는 파일은 FILES 목록에서 제외한다.
