@@ -73,7 +73,7 @@ async function main() {
     await page.getByRole("button", { name: "프로젝트 저장", exact: true }).click();
     // No spec yet: the import form is open by itself.
     const specSource = page.getByRole("region", { name: "API 명세 가져오기" });
-    const importButton = specSource.getByRole("button", { name: /^(가져오기|새로고침)$/ });
+    const importButton = specSource.getByRole("button", { name: "이 URL로 가져오기", exact: true });
     await page.getByLabel("OpenAPI URL").fill(`${url}/openapi.json`);
     await importButton.click();
     await expect(page.getByRole("alert")).toContainText("명세 인증 실패: HTTP 401");
@@ -390,7 +390,7 @@ async function main() {
       await restored.getByLabel("Swagger 인증 방식").selectOption("basic");
       await restored.getByLabel("Swagger 아이디", { exact: true }).fill("docs-user");
       await restored.getByLabel("Swagger 비밀번호", { exact: true }).fill("docs-test-password");
-      await refreshedSource.getByRole("button", { name: /^(가져오기|새로고침)$/ }).click();
+      await refreshedSource.getByRole("button", { name: "이 URL로 가져오기", exact: true }).click();
     };
     await refreshSpec();
     await expect(refreshedSource).toContainText("API 제목이 바뀌었습니다 · 시나리오 1개의 단계 1개가 이전 제목을 이름으로 씁니다.");
@@ -476,7 +476,7 @@ async function main() {
     const shared = await readFile(shareFile, "utf8");
     if (shared.includes("desktop-api-token") || shared.includes("docs-test-password")) throw new Error("Share file carries secrets");
     await restored.getByRole("button", { name: "← 돌아가기", exact: true }).click();
-    await restored.getByRole("button", { name: "+ 프로젝트", exact: true }).click();
+    await restored.getByLabel("API 프로젝트").selectOption({ label: "+ 새 프로젝트" });
     await restored.getByRole("button", { name: "파일에서 가져오기", exact: true }).click();
     // The original is on this machine too, so it asks; a second copy is what this step wants.
     const firstImport = restored.getByRole("dialog", { name: "프로젝트 가져오기" });

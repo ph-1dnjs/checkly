@@ -86,7 +86,7 @@ export function SpecSourcePanel(props: Props) {
     {open && <div className="api-spec-form">
       <div className="api-spec-form-row">
         <label className="api-spec-url">명세 URL<input aria-label="OpenAPI URL" type="url" placeholder="https://…/v3/api-docs (OpenAPI JSON/YAML)" value={url} disabled={disabled} onChange={event => props.onUrlChange(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && url.trim() && !event.nativeEvent.isComposing) void importUrl(); }} /></label>
-        <button type="button" className="api-primary" disabled={disabled || !url.trim()} onClick={() => void importUrl()}>{sameUrl ? "새로고침" : "가져오기"}</button>
+        <button type="button" className="api-primary" disabled={disabled || !url.trim()} onClick={() => void importUrl()}>이 URL로 가져오기</button>
         <span className="api-spec-or">또는</span>
         <button type="button" disabled={disabled} onClick={() => void importFile()}>파일 가져오기</button>
       </div>

@@ -575,8 +575,7 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 .api-swagger-shell:has(.api-compose-layout) { height:100%; overflow:hidden; padding:12px 24px 0; }
 .api-testing-page:has(.api-compose-layout) { box-sizing:border-box; display:flex; flex-direction:column; height:100%; min-height:0; overflow:hidden; }
 .api-testing-page:has(.api-compose-layout) { padding-bottom:0; }
-.api-testing-page:has(.api-compose-layout) > .api-toolbar { display:none; }
-/* While composing, tabs and project/server controls are locked: the composer toolbar alone carries the header. */
+/* While composing, the tabs row gives way to the composer toolbar (same height and rule); the project row stays, locked. */
 .api-testing-page:has(.api-compose-layout) > :is(.api-tabs,.api-context,.api-workbar) { display:none; }
 .api-compose-context .api-context-value-actions { margin-left:0; gap:10px; }
 .api-testing-page:has(.api-compose-layout) .api-compose-meta { display:none; }
@@ -1106,3 +1105,47 @@ body.panel-resizing { cursor:col-resize; user-select:none; }
 ::highlight(checkly-scenario-search) { background-color:#ffe58a; color:inherit; }
 .api-columns aside button.api-sidebar-entry.has-reason { flex-wrap:wrap; }
 .api-sidebar-entry-reason { flex-basis:100%; color:var(--api-muted); font-size:10.5px; font-weight:400; overflow-wrap:anywhere; }
+/* Docs tool buttons: icon + label, icon only in the narrow composer so the row stays on one line. */
+.api-doc-controls button { display:inline-flex; align-items:center; gap:4px; }
+.api-compose-layout .api-doc-controls button { padding:6px 7px; }
+.api-compose-layout .api-doc-controls button > span { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+.api-compose-layout .api-doc-search-tools > div:first-child { min-width:160px; }
+.api-copy-path { display:contents; }
+/* One header row: project picker · tabs · server/environment/globals. */
+/* The app content already pads the top, so the shell adds little. */
+.api-swagger-shell { padding-top:4px; }
+.api-project-picker select { max-width:200px; }
+.api-testing-page button.api-icon-button { display:inline-flex; align-items:center; justify-content:center; padding:6px 7px; }
+/* One center line for the whole row; only the tabs reach down so their underline sits on the row's border. */
+.api-swagger-shell .api-workbar { align-items:center; min-height:48px; }
+.api-swagger-shell .api-workbar > .api-context { margin-top:0; margin-bottom:0; }
+.api-swagger-shell .api-workbar > .api-tabs { align-self:stretch; align-items:stretch; }
+.api-swagger-shell .api-workbar > .api-tabs button { height:auto; min-height:48px; padding-top:3px; border-bottom:2px solid transparent; }
+.api-swagger-shell .api-workbar > .api-tabs button[aria-selected="true"] { border-bottom-color:var(--ck-color-blue-action); }
+/* The list/detail columns reach down to just above the bottom navigation (header rows ≈ 150px, nav ≈ 80px). */
+.api-swagger-shell .api-workbar + .api-columns { min-height:max(60vh, calc(100dvh - 230px)); }
+/* Row 1: title and project, lighter than the tab row below. */
+.api-swagger-shell .api-toolbar.api-page-head { justify-content:flex-start; gap:14px; min-height:36px; margin:0 0 4px; padding:0; border-bottom:0; }
+.api-swagger-shell .api-page-head h1 { font-size:18px; font-weight:700; }
+.api-page-head .api-project-picker { gap:4px; flex-wrap:nowrap; }
+/* The composer toolbar stands in for the tab row: same height and bottom rule. */
+.api-testing-page:has(.api-compose-layout) .api-compose-toolbar { min-height:48px; margin:0; border-bottom:1px solid var(--ck-color-line-strong); }
+.api-testing-page:has(.api-compose-layout) .api-compose-layout { border-top:0; }
+/* Same edges as the other views, so the header rows don't jump when the composer opens. */
+.api-swagger-shell:has(.api-compose-layout) { padding:4px clamp(24px,4.5vw,64px) 0; }
+@media(max-width:800px) { .api-swagger-shell .api-toolbar.api-page-head { flex-direction:row; align-items:center; } }
+/* API 요청 인증 dialog: app-style title and ×, one rule under the header and one above the footer. */
+.api-swagger-ui .modal-ux-header h3 { color:var(--api-ink); font-family:inherit; font-size:18px; font-weight:700; }
+.api-swagger-ui .modal-ux-header > button.api-auth-close { min-height:0; padding:0 4px; border:0; background:transparent; color:var(--api-muted); font-size:22px; line-height:1; }
+.api-swagger-ui .modal-ux-header > button.api-auth-close:hover { color:var(--api-ink); }
+.api-auth-status { padding:0; border-bottom:0; color:var(--api-muted); font-weight:400; }
+.api-auth-status.is-connected { color:var(--api-ink); font-weight:600; }
+.api-auth-new { padding:0; background:transparent; }
+/* Suite: pre-run needs per scenario, and the same status pills as scenario results. */
+.api-suite-readiness { white-space:normal; margin:12px 0 0; }
+.api-suite-readiness > ul { margin:6px 0 0; padding-left:18px; }
+.api-suite-readiness ul ul, .api-suite-blocked { margin:4px 0 6px; padding-left:18px; color:var(--api-body); }
+.api-suite-readiness code, .api-suite-blocked code { font-family:var(--ck-font-mono); }
+.api-run-result-status:is(.is-skipped,.is-cancelled) { color:var(--api-muted); background:var(--ck-color-line-soft); }
+.api-suite-results summary .api-run-result-status { margin-left:6px; padding:2px 7px; font-size:10.5px; }
+.api-suite-results summary small { color:var(--api-muted); }

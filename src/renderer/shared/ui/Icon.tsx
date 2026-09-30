@@ -14,7 +14,9 @@ export type IconName =
   | "play_arrow"
   | "play_circle"
   | "settings"
-  | "stop_circle";
+  | "stop_circle"
+  | "unfold_less"
+  | "unfold_more";
 
 const CONTENT: Record<IconName, ReactNode> = {
   add: <path d="M11 5h2v14h-2zM5 11h14v2H5z" />,
@@ -63,6 +65,8 @@ const CONTENT: Record<IconName, ReactNode> = {
   settings: <>
     <path d="m19.43 12.98.04-.98-.04-.98 2.11-1.65-2-3.46-2.49 1a7.1 7.1 0 0 0-1.7-.98L15 3h-4l-.35 2.93a7.1 7.1 0 0 0-1.7.98l-2.49-1-2 3.46 2.11 1.65-.04.98.04.98-2.11 1.65 2 3.46 2.49-1c.52.4 1.09.73 1.7.98L11 21h4l.35-2.93a7.1 7.1 0 0 0 1.7-.98l2.49 1 2-3.46-2.11-1.65ZM13 15.5A3.5 3.5 0 1 1 13 8a3.5 3.5 0 0 1 0 7.5Z" />
   </>,
+  unfold_less: <path d="M7.41 18.59 8.83 20 12 16.83 15.17 20l1.41-1.41L12 14l-4.59 4.59Zm9.18-13.18L15.17 4 12 7.17 8.83 4 7.41 5.41 12 10l4.59-4.59Z" />,
+  unfold_more: <path d="M12 5.83 15.17 9l1.41-1.41L12 3 7.41 7.59 8.83 9 12 5.83Zm0 12.34L8.83 15l-1.41 1.41L12 21l4.59-4.59L15.17 15 12 18.17Z" />,
   stop_circle: <>
     <path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm0 2a7 7 0 1 1 0 14 7 7 0 0 1 0-14Z" />
     <rect x="9" y="9" width="6" height="6" rx=".8" />

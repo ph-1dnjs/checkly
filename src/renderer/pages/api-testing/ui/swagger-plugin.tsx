@@ -3,6 +3,7 @@ import type { ApiCatalog, ApiDocInput, ApiScope, ApiTestingBridge } from "../../
 import { docInputFromRequest } from "../../../../app/api-testing/shared/doc-inputs";
 import { RequestAuthPanel } from "../../../features/api-testing/configure-request-auth";
 import { DescriptionMarkdown } from "./DescriptionMarkdown";
+import { Icon } from "../../../shared/ui/Icon";
 import { type SwaggerMap, type SwaggerSystem, type Selection, type MutableRef, type SwaggerComponent } from "../model/swagger-types";
 import { deepLinkQuiet, updateDeepLinkHash, withoutDeepLink } from "../lib/swagger-deep-link";
 import { explainApiSearch, highlightTerms, matchesApiSearch, parseApiSearch, type SearchableOperation } from "../../../entities/api-testing";
@@ -234,13 +235,27 @@ export function createSwaggerPlugin(options: {
         const Authorize = props.getComponent("AuthorizeBtnContainer", true);
         return <div ref={root} className="api-doc-search-tools"><Original {...props} />
           {count !== null && <span className={`api-doc-search-count${count ? "" : " empty"}`} role="status">{count ? `${count}개 API` : "맞는 API가 없습니다"}</span>}
+          {/* Icon + label; the narrow composer shows the icon only. */}
           <div className="api-actions api-doc-controls">
-            <button type="button" onClick={() => setTags(true)}>태그 모두 펼치기</button>
-            <button type="button" onClick={() => setTags(false)}>태그 모두 접기</button>
+            <button type="button" aria-label="태그 모두 펼치기" title="태그 모두 펼치기" onClick={() => setTags(true)}><Icon name="unfold_more" size={16} /><span>태그 모두 펼치기</span></button>
+            <button type="button" aria-label="태그 모두 접기" title="태그 모두 접기" onClick={() => setTags(false)}><Icon name="unfold_less" size={16} /><span>태그 모두 접기</span></button>
           </div>
-          {/* Always here: the servers row (where Swagger puts it) is hidden, the environment picks the base URL. */}
-          <div className="api-doc-authorize"><Authorize /></div>
+          {/* The servers row (where Swagger puts it) is hidden, the environment picks the base URL.
+              The composer can't call APIs, so it has no use for Authorize. */}
+          {!options.composingRef.current && <div className="api-doc-authorize"><Authorize /></div>}
         </div>;
+      },
+      // The summary's copy button copies `GET /path` rather than the bare path: pasted into a search
+      // box it finds exactly this operation even when the path has other methods.
+      CopyToClipboardBtn: (Original: SwaggerComponent) => function CopyWithMethod(props: any) {
+        const host = useRef<HTMLSpanElement>(null);
+        const [method, setMethod] = useState("");
+        useLayoutEffect(() => {
+          const block = host.current?.closest<HTMLElement>(".opblock");
+          if (host.current?.closest(".opblock-summary") && block?.dataset.checklyMethod) setMethod(block.dataset.checklyMethod.toUpperCase());
+        });
+        const text = typeof props.textToCopy === "string" && method && props.textToCopy.startsWith("/") ? `${method} ${props.textToCopy}` : props.textToCopy;
+        return <span ref={host} className="api-copy-path"><Original {...props} textToCopy={text} /></span>;
       },
       authorizationPopup: () => function GlobalAuthorization(props: any) {
         const closeButton = useRef<HTMLButtonElement>(null);
@@ -261,7 +276,7 @@ export function createSwaggerPlugin(options: {
           <div className="modal-ux" role="dialog" aria-label="API 요청 인증">
             <div className="modal-dialog-ux"><div className="modal-ux-inner">
               <div className="modal-ux-header"><h3>API 요청 인증</h3>
-                <button ref={closeButton} onClick={() => props.authActions.showDefinitions(false)} aria-label="인증 설정 닫기">닫기</button>
+                <button ref={closeButton} className="api-auth-close" onClick={() => props.authActions.showDefinitions(false)} aria-label="인증 설정 닫기" title="닫기">×</button>
               </div>
               <div className="modal-ux-content"><RequestAuthPanel scope={options.scopeRef.current} bridge={options.bridgeRef.current} /></div>
             </div></div>

@@ -34,7 +34,7 @@ export function RequestAuthPanel({ scope, bridge }: { scope: ApiScope; bridge: A
   const newToken = choice === NEW_TOKEN || !strings.length;
   const unchanged = !newToken && choice === active;
   return <section className="api-auth-panel">
-    <div className="api-auth-status" role="status">
+    <div className={`api-auth-status${active ? " is-connected" : ""}`} role="status">
       {active ? <span>연결됨 · <code>{active}</code></span> : <span>연결된 토큰 없음</span>}
       {active && <button type="button" disabled={busy} onClick={() => void perform(() => bridge.setRequestAuth(scope, null))}>연결 해제</button>}
     </div>
@@ -53,7 +53,7 @@ export function RequestAuthPanel({ scope, bridge }: { scope: ApiScope; bridge: A
         <option value="" disabled>전역변수 선택</option>
         {strings.map(v => <option key={v.name} value={v.name}>{v.name}</option>)}
         <option value={NEW_TOKEN}>+ 새 토큰 입력</option>
-      </select></label> : <p className="api-auth-note">저장된 문자열 전역변수가 없어 새 토큰을 입력합니다.</p>}
+      </select></label> : null}
       {newToken && <div className="api-auth-new">
         <label>토큰 값<input aria-label="새 API 인증 토큰" className="api-secret-input" type="text" autoComplete="off" required placeholder="Bearer 없이 토큰만" value={token} onChange={e => setToken(e.target.value)} /></label>
         <label>저장할 전역변수 이름<input aria-label="토큰 전역변수 이름" autoComplete="off" required value={tokenName} onChange={e => setTokenName(e.target.value)} /><small>같은 이름이면 값을 덮어씁니다.</small></label>
@@ -61,7 +61,7 @@ export function RequestAuthPanel({ scope, bridge }: { scope: ApiScope; bridge: A
       {error && <p role="alert" className="api-warning">{error}</p>}
       {/* Dialog footer like the app's other dialogs: note on the left, the action on the right. */}
       <div className="api-auth-footer">
-        <p className="api-auth-note">API 문서의 개별 호출에만 Bearer 토큰으로 붙습니다. 앱을 끄면 토큰과 연결이 초기화됩니다.</p>
+        <p className="api-auth-note">API 문서에서 직접 호출할 때만 Bearer로 붙습니다 · 앱을 끄면 초기화</p>
         <button className="api-primary" disabled={(!newToken && !choice) || unchanged}>{newToken ? "저장 후 연결" : "연결"}</button>
       </div>
     </fieldset></form>
