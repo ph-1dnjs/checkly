@@ -3,6 +3,7 @@ import type { ApiCatalog, ApiSpecImpact, ApiProject, ApiProjectImportPlan, ApiPr
 import { ProjectForm, ProjectImportDialog } from "../../features/api-testing/configure-project";
 import { ApiDocumentation } from "./ui/ApiDocumentation";
 import { LoadingSpinner } from "../../shared/ui/LoadingSpinner";
+import { Icon } from "../../shared/ui/Icon";
 import { GlobalVariableMenu } from "../../features/api-testing/configure-globals";
 import { ApiTestingProviders } from "./ui/ApiTestingProviders";
 import { ScenarioPanel } from "./ui/ScenarioPanel";
@@ -12,6 +13,9 @@ import { SpecSourcePanel } from "../../features/api-testing/configure-spec";
 import "./ui/api-testing.css";
 import type { OnRunAction } from "../../shared/model/run-action";
 import { readWorkspaceUrl, workspaceUrl, type ApiTab } from "./lib/workspace-url";
+
+/** Select value that opens the new-project form instead of switching projects. */
+const newProjectOption = "__new-project__";
 
 export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTesting }: { onRunAction: OnRunAction; bridge?: ApiTestingBridge }) {
   const [projects, setProjects] = useState<ApiProject[]>([]);
@@ -190,8 +194,18 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
   const locked = busy || scenarioComposerOpen;
   const environmentPicker = project && <div className="api-environments" role="group" aria-label={tab === "scenario-editor" ? "시나리오 전체 호출 환경" : "API 환경"}>{project.environments.map(e => <button key={e.id} aria-pressed={environmentId === e.id} disabled={busy || loading} title={tab === "scenario-editor" ? "이 시나리오의 전체 API 호출 환경" : undefined} onClick={() => { setEnvironmentId(e.id); setUrl(""); }}>{e.name}</button>)}</div>;
   const valueActions = <div className="api-context-value-actions"><GlobalVariableMenu projectId={projectId} bridge={bridge} disabled={busy} /></div>;
+  // "+ 새 프로젝트" is the list's last entry: it's rare, and the header stays one row.
+  const projectPicker = <div className="api-actions api-project-picker">
+    <select aria-label="API 프로젝트" disabled={locked || loading} value={projectId} onChange={e => { if (e.target.value === newProjectOption) setForm("new"); else selectProject(projects.find(p => p.id === e.target.value)!); }}>
+      <option value="" disabled>프로젝트 선택</option>
+      {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+      <option value={newProjectOption}>+ 새 프로젝트</option>
+    </select>
+    {project && <button type="button" className="api-icon-button" aria-label="프로젝트 설정" title="프로젝트 설정" disabled={locked || loading} onClick={() => setForm("edit")}><Icon name="settings" size={16} /></button>}
+  </div>;
   return <ApiTestingProviders key={projectId} projectId={projectId} bridge={bridge}><section className="api-testing-page api-swagger-shell">
-    <header className="api-toolbar"><h1>API 테스트</h1><div className="api-actions"><select aria-label="API 프로젝트" disabled={locked || loading} value={projectId} onChange={e => selectProject(projects.find(p => p.id === e.target.value)!)}><option value="" disabled>프로젝트 선택</option>{projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select><button disabled={locked || loading} onClick={() => setForm("new")}>+ 프로젝트</button>{project && <button disabled={locked || loading} onClick={() => setForm("edit")}>프로젝트 설정</button>}</div></header>
+    {/* Row 1: which project. Row 2 (tabs, or the composer's toolbar): what to do in it and where to call. */}
+    <header className="api-toolbar api-page-head"><h1>API 테스트</h1>{projectPicker}</header>
     {error && <p className="api-warning" role="alert">{error}</p>}
     {importPlan && <ProjectImportDialog plan={importPlan.plan} onCancel={() => setImportPlan(null)} onImport={async update => { await finishImport(await bridge.importProject(importPlan.text, update)); }} />}
     {notice && !form && <p className="api-page-notice" role="status">{notice}<button type="button" className="api-compose-link" onClick={() => setNotice("")}>닫기</button></p>}
@@ -207,7 +221,7 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
     onExport={async () => { const saved = await bridge.exportProject(projectId); return saved ? `저장했습니다 · ${saved}` : ""; }}
     onImport={importProject} /> : <>
       {!project ? <div className="api-empty"><h2>API 테스트를 시작하세요</h2><p>프로젝트를 만든 뒤 API 명세(OpenAPI) 파일이나 URL을 가져오세요.</p><button className="api-primary" onClick={() => setForm("new")}>프로젝트 만들기</button></div> : <>
-        {/* Tabs and the server/environment context share one row to keep the header short. */}
+        {/* Tabs and the server/environment context share the second row. */}
         <div className="api-workbar">
           <div className="api-tabs" role="tablist" aria-label="API 작업 영역">
             <button role="tab" aria-selected={tab === "scenarios" || tab === "scenario-editor"} disabled={busy} onClick={() => {

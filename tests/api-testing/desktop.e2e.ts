@@ -476,7 +476,7 @@ async function main() {
     const shared = await readFile(shareFile, "utf8");
     if (shared.includes("desktop-api-token") || shared.includes("docs-test-password")) throw new Error("Share file carries secrets");
     await restored.getByRole("button", { name: "← 돌아가기", exact: true }).click();
-    await restored.getByRole("button", { name: "+ 프로젝트", exact: true }).click();
+    await restored.getByLabel("API 프로젝트").selectOption({ label: "+ 새 프로젝트" });
     await restored.getByRole("button", { name: "파일에서 가져오기", exact: true }).click();
     // The original is on this machine too, so it asks; a second copy is what this step wants.
     const firstImport = restored.getByRole("dialog", { name: "프로젝트 가져오기" });
