@@ -1156,3 +1156,9 @@ body.panel-resizing { cursor:col-resize; user-select:none; }
 .api-run-result-step > summary small.api-run-result-check-badge { grid-column:5; grid-row:1 / 3; margin:0; white-space:nowrap; }
 .api-run-result-step > summary .api-run-result-step-status { grid-column:6; }
 .api-run-result-step > summary .api-run-result-duration { grid-column:7; }
+/* APIs Checkly can't run yet: a note on the row, no Try it out. */
+.api-swagger-renderer .api-unsupported-note { flex-basis:100%; color:var(--ck-color-wait-ink); font-family:inherit; font-size:12px; font-weight:400; }
+.api-swagger-renderer .opblock[data-checkly-unsupported] :is(.try-out, .execute-wrapper, .btn-group) { display:none; }
+/* 401 in the API docs: point at Authorize. */
+.api-swagger-renderer .api-auth-hint { margin:8px 0; padding:8px 12px; border-left:3px solid var(--ck-color-wait); background:var(--ck-color-wait-tint); color:var(--ck-color-text-body); font-size:12.5px; }
+.api-swagger-renderer .api-auth-hint button.api-compose-link { font-size:12.5px; }

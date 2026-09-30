@@ -189,6 +189,8 @@ export class ApiRunner {
           continue;
         }
         const started = Date.now();
+        // Time spent waiting for someone to type an input is not the API's time.
+        let waitedMs = 0;
         let httpStatus: number | undefined;
         let checks: CheckResult[] | undefined;
         const inputResults: InputResult[] = [];
@@ -203,13 +205,17 @@ export class ApiRunner {
             if (Object.hasOwn(context.vars, input.name)) value = context.vars[input.name];
             else if (Object.hasOwn(context.inputs, input.name)) value = context.inputs[input.name];
             else if (Object.hasOwn(context.globals, input.name)) value = context.globals[input.name];
-            if (!isProvidedScenarioInput(value)) value = await waitForScenarioInput(options, {
-              ...input,
-              runId: options.runId ?? "local-run",
-              index,
-              totalSteps: scenario.steps.length,
-              stepId: step.id,
-            });
+            if (!isProvidedScenarioInput(value)) {
+              const waitStarted = Date.now();
+              value = await waitForScenarioInput(options, {
+                ...input,
+                runId: options.runId ?? "local-run",
+                index,
+                totalSteps: scenario.steps.length,
+                stepId: step.id,
+              });
+              waitedMs += Date.now() - waitStarted;
+            }
             if (options.signal?.aborted) throw new Error("실행 취소");
             const provided = isProvidedScenarioInput(value);
             inputResults.push({ name: input.name, provided });
@@ -287,11 +293,11 @@ export class ApiRunner {
           context.vars = { ...context.vars, ...vars };
           context.globals = { ...context.globals, ...globals };
           this.globals.commit(options.projectId, globals);
-          results.push({ id: step.id, name: scenarioStepLabel(step), status: "passed", httpStatus, durationMs: Date.now() - started, ...(checks ? { checks } : {}), ...(inputResults.length === 1 ? { input: inputResults[0] } : inputResults.length > 1 ? { inputs: inputResults } : {}) });
+          results.push({ id: step.id, name: scenarioStepLabel(step), status: "passed", httpStatus, durationMs: Date.now() - started - waitedMs, ...(checks ? { checks } : {}), ...(inputResults.length === 1 ? { input: inputResults[0] } : inputResults.length > 1 ? { inputs: inputResults } : {}) });
         } catch (error) {
           const status = options.signal?.aborted ? "cancelled" : error instanceof MissingValue ? "blocked" : "failed";
           // Never surface network/library errors that could contain credentials or URLs.
-          results.push({ id: step.id, name: scenarioStepLabel(step), status, httpStatus, durationMs: Date.now() - started, ...(checks ? { checks } : {}), ...(inputResults.length === 1 ? { input: inputResults[0] } : inputResults.length > 1 ? { inputs: inputResults } : {}), failure: error instanceof SafeCheckFailure ? error.failure : { kind: status === "blocked" ? "input" : error instanceof RequestValueError ? "request" : "other" }, error: status === "blocked" ? "필수 변수 또는 API 설정이 없습니다" : status === "cancelled" ? "실행 취소" : error instanceof RequestValueError || (error instanceof SafeCheckFailure && error.failure.kind === "extraction") ? error.message : error instanceof SafeCheckFailure ? (error.failure.kind === "http" ? `HTTP ${httpStatus} 응답 (2xx 아님)` : "응답 검증 실패") : httpStatus === undefined ? "요청을 보내지 못했습니다. 서버 주소·연결 상태나 단계 설정을 확인하세요." : "응답을 처리하지 못했습니다" });
+          results.push({ id: step.id, name: scenarioStepLabel(step), status, httpStatus, durationMs: Date.now() - started - waitedMs, ...(checks ? { checks } : {}), ...(inputResults.length === 1 ? { input: inputResults[0] } : inputResults.length > 1 ? { inputs: inputResults } : {}), failure: error instanceof SafeCheckFailure ? error.failure : { kind: status === "blocked" ? "input" : error instanceof RequestValueError ? "request" : "other" }, error: status === "blocked" ? "필수 변수 또는 API 설정이 없습니다" : status === "cancelled" ? "실행 취소" : error instanceof RequestValueError || (error instanceof SafeCheckFailure && error.failure.kind === "extraction") ? error.message : error instanceof SafeCheckFailure ? (error.failure.kind === "http" ? `HTTP ${httpStatus} 응답 (2xx 아님)` : "응답 검증 실패") : httpStatus === undefined ? "요청을 보내지 못했습니다. 서버 주소·연결 상태나 단계 설정을 확인하세요." : "응답을 처리하지 못했습니다" });
           stopped = scenario.onFailure === "stop" || status === "cancelled";
         }
       }

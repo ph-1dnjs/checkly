@@ -141,7 +141,8 @@ export function SuitePanel({ project, scope, bridge, scenarios, suites, selected
             const operation = catalogs[step.server]?.operations.find(candidate => "operationId" in step.api ? candidate.operationId === step.api.operationId : candidate.method === step.api.method && candidate.path === step.api.path);
             return { name: step.name ?? operation?.summary ?? step.id, reference: operation ? `${operation.method.toUpperCase()} ${operation.path}` : "operationId" in step.api ? step.api.operationId : `${step.api.method} ${step.api.path}` };
           });
-          rows.push(reportScenario(id, item.name, result, references, Math.round(performance.now() - began), preview.scenario));
+          // Sum of the steps' API time: waiting for a typed input isn't the scenario's time.
+          rows.push(reportScenario(id, item.name, result, references, result.steps.reduce((total, step) => total + step.durationMs, 0), preview.scenario));
           if (result.status !== "passed") producedGlobals.forEach(name => invalidatedGlobals.add(name));
         } catch (err) {
           // Keep the concrete preflight reason in the app (on the scenario's card), never in the exported HTML.

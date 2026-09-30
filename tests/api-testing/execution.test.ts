@@ -123,9 +123,11 @@ test("step input waits for a value and exposes it only through vars", async () =
     const result = await new ApiRunner().run(scenario, {
       projectId: "otp-project", environment: "local", runId: "otp-run",
       servers: { api: { baseUrl: `http://127.0.0.1:${(server.address() as { port: number }).port}` } },
-      requestInput: async request => { prompts.push(`${request.stepId}:${request.name}`); return "123456"; },
+      // Someone takes a while to type it: that wait is not the step's time.
+      requestInput: async request => { prompts.push(`${request.stepId}:${request.name}`); await new Promise(resolve => setTimeout(resolve, 300)); return "123456"; },
     });
     assert.equal(result.status, "passed");
+    assert.ok(result.steps[1].durationMs < 250, `input wait counted in durationMs: ${result.steps[1].durationMs}`);
     assert.deepEqual(prompts, ["verify:phoneCode"]);
     assert.deepEqual(seen, ["POST /send", "POST /verify"]);
     assert.deepEqual(result.steps[1].input, { name: "phoneCode", provided: true });
