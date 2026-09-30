@@ -5,7 +5,7 @@ import { RequestAuthPanel } from "../../../features/api-testing/configure-reques
 import { DescriptionMarkdown } from "./DescriptionMarkdown";
 import { type SwaggerMap, type SwaggerSystem, type Selection, type MutableRef, type SwaggerComponent } from "../model/swagger-types";
 import { updateDeepLinkHash } from "../lib/swagger-deep-link";
-import { matchesApiSearch, parseApiSearch } from "../lib/api-search";
+import { explainApiSearch, highlightTerms, matchesApiSearch, parseApiSearch, type SearchableOperation } from "../lib/api-search";
 import { mapValue, textValue, buildRequest, requestUrl, displayRequest, responseFromApi, responseFromError, tagNames } from "../lib/swagger-request";
 
 export const submitMethods = ["get", "put", "post", "delete", "options", "head", "patch"];
@@ -50,10 +50,11 @@ export function createSwaggerPlugin(options: {
     block?.querySelector(".live-responses-table, .responses-inner > div > div")?.scrollIntoView({ block: "start", behavior: "smooth" });
   }, 50);
   // Parameter and top-level body field names per operation, worked out once per catalog.
-  const fieldCache = new WeakMap<ApiCatalog, Map<string, string[]>>();
-  const fieldsOf = (method: string, path: string) => {
+  type Fields = Pick<SearchableOperation, "summary" | "description" | "parameters" | "bodyFields">;
+  const fieldCache = new WeakMap<ApiCatalog, Map<string, Fields>>();
+  const fieldsOf = (method: string, path: string): Fields => {
     const catalog = options.catalogRef.current;
-    if (!catalog) return [];
+    if (!catalog) return { parameters: [], bodyFields: [] };
     let fields = fieldCache.get(catalog);
     if (!fields) {
       fields = new Map();
@@ -64,21 +65,58 @@ export function createSwaggerPlugin(options: {
           ...Object.keys(schema && typeof schema === "object" && schema.properties && typeof schema.properties === "object" ? schema.properties : {}),
           ...Object.keys(example && typeof example === "object" && !Array.isArray(example) ? example : {}),
         ];
-        fields.set(`${operation.method.toUpperCase()} ${operation.path}`, [...new Set([...operation.parameters.map(parameter => parameter.name), ...body])]);
+        fields.set(`${operation.method.toUpperCase()} ${operation.path}`, { summary: operation.summary, description: operation.description, parameters: operation.parameters.map(parameter => parameter.name), bodyFields: [...new Set(body)] });
       }
       fieldCache.set(catalog, fields);
     }
-    return fields.get(`${method.toUpperCase()} ${path}`) ?? [];
+    return fields.get(`${method.toUpperCase()} ${path}`) ?? { parameters: [], bodyFields: [] };
+  };
+  const searchable = (method: string, path: string, tag: string, operation: any): SearchableOperation => ({ method, path, tag,
+    summary: operation?.get?.("summary"), description: operation?.get?.("description"), ...fieldsOf(method, path) });
+  // The current search, for the operations to explain their match (they don't re-render on a new filter).
+  let searchPhrase = "";
+  const searchListeners = new Set<() => void>();
+  const useSearchPhrase = () => {
+    const [phrase, setPhrase] = useState(searchPhrase);
+    useEffect(() => {
+      const update = () => setPhrase(searchPhrase);
+      searchListeners.add(update);
+      update();
+      return () => { searchListeners.delete(update); };
+    }, []);
+    return phrase;
+  };
+  // Mark the searched words in tag names, paths, summaries and parameter names without touching
+  // Swagger's DOM (CSS Custom Highlight API; skipped where unsupported).
+  const highlightSearch = () => {
+    const registry = (globalThis.CSS as any)?.highlights as Map<string, unknown> | undefined;
+    const HighlightType = (globalThis as any).Highlight;
+    if (!registry || !HighlightType) return;
+    const terms = highlightTerms(parseApiSearch(searchPhrase, options.baseUrlRef.current));
+    if (!terms.length) { registry.delete("checkly-api-search"); return; }
+    const ranges: Range[] = [];
+    for (const element of document.querySelectorAll(".api-swagger-renderer :is(.opblock-tag > a, .opblock-summary-path, .opblock-summary-description, .opblock-description-wrapper, .parameter__name, .opblock-section-request-body :is(.property-row > td:first-child, .body-param__example))")) {
+      const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        const text = (node.textContent ?? "").toLocaleLowerCase();
+        for (const term of terms) {
+          for (let index = text.indexOf(term); index >= 0; index = text.indexOf(term, index + term.length)) {
+            const range = document.createRange();
+            range.setStart(node, index);
+            range.setEnd(node, index + term.length);
+            ranges.push(range);
+          }
+        }
+      }
+    }
+    registry.set("checkly-api-search", new HighlightType(...ranges));
   };
   const filterOperations = (taggedOps: any, phrase: string) => {
     const baseUrl = options.baseUrlRef.current;
     const search = parseApiSearch(phrase, baseUrl);
     if (!search.terms.length) return taggedOps;
     return taggedOps.map((group: any, tag: string) => group.set("operations", group.get("operations").filter((op: any) => {
-      const operation = op.get("operation");
-      return matchesApiSearch({ method: op.get("method"), path: op.get("path"), tag,
-        texts: [operation?.get("operationId"), operation?.get("summary"), operation?.get("description")],
-        fields: fieldsOf(op.get("method"), op.get("path")) }, search, baseUrl);
+      return matchesApiSearch(searchable(op.get("method"), op.get("path"), tag, op.get("operation")), search);
     }))).filter((group: any) => group.get("operations").size > 0);
   };
   return () => ({
@@ -145,9 +183,23 @@ export function createSwaggerPlugin(options: {
           const matched = filterOperations(system.specSelectors.taggedOperations(), phrase);
           for (const tag of matched?.keySeq?.().toArray?.() ?? []) if (typeof tag === "string") system.layoutActions.show(["operations-tag", tag], true);
         }, [filter]);
+        useEffect(() => {
+          searchPhrase = typeof filter === "string" ? filter : "";
+          for (const listener of searchListeners) listener();
+          highlightSearch();
+        }, [filter]);
+        // Opening a tag or an operation renders more text to mark.
+        useEffect(() => {
+          const renderer = root.current?.closest(".api-swagger-renderer");
+          if (!renderer) return;
+          let timer = 0;
+          const observer = new MutationObserver(() => { window.clearTimeout(timer); timer = window.setTimeout(highlightSearch, 50); });
+          observer.observe(renderer, { childList: true, subtree: true });
+          return () => { observer.disconnect(); window.clearTimeout(timer); (globalThis.CSS as any)?.highlights?.delete("checkly-api-search"); };
+        }, []);
         useLayoutEffect(() => {
           const input = root.current?.querySelector("input");
-          input?.setAttribute("placeholder", "검색: 경로·URL 붙여넣기, 이름, 파라미터, 태그 (/ 키)");
+          input?.setAttribute("placeholder", "검색: 경로·URL 붙여넣기, 제목, 파라미터, 태그 (/ 키)");
           input?.setAttribute("aria-label", "API 문서 검색");
         });
         // "/" jumps to the search box (unless typing somewhere); Esc in it clears the search.
@@ -223,6 +275,27 @@ export function createSwaggerPlugin(options: {
         const tag = textValue(mapValue(operation, "tag"));
         const operationId = textValue(mapValue(operation, "operationId")) || textValue(mapValue(operation, "id"));
         const isShown = props.isShown === true || mapValue(operation, "isShown") === true;
+        const phrase = useSearchPhrase();
+        // Say why it matched when the reason isn't on screen: a pasted URL's path values, or a parameter / body field.
+        useLayoutEffect(() => {
+          if (!operationId) return;
+          const block = [...document.querySelectorAll<HTMLElement>(".api-swagger-renderer .opblock")].find(element => element.id.endsWith(`-${operationId}`));
+          const wrapper = block?.querySelector(".opblock-summary-path-description-wrapper");
+          if (!wrapper) return;
+          const reason = explainApiSearch({ method, path, tag, ...fieldsOf(method, path) }, parseApiSearch(phrase, options.baseUrlRef.current));
+          if (!reason) return;
+          const parts = [
+            ...(reason.variables.length ? [`URL 경로 ${reason.variables.map(([name, value]) => `${name}=${value}`).join(", ")}`] : []),
+            ...(reason.description ? ["설명"] : []),
+            ...(reason.parameters.length ? [`파라미터 ${reason.parameters.join(", ")}`] : []),
+            ...(reason.bodyFields.length ? [`본문 필드 ${reason.bodyFields.join(", ")}`] : []),
+          ];
+          const note = document.createElement("span");
+          note.className = "api-search-reason";
+          note.textContent = `검색 일치 · ${parts.join(" · ")}`;
+          wrapper.appendChild(note);
+          return () => note.remove();
+        }, [phrase, operationId, isShown]);
         useLayoutEffect(() => {
           if (!tag || !operationId) return;
           const target = [...document.querySelectorAll<HTMLElement>(".api-swagger-renderer .opblock")]

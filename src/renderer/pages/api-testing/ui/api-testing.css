@@ -1088,3 +1088,6 @@ body.panel-resizing { cursor:col-resize; user-select:none; }
 .api-doc-search-count.empty { color:var(--ck-color-danger, #c0362c); }
 .api-doc-search-tools .api-doc-authorize { margin-left:auto; }
 .api-doc-search-tools .api-doc-authorize .auth-wrapper { padding:0; margin:0; }
+/* Docs search: marked words and why an operation matched. */
+::highlight(checkly-api-search) { background-color:#ffe58a; color:inherit; }
+.api-swagger-renderer .api-search-reason { flex-basis:100%; font-size:12px; color:var(--api-muted, #667085); font-family:inherit; font-weight:400; }
