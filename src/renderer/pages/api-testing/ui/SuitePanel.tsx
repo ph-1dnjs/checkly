@@ -1,8 +1,8 @@
 import { runStatusName } from "../../../entities/api-testing";
 import { useEffect, useRef, useState } from "react";
-import type { ApiProject, ApiScope, ApiScenarioInputRequest, ApiTestingBridge, SavedApiScenario, SavedApiSuite } from "../../../../app/api-testing/shared/workspace";
-import { producedGlobalNames, renderSuiteReport, reportScenario, usesInvalidatedGlobal, type SuiteReport, type SuiteReportScenario } from "../../../../app/api-testing/shared/suite-report";
-import { GlobalVariableSetupLink, SidebarMetadataFields } from "../../../entities/api-testing";
+import type { ApiProject, ApiScope, ApiScenarioInputRequest, ApiScenarioResult, ApiTestingBridge, SavedApiScenario, SavedApiSuite } from "../../../../app/api-testing/shared/workspace";
+import { formatDuration, producedGlobalNames, renderSuiteReport, reportScenario, usesInvalidatedGlobal, type SuiteReport, type SuiteReportScenario } from "../../../../app/api-testing/shared/suite-report";
+import { GlobalVariableSetupLink, SidebarMetadataFields, writeLastRun } from "../../../entities/api-testing";
 import { useGlobalVariableAccess } from "../../../features/api-testing/configure-globals";
 
 import { DeleteAction } from "../../../entities/api-testing";
@@ -10,10 +10,17 @@ import { SortableList } from "../../../shared/ui/SortableList";
 import { RunInputModal } from "../../../features/api-testing/submit-run-input";
 import { Icon } from "../../../shared/ui/Icon";
 
-type Props = { project: ApiProject; scope: ApiScope; bridge: ApiTestingBridge; scenarios: SavedApiScenario[]; suites: SavedApiSuite[]; selectedId: string; onSuitesChange: (suites: SavedApiSuite[]) => void; onSelectedIdChange: (id: string) => void; onBusy: (busy: boolean) => void };
+type Props = { project: ApiProject; scope: ApiScope; bridge: ApiTestingBridge; scenarios: SavedApiScenario[]; suites: SavedApiSuite[]; selectedId: string; onSuitesChange: (suites: SavedApiSuite[]) => void; onSelectedIdChange: (id: string) => void; onBusy: (busy: boolean) => void; /** Opens a scenario (with this run as its last result). */ onOpenScenario?: (id: string) => void };
 const message = (error: unknown) => (error as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, "");
 const statusName = runStatusName;
 class SuiteDependencyError extends Error {}
+/** Report-safe reason for a blocked scenario: the missing globals by name (never values), and a count of anything else. */
+function preflightReason(issues: string[]): string {
+  const names = [...new Set(issues.flatMap(issue => missingGlobal(issue) ?? []))];
+  const others = issues.filter(issue => !missingGlobal(issue)).length;
+  return [names.length ? `전역변수 ${names.join(", ")} 값 없음` : "", others ? `그 밖의 설정 ${others}개 확인 필요` : ""].filter(Boolean).join(" · ") || "실행 전 설정 또는 입력을 확인하세요.";
+}
+
 /** A scenario's pre-run problems, kept apart so the app can show them per scenario (never in the HTML report). */
 class SuitePreflightError extends Error { constructor(readonly issues: string[]) { super(issues.join("\n")); } }
 const missingGlobal = (issue: string) => /전역변수 '([A-Za-z][A-Za-z0-9_]*)'/.exec(issue)?.[1];
@@ -36,7 +43,7 @@ function IssueList({ issues, className, onConfigure }: { issues: string[]; class
   </ul>;
 }
 
-export function SuitePanel({ project, scope, bridge, scenarios, suites, selectedId, onSuitesChange, onSelectedIdChange, onBusy }: Props) {
+export function SuitePanel({ project, scope, bridge, scenarios, suites, selectedId, onSuitesChange, onSelectedIdChange, onBusy, onOpenScenario }: Props) {
   const selected = suites.find(suite => suite.id === selectedId);
   const [name, setName] = useState(selected?.name ?? "");
   const [ids, setIds] = useState<string[]>(selected?.scenarioIds ?? []);
@@ -53,6 +60,8 @@ export function SuitePanel({ project, scope, bridge, scenarios, suites, selected
   const [readiness, setReadiness] = useState<Array<{ index: number; name: string; issues: string[] }>>([]);
   // After running: the concrete reason a scenario was blocked, by its position in the suite.
   const [blocked, setBlocked] = useState<Record<number, string[]>>({});
+  // The raw results behind each row (by position), for actual values on failed checks — app only, never the HTML report.
+  const [runResults, setRunResults] = useState<Record<number, ApiScenarioResult>>({});
   const globalAccess = useGlobalVariableAccess();
   const groupPathMap = new Map<string, string[]>();
   for (const item of [...scenarios, ...suites]) for (let depth = 1; depth <= (item.groupPath?.length ?? 0); depth++) {
@@ -111,7 +120,7 @@ export function SuitePanel({ project, scope, bridge, scenarios, suites, selected
   const cancel = async () => { cancelRequested.current = true; await bridge.cancel(scope); };
   const run = async () => {
     if (!selected) return;
-    setRunning(true); onBusy(true); setError(""); setReport(null); setBlocked({}); cancelRequested.current = false;
+    setRunning(true); onBusy(true); setError(""); setReport(null); setBlocked({}); setRunResults({}); cancelRequested.current = false;
     const startedAt = new Date().toISOString();
     const rows: SuiteReportScenario[] = [];
     const invalidatedGlobals = new Set<string>();
@@ -142,12 +151,15 @@ export function SuitePanel({ project, scope, bridge, scenarios, suites, selected
             return { name: step.name ?? operation?.summary ?? step.id, reference: operation ? `${operation.method.toUpperCase()} ${operation.path}` : "operationId" in step.api ? step.api.operationId : `${step.api.method} ${step.api.path}` };
           });
           // Sum of the steps' API time: waiting for a typed input isn't the scenario's time.
+          if (live.current) setRunResults(current => ({ ...current, [index]: result }));
+          // Like a run from the scenario itself: opening it afterwards shows this result with requests and responses.
+          writeLastRun(scope.projectId, scope.environmentId, id, { result, preview, bindings: item.bindings, completedAt: new Date().toISOString() });
           rows.push(reportScenario(id, item.name, result, references, result.steps.reduce((total, step) => total + step.durationMs, 0), preview.scenario));
           if (result.status !== "passed") producedGlobals.forEach(name => invalidatedGlobals.add(name));
         } catch (err) {
           // Keep the concrete preflight reason in the app (on the scenario's card), never in the exported HTML.
           if (live.current) { if (err instanceof SuitePreflightError) setBlocked(current => ({ ...current, [index]: err.issues })); else setError(`${item.name}: ${message(err)}`); }
-          rows.push({ id, name: item.name, status: cancelRequested.current ? "cancelled" : "blocked", durationMs: Math.round(performance.now() - began), steps: [], reason: err instanceof SuiteDependencyError ? "앞 시나리오의 전역변수 생성 실패로 실행하지 않았습니다." : "실행 전 설정 또는 입력을 확인하세요." });
+          rows.push({ id, name: item.name, status: cancelRequested.current ? "cancelled" : "blocked", durationMs: Math.round(performance.now() - began), steps: [], reason: err instanceof SuiteDependencyError ? "앞 시나리오의 전역변수 생성 실패로 실행하지 않았습니다." : err instanceof SuitePreflightError ? preflightReason(err.issues) : "실행 전 설정 또는 입력을 확인하세요." });
           producedGlobals.forEach(name => invalidatedGlobals.add(name));
         }
         const status = rows.some(row => row.status === "cancelled") ? "cancelled" : rows.some(row => row.status === "failed") ? "failed" : rows.some(row => row.status === "blocked") ? "blocked" : "passed";
@@ -192,6 +204,6 @@ export function SuitePanel({ project, scope, bridge, scenarios, suites, selected
       {running && <p role="status">{progress || "스위트 실행 준비 중…"}</p>}
       {pending && <RunInputModal key={pending.requestId} request={pending} scope={{ projectId: scope.projectId, environmentId: scope.environmentId }} bridge={bridge} context={progress.replace(/^\d+\/\d+ · /, "") || undefined} onSubmitted={() => setPending(null)} onCancel={() => { setPending(null); void cancel(); }} />}
       {error && <p className="api-warning" role="alert">{error}</p>}
-      {report && <section className="api-suite-results" aria-label="스위트 실행 결과"><header className="api-run-section-heading"><div><h3>실행 결과 · {statusName(report.status)}</h3><small>{report.scenarios.length}개 시나리오 · {new Date(report.completedAt).toLocaleString()}</small></div><button type="button" disabled={running} onClick={() => void download()}>HTML 리포트 받기</button></header>{report.scenarios.map((row, index) => <details key={`${row.id}:${index}`} open={row.status !== "passed"}><summary>{index + 1}. {row.name} <strong className={`api-run-result-status is-${row.status}`}>{statusName(row.status)}</strong> <small>{row.durationMs}ms</small></summary>{blocked[index] ? <IssueList className="api-suite-blocked" issues={blocked[index]} onConfigure={globalAccess.open} /> : row.reason && <p>{row.reason}</p>}<ol>{row.steps.map((step, stepIndex) => <li key={stepIndex}>{step.reference} · {statusName(step.status)}{step.httpStatus !== undefined && ` · HTTP ${step.httpStatus}`}{step.reason && ` · ${step.reason}`}{!!step.checkResults?.length && <ul className="api-suite-checks">{step.checkResults.map((check, checkIndex) => <li key={checkIndex} className={check.passed ? "is-passed" : "is-failed"}>{check.passed ? "✓" : "✗"} {check.label}</li>)}</ul>}</li>)}</ol></details>)}</section>}
+      {report && <section className="api-suite-results" aria-label="스위트 실행 결과"><header className="api-run-section-heading"><div><h3>실행 결과 · {statusName(report.status)}</h3><small>{report.scenarios.length}개 시나리오 · {new Date(report.completedAt).toLocaleString()}</small></div><button type="button" disabled={running} onClick={() => void download()}>HTML 리포트 받기</button></header>{report.scenarios.map((row, index) => <details key={`${row.id}:${index}`} open={!["passed", "skipped"].includes(row.status)}><summary>{index + 1}. {row.name} <strong className={`api-run-result-status is-${row.status}`}>{statusName(row.status)}</strong> <small>{row.status === "skipped" ? row.reason : formatDuration(row.durationMs)}</small>{onOpenScenario && runResults[index] && <button type="button" className="api-compose-link api-suite-open" onClick={event => { event.preventDefault(); onOpenScenario(row.id); }}>시나리오 열기</button>}</summary>{blocked[index] ? <IssueList className="api-suite-blocked" issues={blocked[index]} onConfigure={globalAccess.open} /> : row.status !== "skipped" && row.reason && <p>{row.reason}</p>}<ol>{row.steps.map((step, stepIndex) => <li key={stepIndex}>{step.reference} · {statusName(step.status)}{step.httpStatus !== undefined && ` · HTTP ${step.httpStatus}`}{step.reason && ` · ${step.reason}`}{!!step.checkResults?.length && <ul className="api-suite-checks">{step.checkResults.map((check, checkIndex) => <li key={checkIndex} className={check.passed ? "is-passed" : "is-failed"}>{check.passed ? "✓" : "✗"} {check.label}{!check.passed && runResults[index]?.steps[stepIndex]?.checks?.[checkIndex]?.actual !== undefined && <span className="api-suite-actual"> · 실제 {runResults[index].steps[stepIndex].checks![checkIndex].actual}</span>}</li>)}</ul>}</li>)}</ol></details>)}</section>}
     </article>;
 }

@@ -1173,3 +1173,6 @@ body.panel-resizing { cursor:col-resize; user-select:none; }
 .api-run-result-step .api-run-result-step-status.is-http { color:var(--api-body); }
 /* Which server a step calls, shown only in scenarios that use more than one. */
 .api-run-server { display:inline-block; margin-right:6px; padding:0 5px; border:1px solid var(--api-border); border-radius:var(--ck-dim-radius-pill); color:var(--api-muted); font-size:10.5px; line-height:1.5; }
+/* Suite results: open the scenario (its requests and responses), actual value on a failed check. */
+.api-suite-results summary .api-suite-open { margin-left:10px; font-size:11.5px; }
+.api-suite-actual { color:var(--api-body); font-weight:400; }

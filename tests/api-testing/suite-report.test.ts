@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { createServer } from "node:http";
 import { ApiWorkspace } from "../../src/app/api-testing/main/workspace";
-import { producedGlobalNames, renderSuiteReport, reportScenario, usesInvalidatedGlobal } from "../../src/app/api-testing/shared/suite-report";
+import { producedGlobalNames, renderSuiteReport, reportScenario, usesInvalidatedGlobal, formatDuration } from "../../src/app/api-testing/shared/suite-report";
 import { parseScenario } from "../../src/app/api-testing/shared/scenario";
 
 test("a failed producer invalidates stale globals used by later scenarios", () => {
@@ -109,4 +109,15 @@ test("ordered scenarios reuse a token produced by the previous scenario without 
     assert.match(report, /POST \/login/); assert.match(report, /GET \/data/);
     assert.doesNotMatch(report, /private-suite-token|Authorization|Bearer/);
   } finally { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); await rm(directory, { recursive: true, force: true }); }
+});
+
+test("the report shows short times in ms, blocked scenarios as not run, and total time as including input waits", () => {
+  assert.equal(formatDuration(4), "4ms");
+  assert.equal(formatDuration(1860), "1.86초");
+  const html = renderSuiteReport({ suiteName: "점검", projectName: "데모", environmentName: "local", startedAt: "2026-10-01T00:00:00.000Z", completedAt: "2026-10-01T00:00:01.860Z", status: "blocked",
+    scenarios: [{ id: "a", name: "관리 통계", status: "blocked", durationMs: 7, steps: [], reason: "전역변수 demoAdminToken 값 없음" }] });
+  assert.match(html, /총 1\.86초 \(실행 중 입력 대기 포함\)/);
+  assert.match(html, /실행하지 않음/);
+  assert.match(html, /전역변수 demoAdminToken 값 없음/);
+  assert.doesNotMatch(html, /설정 항목 수이며/);
 });
