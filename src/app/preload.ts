@@ -89,7 +89,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   controlManualBrowser: (event: { type: 'click' | 'wheel' | 'key' | 'text'; x?: number; y?: number; deltaY?: number; key?: string; text?: string }): Promise<void> => ipcRenderer.invoke('qa:manual-browser-event', event),
   setQaViewport: (size: { width: number; height: number }): Promise<void> => ipcRenderer.invoke('qa:set-viewport', size),
   submitManualResult: (result: { status: 'passed' | 'failed'; reason?: string }): Promise<void> => ipcRenderer.invoke('qa:manual-result', result),
-  cancelQa: (): Promise<void> => ipcRenderer.invoke('qa:cancel'),
+  cancelQa: (options?: { keepWorker?: boolean }): Promise<void> => ipcRenderer.invoke('qa:cancel', options),
   insertFormAutomationText: (input: { webContentsId: number; text: string }): Promise<void> =>
     ipcRenderer.invoke('form-automation:insert-text', input),
   attachFormAutomationFixture: (input: {
