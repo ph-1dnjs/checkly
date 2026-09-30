@@ -276,7 +276,7 @@ export function createSwaggerPlugin(options: {
           <div className="modal-ux" role="dialog" aria-label="API 요청 인증">
             <div className="modal-dialog-ux"><div className="modal-ux-inner">
               <div className="modal-ux-header"><h3>API 요청 인증</h3>
-                <button ref={closeButton} onClick={() => props.authActions.showDefinitions(false)} aria-label="인증 설정 닫기">닫기</button>
+                <button ref={closeButton} className="api-auth-close" onClick={() => props.authActions.showDefinitions(false)} aria-label="인증 설정 닫기" title="닫기">×</button>
               </div>
               <div className="modal-ux-content"><RequestAuthPanel scope={options.scopeRef.current} bridge={options.bridgeRef.current} /></div>
             </div></div>

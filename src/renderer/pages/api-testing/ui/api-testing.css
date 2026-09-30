@@ -1134,3 +1134,10 @@ body.panel-resizing { cursor:col-resize; user-select:none; }
 /* Same edges as the other views, so the header rows don't jump when the composer opens. */
 .api-swagger-shell:has(.api-compose-layout) { padding:4px clamp(24px,4.5vw,64px) 0; }
 @media(max-width:800px) { .api-swagger-shell .api-toolbar.api-page-head { flex-direction:row; align-items:center; } }
+/* API 요청 인증 dialog: app-style title and ×, one rule under the header and one above the footer. */
+.api-swagger-ui .modal-ux-header h3 { color:var(--api-ink); font-family:inherit; font-size:18px; font-weight:700; }
+.api-swagger-ui .modal-ux-header > button.api-auth-close { min-height:0; padding:0 4px; border:0; background:transparent; color:var(--api-muted); font-size:22px; line-height:1; }
+.api-swagger-ui .modal-ux-header > button.api-auth-close:hover { color:var(--api-ink); }
+.api-auth-status { padding:0; border-bottom:0; color:var(--api-muted); font-weight:400; }
+.api-auth-status.is-connected { color:var(--api-ink); font-weight:600; }
+.api-auth-new { padding:0; background:transparent; }
