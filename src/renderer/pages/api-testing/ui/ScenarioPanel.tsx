@@ -363,7 +363,7 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
 
   return <div ref={columnsRef} className="api-columns api-scenarios api-scenario-run" style={listWidth === null ? undefined : { "--api-list-width": `${listWidth}px` } as CSSProperties}>
     <aside ref={sidebarRef} aria-label="저장된 시나리오와 스위트">
-      <input aria-label="시나리오·스위트 검색" placeholder="이름·그룹·설명·API 경로 검색" value={query} onChange={event => setQuery(event.target.value)} />
+      <input aria-label="시나리오·스위트 검색" placeholder="이름·그룹·설명·API 검색" value={query} onChange={event => setQuery(event.target.value)} />
       <section className="api-sidebar-section">
         <header><button type="button" className="api-sidebar-section-toggle" aria-expanded={scenariosExpanded} onClick={() => setScenariosExpanded(value => !value)}><span className="api-sidebar-section-label">시나리오<small>{sidebarScenarios.length}{sidebarScenarios.length !== saved.length ? ` / ${saved.length}` : ""}</small></span><Icon name="expand_more" size={18} className="api-sidebar-chevron" /></button><button type="button" className="api-sidebar-add" disabled={busy} onClick={openNewScenario}>+ 새 시나리오</button></header>
         {scenariosExpanded && <ScenarioSidebarTree kind="scenario" expandAll={Boolean(normalizedQuery)} warnings={specWarnings} reasons={sidebarReasons} items={sidebarScenarios} selectedId={suiteSelection === null ? current?.id : null} disabled={busy} onSelect={item => { setSuiteSelection(null); void load(item); }} />}

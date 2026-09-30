@@ -30,7 +30,7 @@ export function ApiPicker({ operations, picked, disabled, onChange }: {
   const toggle = (ids: string[], on: boolean) => onChange(on ? [...new Set([...picked, ...ids])] : picked.filter(id => !ids.includes(id)));
   return <div className="api-tag-picker">
     <div className="api-tag-picker-tools">
-      <input type="search" aria-label="API 검색" placeholder={`API ${usable}개 검색: 경로·URL 붙여넣기, 제목, 태그`} value={query} onChange={event => setQuery(event.target.value)} />
+      <input type="search" aria-label="API 검색" placeholder={`태그·경로·제목으로 API ${usable}개 검색`} value={query} onChange={event => setQuery(event.target.value)} />
       <button type="button" disabled={disabled || !visibleIds.length} onClick={() => toggle(visibleIds, true)}>{needle ? `검색 결과 ${visibleIds.length}개 선택` : "모두 선택"}</button>
       <button type="button" disabled={disabled || !picked.length} onClick={() => onChange([])}>선택 해제</button>
     </div>

@@ -199,7 +199,7 @@ export function createSwaggerPlugin(options: {
         }, []);
         useLayoutEffect(() => {
           const input = root.current?.querySelector("input");
-          input?.setAttribute("placeholder", "검색: 경로·URL 붙여넣기, 제목, 파라미터, 태그 (/ 키)");
+          input?.setAttribute("placeholder", "태그·경로·제목·설명·파라미터·본문 필드 검색 (/ 키)");
           input?.setAttribute("aria-label", "API 문서 검색");
         });
         // "/" jumps to the search box (unless typing somewhere); Esc in it clears the search.
