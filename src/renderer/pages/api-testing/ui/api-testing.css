@@ -1162,3 +1162,14 @@ body.panel-resizing { cursor:col-resize; user-select:none; }
 /* 401 in the API docs: point at Authorize. */
 .api-swagger-renderer .api-auth-hint { margin:8px 0; padding:8px 12px; border-left:3px solid var(--ck-color-wait); background:var(--ck-color-wait-tint); color:var(--ck-color-text-body); font-size:12.5px; }
 .api-swagger-renderer .api-auth-hint button.api-compose-link { font-size:12.5px; }
+/* Run results read by outcome: neutral cards, a red (or amber) rule on the ones that went wrong.
+   The method keeps its colour on the badge only; HTTP codes stay neutral (a 200 can still fail a check). */
+.api-run-result-step { border-color:var(--api-border); }
+.api-run-result-step > summary { background:var(--ck-color-surface-subtle); }
+.api-run-result-step:is(.is-failed,.is-error) { border-color:color-mix(in srgb, var(--ck-color-fail) 55%, var(--ck-color-canvas)); box-shadow:inset 3px 0 0 var(--ck-color-fail); }
+.api-run-result-step:is(.is-failed,.is-error) > summary { background:var(--ck-color-fail-tint); }
+.api-run-result-step.is-blocked { box-shadow:inset 3px 0 0 var(--ck-color-wait); }
+.api-run-result-step.is-blocked > summary { background:var(--ck-color-wait-tint); }
+.api-run-result-step .api-run-result-step-status.is-http { color:var(--api-body); }
+/* Which server a step calls, shown only in scenarios that use more than one. */
+.api-run-server { display:inline-block; margin-right:6px; padding:0 5px; border:1px solid var(--api-border); border-radius:var(--ck-dim-radius-pill); color:var(--api-muted); font-size:10.5px; line-height:1.5; }
