@@ -81,6 +81,7 @@ export function ProjectForm({ initial, onSave, onCancel, onDelete, onExport, onI
     <footer className="api-project-form-footer">
       {initial && onExport && <span className="api-project-export">
         <button type="button" disabled={saving} title="설정·시나리오·스위트·명세 주소를 적힌 그대로 파일로 저장합니다. 전역변수·저장된 계정·쿠키는 넣지 않으니, 비밀값은 시나리오에 직접 적지 말고 전역변수로 쓰세요." onClick={() => void runFileAction(async () => setExported(await onExport()))}>프로젝트 내보내기</button>
+        {onImport && <button type="button" disabled={saving} title="공유받은 프로젝트 파일로 이 프로젝트를 업데이트하거나 새 프로젝트로 추가합니다" onClick={() => void runFileAction(onImport)}>가져오기</button>}
         {exported && <small role="status">{exported}</small>}
       </span>}
       {initial && onDelete && <DeleteAction label="프로젝트 삭제" disabled={saving} description={`‘${initial.name}’의 모든 서버·환경, API 명세, 시나리오·초안, 저장된 문서 계정과 전역변수를 삭제합니다. 실제 API 서버의 데이터는 삭제하지 않습니다.`} onDelete={onDelete} />}

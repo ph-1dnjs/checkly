@@ -499,6 +499,7 @@ async function main() {
     const extra = copyFile.scenarios[0];
     copyFile.scenarios.push({ ...extra, id: "shared/extra", name: "공유로 추가된 시나리오", source: extra.source.replace(/^id: .*$/m, "id: shared/extra").replace(/^name: .*$/m, "name: 공유로 추가된 시나리오") });
     await writeFile(shareFile, JSON.stringify(copyFile));
+    await restored.getByRole("button", { name: "프로젝트 설정", exact: true }).click();
     await restored.getByRole("button", { name: "가져오기", exact: true }).click();
     const importDialog = restored.getByRole("dialog", { name: "프로젝트 가져오기" });
     await importDialog.getByLabel("업데이트할 프로젝트").selectOption({ label: "쇼핑몰 QA" });
