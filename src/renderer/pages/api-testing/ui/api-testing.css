@@ -1068,3 +1068,11 @@ body.panel-resizing { cursor:col-resize; user-select:none; }
 .api-compose-layout.api-edit-layout > .panel-resize-handle { left:clamp(240px, var(--api-summary-width, 33%), 60%); }
 @media(max-width:900px) { .api-compose-layout > .panel-resize-handle { display:none; } }
 @media(max-width:800px) { .api-columns > .panel-resize-handle { display:none; } }
+/* Globals & cookies panel: one note, a heading row per section with its action on the right. */
+.api-globals-panel .api-globals-note { margin:0 0 8px; color:var(--api-muted); font-size:12px; }
+.api-globals-section-heading { display:flex; align-items:center; justify-content:space-between; gap:8px; margin:8px 0 6px; }
+.api-globals-section-heading h3 { margin:0; font-size:12px; }
+.api-globals-section-heading h3 small { margin-left:4px; color:var(--api-muted); font-weight:400; }
+.api-globals-empty { margin:0 0 4px; color:var(--api-muted); font-size:12px; }
+.api-global-editor { padding-top:8px; }
+.api-global-editor h4 { margin:0 0 8px; font-size:12px; color:var(--api-primary); }

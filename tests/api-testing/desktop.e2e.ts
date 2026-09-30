@@ -137,16 +137,17 @@ async function main() {
     await page.keyboard.press("Escape");
     await expect(page.getByRole("dialog", { name: "{ } 전역변수", exact: true })).not.toBeVisible();
     await expect(page.getByRole("button", { name: "{ } 전역변수", exact: true })).toBeFocused();
-    // Globals: the add form lives in a collapsed "변수 추가" section.
+    // Globals: "+ 변수 추가" opens the form in place.
     const globals = page.getByRole("dialog", { name: "{ } 전역변수", exact: true });
     await page.getByRole("button", { name: "{ } 전역변수", exact: true }).click();
-    await globals.getByText("변수 추가", { exact: true }).click();
+    await globals.getByRole("button", { name: "+ 변수 추가", exact: true }).click();
     await page.getByLabel("전역변수 이름", { exact: true }).fill("sampleId");
     await page.getByLabel("전역변수 형식", { exact: true }).selectOption("json");
     await page.getByLabel("전역변수 값", { exact: true }).fill("7");
     await page.getByRole("button", { name: "전역변수 저장", exact: true }).click();
     await expect(globals.locator(".api-global-row").filter({ hasText: "sampleId" })).toBeVisible();
-    await expect(globals.getByRole("region", { name: "세션 쿠키" })).toContainText("저장된 쿠키가 없습니다.");
+    await expect(globals.getByRole("region", { name: "세션 쿠키" })).toContainText("세션 쿠키 0개");
+    await expect(globals.getByRole("button", { name: "쿠키 비우기", exact: true })).toBeDisabled();
     await page.keyboard.press("Escape");
 
     // AI authoring: copy the prompt for the user's own AI, check what it wrote, save scenarios and suite.
