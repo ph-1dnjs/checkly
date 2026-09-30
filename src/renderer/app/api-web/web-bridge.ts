@@ -42,10 +42,7 @@ export const webBridge: ApiTestingBridge = new Proxy({} as ApiTestingBridge, {
       const name = (JSON.parse(text) as { project: { name: string } }).project.name.replace(/[\\/:*?"<>|]/g, "_");
       return download(`${name}.checkly-api.json`, text, "application/json;charset=utf-8");
     };
-    if (method === "importProject") return async () => {
-      const text = await pickText(".json", 10_000_000);
-      return text === null ? null : rpc("importProject", [text]);
-    };
+    if (method === "readProjectFile") return () => pickText(".json", 10_000_000);
     if (method === "readScenarioFile") return () => pickText(".yaml,.yml", 1_000_000);
     if (method === "saveSuiteReport") return async (filename: string, html: string) => download(filename, html, "text/html;charset=utf-8");
     if (method === "getAiPrompt") return (request: unknown) => rpc("buildAiPrompt", [request]);

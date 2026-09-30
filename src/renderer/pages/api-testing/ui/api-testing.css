@@ -1006,3 +1006,15 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 .api-project-export { display:flex; align-items:center; gap:8px; min-width:0; }
 .api-project-export small { min-width:0; color:var(--api-muted); font-size:11px; overflow-wrap:anywhere; }
 .api-page-notice { display:flex; flex-wrap:wrap; align-items:center; gap:4px 12px; margin:0 0 12px; padding:8px 12px; border-left:3px solid var(--ck-color-blue-action); background:var(--ck-color-blue-tint-soft); color:var(--api-body); font-size:12px; word-break:keep-all; }
+.api-project-import-dialog fieldset { display:grid; gap:12px; margin:0; padding:0; border:0; }
+.api-project-import-dialog label.api-import-option { display:flex; flex-direction:row; align-items:flex-start; gap:8px; cursor:pointer; }
+.api-project-import-dialog :is(.api-import-option, .api-import-conflicts label) > input { flex:none; width:auto; margin:3px 0 0; padding:0; }
+.api-import-option > span { display:grid; gap:2px; }
+.api-import-option small { color:var(--api-muted); font-size:12px; word-break:keep-all; }
+.api-import-target { display:grid; gap:8px; margin-left:24px; padding:12px; border-radius:var(--ck-dim-radius-base); background:var(--ck-color-line-faint); font-size:12px; }
+.api-import-target p { margin:0; }
+.api-import-target label { display:grid; gap:4px; }
+.api-import-summary { margin:0; padding-left:18px; line-height:1.7; }
+.api-import-conflicts { display:grid; gap:6px; padding-top:8px; border-top:1px solid var(--api-border); }
+.api-project-import-dialog .api-import-conflicts label { display:flex; flex-direction:row; align-items:center; gap:8px; }
+.api-import-conflicts label small { margin-left:auto; color:var(--api-muted); }

@@ -127,12 +127,14 @@ export function registerApiTesting() {
     await writeFile(selected.filePath, text, "utf8");
     return selected.filePath;
   });
-  ipcMain.handle("api-testing:import-project", async () => {
+  ipcMain.handle("api-testing:read-project-file", async () => {
     const selected = await dialog.showOpenDialog({ properties: ["openFile"], filters: [{ name: "Checkly API 프로젝트", extensions: ["json"] }] });
     if (selected.canceled || !selected.filePaths[0]) return null;
     if ((await stat(selected.filePaths[0])).size > 10_000_000) throw new Error("프로젝트 파일은 10MB 이하만 지원합니다");
-    return workspace.importProject(await readFile(selected.filePaths[0], "utf8"));
+    return readFile(selected.filePaths[0], "utf8");
   });
+  ipcMain.handle("api-testing:plan-project-import", (_event, text) => workspace.planProjectImport(z.string().parse(text)));
+  ipcMain.handle("api-testing:import-project", (_event, text, update) => workspace.importProject(z.string().parse(text), update));
   ipcMain.handle("api-testing:read-scenario-file", async () => {
     const selected = await dialog.showOpenDialog({ properties: ["openFile"], filters: [{ name: "시나리오 YAML", extensions: ["yaml", "yml"] }] });
     if (selected.canceled || !selected.filePaths[0]) return null;

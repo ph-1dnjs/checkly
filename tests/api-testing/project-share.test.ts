@@ -58,3 +58,63 @@ test("a project shares as one file without secrets and imports as a new project"
     assert.equal((await workspace.listProjects()).length, 3);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
+
+test("a share file merges back into its copy: one-side changes apply, both-side changes are conflicts", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "checkly-share-merge-"));
+  try {
+    const workspace = new ApiWorkspace(dir);
+    const serverId = randomUUID(), dev = randomUUID();
+    const original = { id: randomUUID(), name: "쇼핑몰 QA", servers: [{ id: serverId, name: "상점" }], environments: [{ id: dev, name: "dev", baseUrls: { [serverId]: "https://a.example.com" } }] };
+    await workspace.saveProject(original);
+    await workspace.importSpec({ projectId: original.id, environmentId: dev, serverId }, spec);
+    const scenario = (id: string, name: string, itemId = 7) => read.replace("shop/read", id).replace("name: 상품 조회\nserver", `name: ${name}\nserver`).replace("id: 7", `id: ${itemId}`);
+    const aScope = { projectId: original.id, environmentId: dev };
+    for (const [id, name] of [["x", "X"], ["y", "Y"], ["z", "Z"]]) await workspace.saveScenario(aScope, scenario(id, name), {});
+
+    // A shares; B imports it as a copy.
+    const first = await workspace.exportProject(original.id);
+    const copy = (await workspace.importProject(first)).project;
+    const bScope = { projectId: copy.id, environmentId: copy.environments[0].id };
+    await workspace.importSpec({ ...bScope, serverId: copy.servers[0].id }, spec);
+    const edit = async (scope: typeof aScope, id: string, name: string, itemId: number) => {
+      const saved = (await workspace.listScenarios(scope.projectId)).find(item => item.id === id)!;
+      await workspace.saveScenario(scope, scenario(id, name, itemId), {}, saved.updatedAt);
+    };
+    // A edits X and Z (and shares again with someone else); B edits Y and Z, and adds W.
+    await edit(aScope, "x", "X", 1); await edit(aScope, "z", "Z", 1);
+    await workspace.exportProject(original.id);
+    await edit(bScope, "y", "Y", 2); await edit(bScope, "z", "Z", 2);
+    await workspace.saveScenario(bScope, scenario("w", "W"), {});
+
+    // B's file back into A: W is new, Y changed only in B, X kept (A's own), Z conflicts.
+    const fromB = await workspace.exportProject(copy.id);
+    assert.equal(JSON.parse(fromB).origin, original.id);
+    const plan = await workspace.planProjectImport(fromB);
+    assert.deepEqual(plan.targets.map(target => target.projectId).sort(), [original.id, copy.id].sort());
+    const toA = plan.targets.find(target => target.projectId === original.id)!;
+    assert.deepEqual({ added: toA.scenarios.added.map(i => i.id), incoming: toA.scenarios.incoming.map(i => i.id), conflicts: toA.scenarios.conflicts.map(i => i.id), mine: toA.scenarios.mine, same: toA.scenarios.same },
+      { added: ["w"], incoming: ["y"], conflicts: ["z"], mine: 1, same: 0 });
+
+    // Keeping A's Z: W added, Y applied, X and Z stay A's.
+    const merged = await workspace.importProject(fromB, { projectId: original.id, scenarioIds: [], suiteIds: [] });
+    assert.deepEqual(merged.merged, { added: 1, updated: 1, kept: 2 });
+    const a = Object.fromEntries((await workspace.listScenarios(original.id)).map(item => [item.id, item.source.match(/id: (\d+)/)![1]]));
+    assert.deepEqual(a, { x: "1", y: "2", z: "1", w: "7" });
+    assert.equal((await workspace.listProjects()).find(p => p.id === original.id)!.environments[0].baseUrls[serverId], "https://a.example.com");
+
+    // After the merge B's version is the common base: the same file again changes nothing,
+    // and taking the file side for a conflict overwrites it.
+    const again = (await workspace.planProjectImport(fromB)).targets.find(target => target.projectId === original.id)!;
+    assert.deepEqual([again.scenarios.added.length, again.scenarios.incoming.length, again.scenarios.conflicts.length], [0, 0, 0]);
+    await edit(aScope, "z", "Z", 3);
+    await edit(bScope, "z", "Z", 4);
+    const conflict = await workspace.exportProject(copy.id);
+    assert.deepEqual((await workspace.planProjectImport(conflict)).targets.find(t => t.projectId === original.id)!.scenarios.conflicts.map(i => i.id), ["z"]);
+    await workspace.importProject(conflict, { projectId: original.id, scenarioIds: ["z"], suiteIds: [] });
+    assert.match((await workspace.listScenarios(original.id)).find(item => item.id === "z")!.source, /id: 4/);
+
+    // A file from another project cannot merge into this one.
+    const other = await workspace.importProject(first.replace(original.id, randomUUID()).replace(`"origin": "${original.id}"`, `"origin": "${randomUUID()}"`));
+    await assert.rejects(workspace.importProject(first, { projectId: other.project.id, scenarioIds: [], suiteIds: [] }), /같은 프로젝트가 아닙니다/);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});

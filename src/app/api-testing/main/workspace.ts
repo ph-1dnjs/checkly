@@ -1,7 +1,7 @@
 import { mkdir, readFile, rename, rm, stat, writeFile, unlink } from "node:fs/promises";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
-import { httpUrl, projectSchema, type ApiCatalog, type ApiCookie, type ApiProject, type ApiScope, type ApiResponse, type ApiProjectScope, type ApiEnvironmentScope, type ApiGlobal, type SavedApiScenario, type SavedApiSuite, type ApiSidebarMetadata, type ApiScenarioPreview, type ApiScenarioResult, type ApiRequestTrace, type ApiAiImportResult, type ApiAiDraft, type ApiMissingApi, type ApiTitleRename, type ApiSpecImpact, type ApiProjectExport, type ApiProjectImportResult } from "../shared/workspace";
+import { createHash, randomUUID } from "node:crypto";
+import { httpUrl, projectSchema, type ApiCatalog, type ApiCookie, type ApiProject, type ApiScope, type ApiResponse, type ApiProjectScope, type ApiEnvironmentScope, type ApiGlobal, type SavedApiScenario, type SavedApiSuite, type ApiSidebarMetadata, type ApiScenarioPreview, type ApiScenarioResult, type ApiRequestTrace, type ApiAiImportResult, type ApiAiDraft, type ApiMissingApi, type ApiTitleRename, type ApiSpecImpact, type ApiProjectExport, type ApiProjectImportResult, type ApiProjectImportPlan, type ApiShareDiff } from "../shared/workspace";
 import { z } from "zod";
 import { ApiRunner, resolveRequestUrl } from "./execution";
 import { resolve } from "./variables";
@@ -21,6 +21,21 @@ const sidebarMetadataSchema = z.object({
   tags: z.array(z.string().trim().min(1).max(32)).max(20).optional().transform(values => values?.length ? [...new Map(values.map(value => [value.toLocaleLowerCase(), value])).values()] : undefined),
 }).strict();
 const suiteSchema = z.object({ id: z.string().uuid(), name: z.string().trim().min(1).max(100), scenarioIds: z.array(z.string().min(1).max(1000)).min(1).max(100), onFailure: z.enum(["stop", "continue"]) }).extend(sidebarMetadataSchema.shape).strict();
+type ShareBase = { scenarios: Record<string, string>; suites: Record<string, string> };
+const shareHash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex").slice(0, 32);
+const scenarioShareHash = (item: { source: string; draft?: boolean }) => shareHash([item.source, Boolean(item.draft)]);
+const suiteShareHash = (suite: { name: string; onFailure: string; scenarioIds: string[] }) => shareHash([suite.name, suite.onFailure, suite.scenarioIds]);
+/**
+ * Three-way: what changed since the last version both sides had (`base`, from the file). `seen` is
+ * the version this side last took in: a file version already merged once keeps the local choice.
+ */
+function shareChange(file: string, local: string, base: string | undefined, seen?: string): "same" | "incoming" | "mine" | "conflict" {
+  if (file === local) return "same";
+  if (file === seen) return "mine";
+  if (base === undefined) return "conflict";
+  if (local === base) return "incoming";
+  return file === base ? "mine" : "conflict";
+}
 const keptTitle = (item: SavedApiScenario, from: string, to: string) => Boolean(item.keptTitles?.some(kept => kept.from === from && kept.to === to));
 function migrateSidebarMetadata<T extends Record<string, unknown>>(item: T): T & Partial<ApiSidebarMetadata> {
   const { group: legacyGroup, ...rest } = item;
@@ -106,10 +121,19 @@ export class ApiWorkspace {
       await this.removeFile(`scenarios-${id}.json`);
       await this.removeFile(`suites-${id}.json`);
       await this.removeFile(`doc-inputs-${id}.json`);
+      const origins = await this.readShareOrigins(), bases = await this.readShareBases();
+      delete origins[id]; delete bases[id];
+      await this.save("share-origins.json", origins); await this.save("share-bases.json", bases);
       await rm(this.aiFiles(id).dir, { recursive: true, force: true });
       await this.save("projects.json", projects.filter(p => p.id !== id));
     });
   }
+  /** Local project id → id of the project it was first shared from (absent for the original). */
+  private async readShareOrigins(): Promise<Record<string, string>> {
+    const parsed = z.record(z.string().uuid(), z.string().uuid()).safeParse(await this.read("share-origins.json"));
+    return parsed.success ? parsed.data : {};
+  }
+
   /** Share file text for a project (see ApiProjectExport for what is left out). */
   async exportProject(rawProjectId: string): Promise<string> {
     const projectId = z.string().uuid().parse(rawProjectId);
@@ -117,28 +141,32 @@ export class ApiWorkspace {
     if (!project) throw new Error("프로젝트를 찾을 수 없습니다");
     const specUrls: ApiProjectExport["specUrls"] = [];
     for (const environment of project.environments) for (const server of project.servers) {
-      const stored = await this.read(`spec-source-${projectId}-${environment.id}-${server.id}.json`) as { url?: unknown } | null;
-      if (typeof stored?.url === "string") specUrls.push({ serverId: server.id, environmentId: environment.id, url: stored.url });
+      const url = await this.specUrl(projectId, environment.id, server.id);
+      if (url) specUrls.push({ serverId: server.id, environmentId: environment.id, url });
     }
     const data: ApiProjectExport = {
-      format: "checkly-api-project", version: 1, exportedAt: new Date().toISOString(), project, specUrls,
+      format: "checkly-api-project", version: 1, exportedAt: new Date().toISOString(),
+      origin: (await this.readShareOrigins())[projectId] ?? projectId,
+      base: (await this.readShareBases())[projectId] ?? { scenarios: {}, suites: {} }, project, specUrls,
       scenarios: (await this.listScenarios(projectId)).map(item => ({ id: item.id, name: item.name, source: item.source, ...(item.draft ? { draft: true } : {}), ...(item.groupPath ? { groupPath: item.groupPath } : {}), ...(item.tags ? { tags: item.tags } : {}) })),
       suites: (await this.listSuites(projectId)).map(({ updatedAt: _updatedAt, ...suite }) => suite),
     };
     return JSON.stringify(data, null, 2);
   }
 
-  /**
-   * Adds a share file as a new project (never overwrites one): every project, server, environment
-   * and suite id is new, so importing the same file twice gives two projects. Specs come back by
-   * refreshing their URL; file-imported specs have to be imported again.
-   */
-  async importProject(text: string): Promise<ApiProjectImportResult> {
+  private async specUrl(projectId: string, environmentId: string, serverId: string): Promise<string | undefined> {
+    const stored = await this.read(`spec-source-${projectId}-${environmentId}-${serverId}.json`) as { url?: unknown } | null;
+    return typeof stored?.url === "string" ? stored.url : undefined;
+  }
+
+  private parseShareFile(text: string) {
     if (text.length > 10_000_000) throw new Error("프로젝트 파일은 10MB 이하만 지원합니다");
     let raw: unknown;
     try { raw = JSON.parse(text); } catch { throw new Error("Checkly 프로젝트 파일이 아닙니다"); }
     const parsed = z.object({
       format: z.literal("checkly-api-project"), version: z.literal(1), exportedAt: z.string().optional(),
+      origin: z.string().uuid().optional(),
+      base: z.object({ scenarios: z.record(z.string(), z.string()), suites: z.record(z.string(), z.string()) }).strict().optional(),
       project: projectSchema,
       specUrls: z.array(z.object({ serverId: z.string().uuid(), environmentId: z.string().uuid(), url: httpUrl }).strict()).max(1000),
       scenarios: z.array(z.object({ id: z.string().min(1).max(1000), name: z.string().max(200), source: z.string().max(1_000_000), draft: z.boolean().optional() }).extend(sidebarMetadataSchema.shape).strict()).max(5000),
@@ -146,6 +174,67 @@ export class ApiWorkspace {
     }).strict().safeParse(raw);
     if (!parsed.success) throw new Error(raw && typeof raw === "object" && (raw as { format?: unknown }).format === "checkly-api-project" ? "지원하지 않는 프로젝트 파일 형식입니다" : "Checkly 프로젝트 파일이 아닙니다");
     const data = parsed.data;
+    // Scenarios keep their YAML ids (suites point at them) and must still be valid YAML.
+    for (const item of data.scenarios) {
+      if (this.parseSource(item.source).id !== item.id) throw new Error(`시나리오 '${item.name}'의 ID가 파일 내용과 다릅니다`);
+    }
+    if (new Set(data.scenarios.map(item => item.id)).size !== data.scenarios.length) throw new Error("같은 ID의 시나리오가 파일에 여러 개 있습니다");
+    return { ...data, origin: data.origin ?? data.project.id, base: data.base ?? { scenarios: {}, suites: {} } };
+  }
+
+  private async readShareBases(): Promise<Record<string, ShareBase>> {
+    const parsed = z.record(z.string().uuid(), z.object({ scenarios: z.record(z.string(), z.string()), suites: z.record(z.string(), z.string()) })).safeParse(await this.read("share-bases.json"));
+    return parsed.success ? parsed.data : {};
+  }
+
+  /** Remembers the version both sides now have, sent along in this project's next share file (call inside the queue). */
+  private async recordShareBase(projectId: string, scenarios: Array<{ id: string; source: string; draft?: boolean }>, suites: Array<{ id: string; name: string; onFailure: string; scenarioIds: string[] }>) {
+    await this.save("share-bases.json", { ...await this.readShareBases(), [projectId]: {
+      scenarios: Object.fromEntries(scenarios.map(item => [item.id, scenarioShareHash(item)])),
+      suites: Object.fromEntries(suites.map(suite => [suite.id, suiteShareHash(suite)])),
+    } });
+  }
+
+  /** What importing would do: counts for a new project, and a three-way diff (against the file's base) for each local copy. */
+  async planProjectImport(text: string): Promise<ApiProjectImportPlan> {
+    const data = this.parseShareFile(text);
+    const origins = await this.readShareOrigins(), seen = await this.readShareBases();
+    const targets: ApiProjectImportPlan["targets"] = [];
+    const diff = <T extends { id: string; name: string }, L>(items: T[], locals: L[], localId: (item: L) => string, hash: (item: T | L) => string, base: Record<string, string>, taken: Record<string, string> = {}) => {
+      const result: ApiShareDiff = { added: [], incoming: [], conflicts: [], mine: 0, same: 0 };
+      for (const item of items) {
+        const local = locals.find(candidate => localId(candidate) === item.id);
+        if (!local) { result.added.push({ id: item.id, name: item.name }); continue; }
+        const change = shareChange(hash(item), hash(local), base[item.id], taken[item.id]);
+        if (change === "incoming") result.incoming.push({ id: item.id, name: item.name });
+        else if (change === "conflict") result.conflicts.push({ id: item.id, name: item.name });
+        else result[change]++;
+      }
+      return result;
+    };
+    for (const project of await this.listProjects()) {
+      if (project.id !== data.origin && origins[project.id] !== data.origin) continue;
+      targets.push({
+        projectId: project.id, name: project.name,
+        scenarios: diff(data.scenarios, await this.listScenarios(project.id), item => item.id, item => scenarioShareHash(item as { source: string; draft?: boolean }), data.base.scenarios, seen[project.id]?.scenarios),
+        suites: diff(data.suites, await this.listSuites(project.id), suite => suite.id, suite => suiteShareHash(suite as SavedApiSuite), data.base.suites, seen[project.id]?.suites),
+        serversAdded: data.project.servers.filter(server => !project.servers.some(local => local.name === server.name)).map(server => server.name),
+        environmentsAdded: data.project.environments.filter(environment => !project.environments.some(local => local.name === environment.name)).map(environment => environment.name),
+      });
+    }
+    return { name: data.project.name, scenarios: data.scenarios.length, suites: data.suites.length, targets };
+  }
+
+  /**
+   * Imports a share file. Without `update` it adds a new project (new project, server and
+   * environment ids; scenario and suite ids kept so later files can update it). With `update` it
+   * merges into that local copy of the same project: adds what is missing, applies changes made
+   * only in the file, keeps changes made only locally, takes the file side only for the listed
+   * conflicts, keeps the local base URLs and never deletes anything.
+   */
+  async importProject(text: string, update?: { projectId: string; scenarioIds: string[]; suiteIds: string[] }): Promise<ApiProjectImportResult> {
+    const data = this.parseShareFile(text);
+    if (update) return this.mergeProject(data, z.object({ projectId: z.string().uuid(), scenarioIds: z.array(z.string().min(1).max(1000)).max(5000), suiteIds: z.array(z.string().uuid()).max(1000) }).strict().parse(update));
     const action = this.queue.then(async () => {
       const projects = await this.listProjects();
       const serverIds = new Map(data.project.servers.map(server => [server.id, randomUUID()]));
@@ -158,25 +247,81 @@ export class ApiWorkspace {
         servers: data.project.servers.map(server => ({ ...server, id: serverIds.get(server.id)! })),
         environments: data.project.environments.map(environment => ({ ...environment, id: environmentIds.get(environment.id)!, baseUrls: Object.fromEntries(Object.entries(environment.baseUrls).flatMap(([id, url]) => serverIds.has(id) ? [[serverIds.get(id)!, url]] : [])) })),
       });
-      // Scenarios keep their YAML ids (suites point at them) and must still be valid YAML.
       const now = new Date().toISOString();
-      const scenarios: SavedApiScenario[] = data.scenarios.map(item => {
-        const scenario = this.parseSource(item.source);
-        if (scenario.id !== item.id) throw new Error(`시나리오 '${item.name}'의 ID가 파일 내용과 다릅니다`);
-        return { id: item.id, name: scenario.name, source: item.source, bindings: {}, updatedAt: now, draft: item.draft ?? false, ...(item.groupPath ? { groupPath: item.groupPath } : {}), ...(item.tags ? { tags: item.tags } : {}) };
-      });
-      if (new Set(scenarios.map(item => item.id)).size !== scenarios.length) throw new Error("같은 ID의 시나리오가 파일에 여러 개 있습니다");
-      const suites: SavedApiSuite[] = data.suites.map(suite => ({ ...suite, id: randomUUID(), scenarioIds: suite.scenarioIds.filter(id => scenarios.some(item => item.id === id)), updatedAt: now })).filter(suite => suite.scenarioIds.length);
+      const scenarios = data.scenarios.map(item => this.sharedScenario(item, now));
+      const suites: SavedApiSuite[] = data.suites.map(suite => ({ ...suite, scenarioIds: suite.scenarioIds.filter(id => scenarios.some(item => item.id === id)), updatedAt: now })).filter(suite => suite.scenarioIds.length);
       const specUrls = data.specUrls.filter(item => serverIds.has(item.serverId) && environmentIds.has(item.environmentId));
       await this.save(`scenarios-${project.id}.json`, scenarios);
       await this.save(`suites-${project.id}.json`, suites);
       for (const item of specUrls) await this.save(`spec-source-${project.id}-${environmentIds.get(item.environmentId)}-${serverIds.get(item.serverId)}.json`, { url: item.url });
+      await this.save("share-origins.json", { ...await this.readShareOrigins(), [project.id]: data.origin });
+      await this.recordShareBase(project.id, data.scenarios, data.suites);
       // Last: the project only appears once everything it points at is written.
       await this.save("projects.json", [...projects, project]);
       return { project, scenarios: scenarios.length, suites: suites.length, specUrls: specUrls.length };
     });
     this.queue = action.catch(() => undefined);
     return action;
+  }
+
+  private sharedScenario(item: { id: string; source: string; draft?: boolean; groupPath?: string[]; tags?: string[] }, updatedAt: string): SavedApiScenario {
+    return { id: item.id, name: this.parseSource(item.source).name, source: item.source, bindings: {}, updatedAt, draft: item.draft ?? false, ...(item.groupPath ? { groupPath: item.groupPath } : {}), ...(item.tags ? { tags: item.tags } : {}) };
+  }
+
+  private mergeProject(data: ReturnType<ApiWorkspace["parseShareFile"]>, update: { projectId: string; scenarioIds: string[]; suiteIds: string[] }): Promise<ApiProjectImportResult> {
+    return this.mutate(update.projectId, async () => {
+      const projects = await this.listProjects();
+      const local = projects.find(project => project.id === update.projectId);
+      const origins = await this.readShareOrigins();
+      if (!local || (local.id !== data.origin && origins[local.id] !== data.origin)) throw new Error("이 파일과 같은 프로젝트가 아닙니다");
+      // The sender's base is the last version both sides had, however often either side exported since.
+      const base = data.base, seen = (await this.readShareBases())[local.id];
+      // Servers and environments match by name; missing ones are added with the file's addresses.
+      const serverIds = new Map(data.project.servers.map(server => [server.id, local.servers.find(candidate => candidate.name === server.name)?.id ?? randomUUID()]));
+      const servers = [...local.servers, ...data.project.servers.filter(server => !local.servers.some(candidate => candidate.name === server.name)).map(server => ({ ...server, id: serverIds.get(server.id)! }))];
+      const fileBaseUrls = (name: string) => Object.fromEntries(Object.entries(data.project.environments.find(environment => environment.name === name)?.baseUrls ?? {}).flatMap(([id, url]) => serverIds.has(id) ? [[serverIds.get(id)!, url]] : []));
+      const environments = [
+        ...local.environments.map(environment => ({ ...environment, baseUrls: { ...fileBaseUrls(environment.name), ...environment.baseUrls } })),
+        ...data.project.environments.filter(environment => !local.environments.some(candidate => candidate.name === environment.name)).map(environment => ({ ...environment, id: randomUUID(), baseUrls: fileBaseUrls(environment.name) })),
+      ].map(environment => ({ ...environment, baseUrls: Object.fromEntries(servers.map(server => [server.id, environment.baseUrls[server.id] ?? ""])) }));
+      const merged = projectSchema.safeParse({ ...local, servers, environments });
+      if (!merged.success) throw new Error("추가되는 서버·환경의 기본 주소가 없어 합칠 수 없습니다. 프로젝트 설정에서 주소를 채운 뒤 다시 가져오세요");
+      const now = new Date().toISOString();
+      let added = 0, updated = 0, kept = 0;
+      const takeFile = (change: ReturnType<typeof shareChange>, id: string, conflictIds: string[]) => change === "incoming" || (change === "conflict" && conflictIds.includes(id));
+      const scenarios = await this.listScenarios(local.id);
+      for (const item of data.scenarios) {
+        const index = scenarios.findIndex(candidate => candidate.id === item.id);
+        if (index < 0) { scenarios.push(this.sharedScenario(item, now)); added++; continue; }
+        const change = shareChange(scenarioShareHash(item), scenarioShareHash(scenarios[index]), base.scenarios[item.id], seen?.scenarios[item.id]);
+        if (takeFile(change, item.id, update.scenarioIds)) {
+          const { keptTitles } = scenarios[index];
+          scenarios[index] = { ...this.sharedScenario(item, now), ...(keptTitles ? { keptTitles } : {}) }; updated++;
+        } else if (change !== "same") kept++;
+      }
+      const suites = await this.listSuites(local.id);
+      for (const suite of data.suites) {
+        const next = { ...suite, scenarioIds: suite.scenarioIds.filter(id => scenarios.some(item => item.id === id)), updatedAt: now };
+        const index = suites.findIndex(candidate => candidate.id === suite.id);
+        if (index < 0) { if (next.scenarioIds.length) { suites.push(next); added++; } continue; }
+        const change = shareChange(suiteShareHash(suite), suiteShareHash(suites[index]), base.suites[suite.id], seen?.suites[suite.id]);
+        if (takeFile(change, suite.id, update.suiteIds) && next.scenarioIds.length) { suites[index] = next; updated++; }
+        else if (change !== "same") kept++;
+      }
+      let specUrls = 0;
+      for (const item of data.specUrls) {
+        const environmentName = data.project.environments.find(environment => environment.id === item.environmentId)?.name;
+        const environment = merged.data.environments.find(candidate => candidate.name === environmentName), serverId = serverIds.get(item.serverId);
+        if (!environment || !serverId || await this.specUrl(local.id, environment.id, serverId)) continue;
+        await this.save(`spec-source-${local.id}-${environment.id}-${serverId}.json`, { url: item.url }); specUrls++;
+      }
+      await this.save(`scenarios-${local.id}.json`, scenarios);
+      await this.save(`suites-${local.id}.json`, suites);
+      // Both sides now share the file's version as their common base.
+      await this.recordShareBase(local.id, data.scenarios, data.suites);
+      await this.save("projects.json", projects.map(project => project.id === local.id ? merged.data : project));
+      return { project: merged.data, scenarios: scenarios.length, suites: suites.length, specUrls, merged: { added, updated, kept } };
+    });
   }
 
   async deleteCatalog(input: ApiScope): Promise<void> {

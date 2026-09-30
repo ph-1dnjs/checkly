@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import type { ApiCatalog, ApiSpecImpact, ApiProject, ApiSpecSync, ApiTestingBridge, SavedApiScenario } from "../../../app/api-testing/shared/workspace";
-import { ProjectForm } from "../../features/api-testing/configure-project";
+import type { ApiCatalog, ApiSpecImpact, ApiProject, ApiProjectImportPlan, ApiProjectImportResult, ApiSpecSync, ApiTestingBridge, SavedApiScenario } from "../../../app/api-testing/shared/workspace";
+import { ProjectForm, ProjectImportDialog } from "../../features/api-testing/configure-project";
 import { ApiDocumentation } from "./ui/ApiDocumentation";
 import { LoadingSpinner } from "../../shared/ui/LoadingSpinner";
 import { GlobalVariableMenu } from "../../features/api-testing/configure-globals";
@@ -43,6 +43,7 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
   useEffect(() => { setAuthKind("none"); setDocsUsername(""); setDocsPassword(""); }, [projectId, serverId, environmentId]);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [importPlan, setImportPlan] = useState<{ text: string; plan: ApiProjectImportPlan } | null>(null);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [scenarioComposerOpen, setScenarioComposerOpen] = useState(false);
@@ -122,12 +123,20 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
   }, [busy, scenarioComposerOpen, projects, tab, projectId, serverId, environmentId, scenarioEditorScenarioId]);
   const project = projects.find(p => p.id === projectId);
   const scope = { projectId, serverId, environmentId };
-  // Adds a shared project file as a new project and switches to it.
+  // A share file of a project with a local copy asks whether to update it; otherwise it is added as new.
   const importProject = async () => {
-    const result = await bridge.importProject();
-    if (!result) return;
+    const text = await bridge.readProjectFile();
+    if (text === null) return;
+    const plan = await bridge.planProjectImport(text);
+    if (plan.targets.length) { setImportPlan({ text, plan }); return; }
+    finishImport(await bridge.importProject(text));
+  };
+  const finishImport = async (result: ApiProjectImportResult) => {
+    setImportPlan(null);
     setProjects(await bridge.listProjects()); selectProject(result.project); setForm(null);
-    setNotice(`‘${result.project.name}’ 프로젝트를 가져왔습니다 · 시나리오 ${result.scenarios}개, 스위트 ${result.suites}개. ${result.specUrls ? "API 문서 탭에서 명세를 새로고침하세요(문서 인증이 있으면 계정 입력)." : "API 문서 탭에서 명세를 다시 가져오세요."}`);
+    setNotice(result.merged
+      ? `‘${result.project.name}’에 합쳤습니다 · 추가 ${result.merged.added} · 반영 ${result.merged.updated} · 내 변경 유지 ${result.merged.kept}.${result.specUrls ? " 새로 생긴 명세는 API 문서 탭에서 새로고침하세요." : ""}`
+      : `‘${result.project.name}’ 프로젝트를 가져왔습니다 · 시나리오 ${result.scenarios}개, 스위트 ${result.suites}개. ${result.specUrls ? "API 문서 탭에서 명세를 새로고침하세요(문서 인증이 있으면 계정 입력)." : "API 문서 탭에서 명세를 다시 가져오세요."}`);
   };
   const selectProject = (p: ApiProject) => { setProjectId(p.id); setServerId(p.servers[0].id); setEnvironmentId(p.environments[0].id); setUrl(""); setScenarioEditorScenarioId(null); };
   useEffect(() => {
@@ -185,6 +194,7 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
   return <ApiTestingProviders key={projectId} projectId={projectId} bridge={bridge}><section className={`api-testing-page api-swagger-shell${hideValues ? " api-hide-values" : ""}`}>
     <header className="api-toolbar"><h1>API 테스트</h1><div className="api-actions"><select aria-label="API 프로젝트" disabled={locked || loading} value={projectId} onChange={e => selectProject(projects.find(p => p.id === e.target.value)!)}><option value="" disabled>프로젝트 선택</option>{projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select><button disabled={locked || loading} onClick={() => setForm("new")}>+ 프로젝트</button><button disabled={locked || loading} title="공유받은 프로젝트 파일(.checkly-api.json)을 새 프로젝트로 추가합니다" onClick={() => { setError(""); void importProject().catch(e => setError((e as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, ""))); }}>가져오기</button>{project && <button disabled={locked || loading} onClick={() => setForm("edit")}>프로젝트 설정</button>}</div></header>
     {error && <p className="api-warning" role="alert">{error}</p>}
+    {importPlan && <ProjectImportDialog plan={importPlan.plan} onCancel={() => setImportPlan(null)} onImport={async update => { await finishImport(await bridge.importProject(importPlan.text, update)); }} />}
     {notice && !form && <p className="api-page-notice" role="status">{notice}<button type="button" className="api-compose-link" onClick={() => setNotice("")}>닫기</button></p>}
     {form ? <ProjectForm key={`${form}:${projectId}`} initial={form === "edit" ? project : undefined} onCancel={() => setForm(null)} onDelete={async () => {
       setBusy(true);
