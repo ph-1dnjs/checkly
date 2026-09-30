@@ -6,18 +6,21 @@ type Props = {
   label: string;
   children: ReactNode;
   disabled?: boolean;
+  /** Increment to open the popover from outside (e.g. "set this global" links). */
+  openRequest?: number;
   className?: string;
   triggerClassName?: string;
   panelClassName?: string;
 };
 
 /** Non-modal disclosure: outside click, focus leaving, and Escape dismiss it. */
-export function Popover({ label, children, disabled = false, className, triggerClassName, panelClassName }: Props) {
+export function Popover({ label, children, disabled = false, openRequest = 0, className, triggerClassName, panelClassName }: Props) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);
   const id = useId();
+  useEffect(() => { if (openRequest && !disabled) setOpen(true); }, [openRequest]);
   useEffect(() => {
     if (!open) return;
     panel.current?.focus();

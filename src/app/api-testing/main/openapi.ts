@@ -1,6 +1,7 @@
 import { parseDocument } from "yaml";
 import type { ApiCatalog, ApiOperation } from "../shared/workspace";
 import type { Json } from "../shared/scenario";
+import { supportsQueryParameter } from "../shared/query";
 
 type Obj = Record<string, any>;
 const object = (v: unknown): Obj => v && typeof v === "object" && !Array.isArray(v) ? v : {};
@@ -54,9 +55,15 @@ export function readOpenApi(source: string): ApiCatalog {
       }
       const parameters = [...params.values()].map(p => {
         const schema = deref(p.schema);
-        if (!["path", "query", "header", "cookie"].includes(p.in) || ["array", "object"].includes(schema.type) || p.content || p.style && !["simple", "form"].includes(p.style))
+        const type = label(schema.type) || (schema.properties ? "object" : "string");
+        const style = label(p.style) || undefined;
+        const explode = typeof p.explode === "boolean" ? p.explode : undefined;
+        const supported = p.in === "query"
+          ? supportsQueryParameter({ name: label(p.name), type, style, explode })
+          : !["array", "object"].includes(type) && (!style || ["simple", "form"].includes(style));
+        if (!["path", "query", "header", "cookie"].includes(p.in) || p.content || !supported)
           warnings.push(`${p.name}: 이 파라미터 형식은 아직 실행을 지원하지 않습니다`);
-        return { name: label(p.name), location: label(p.in), required: p.in === "path" || Boolean(p.required), description: label(p.description), type: label(schema.type) || "string", example: p.example ?? schema.example ?? schema.default };
+        return { name: label(p.name), location: label(p.in), required: p.in === "path" || Boolean(p.required), description: label(p.description), type, ...(style ? { style } : {}), ...(explode !== undefined ? { explode } : {}), example: p.example ?? schema.example ?? schema.default };
       });
       const requestBody = deref(op.requestBody);
       const content = object(requestBody.content);

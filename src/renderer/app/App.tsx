@@ -1,7 +1,7 @@
 import type { CSSProperties, ReactElement } from "react";
 import { Button } from "../shared/ui/Button";
 import { useEffect, useState } from "react";
-import type { ApiRunAction } from "../pages/api-testing/useRunAction";
+import type { ApiRunAction } from "../shared/model/run-action";
 import { DashboardPage } from "../pages/dashboard/DashboardPage";
 import { ScenarioEditorPage } from "../pages/editor/ScenarioEditorPage";
 import { RunPage } from "../pages/run/RunPage";
@@ -143,7 +143,7 @@ export const App = (): ReactElement => {
 
   return (
     <main
-      className={`workspace${route === "editor" && editorMode === "marker" ? " screen-extract-workspace" : ""}${route === "run" ? " run-workspace" : ""}`}
+      className={`workspace${route === "editor" && editorMode === "marker" ? " screen-extract-workspace" : ""}${route === "run" ? " run-workspace" : ""}${route === "form-automation" ? " form-automation-workspace" : ""}`}
     >
       <section className="content">
         {route === "api-testing" && <ApiTestingPage onRunAction={setApiRunAction} />}

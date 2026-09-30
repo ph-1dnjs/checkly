@@ -9,6 +9,7 @@ import {
 } from "react";
 
 type Point = { x: number; y: number };
+type Selection = { start: Point; end: Point };
 type DrawCommand =
   | { kind: "pen"; points: Point[]; color: string; lineWidth: number }
   | { kind: "eraser"; points: Point[]; color: string; lineWidth: number }
@@ -16,7 +17,7 @@ type DrawCommand =
   | { kind: "check"; x: number; y: number; size: number; color: string; lineWidth: number }
   | { kind: "text"; x: number; y: number; text: string; color: string; lineWidth: number; fontSize: number };
 
-type Tool = "pen" | "rectangle" | "check" | "text" | "eraser";
+type Tool = "crop" | "pen" | "rectangle" | "check" | "text" | "eraser";
 
 type TextDraft = {
   x: number;
@@ -50,14 +51,17 @@ export const ScreenshotEditor = ({
   const annotationCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const sourceImageRef = useRef<HTMLImageElement | null>(null);
   const activeCommandRef = useRef<DrawCommand | null>(null);
+  const selectionRef = useRef<Selection | null>(null);
   const textInputRef = useRef<HTMLInputElement | null>(null);
   const [commands, setCommands] = useState<DrawCommand[]>([]);
-  const [tool, setTool] = useState<Tool>("pen");
+  const [tool, setTool] = useState<Tool>("crop");
   const [color, setColor] = useState("#ef4454");
   const [brushSize, setBrushSize] = useState(6);
   const [textDraft, setTextDraft] = useState<TextDraft | null>(null);
   const [ready, setReady] = useState(false);
   const [copying, setCopying] = useState(false);
+  const [cropped, setCropped] = useState(false);
+  const [canvasSize, setCanvasSize] = useState(capture.size);
 
   const drawCommand = useCallback((context: CanvasRenderingContext2D, command: DrawCommand) => {
     context.save();
@@ -105,7 +109,7 @@ export const ScreenshotEditor = ({
     context.restore();
   }, []);
 
-  const redraw = useCallback((activeCommand?: DrawCommand | null) => {
+  const redraw = useCallback((activeCommand?: DrawCommand | null, selection = selectionRef.current) => {
     const canvas = canvasRef.current;
     const sourceImage = sourceImageRef.current;
     if (!canvas || !sourceImage) return;
@@ -124,6 +128,44 @@ export const ScreenshotEditor = ({
     context.clearRect(0, 0, canvas.width, canvas.height);
     context.drawImage(sourceImage, 0, 0, canvas.width, canvas.height);
     context.drawImage(annotationCanvas, 0, 0);
+    if (tool === "crop") {
+      const scale = canvas.clientWidth ? canvas.width / canvas.clientWidth : 1;
+      context.save();
+      context.fillStyle = "rgba(6, 12, 18, .46)";
+      context.beginPath();
+      context.rect(0, 0, canvas.width, canvas.height);
+      if (selection) {
+        const x = Math.min(selection.start.x, selection.end.x);
+        const y = Math.min(selection.start.y, selection.end.y);
+        const width = Math.abs(selection.end.x - selection.start.x);
+        const height = Math.abs(selection.end.y - selection.start.y);
+        if (width && height) context.rect(x, y, width, height);
+        context.fill("evenodd");
+        if (width && height) {
+          context.strokeStyle = "#ffffff";
+          context.lineWidth = Math.max(2 * scale, 2);
+          context.setLineDash([8 * scale, 5 * scale]);
+          context.strokeRect(x, y, width, height);
+        }
+      } else {
+        context.fill();
+      }
+      context.restore();
+    }
+  }, [commands, drawCommand, tool]);
+
+  const composedCanvas = useCallback(() => {
+    const canvas = canvasRef.current;
+    const sourceImage = sourceImageRef.current;
+    if (!canvas || !sourceImage) return null;
+    const output = document.createElement("canvas");
+    output.width = canvas.width;
+    output.height = canvas.height;
+    const context = output.getContext("2d");
+    if (!context) return null;
+    context.drawImage(sourceImage, 0, 0, output.width, output.height);
+    commands.forEach((command) => drawCommand(context, command));
+    return output;
   }, [commands, drawCommand]);
 
   useEffect(() => {
@@ -132,12 +174,17 @@ export const ScreenshotEditor = ({
     setReady(false);
     setCommands([]);
     setTextDraft(null);
+    setTool("crop");
+    setCropped(false);
     annotationCanvasRef.current = null;
+    activeCommandRef.current = null;
+    selectionRef.current = null;
     image.onload = () => {
       if (!canvas) return;
       sourceImageRef.current = image;
       canvas.width = capture.size?.width || image.naturalWidth;
       canvas.height = capture.size?.height || image.naturalHeight;
+      setCanvasSize({ width: canvas.width, height: canvas.height });
       canvas.getContext("2d")?.drawImage(image, 0, 0, canvas.width, canvas.height);
       setReady(true);
     };
@@ -179,6 +226,13 @@ export const ScreenshotEditor = ({
   const startDrawing = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     if (!ready) return;
     const point = canvasPoint(event);
+    if (tool === "crop") {
+      event.preventDefault();
+      event.currentTarget.setPointerCapture(event.pointerId);
+      selectionRef.current = { start: point, end: point };
+      redraw(null, selectionRef.current);
+      return;
+    }
     if (tool === "text") {
       event.preventDefault();
       setTextDraft({
@@ -211,6 +265,12 @@ export const ScreenshotEditor = ({
   };
 
   const continueDrawing = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    const selection = selectionRef.current;
+    if (selection && event.currentTarget.hasPointerCapture(event.pointerId)) {
+      selection.end = canvasPoint(event);
+      redraw(null, selection);
+      return;
+    }
     const command = activeCommandRef.current;
     if (!command || !event.currentTarget.hasPointerCapture(event.pointerId)) return;
     const point = canvasPoint(event);
@@ -226,7 +286,62 @@ export const ScreenshotEditor = ({
     redraw(command);
   };
 
+  const applySelection = (selection: Selection) => {
+    const canvas = canvasRef.current;
+    const composed = composedCanvas();
+    if (!canvas || !composed) return;
+    const left = Math.max(0, Math.floor(Math.min(selection.start.x, selection.end.x)));
+    const top = Math.max(0, Math.floor(Math.min(selection.start.y, selection.end.y)));
+    const right = Math.min(canvas.width, Math.ceil(Math.max(selection.start.x, selection.end.x)));
+    const bottom = Math.min(canvas.height, Math.ceil(Math.max(selection.start.y, selection.end.y)));
+    const width = right - left;
+    const height = bottom - top;
+    const scale = canvas.clientWidth ? canvas.width / canvas.clientWidth : 1;
+    if (width < 12 * scale || height < 12 * scale) {
+      redraw();
+      return;
+    }
+
+    const croppedCanvas = document.createElement("canvas");
+    croppedCanvas.width = width;
+    croppedCanvas.height = height;
+    croppedCanvas.getContext("2d")?.drawImage(
+      composed,
+      left,
+      top,
+      width,
+      height,
+      0,
+      0,
+      width,
+      height,
+    );
+    const image = new Image();
+    setReady(false);
+    image.onload = () => {
+      sourceImageRef.current = image;
+      canvas.width = width;
+      canvas.height = height;
+      annotationCanvasRef.current = null;
+      activeCommandRef.current = null;
+      setCommands([]);
+      setTextDraft(null);
+      setCanvasSize({ width, height });
+      setCropped(true);
+      setTool("pen");
+      canvas.getContext("2d")?.drawImage(image, 0, 0, width, height);
+      setReady(true);
+    };
+    image.src = croppedCanvas.toDataURL("image/png");
+  };
+
   const finishDrawing = () => {
+    const selection = selectionRef.current;
+    if (selection) {
+      selectionRef.current = null;
+      applySelection(selection);
+      return;
+    }
     const command = activeCommandRef.current;
     if (!command) return;
     activeCommandRef.current = null;
@@ -256,15 +371,39 @@ export const ScreenshotEditor = ({
   };
 
   const copyCapture = async () => {
-    const canvas = canvasRef.current;
-    if (!ready || copying || !canvas) return;
+    const output = composedCanvas();
+    if (!ready || copying || !output) return;
     setCopying(true);
-    try { await onCopy(canvas.toDataURL("image/png")); }
+    try { await onCopy(output.toDataURL("image/png")); }
     finally { setCopying(false); }
   };
 
+  const resetCapture = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const image = new Image();
+    setReady(false);
+    image.onload = () => {
+      sourceImageRef.current = image;
+      canvas.width = capture.size?.width || image.naturalWidth;
+      canvas.height = capture.size?.height || image.naturalHeight;
+      annotationCanvasRef.current = null;
+      activeCommandRef.current = null;
+      selectionRef.current = null;
+      setCommands([]);
+      setTextDraft(null);
+      setCanvasSize({ width: canvas.width, height: canvas.height });
+      setCropped(false);
+      setTool("crop");
+      canvas.getContext("2d")?.drawImage(image, 0, 0, canvas.width, canvas.height);
+      setReady(true);
+    };
+    image.src = capture.dataUrl;
+  };
+
   const toolDescription: Record<Tool, string> = {
-    pen: "화면 위에 자유롭게 표시하세요.",
+    crop: "드래그해서 캡처할 영역만 선택하세요.",
+    pen: "선택된 캡처 안에 자유롭게 표시하세요.",
     rectangle: "드래그해서 영역을 네모로 표시합니다.",
     check: "클릭한 위치에 체크를 표시합니다.",
     text: "원하는 위치를 클릭하고 글자를 입력합니다.",
@@ -304,16 +443,27 @@ export const ScreenshotEditor = ({
         </div>
       )}
       <div className="fa-capture-toolbar">
-        <div className="fa-capture-title"><MaterialIcon name="photo_camera" /><span><strong>화면 캡처 모드</strong><small>{toolDescription[tool]}</small></span></div>
+        <div className="fa-capture-title"><MaterialIcon name="photo_camera" /><span><strong>{cropped ? `선택 영역 ${canvasSize.width}×${canvasSize.height}` : "화면 캡처 모드"}</strong><small>{toolDescription[tool]}</small></span></div>
         <div className="fa-capture-tools" role="group" aria-label="주석 도구">
           {([
+            ["crop", "crop_free", cropped ? "영역 다시 선택" : "영역 선택"],
             ["pen", "draw", "펜"],
             ["rectangle", "crop_square", "네모"],
             ["check", "check", "체크"],
             ["text", "title", "텍스트"],
             ["eraser", "ink_eraser", "지우개"],
           ] as Array<[Tool, string, string]>).map(([value, icon, label]) => (
-            <button key={value} className={tool === value ? "active" : ""} onClick={() => setTool(value)}><MaterialIcon name={icon} /> {label}</button>
+            <button
+              key={value}
+              aria-pressed={tool === value}
+              className={tool === value ? "active" : ""}
+              onClick={() => {
+                activeCommandRef.current = null;
+                selectionRef.current = null;
+                setTextDraft(null);
+                setTool(value);
+              }}
+            ><MaterialIcon name={icon} /> {label}</button>
           ))}
         </div>
         <div className="fa-capture-colors" role="group" aria-label="주석 색상">
@@ -321,15 +471,16 @@ export const ScreenshotEditor = ({
             <button
               key={value}
               aria-label={`${value} 색상`}
-              disabled={tool === "eraser"}
+              disabled={tool === "eraser" || tool === "crop"}
               className={color === value ? "active" : ""}
               style={{ "--fa-capture-color": value } as CSSProperties}
               onClick={() => setColor(value)}
             />
           ))}
         </div>
-        <label className="fa-capture-size">굵기<input type="range" min="3" max="14" value={brushSize} onChange={(event) => setBrushSize(Number(event.target.value))} /></label>
+        <label className="fa-capture-size">굵기<input disabled={tool === "crop"} type="range" min="3" max="14" value={brushSize} onChange={(event) => setBrushSize(Number(event.target.value))} /></label>
         <button className="fa-capture-undo" disabled={!commands.length} onClick={() => setCommands((items) => items.slice(0, -1))}><MaterialIcon name="undo" /> 실행 취소</button>
+        <button className="fa-capture-reset" disabled={!cropped && !commands.length} onClick={resetCapture}><MaterialIcon name="fullscreen" /> 전체 화면</button>
         <span className="fa-capture-divider" />
         <button className="fa-capture-cancel" onClick={onCancel}>취소</button>
         <button className="fa-capture-complete" disabled={!ready || copying || Boolean(textDraft)} onClick={() => void copyCapture()}><MaterialIcon name="content_copy" /> {copying ? "복사 중…" : "완료 · 클립보드 복사"}</button>

@@ -28,7 +28,7 @@ Checkly는 Markdown으로 브라우저 QA 시나리오를 작성하고 Playwrigh
 | 패키징·업데이트 | electron-builder, electron-updater | 설치 파일 생성과 GitHub Releases 업데이트 확인     |
 | UI 검증         | Playwright Test                    | Vite preview 기반 렌더러 E2E                       |
 
-소스는 `app`, `pages`, `widgets`, `shared` 경계를 사용합니다. `features`, `entities` 폴더는 현재 자리만 있고 구현 코드는 없습니다.
+소스는 `app`, `pages`, `widgets`, `features`, `entities`, `shared` 경계를 사용합니다.
 
 ## 다운로드와 설치
 
