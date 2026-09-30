@@ -2,12 +2,13 @@ import { useState } from "react";
 import { Popover } from "../../../shared/ui/Popover";
 
 /** Reuses the common disclosure and requires a separate explicit confirmation. */
-export function DeleteAction({ label, description, disabled, onDelete }: {
-  label: string; description: string; disabled?: boolean; onDelete: () => Promise<void>;
+export function DeleteAction({ label, text, description, disabled, onDelete }: {
+  /** Names what is deleted (accessible name, confirm button); `text` can show just "삭제". */
+  label: string; text?: string; description: string; disabled?: boolean; onDelete: () => Promise<void>;
 }) {
   const [working, setWorking] = useState(false);
   const [error, setError] = useState("");
-  return <Popover label={label} disabled={disabled} panelClassName="api-delete-confirm">
+  return <Popover label={label} triggerText={text} disabled={disabled} triggerClassName="api-delete-trigger" panelClassName="api-delete-confirm">
     <p>{description}</p><p>삭제하면 되돌릴 수 없습니다.</p>
     {error && <p role="alert">{error}</p>}
     <button type="button" className="api-danger-action" disabled={working} onClick={async () => {
