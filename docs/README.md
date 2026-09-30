@@ -2,7 +2,7 @@
 
 본 디렉터리는 Checkly의 개발과 인수인계를 위한 코드 기반 문서입니다. Checkly는 Markdown 시나리오를 편집하고 Playwright Chromium으로 실행하는 Electron 데스크톱 QA 도구입니다.
 
-> **문서 기준**: 2026-09-02 현재 저장소의 코드와 설정을 기준으로 합니다. 구현에서 확인되지 않은 운영 정책이나 UI에만 존재하는 기능은 `미확인`, `미구현`, `표시 전용`으로 명시합니다.
+> **문서 기준**: 기본 문서는 2026-09-02 기준이며, 시나리오 편집·실행 문서와 관련 공통 설명은 2026-09-17 작업 트리 기준으로 갱신했습니다. 구현에서 확인되지 않은 운영 정책이나 UI에만 존재하는 기능은 `미확인`, `미구현`, `표시 전용`으로 명시합니다.
 
 ## 문서 목적
 
@@ -51,10 +51,17 @@ Markdown 작성·가져오기
 | 기능 | 핵심 문서 | 주 코드 |
 | --- | --- | --- |
 | 실행 기록과 재실행 | [대시보드](04-pages/010-dashboard/README.md) | `DashboardPage`, `RunReportDrawer` |
-| Markdown·마커 편집 | [시나리오 편집](04-pages/020-scenario-editor/README.md) | `ScenarioEditorPage`, `scenario.ts` |
+| Markdown·마커 편집 | [시나리오 편집](04-pages/020-scenario-editor/README.md) | `ScenarioEditorPage`, `useScenarioState`, `scenario.ts` |
 | 폴더·다중 선택 | [시나리오 선택](04-pages/030-scenario-picker/README.md) | `ScenarioPickerPage` |
-| Playwright 실행 | [시나리오 실행](04-pages/040-scenario-run/README.md) | `App`, `RunPage`, `main.ts` |
+| Playwright 실행 | [시나리오 실행](04-pages/040-scenario-run/README.md) | `useRunOrchestration`, `RunPage`, `qaExecution.ts` |
 | 표시용 환경 설정 | [설정](04-pages/050-settings/README.md) | `SettingsPage` |
+
+## 시나리오 개발·정책 문서
+
+편집·실행의 동작과 정책은 다음 문서를 함께 사용합니다. 현재 구현과 미보장 동작을 구분하며, 저장·취소·보존 정책을 변경할 때 같이 갱신합니다.
+
+- [편집 기능·문법·복제](04-pages/020-scenario-editor/01-overview.md), [원문·좌표 저장 정책](04-pages/020-scenario-editor/03-api.md), [저장 실패·직렬화 제한](04-pages/020-scenario-editor/04-edge-cases.md)
+- [실행·자동/수동 액션 정책](04-pages/040-scenario-run/01-overview.md), [결과·영상·리포트 보존](04-pages/040-scenario-run/03-api.md), [취소·오류·구현 제한](04-pages/040-scenario-run/04-edge-cases.md)
 
 ## 문서 관리 규칙
 

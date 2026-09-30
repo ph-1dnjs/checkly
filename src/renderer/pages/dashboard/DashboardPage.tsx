@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Button } from "../../shared/ui/Button";
 import {
   estimateDurationSeconds,
@@ -27,6 +28,23 @@ export const DashboardPage = ({
   onOpenRun,
   onOpenReport,
 }: Props) => {
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (
+        !(event.metaKey || event.ctrlKey) ||
+        event.shiftKey ||
+        event.altKey ||
+        event.code !== "KeyP"
+      ) return;
+
+      event.preventDefault();
+      if (!event.repeat) onOpenRun();
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onOpenRun]);
+
   const passRate = summary.total
     ? Math.round((summary.passed / summary.total) * 100)
     : 0;
@@ -46,7 +64,7 @@ export const DashboardPage = ({
         <div className="dash-heading">대시보드</div>
         <div className="dash-title-actions">
           <Button variant="primary" onClick={onOpenRun}>
-            실행 화면 열기 <span className="dash-kbd">⌘R</span>
+            실행 화면 열기 <span className="dash-kbd">⌘P</span>
           </Button>
         </div>
       </div>

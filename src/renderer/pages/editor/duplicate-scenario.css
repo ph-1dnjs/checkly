@@ -14,7 +14,7 @@
 .duplicate-name-field { margin:17px 28px 0 !important; }
 .duplicate-name-field input { height:38px; margin-top:7px; padding:8px 10px; border-color:#cdd4cc; border-radius:7px; font-size:13px; transition:border-color .15s, box-shadow .15s; }
 .duplicate-name-field input:focus { border-color:#1f63ae; box-shadow:0 0 0 3px rgb(31 99 174 / 12%); outline:0; }
-.duplicate-editor { display:flex; flex:1 1 auto; flex-direction:column; min-height:0; margin:18px 28px 0; border:1px solid #e0e4df; border-radius:9px; overflow:hidden; }
+.duplicate-editor { display:flex; flex:1 1 auto; flex-direction:column; min-height:0; margin:18px 28px; border:1px solid #e0e4df; border-radius:9px; overflow:hidden; }
 .duplicate-editor-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 13px 10px; background:#fafbf8; }
 .duplicate-editor-heading > div > span { color:#23251d; font-size:12px; font-weight:700; }
 .duplicate-editor-heading p { margin:3px 0 0; color:#8a939c; font-size:10.5px; }

@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactElement } from "react";
 import { Button } from "../shared/ui/Button";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ApiRunAction } from "../shared/model/run-action";
 import { DashboardPage } from "../pages/dashboard/DashboardPage";
 import { ScenarioEditorPage } from "../pages/editor/ScenarioEditorPage";
@@ -18,9 +18,28 @@ import { ApiTestingPage } from "../pages/api-testing/ApiTestingPage";
 
 export const App = (): ReactElement => {
   const [apiRunAction, setApiRunAction] = useState<ApiRunAction | null>(null);
+  const [keepSessionPromptChecked, setKeepSessionPromptChecked] =
+    useState(false);
   const { route, setRoute, toast, showToast } = useNavigation();
   const scenarioState = useScenarioState({ route, showToast });
   const runOrchestration = useRunOrchestration({ showToast, setRoute });
+
+  // Cmd/Ctrl+R은 실행화면 단축키(Cmd/Ctrl+P)와 겹치지 않도록 새로고침 전용으로 둔다.
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (
+        !(event.metaKey || event.ctrlKey) ||
+        event.shiftKey ||
+        event.altKey ||
+        event.code !== "KeyR"
+      )
+        return;
+      event.preventDefault();
+      if (!event.repeat) window.location.reload();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   const {
     scenario,
@@ -92,6 +111,19 @@ export const App = (): ReactElement => {
     runQueue,
     runValidationError,
     setRunValidationError,
+    keepSession,
+    setKeepSession,
+    sessionActive,
+    endSession,
+    sessionPromptOpen,
+    resolveSessionPrompt,
+    runTimeline,
+    stackPaused,
+    queueRerun,
+    removeFromStack,
+    clearDoneRecords,
+    pauseStack,
+    resumeStack,
     runProgressPercent,
     scenarioProgressPercent,
     beginRuns,
@@ -193,6 +225,17 @@ export const App = (): ReactElement => {
             elapsedSeconds={elapsedSeconds}
             runStartedAt={runStartedAt}
             livePreview={livePreview}
+            keepSession={keepSession}
+            onKeepSessionChange={setKeepSession}
+            sessionActive={sessionActive}
+            onEndSession={endSession}
+            onRerunScenario={queueRerun}
+            runTimeline={runTimeline}
+            stackPaused={stackPaused}
+            onRemoveFromStack={removeFromStack}
+            onClearDoneRecords={clearDoneRecords}
+            onPauseStack={pauseStack}
+            onResumeStack={resumeStack}
             previewImage={previewImage}
             stepPreviews={stepPreviews}
             onManualBrowserEvent={(event) =>
@@ -320,11 +363,61 @@ export const App = (): ReactElement => {
         route={route}
         running={running}
         onNavigate={setRoute}
-        onRun={() =>
-          beginRuns(route === "run" ? runQueue : executableScenarios)
-        }
+        onRun={() => {
+          if (route === "run") return beginRuns(runQueue);
+          if (route === "editor") return runEditorContent();
+          return beginRuns(executableScenarios);
+        }}
         onCancel={cancelRuns}
       />
+      {sessionPromptOpen && (
+        <div
+          className="modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="keep-session-prompt-title"
+        >
+          <div className="manual-modal">
+            <h2 id="keep-session-prompt-title">
+              실행하기 전에 세션을 유지하시겠습니까?
+            </h2>
+            <p>
+              켜두면 로그인 등으로 만들어진 브라우저 세션을 다음 실행에도 그대로
+              이어받아, 2차 인증이 필요한 시나리오를 반복 실행할 때 매번 다시
+              로그인하지 않아도 됩니다.
+            </p>
+            <label className="session-prompt-toggle">
+              <span>다시 묻지 않기</span>
+              <input
+                type="checkbox"
+                checked={keepSessionPromptChecked}
+                onChange={(event) =>
+                  setKeepSessionPromptChecked(event.target.checked)
+                }
+              />
+            </label>
+            <div className="modal-actions">
+              <Button
+                onClick={() => {
+                  resolveSessionPrompt(false, keepSessionPromptChecked);
+                  setKeepSessionPromptChecked(false);
+                }}
+              >
+                닫기
+              </Button>
+              <Button
+                variant="primary"
+                onClick={() => {
+                  resolveSessionPrompt(true, keepSessionPromptChecked);
+                  setKeepSessionPromptChecked(false);
+                }}
+              >
+                세션 유지
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
       {runValidationError && (
         <div
           className="modal-backdrop"

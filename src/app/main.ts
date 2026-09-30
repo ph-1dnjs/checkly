@@ -31,6 +31,7 @@ import {
   resolveManualInput,
   resolveManualResult,
   setQaViewport,
+  shutdownScenarioWorker,
 } from "./ipc/qaExecution";
 import type {
   ManualBrowserEvent,
@@ -242,7 +243,11 @@ app.whenReady().then(() => {
   ipcMain.handle("qa:manual-result", (_event, result: ManualResult) =>
     resolveManualResult(result),
   );
-  ipcMain.handle("qa:cancel", () => cancelActiveRun());
+  ipcMain.handle(
+    "qa:cancel",
+    (_event, options?: { keepWorker?: boolean }) =>
+      cancelActiveRun(options),
+  );
   ipcMain.handle(
     "form-automation:insert-text",
     (_event, input: FormAutomationTextInput) => insertFormAutomationText(input),
@@ -288,4 +293,8 @@ app.whenReady().then(() => {
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
+});
+
+app.on("before-quit", () => {
+  void shutdownScenarioWorker();
 });

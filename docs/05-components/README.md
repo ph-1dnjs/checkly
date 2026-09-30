@@ -23,7 +23,7 @@
 
 ### ScenarioEditorPage
 
-텍스트 모드는 textarea와 파싱 미리보기, import/export/run을 제공합니다. 마커 모드는 device 폭, 단계 drag 정렬, WebView, pin, 액션 대화상자를 제공합니다. 액션별 값·파일·안내·조건·대기·동일 대상 순서를 편집합니다.
+텍스트 모드는 textarea와 파싱 미리보기, import/export/run 및 케이스별 시나리오 복제를 제공합니다. 마커 모드는 device 폭, 단계 drag 정렬, WebView, pin, 액션 대화상자를 제공합니다. 액션별 값·파일·안내·조건·대기·동일 대상 순서를 편집합니다.
 
 ### ScenarioPickerPage
 
@@ -31,7 +31,7 @@
 
 ### RunPage
 
-실행 큐, 단계 tape, 실시간 JPEG viewport, 로그, 수동 입력·직접 제어, 영상 다운로드를 표시합니다. 직접 제어 시 이미지 좌표를 1280×720 Page 좌표로 변환해 click/wheel/key/text 이벤트를 전달합니다. “브라우저 창 분리”는 현재 로그·토스트만 갱신합니다.
+실행 큐, 단계 tape, 실시간 JPEG viewport, 로그, 수동 입력·직접 제어, 영상 다운로드를 표시합니다. 직접 제어 시 이미지의 naturalWidth/naturalHeight를 기준으로 좌표를 변환해 click/wheel/key/text 이벤트를 전달합니다. “브라우저 창 분리”는 현재 로그·토스트만 갱신합니다.
 
 ### SettingsPage
 
@@ -41,11 +41,13 @@
 
 ### BottomNavigation
 
-현재 route를 바꾸고, 실행 중이 아니면 실행, 실행 중이면 3.5초 안의 두 번째 클릭으로 취소합니다. 실행 화면은 메뉴 항목에 없고 실행 시작 또는 알림 바로가기로 진입합니다.
+현재 route를 바꾸고, 실행 중이 아니면 실행, 실행 중이면 한 번 클릭으로 취소를 요청합니다. 실행 화면은 메뉴 항목에 없고 실행 시작 또는 알림 바로가기로 진입합니다.
 
 ### RunReportDrawer
 
 `RunRecord | null`을 받아 묶음 결과, 예상 시간, 단계 tape, 실패 메시지와 재실행을 제공합니다. 현재 “STEPS” 값은 실제 단계 수가 아니라 성공+실패 시나리오 수입니다.
+
+편집·실행 상태의 실제 소유자는 App에서 호출하는 `useScenarioState`와 `useRunOrchestration`입니다. 저장·수동 단계·실행 보존 정책은 [편집](../04-pages/020-scenario-editor/README.md)과 [실행](../04-pages/040-scenario-run/README.md) 문서를 기준으로 확인합니다.
 
 ## 타입 경계
 
