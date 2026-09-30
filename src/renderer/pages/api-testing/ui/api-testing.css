@@ -1083,3 +1083,8 @@ body.panel-resizing { cursor:col-resize; user-select:none; }
 .api-secret-field { display:flex; gap:6px; }
 .api-secret-field > input { flex:1; min-width:0; }
 .api-secret-field > button { flex:none; }
+/* Docs search row: search · count · tag buttons, then Authorize on the far right. */
+.api-doc-search-count { font-size:12.5px; color:var(--api-muted, #667085); white-space:nowrap; }
+.api-doc-search-count.empty { color:var(--ck-color-danger, #c0362c); }
+.api-doc-search-tools .api-doc-authorize { margin-left:auto; }
+.api-doc-search-tools .api-doc-authorize .auth-wrapper { padding:0; margin:0; }

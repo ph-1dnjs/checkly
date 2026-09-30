@@ -5,6 +5,7 @@ import { RequestAuthPanel } from "../../../features/api-testing/configure-reques
 import { DescriptionMarkdown } from "./DescriptionMarkdown";
 import { type SwaggerMap, type SwaggerSystem, type Selection, type MutableRef, type SwaggerComponent } from "../model/swagger-types";
 import { updateDeepLinkHash } from "../lib/swagger-deep-link";
+import { matchesApiSearch, parseApiSearch } from "../lib/api-search";
 import { mapValue, textValue, buildRequest, requestUrl, displayRequest, responseFromApi, responseFromError, tagNames } from "../lib/swagger-request";
 
 export const submitMethods = ["get", "put", "post", "delete", "options", "head", "patch"];
@@ -48,18 +49,37 @@ export function createSwaggerPlugin(options: {
     const block = [...document.querySelectorAll<HTMLElement>(".api-swagger-renderer .opblock")].find(element => element.dataset.checklyPath === path && element.dataset.checklyMethod?.toLowerCase() === method.toLowerCase());
     block?.querySelector(".live-responses-table, .responses-inner > div > div")?.scrollIntoView({ block: "start", behavior: "smooth" });
   }, 50);
+  // Parameter and top-level body field names per operation, worked out once per catalog.
+  const fieldCache = new WeakMap<ApiCatalog, Map<string, string[]>>();
+  const fieldsOf = (method: string, path: string) => {
+    const catalog = options.catalogRef.current;
+    if (!catalog) return [];
+    let fields = fieldCache.get(catalog);
+    if (!fields) {
+      fields = new Map();
+      for (const operation of catalog.operations) {
+        const schema = operation.bodySchema as { properties?: Record<string, unknown> } | undefined;
+        const example = operation.bodyExample;
+        const body = [
+          ...Object.keys(schema && typeof schema === "object" && schema.properties && typeof schema.properties === "object" ? schema.properties : {}),
+          ...Object.keys(example && typeof example === "object" && !Array.isArray(example) ? example : {}),
+        ];
+        fields.set(`${operation.method.toUpperCase()} ${operation.path}`, [...new Set([...operation.parameters.map(parameter => parameter.name), ...body])]);
+      }
+      fieldCache.set(catalog, fields);
+    }
+    return fields.get(`${method.toUpperCase()} ${path}`) ?? [];
+  };
   const filterOperations = (taggedOps: any, phrase: string) => {
-    const query = phrase.trim().toLocaleLowerCase();
-    if (!query) return taggedOps;
-    return taggedOps.map((group: any, tag: string) => {
-      if (tag.toLocaleLowerCase().includes(query)) return group;
-      return group.set("operations", group.get("operations").filter((op: any) => {
-        const operation = op.get("operation");
-        return [op.get("method"), op.get("path"), `${options.baseUrlRef.current.replace(/\/$/, "")}${op.get("path")}`,
-          operation?.get("operationId"), operation?.get("summary"), operation?.get("description")]
-          .some(value => typeof value === "string" && value.toLocaleLowerCase().includes(query));
-      }));
-    }).filter((group: any) => group.get("operations").size > 0);
+    const baseUrl = options.baseUrlRef.current;
+    const search = parseApiSearch(phrase, baseUrl);
+    if (!search.terms.length) return taggedOps;
+    return taggedOps.map((group: any, tag: string) => group.set("operations", group.get("operations").filter((op: any) => {
+      const operation = op.get("operation");
+      return matchesApiSearch({ method: op.get("method"), path: op.get("path"), tag,
+        texts: [operation?.get("operationId"), operation?.get("summary"), operation?.get("description")],
+        fields: fieldsOf(op.get("method"), op.get("path")) }, search, baseUrl);
+    }))).filter((group: any) => group.get("operations").size > 0);
   };
   return () => ({
     fn: {
@@ -127,9 +147,33 @@ export function createSwaggerPlugin(options: {
         }, [filter]);
         useLayoutEffect(() => {
           const input = root.current?.querySelector("input");
-          input?.setAttribute("placeholder", "태그 · 메서드 · 경로 · 이름 · 설명 검색");
+          input?.setAttribute("placeholder", "검색: 경로·URL 붙여넣기, 이름, 파라미터, 태그 (/ 키)");
           input?.setAttribute("aria-label", "API 문서 검색");
         });
+        // "/" jumps to the search box (unless typing somewhere); Esc in it clears the search.
+        useEffect(() => {
+          const keydown = (event: KeyboardEvent) => {
+            const input = root.current?.querySelector("input");
+            if (!input || !input.isConnected || input.offsetParent === null) return;
+            const target = event.target as HTMLElement | null;
+            if (event.key === "/" && !event.metaKey && !event.ctrlKey && !event.altKey
+              && !(target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)))) {
+              event.preventDefault();
+              input.focus();
+              input.select();
+            } else if (event.key === "Escape" && target === input && input.value) {
+              event.preventDefault();
+              props.layoutActions.updateFilter("");
+            }
+          };
+          document.addEventListener("keydown", keydown);
+          return () => document.removeEventListener("keydown", keydown);
+        }, []);
+        const phrase = typeof filter === "string" ? filter.trim() : "";
+        const system = options.systemRef.current;
+        const count = phrase && system
+          ? (filterOperations(system.specSelectors.taggedOperations(), phrase)?.valueSeq?.().toArray?.() ?? []).reduce((sum: number, group: any) => sum + group.get("operations").size, 0)
+          : null;
         const setTags = (shown: boolean) => {
           const system = options.systemRef.current;
           const catalog = options.catalogRef.current;
@@ -137,12 +181,13 @@ export function createSwaggerPlugin(options: {
         };
         const Authorize = props.getComponent("AuthorizeBtnContainer", true);
         return <div ref={root} className="api-doc-search-tools"><Original {...props} />
-          {/* Always here: the servers row (where Swagger puts it) is hidden, the environment picks the base URL. */}
-          <Authorize />
+          {count !== null && <span className={`api-doc-search-count${count ? "" : " empty"}`} role="status">{count ? `${count}개 API` : "맞는 API가 없습니다"}</span>}
           <div className="api-actions api-doc-controls">
             <button type="button" onClick={() => setTags(true)}>태그 모두 펼치기</button>
             <button type="button" onClick={() => setTags(false)}>태그 모두 접기</button>
           </div>
+          {/* Always here: the servers row (where Swagger puts it) is hidden, the environment picks the base URL. */}
+          <div className="api-doc-authorize"><Authorize /></div>
         </div>;
       },
       authorizationPopup: () => function GlobalAuthorization(props: any) {
