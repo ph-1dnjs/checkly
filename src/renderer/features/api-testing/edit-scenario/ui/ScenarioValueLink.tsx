@@ -6,7 +6,8 @@ import { connectValue, type RequestArea } from "../model/scenario-builder-model"
 import { responseFields } from "../../../../entities/api-testing";
 
 type RequestValueOption = { pointer: string; type: string };
-export type ScenarioValueTarget = { area: RequestArea; name: string };
+// `expect` set: the picked value becomes that check's expected value instead of a request field.
+export type ScenarioValueTarget = { area: RequestArea; name: string; expect?: number };
 
 function findOperation(scenario: Scenario, index: number, catalogs: Record<string, ApiCatalog | null>, bindings: Record<string, string>): ApiOperation | undefined {
   const step = scenario.steps[index];
@@ -110,7 +111,7 @@ export function ScenarioValueLink({ scenario, targetIndex, target, catalogs, bin
   const sourceSteps = scenario.steps.map((step, index) => ({ step, index }));
   const previousSourceSteps = sourceSteps.filter(item => item.index < targetIndex);
   const initialSource = previousSourceSteps.at(-1)?.index ?? -1;
-  const [source, setSource] = useState<ValueBinding["source"]>("response");
+  const [source, setSource] = useState<ValueBinding["source"]>(target.expect !== undefined ? "request" : "response");
   const [from, setFrom] = useState(initialSource);
   const [requestArea, setRequestArea] = useState<RequestArea>(target.area);
   const [responseArea, setResponseArea] = useState<"body" | "header">("body");
@@ -142,7 +143,7 @@ export function ScenarioValueLink({ scenario, targetIndex, target, catalogs, bin
   const apply = () => {
     if (from < 0 || !ready) return;
     try {
-      onChange(connectValue(scenario, from, targetIndex, source, source === "request" ? requestArea : responseArea, pointer ?? undefined, header.trim() || undefined, variable.trim(), target.area, target.name, prefix));
+      onChange(connectValue(scenario, from, targetIndex, source, source === "request" ? requestArea : responseArea, pointer ?? undefined, header.trim() || undefined, variable.trim(), target.area, target.name, prefix, target.expect));
       onClose();
     } catch (value) {
       setError(value instanceof Error ? value.message : "값 연결을 적용하지 못했습니다.");
@@ -152,11 +153,11 @@ export function ScenarioValueLink({ scenario, targetIndex, target, catalogs, bin
   return <div className="api-value-modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
     <section className="api-value-modal api-scenario-value-modal" role="dialog" aria-modal="true" aria-label={`${target.name} 값 연결`} onMouseDown={event => event.stopPropagation()}>
       <header>
-        <div><p className="api-value-modal-kicker">값 연결</p><h2>{target.name} 값 연결</h2><small>{targetIndex + 1}단계 · {target.area} · 요청값</small></div>
+        <div><p className="api-value-modal-kicker">값 연결</p><h2>{target.name} 값 연결</h2><small>{targetIndex + 1}단계 · {target.expect !== undefined ? "검증 기대값" : `${target.area} · 요청값`}</small></div>
         <button type="button" aria-label="값 연결 닫기" onClick={onClose}>×</button>
       </header>
 
-      <div className="api-value-target"><span>사용할 곳</span><code>{targetIndex + 1}단계 · {target.area}.{target.name}</code></div>
+      <div className="api-value-target"><span>사용할 곳</span><code>{targetIndex + 1}단계 · {target.expect !== undefined ? `검증 ${target.name} 기대값` : `${target.area}.${target.name}`}</code></div>
       {!previousSourceSteps.length ? <>
         <p className="api-value-modal-note">이 단계는 첫 단계라 앞에서 가져올 수 있는 요청값·응답값이 없습니다. 현재 단계와 뒤 단계의 값은 실행 순서상 연결할 수 없습니다.</p>
         <label>출처 단계<select aria-label="값 출처 단계" value={from} disabled title="현재 단계보다 앞선 단계가 없어 값을 연결할 수 없습니다.">
@@ -165,7 +166,7 @@ export function ScenarioValueLink({ scenario, targetIndex, target, catalogs, bin
         </select></label>
         <p className="api-value-order-warning" role="note">현재 단계보다 앞선 단계만 값 출처로 선택할 수 있습니다.</p>
       </> : <>
-        <p className="api-value-modal-note">다른 단계의 요청값 또는 응답값을 선택해 이 입력값에 연결합니다. 실행 순서는 시나리오 검사에서 확인합니다.</p>
+        <p className="api-value-modal-note">다른 단계의 요청값 또는 응답값을 선택해 {target.expect !== undefined ? "이 검증의 기대값으로 씁니다" : "이 입력값에 연결합니다"}. 실행 순서는 시나리오 검사에서 확인합니다.</p>
         <div className="api-value-source-tabs" role="tablist" aria-label="값 출처 선택">
           <button type="button" role="tab" aria-selected={source === "response"} className={source === "response" ? "selected" : ""} onClick={() => { setSource("response"); resetSelection(); }}>응답값</button>
           <button type="button" role="tab" aria-selected={source === "request"} className={source === "request" ? "selected" : ""} onClick={() => { setSource("request"); resetSelection(); }}>요청값</button>

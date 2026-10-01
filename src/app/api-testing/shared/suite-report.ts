@@ -28,7 +28,7 @@ export function reportScenario(id: string, name: string, result: ApiScenarioResu
       ...(step.httpStatus !== undefined ? { httpStatus: step.httpStatus } : {}),
       durationMs: step.durationMs,
       ...(["failed", "blocked", "cancelled"].includes(step.status) ? { reason: safeFailureReason(step.status, step.httpStatus, step.failure) } : {}),
-      ...(step.checks?.length ? { checkResults: step.checks.map(check => { const { target, rule } = describeCheck(check.expect === undefined ? undefined : expect?.[check.expect]); return { label: `${target} ${rule}`, passed: check.passed }; }) } : {}),
+      ...(step.checks?.length ? { checkResults: step.checks.map(check => { const { target, rule } = describeCheck(check.expect === undefined ? undefined : expect?.[check.expect], scenario); return { label: `${target} ${rule}`, passed: check.passed }; }) } : {}),
     }; }),
   };
 }

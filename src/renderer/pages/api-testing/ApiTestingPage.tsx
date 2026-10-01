@@ -4,6 +4,7 @@ import { ProjectForm, ProjectImportDialog } from "../../features/api-testing/con
 import { ApiDocumentation } from "./ui/ApiDocumentation";
 import { LoadingSpinner } from "../../shared/ui/LoadingSpinner";
 import { Icon } from "../../shared/ui/Icon";
+import { ServerTag } from "../../entities/api-testing";
 import { GlobalVariableMenu } from "../../features/api-testing/configure-globals";
 import { ApiTestingProviders } from "./ui/ApiTestingProviders";
 import { ScenarioPanel } from "./ui/ScenarioPanel";
@@ -203,9 +204,13 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
     </select>
     {project && <button type="button" className="api-icon-button" aria-label="프로젝트 설정" title="프로젝트 설정" disabled={locked || loading} onClick={() => setForm("edit")}><Icon name="settings" size={16} /></button>}
   </div>;
+  // The project's servers in their tag colours, so a step's "인증"/"주문" tag reads as a server name.
+  const environment = project?.environments.find(item => item.id === environmentId);
+  const serverNames = Object.fromEntries((project?.servers ?? []).map(server => [server.id, server.name]));
+  const serverLegend = project && project.servers.length > 1 && <span className="api-project-servers" aria-label="프로젝트 서버">서버{project.servers.map(server => <ServerTag key={server.id} server={server.id} names={serverNames} title={environment?.baseUrls[server.id] ? `${server.name} 서버 · ${environment.name} ${environment.baseUrls[server.id]}` : undefined} />)}</span>;
   return <ApiTestingProviders key={projectId} projectId={projectId} bridge={bridge}><section className="api-testing-page api-swagger-shell">
     {/* Row 1: which project. Row 2 (tabs, or the composer's toolbar): what to do in it and where to call. */}
-    <header className="api-toolbar api-page-head"><h1>API 테스트</h1>{projectPicker}</header>
+    <header className="api-toolbar api-page-head"><h1>API 테스트</h1>{projectPicker}{serverLegend}</header>
     {error && <p className="api-warning" role="alert">{error}</p>}
     {importPlan && <ProjectImportDialog plan={importPlan.plan} onCancel={() => setImportPlan(null)} onImport={async update => { await finishImport(await bridge.importProject(importPlan.text, update)); }} />}
     {notice && !form && <p className="api-page-notice" role="status">{notice}<button type="button" className="api-compose-link" onClick={() => setNotice("")}>닫기</button></p>}

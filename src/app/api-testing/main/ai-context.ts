@@ -113,7 +113,7 @@ const authorRules = [
   "- 실행 중 사람이 넣어야 하는 값(비밀번호·인증번호·계정): 그 단계에 inputs: [{name: code, label: 인증번호}]를 두고 {{inputs.code}}로 씁니다. 실제 값은 YAML에 쓰지 않습니다.",
   "- Bearer 인증: 시나리오 또는 단계에 auth: globals.accessToken. auth를 쓰면 Authorization 헤더를 직접 넣지 않고, 로그인처럼 인증이 없어야 하는 단계는 auth: none.",
   "- 검증(expect)은 기본으로 넣지 않습니다. HTTP 2xx는 자동으로 확인되므로 그것만으로 충분합니다. 사용자가 특정 값이나 상태 코드를 확인하고 싶다고 말했을 때만 그 확인을 넣고, '/data가 있는지'나 'status 200' 같은 습관성 검증은 넣지 않습니다.",
-  "- 검증을 넣을 때: 본문 값은 expect: [{source: body, pointer: /data/status, operator: equals, value: ACTIVE}], 특정 상태 코드는 {source: status, operator: equals, value: 201}(실패 케이스는 404 등). 연산자는 equals·exists·contains. status 검증을 넣으면 그 단계의 2xx 자동 확인은 꺼집니다.",
+  "- 검증을 넣을 때: 본문 값은 expect: [{source: body, pointer: /data/status, operator: equals, value: ACTIVE}], 특정 상태 코드는 {source: status, operator: equals, value: 201}(실패 케이스는 404 등). 연산자는 equals·exists·contains. 실행 중 입력처럼 매번 달라지는 값은 기대값에 앞 단계 값을 씁니다: {source: body, pointer: /data/name, operator: equals, value: \"{{steps.1.request.body./name}}\"}. status 검증을 넣으면 그 단계의 2xx 자동 확인은 꺼집니다.",
   "- 실패해도 다음 단계를 계속하려면 시나리오에 onFailure: continue(기본 stop). JavaScript·반복문·함수·외부 파일 참조는 지원하지 않습니다.",
   "- API 파일에 없는 API는 쓰지 않습니다. 코드에 있어도 파일에 없으면 Checkly에서 실행할 수 없습니다. 확신이 없으면 가장 단순한 형태로 쓰고 사용자에게 알려 주세요.",
 ];

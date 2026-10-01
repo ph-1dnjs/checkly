@@ -1,4 +1,4 @@
-import { useEffect, useState, type ComponentType, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ComponentType, type ReactNode } from "react";
 import { stringifyScenario, scenarioSchema } from "../../../../../app/api-testing/shared/scenario";
 import type { Scenario } from "../../../../../app/api-testing/shared/scenario";
 import type { ApiCatalog, ApiGlobal, ApiProject, ApiScope, ApiTestingBridge, SavedApiScenario } from "../../../../../app/api-testing/shared/workspace";
@@ -36,6 +36,20 @@ export function ScenarioBuilder({ bindings, project, scope, bridge, onApply, val
   const [visitedSteps, setVisitedSteps] = useState<Set<string>>(() => new Set());
   const [yamlOpen, setYamlOpen] = useState(false);
   const [replacing, setReplacing] = useState<number | null>(null);
+  // A step whose API the current spec no longer has (only once its server's spec is loaded).
+  const missingApi = (step: Scenario["steps"][number]) => !catalogLoading && Boolean(catalogs[bindings[step.server] ?? step.server]) && !operationForStep(step, catalogs, bindings);
+  // Opened from "명세에 없는 API" (or any time there is one): unfold the first such step, once.
+  const openedMissing = useRef(false);
+  useEffect(() => {
+    if (openedMissing.current || catalogLoading) return;
+    const first = draft.steps.find(missingApi);
+    if (!first) return;
+    openedMissing.current = true;
+    window.setTimeout(() => {
+      const details = document.getElementById(`scenario-editor-step-${first.id}`);
+      if (details instanceof HTMLDetailsElement) { details.open = true; details.scrollIntoView({ block: "center" }); }
+    }, 0);
+  });
   const [descriptionOpen, setDescriptionOpen] = useState<Set<string>>(() => new Set());
   const [globals, setGlobals] = useState<ApiGlobal[]>([]);
   const [savedScenarios, setSavedScenarios] = useState<SavedApiScenario[]>([]);
@@ -73,7 +87,7 @@ export function ScenarioBuilder({ bindings, project, scope, bridge, onApply, val
     <div className="api-accordion-editor">
     <div>
     {draft.steps.map((step, index) => { const operation = operationForStep(step, catalogs, bindings); const method = operation?.method ?? ("method" in step.api ? step.api.method : "API"); const path = operation?.path ?? ("path" in step.api ? step.api.path : step.api.operationId); return <details id={`scenario-editor-step-${step.id}`} onToggle={event => { if (event.currentTarget.open) setVisitedSteps(previous => previous.has(step.id) ? previous : new Set([...previous, step.id])); }} className={`api-builder-step api-step-accordion api-selected-${method.toLowerCase()}`} key={step.id} aria-label={`편집 단계 ${index + 1}`}>
-      <summary className="api-step-summary" onClick={() => onStepFocus?.(step)}><span>{index + 1}</span><span className="api-selected-method">{method}</span><code>{path}</code><span className="api-step-summary-name">{usesManyServers(draft.steps) && <ServerTag server={step.server} names={serverNames} />}{step.name || operation?.summary || step.id}</span><small>{[["요청", configuredFields(draft, index).length], ["저장", step.extract.length], ["검증", step.expect?.length ?? 0]].filter(([, count]) => count).map(([label, count]) => `${label} ${count}`).join(" · ") || "설정 없음"}{step.auth ? ` · 인증 ${step.auth === "none" ? "없음" : step.auth.slice(8)}` : draft.auth ? ` · 인증 ${draft.auth.slice(8)}` : ""}</small></summary>
+      <summary className="api-step-summary" onClick={() => onStepFocus?.(step)}><span>{index + 1}</span><span className="api-selected-method">{method}</span><code>{path}</code><span className="api-step-summary-name">{usesManyServers(draft.steps) && <ServerTag server={step.server} names={serverNames} />}{missingApi(step) && <span className="api-step-missing" title="현재 명세에 이 API가 없습니다. 펼쳐서 API 바꾸기로 새 API를 연결하세요.">명세에 없음</span>}{step.name || operation?.summary || step.id}</span><small>{[["요청", configuredFields(draft, index).length], ["저장", step.extract.length], ["검증", step.expect?.length ?? 0]].filter(([, count]) => count).map(([label, count]) => `${label} ${count}`).join(" · ") || "설정 없음"}{step.auth ? ` · 인증 ${step.auth === "none" ? "없음" : step.auth.slice(8)}` : draft.auth ? ` · 인증 ${draft.auth.slice(8)}` : ""}</small></summary>
       {visitedSteps.has(step.id) && <div className="api-step-body">
       <div className="api-step-actions">
         {operation?.description && <button type="button" className="api-step-description-toggle" aria-expanded={descriptionOpen.has(step.id)} onClick={() => setDescriptionOpen(previous => { const next = new Set(previous); if (next.has(step.id)) next.delete(step.id); else next.add(step.id); return next; })}>{descriptionOpen.has(step.id) ? "▾" : "▸"} API 설명</button>}

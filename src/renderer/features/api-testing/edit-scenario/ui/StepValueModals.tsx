@@ -173,7 +173,7 @@ export function ValueActionModal({ index, field, current, state, globalNames, ha
           </>}
           {globalCreateOpen && <GlobalVariableCreateForm index={index} field={field} scope={scope} bridge={bridge} onCreated={(name, type) => { onGlobalCreated(name, type); onGlobal(name); }} onClose={() => setGlobalCreateOpen(false)} />}
         </section>
-        <button type="button" className={hasUserInput ? "api-value-modal-option is-active" : "api-value-modal-option"} onClick={onUserInput}><strong>{hasUserInput ? "사용자 입력 설정" : "실행 중 사용자 입력으로 받기"}</strong><small>{hasUserInput ? "안내 문구·형식·필수 여부 수정" : "이 API 직전에 값을 입력받음"}</small></button>
+        <button type="button" className={hasUserInput ? "api-value-modal-option is-active" : "api-value-modal-option"} onClick={onUserInput}><strong>{hasUserInput ? "실행 중 입력 설정" : "실행 중 입력으로 받기"}</strong><small>{hasUserInput ? "안내 문구·형식·필수 여부 수정" : "이 API 직전에 값을 입력받음"}</small></button>
       </div>
       <footer><button type="button" onClick={onClose}>닫기</button></footer>
     </section>
@@ -194,19 +194,18 @@ export function ScenarioInputSettingsModal({ index, field, userInput, onChange, 
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
   return <div className="api-value-modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
-    <section className="api-value-modal api-input-settings-modal" role="dialog" aria-modal="true" aria-label={`${field.name} 사용자 입력 설정`} onMouseDown={event => event.stopPropagation()}>
+    <section className="api-value-modal api-input-settings-modal" role="dialog" aria-modal="true" aria-label={`${field.name} 실행 중 입력 설정`} onMouseDown={event => event.stopPropagation()}>
       <header>
-        <div><p className="api-value-modal-kicker">실행 전 사용자 입력</p><h2>{field.name} 입력 설정</h2><small>{index + 1}단계 · {field.area} · {field.type}</small></div>
-        <button type="button" aria-label="사용자 입력 설정 닫기" onClick={onClose}>×</button>
+        <div><p className="api-value-modal-kicker">실행 중 입력</p><h2>{field.name} 입력 설정</h2><small>{index + 1}단계 · {field.area} · {field.type}</small></div>
+        <button type="button" aria-label="실행 중 입력 설정 닫기" onClick={onClose}>×</button>
       </header>
-      <p className="api-value-modal-note">이 API를 실행하기 직전에 값을 입력받아 <code>{field.name}</code>에 사용합니다. 입력값 원문은 시나리오 YAML에 저장하지 않습니다.</p>
-      <label>입력 안내 문구<input aria-label={`${index + 1}단계 ${field.name} 사용자 입력 안내`} value={userInput.label ?? ""} placeholder={`${field.name} 입력`} onChange={event => onChange({ label: event.target.value || undefined })} /></label>
+      <p className="api-value-modal-note">이 단계의 API를 호출하기 직전에 값을 입력받아 <code>{field.name}</code>에 넣습니다. 입력한 값은 시나리오에 저장하지 않습니다.</p>
+      <label>입력 안내 문구<input aria-label={`${index + 1}단계 ${field.name} 실행 중 입력 안내`} value={userInput.label ?? ""} placeholder={`${field.name} 입력`} onChange={event => onChange({ label: event.target.value || undefined })} /></label>
       <div className="api-input-settings-grid">
-        <label>값 형식<select aria-label={`${index + 1}단계 ${field.name} 사용자 입력 형식`} value={userInput.type} onChange={event => onChange({ type: event.target.value as ScenarioInput["type"] })}><option value="string">문자열</option><option value="number">숫자</option><option value="boolean">불리언</option><option value="object">JSON 객체</option><option value="array">JSON 배열</option></select></label>
-        <label className="api-check-row"><input type="checkbox" checked={userInput.required} onChange={event => onChange({ required: event.target.checked })} />필수 입력</label>
+        <label>값 형식<select aria-label={`${index + 1}단계 ${field.name} 실행 중 입력 형식`} value={userInput.type} onChange={event => onChange({ type: event.target.value as ScenarioInput["type"] })}><option value="string">문자열</option><option value="number">숫자</option><option value="boolean">불리언</option><option value="object">JSON 객체</option><option value="array">JSON 배열</option></select></label>
+        <label className="api-check-row api-input-required"><input type="checkbox" checked={userInput.required} onChange={event => onChange({ required: event.target.checked })} />필수 입력 (비우면 실행 중단)</label>
       </div>
-      <div className="api-value-preview"><span className="api-field-state api-field-state-user-input"><strong>사용자 입력</strong><code>{userInput.name}</code></span><small>필드에는 실행 시 <code>{`{{vars.${userInput.name}}}`}</code>로 전달됩니다.</small></div>
-      <footer><button type="button" className="api-danger-action" onClick={onRemove}>사용자 입력 해제</button><button type="button" className="api-primary" onClick={onClose}>완료</button></footer>
+            <footer><button type="button" className="api-danger-action" onClick={onRemove}>실행 중 입력 해제</button><button type="button" className="api-primary" onClick={onClose}>완료</button></footer>
     </section>
   </div>;
 }

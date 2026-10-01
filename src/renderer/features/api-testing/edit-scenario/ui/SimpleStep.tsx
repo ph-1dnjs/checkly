@@ -1,6 +1,6 @@
 import { GlobalVariableSetupLink } from "../../../../entities/api-testing";
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
-import { scenarioStepInputs, type Scenario, type Json, type ScenarioInput } from "../../../../../app/api-testing/shared/scenario";
+import { scenarioStepInputs, linkedValueLabel, type Scenario, type Json, type ScenarioInput } from "../../../../../app/api-testing/shared/scenario";
 import type { ApiCatalog, ApiOperation, ApiScope, ApiTestingBridge, ApiGlobal } from "../../../../../app/api-testing/shared/workspace";
 import { type RequestArea } from "../model/scenario-builder-model";
 import { objectValue } from "../../../../entities/api-testing";
@@ -47,6 +47,8 @@ export function SimpleStep({ scenario, index, catalogs, bindings, scope, bridge,
   const [globalsLoaded, setGlobalsLoaded] = useState(false);
   // A just-added check opens with its value field focused (no silent default like 200).
   const [newExpectation, setNewExpectation] = useState<number | null>(null);
+  // Check whose expected value is being linked to an earlier step's value.
+  const [expectLink, setExpectLink] = useState<number | null>(null);
   const responseNameSuggestions = responseGlobalNameSuggestions(operation, responsePointer);
   const existingGlobalExtraction = (pointer: string | null) => pointer === null ? undefined : step.extract.find(extract => extract.source === "body" && (extract.pointer ?? "") === pointer && extract.target.startsWith("globals."));
   const responseBadges = (pointer: string): ResponseBadge[] => {
@@ -206,7 +208,10 @@ export function SimpleStep({ scenario, index, catalogs, bindings, scope, bridge,
     // Shorten only exact, resolved references; keep the original value for editing and execution.
     const linkedValue = typeof current === "string" && scenario.valueBindings.some(binding => current === `{{vars.${binding.name}}}`);
     if (compact) return <span key={fieldKey} data-summary-field={fieldKey} className="api-json-line api-json-request-line">
-      <span className="api-json-request-key-group"><button type="button" className="api-json-token api-json-request-key-token" aria-label={`${index + 1}단계 ${field.name} 키 값 연결`} title={`${field.name} · ${field.type} · 값 연결`} aria-pressed={valueMenu === fieldKey} onClick={openValueMenu}>{JSON.stringify(field.name)}</button>{missingGlobal(state) && <GlobalVariableSetupLink onConfigure={onConfigureGlobal} name={state!.detail!} />}{state && <span className={`api-field-state api-field-state-${state.kind}`} title={state.detail}><strong>{state.label}</strong>{state.detail && (state.kind === "global" || state.detail !== field.name) && <code>{state.detail}</code>}</span>}</span><code>: <span className="api-json-value-token">{linkedValue
+      <span className="api-json-request-key-group"><button type="button" className="api-json-token api-json-request-key-token" aria-label={`${index + 1}단계 ${field.name} 키 값 연결`} title={`${field.name} · ${field.type} · 값 연결`} aria-pressed={valueMenu === fieldKey} onClick={openValueMenu}>{JSON.stringify(field.name)}</button>{missingGlobal(state) && <GlobalVariableSetupLink onConfigure={onConfigureGlobal} name={state!.detail!} />}{state && !hasUserInput && <span className={`api-field-state api-field-state-${state.kind}`} title={state.detail}><strong>{state.label}</strong>{state.detail && (state.kind === "global" || state.detail !== field.name) && <code>{state.detail}</code>}</span>}</span><code>: <span className="api-json-value-token">{hasUserInput && userInput
+        // A runtime input: show what will be asked, and open its settings (never the raw reference).
+        ? <button type="button" className="api-json-token api-json-input-token" aria-label={`${index + 1}단계 ${field.name} 실행 중 입력 설정`} title="실행할 때 입력받는 값 · 눌러서 설정" onClick={() => { setInputTarget(fieldKey); setValueMenu(null); }}>실행 중 입력 · {userInput.label ?? userInput.name}</button>
+        : linkedValue
         ? <button type="button" className="api-json-token" onClick={openValueMenu} aria-label={`${field.name} 연결값 설정`}>실행 시 연결값 사용</button>
         : inlineEdit === fieldKey
           ? <input className="api-json-inline-input" autoFocus onFocus={event => event.currentTarget.select()} aria-label={`${index + 1}단계 ${field.name} 값`} defaultValue={current === undefined ? "" : typeof current === "string" ? current : JSON.stringify(current)} placeholder={field.example !== undefined ? String(typeof field.example === "string" ? field.example : JSON.stringify(field.example)) : field.type}
@@ -334,11 +339,15 @@ export function SimpleStep({ scenario, index, catalogs, bindings, scope, bridge,
     {(step.expect ?? []).map((expectation, n) => {
       const change = (patch: Partial<typeof expectation>) => updateExpectations(step.expect!.map((v, i) => i === n ? { ...v, ...patch } : v));
       const target = expectation.source === "status" ? "" : ` ${expectation.pointer || expectation.header || "전체 응답"}`;
-      return <details key={n} className="api-verification-item" open={newExpectation === n || undefined}><summary>검증 {n + 1} · {verificationSourceLabels[expectation.source]}{target} · {verificationOperatorLabels[expectation.operator]}{expectation.operator !== "exists" ? ` ${expectedValueText(expectation.value)}` : ""}</summary>
+      const linked = linkedValueLabel(scenario, expectation.value);
+      return <details key={n} className="api-verification-item" open={newExpectation === n || undefined}><summary>검증 {n + 1} · {verificationSourceLabels[expectation.source]}{target} · {verificationOperatorLabels[expectation.operator]}{expectation.operator !== "exists" ? ` ${linked ? `[${linked}]` : expectedValueText(expectation.value)}` : ""}</summary>
       <label>검증 대상<select value={expectation.source} onChange={e => { const source = e.target.value as typeof expectation.source; change(source === "status" ? { source, pointer: undefined, header: undefined, operator: "equals", value: expectation.value ?? 200 } : { source, pointer: source === "body" ? "" : undefined, header: source === "header" ? "content-type" : undefined }); }}>{(Object.keys(verificationSourceLabels) as (keyof typeof verificationSourceLabels)[]).map(source => <option key={source} value={source}>{verificationSourceLabels[source]}</option>)}</select></label>
       {expectation.source !== "status" && <label>{expectation.source === "body" ? "응답 경로 (JSON Pointer)" : "헤더 이름"}<input value={expectation.pointer ?? expectation.header ?? ""} onChange={e => change(expectation.source === "body" ? { pointer: e.target.value } : { header: e.target.value })} /></label>}
       <label>검증 방식<select value={expectation.operator} onChange={e => change({ operator: e.target.value as VerificationOperator })}>{(Object.keys(verificationOperatorLabels) as VerificationOperator[]).filter(operator => expectation.source !== "status" || operator !== "exists").map(operator => <option key={operator} value={operator}>{verificationOperatorLabels[operator]}</option>)}</select></label>
-      {expectation.operator !== "exists" && <label>기대값<DraftInput autoFocus={newExpectation === n} required value={expectedValueText(expectation.value)} placeholder={expectation.source === "status" ? "예: 201 또는 404" : "예: success 또는 200"} onChange={e => change({ value: e.target.value === "" ? undefined : parseExpectedValue(e.target.value) })} /></label>}
+      {expectation.operator !== "exists" && (linked
+        ? <div className="api-expect-linked"><span>기대값</span><span className="api-expect-linked-value"><strong>앞 단계 값</strong><code>{linked}</code><button type="button" onClick={() => setExpectLink(n)}>바꾸기</button><button type="button" onClick={() => change({ value: undefined })}>연결 해제</button></span></div>
+        : <label>기대값<span className="api-expect-value-row"><DraftInput autoFocus={newExpectation === n} required value={expectedValueText(expectation.value)} placeholder={expectation.source === "status" ? "예: 201 또는 404" : "예: success 또는 200"} onChange={e => change({ value: e.target.value === "" ? undefined : parseExpectedValue(e.target.value) })} />{index > 0 && expectation.source !== "status" && <button type="button" title="앞 단계의 요청값·응답값과 같은지 비교합니다" onClick={() => setExpectLink(n)}>앞 단계 값</button>}</span></label>)}
+      {expectLink === n && <ScenarioValueLink scenario={scenario} targetIndex={index} target={{ area: "body", name: expectation.pointer || expectation.header || "기대값", expect: n }} catalogs={catalogs} bindings={bindings} onChange={onChange} onClose={() => setExpectLink(null)} />}
       <button type="button" className="api-danger-action" onClick={() => updateExpectations(step.expect!.filter((_, i) => i !== n))}>검증 제거</button>
     </details>; })}
     {error && <p role="alert" className="api-warning">{error}</p>}

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseScenario, stringifyScenario, type Scenario } from "../../src/app/api-testing/shared/scenario";
+import { describeCheck, linkedValueLabel, parseScenario, stringifyScenario, type Scenario } from "../../src/app/api-testing/shared/scenario";
 import { apiReference, connectValue, linkVariableName, moveStep } from "../../src/renderer/features/api-testing/edit-scenario/model/scenario-builder-model";
 
 const sample = () => parseScenario(`id: imported
@@ -87,4 +87,19 @@ test("linked values get readable default names from the source field", () => {
   // The same source reuses its existing name.
   scenario = connectValue(scenario, 0, 2, "response", "body", "/data/token", undefined, "", "body", "c");
   assert.equal((scenario.steps[2].request.body as Record<string, string>).c, "{{vars.token_2}}");
+});
+
+test("a check's expected value can link to an earlier step's request value", () => {
+  const source = sample();
+  source.steps[2].expect = [{ source: "body", pointer: "/data/count", operator: "equals", value: 1 }];
+  const linked = connectValue(source, 1, 2, "request", "body", "", undefined, "", "body", "count", "", 0);
+  const value = linked.steps[2].expect?.[0].value;
+  assert.match(String(value), /^\{\{vars\.[A-Za-z0-9_]+\}\}$/);
+  // The request field itself is untouched; only the check changes.
+  assert.deepEqual(linked.steps[2].request, source.steps[2].request);
+  assert.equal(linkedValueLabel(linked, value), "2단계 요청 본문");
+  assert.equal(describeCheck(linked.steps[2].expect?.[0], linked).rule, "기대값과 같은지 [2단계 요청 본문]");
+  assert.equal(linkedValueLabel(linked, "plain"), undefined);
+  assert.throws(() => connectValue(source, 1, 2, "request", "body", "", undefined, "", "body", "count", "", 3), /검증/);
+  stable(linked);
 });

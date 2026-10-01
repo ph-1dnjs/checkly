@@ -223,7 +223,7 @@ async function main() {
     await page.getByLabel("시나리오 이름", { exact: true }).fill("로그인 후 상품 조회");
     // loginId is typed while the scenario runs (runtime input), not stored in the scenario.
     await page.getByRole("button", { name: "1단계 loginId 키 값 연결", exact: true }).click();
-    await page.getByRole("button", { name: /^실행 중 사용자 입력으로 받기/ }).click();
+    await page.getByRole("button", { name: /^실행 중 입력으로 받기/ }).click();
     await page.getByRole("button", { name: "완료", exact: true }).click();
     await page.getByRole("button", { name: "/accessToken 키 선택", exact: true }).first().click();
     await page.getByRole("button", { name: /^전역변수로 저장/ }).click();
@@ -422,7 +422,9 @@ async function main() {
     await warnedEntry.click();
     await restored.getByRole("button", { name: "수정", exact: true }).click();
     await restored.locator(".api-compose-steps button").nth(1).click();
-    await restored.locator('details[aria-label="편집 단계 2"] > summary').click();
+    // The step whose API left the spec opens by itself.
+    await expect(restored.locator('details[aria-label="편집 단계 2"]')).toHaveAttribute("open", "");
+    await expect(restored.locator('details[aria-label="편집 단계 2"] .api-step-missing')).toHaveText("명세에 없음");
     await expect(restored.getByText("현재 API 명세에서 이 API를 찾을 수 없습니다", { exact: false })).toBeVisible();
     await restored.getByRole("button", { name: "2단계 API 바꾸기", exact: true }).click();
     const replaceDialog = restored.getByRole("dialog", { name: "2단계 API 바꾸기" });
