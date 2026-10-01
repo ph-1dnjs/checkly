@@ -465,10 +465,10 @@ export class ApiWorkspace {
     const bundle = splitAiBundle(z.string().max(2_000_000).parse(rawText));
     if (!bundle.scenarios.length) throw new Error("시나리오 YAML을 찾지 못했습니다. AI가 출력한 YAML을 그대로 붙여넣으세요");
     if (bundle.scenarios.length > 30) throw new Error("시나리오는 한 번에 30개까지 가져올 수 있습니다");
-    return this.checkAiAnswer(scope, bundle, (await this.listScenarios(scope.projectId)).map(({ id, name }) => ({ id, name })));
+    return this.checkAiAnswer(scope, bundle, (await this.listScenarios(scope.projectId)).map(({ id, name, draft }) => ({ id, name, ...(draft ? { draft } : {}) })));
   }
 
-  private async checkAiAnswer(scope: ApiEnvironmentScope, answer: AiBundle, existing: Array<{ id: string; name: string }>): Promise<ApiAiImportResult> {
+  private async checkAiAnswer(scope: ApiEnvironmentScope, answer: AiBundle, existing: Array<{ id: string; name: string; draft?: boolean }>): Promise<ApiAiImportResult> {
     const existingIds = new Set(existing.map(item => item.id)), existingNames = new Set(existing.map(item => item.name));
     const drafts: ApiAiDraft[] = [];
     // Who makes each global: saved scenarios, and scenarios in this same result.
@@ -512,19 +512,26 @@ export class ApiWorkspace {
       const problems: string[] = [];
       // Scenarios are referenced by name; an explicit id also works. Saved scenarios (e.g. a login that
       // makes the token) can be reused by their name, as the guide asks.
-      const reused: Record<string, string> = {};
+      // Only saved, runnable scenarios can join a suite; drafts are refused by saveSuite.
+      const runnableSaved = (name: string) => existing.filter(item => item.name === name && !item.draft);
+      const reused: Record<string, string> = {}, fallbacks: Record<string, string> = {};
       const scenarioIds = answer.suite.scenarios.map(ref => {
         const draft = drafts.find(item => item.name === ref) ?? drafts.find(item => item.id === ref);
-        if (draft) return draft.id;
-        const saved = existing.filter(item => item.name === ref);
+        if (draft) {
+          // A same-name draft starts unselected; if it isn't saved, the suite keeps the existing one.
+          const same = draft.sameName ? runnableSaved(draft.name) : [];
+          if (same.length === 1) { fallbacks[draft.id] = same[0].id; reused[same[0].id] = same[0].name; }
+          return draft.id;
+        }
+        const named = existing.filter(item => item.name === ref), saved = runnableSaved(ref);
         if (saved.length === 1) { reused[saved[0].id] = saved[0].name; return saved[0].id; }
-        problems.push(saved.length ? `스위트의 '${ref}'와 이름이 같은 기존 시나리오가 여러 개입니다` : `스위트의 '${ref}'가 이번 결과와 기존 시나리오 이름에 없습니다`);
+        problems.push(saved.length ? `스위트의 '${ref}'와 이름이 같은 기존 시나리오가 여러 개입니다` : named.length ? `스위트의 '${ref}'는 실행할 수 없는 초안이라 넣을 수 없습니다` : `스위트의 '${ref}'가 이번 결과와 기존 시나리오 이름에 없습니다`);
         return ref;
       });
       if (!scenarioIds.length) problems.push("스위트에 시나리오가 없습니다");
       const group = aiGroupPath(answer.suite.group);
       if (group.error) problems.push(group.error);
-      suite = { name: answer.suite.name.trim() || "AI 스위트", scenarioIds, problems, ...(group.path ? { groupPath: group.path } : {}), ...(Object.keys(reused).length ? { saved: reused } : {}) };
+      suite = { name: answer.suite.name.trim() || "AI 스위트", scenarioIds, problems, ...(group.path ? { groupPath: group.path } : {}), ...(Object.keys(reused).length ? { saved: reused } : {}), ...(Object.keys(fallbacks).length ? { fallbacks } : {}) };
     }
     return { drafts, suite };
   }

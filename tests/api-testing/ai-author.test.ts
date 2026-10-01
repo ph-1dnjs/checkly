@@ -208,3 +208,18 @@ test("a suite can reuse a saved scenario by name, and a broken scenario keeps it
     assert.deepEqual(result.suite?.problems, []);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
+
+test("a same-name draft falls back to the saved scenario, and saved drafts cannot join the suite", async () => {
+  const { dir, workspace, scope } = await setup();
+  try {
+    const source = (name: string) => `name: ${name}\nserver: 상점\nsteps:\n  - { api: 'GET /items/{id}', pathParams: { id: 1 } }\n`;
+    const saved = await workspace.saveScenario(scope, source("로그인"), {});
+    await workspace.saveScenarioDraft(scope, "name: 미완성\nserver: 상점\nsteps:\n  - { api: 'GET /nowhere' }\n", {});
+    const text = [source("로그인"), "suite: { name: 흐름, scenarios: [로그인, 미완성] }\n"].join("---\n");
+    const result = await workspace.checkAiScenarios(scope, text);
+    const [draft] = result.drafts;
+    assert.equal(draft.sameName, true);
+    assert.deepEqual(result.suite?.fallbacks, { [draft.id]: saved.id });
+    assert.deepEqual(result.suite?.problems, ["스위트의 '미완성'는 실행할 수 없는 초안이라 넣을 수 없습니다"]);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
