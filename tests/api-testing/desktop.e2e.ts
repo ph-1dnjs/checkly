@@ -362,6 +362,10 @@ async function main() {
       await expect(restored.getByText(/최근 동기화 성공/)).toBeVisible();
       await restored.getByRole("button", { name: "저장된 계정 삭제", exact: true }).click();
       await expect(restored.getByRole("button", { name: "저장된 계정 삭제", exact: true })).not.toBeVisible();
+      // Without a remembered account, refreshing asks for the password instead of failing with 401.
+      await restored.getByRole("button", { name: "명세 새로고침", exact: true }).click();
+      await expect(restored.getByText("계정을 기억하지 않아 비밀번호를 다시 입력해야 합니다", { exact: false })).toBeVisible();
+      await expect(restored.getByLabel("Swagger 비밀번호", { exact: true })).toBeFocused();
     }
     await restored.getByRole("button", { name: "태그 모두 펼치기", exact: true }).click();
     await expect(restored.getByRole("button", { name: /GET.*items/ })).toBeVisible();

@@ -5,7 +5,8 @@ import type { ApiCatalog, ApiOperation } from "../../../../../app/api-testing/sh
 import { connectValue, type RequestArea } from "../model/scenario-builder-model";
 import { responseFields } from "../../../../entities/api-testing";
 
-type RequestValueOption = { pointer: string; type: string };
+// `dynamic`: an input, global or linked value — the only request values worth comparing a response to.
+type RequestValueOption = { pointer: string; type: string; dynamic?: boolean };
 // `expect` set: the picked value becomes that check's expected value instead of a request field.
 export type ScenarioValueTarget = { area: RequestArea; name: string; expect?: number };
 
@@ -24,7 +25,7 @@ function requestValueFields(request: Scenario["steps"][number]["request"], area:
   const visit = (current: Json, pointer: string, depth: number) => {
     if (depth > 12 || result.length >= 500) return;
     if (current === null || typeof current !== "object") {
-      result.push({ pointer, type: current === null ? "null" : typeof current });
+      result.push({ pointer, type: current === null ? "null" : typeof current, dynamic: typeof current === "string" && /\{\{(inputs|globals|vars)\./.test(current) });
       return;
     }
     if (Array.isArray(current)) {
@@ -58,8 +59,9 @@ function isJsonContainer(type: string): boolean {
   return type === "object" || type === "array";
 }
 
-function JsonValueTree({ options, selected, onSelect, area, rootLabel }: {
-  options: Array<{ pointer: string; type: string; status?: string }>;
+function JsonValueTree({ options, selected, onSelect, area, rootLabel, onlyDynamic = false }: {
+  options: Array<{ pointer: string; type: string; status?: string; dynamic?: boolean }>;
+  onlyDynamic?: boolean;
   selected: string | null;
   onSelect: (pointer: string) => void;
   area: string;
@@ -76,7 +78,7 @@ function JsonValueTree({ options, selected, onSelect, area, rootLabel }: {
         const token = option.type === "array" ? "[" : option.type === "object" ? "{" : option.type === "string" ? '"string"' : option.type === "boolean" ? "false" : ["integer", "number"].includes(option.type) ? "0" : "null";
         return <div key={option.pointer}>
           <div style={{ paddingLeft: depth * 16 }} className="api-value-json-line">
-            <button type="button" className="api-json-token api-json-key-token" aria-label={`${option.pointer || "전체 값"} ${option.type} 값 선택`} aria-pressed={selected === option.pointer} title={option.pointer || "전체 값"} onClick={() => onSelect(option.pointer)}>{!option.pointer || arrayItem ? token : jsonTreeKey(option.pointer, rootLabel ?? area)}</button>
+            <button type="button" className="api-json-token api-json-key-token" aria-label={`${option.pointer || "전체 값"} ${option.type} 값 선택`} aria-pressed={selected === option.pointer} disabled={onlyDynamic && !option.dynamic} title={onlyDynamic && !option.dynamic ? "고정값은 기대값에 직접 적으세요" : option.pointer || "전체 값"} onClick={() => onSelect(option.pointer)}>{!option.pointer || arrayItem ? token : jsonTreeKey(option.pointer, rootLabel ?? area)}</button>
             {option.pointer && !arrayItem && <code>: <span className={`api-json-type-${option.type}`}>{token}</span></code>}
             {!container && !last && <code>,</code>}
           </div>
@@ -175,7 +177,8 @@ export function ScenarioValueLink({ scenario, targetIndex, target, catalogs, bin
 
         {source === "request" && <section className="api-value-source-section" aria-label="요청값 출처 설정">
           <label>요청 영역<select aria-label="요청 출처 영역" value={requestArea} onChange={event => { setRequestArea(event.target.value as RequestArea); resetSelection(); }}>{(["pathParams", "query", "headers", "cookies", "body"] as const).map(area => <option key={area} value={area}>{area}</option>)}</select></label>
-          {requestOptions.length ? <JsonValueTree options={requestOptions} selected={pointer} onSelect={setPointer} area={requestArea} /> : <p className="api-field-menu-help">저장된 요청값이 없습니다. 출처 단계의 요청 입력을 먼저 설정하세요.</p>}
+          {target.expect !== undefined && requestOptions.length > 0 && !requestOptions.some(option => option.dynamic) && <p className="api-field-menu-help">이 영역에는 실행 중 입력·전역변수·연결값이 없습니다. 고정값은 기대값에 직접 적으세요.</p>}
+          {requestOptions.length ? <JsonValueTree options={requestOptions} selected={pointer} onSelect={setPointer} area={requestArea} onlyDynamic={target.expect !== undefined} /> : <p className="api-field-menu-help">저장된 요청값이 없습니다. 출처 단계의 요청 입력을 먼저 설정하세요.</p>}
         </section>}
 
         {source === "response" && <section className="api-value-source-section" aria-label="응답값 출처 설정">
