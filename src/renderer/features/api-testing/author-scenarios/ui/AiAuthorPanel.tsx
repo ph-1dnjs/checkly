@@ -85,7 +85,7 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
       }
       let suiteNote = "";
       if (result.suite && saveSuite) {
-        const ids = result.suite.scenarioIds.filter(id => runnable.has(id));
+        const ids = result.suite.scenarioIds.filter(id => runnable.has(id) || result.suite!.saved?.[id] !== undefined);
         const skipped = result.suite.scenarioIds.length - ids.length;
         if (ids.length) {
           try {
@@ -100,7 +100,7 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
   };
 
   const problems = result ? problemReport(result) : "";
-  const nameOf = (id: string) => result?.drafts.find(draft => draft.id === id)?.name ?? id;
+  const nameOf = (id: string) => result?.drafts.find(draft => draft.id === id)?.name ?? result?.suite?.saved?.[id] ?? id;
   const usable = operations.filter(operation => !operation.unavailable).length;
   const unavailable = operations.length - usable;
   const status = (step: 1 | 3) => messageStep === step && <>
@@ -145,7 +145,7 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
             <div className="api-actions"><button type="button" onClick={() => void act(async () => { await navigator.clipboard.writeText(problems); setMessage("문제를 복사했습니다. AI에 붙여넣으세요."); })}>문제 복사</button></div>
           </div>}
           <ul>{result.drafts.map(draft => <li key={draft.id} className={draft.issues.length ? "has-issues" : ""}>
-            <label className="api-check-row"><input type="checkbox" aria-label={`${draft.name} 저장`} checked={chosen.includes(draft.id)} disabled={saving} onChange={e => setChosen(e.target.checked ? [...chosen, draft.id] : chosen.filter(id => id !== draft.id))} /><strong>{draft.name}</strong><small>{draft.stepCount}단계{draft.groupPath ? ` · ${draft.groupPath.join(" › ")}` : ""} · {draft.issues.length ? "수정 필요 (초안으로 저장)" : "바로 실행 가능"}</small></label>
+            <label className="api-check-row"><input type="checkbox" aria-label={`${draft.name} 저장`} checked={chosen.includes(draft.id)} disabled={saving} onChange={e => setChosen(e.target.checked ? [...chosen, draft.id] : chosen.filter(id => id !== draft.id))} /><strong>{draft.name}</strong><small>{draft.stepCount ? `${draft.stepCount}단계` : "단계 확인 불가"}{draft.groupPath ? ` · ${draft.groupPath.join(" › ")}` : ""} · {draft.issues.length ? "수정 필요 (초안으로 저장)" : draft.executionIssues.length ? "저장 가능 · 실행 전 설정 필요" : "바로 실행 가능"}</small></label>
             {draft.notices.length > 0 && <p className="api-field-help">{draft.notices.join(" · ")}</p>}
             {draft.issues.length > 0 && <ul className="api-ai-author-issues">{draft.issues.map(issue => <li key={issue}>{issue}</li>)}</ul>}
             {draft.executionIssues.length > 0 && <p className="api-field-help">실행 전에 필요: {draft.executionIssues.join(" · ")}</p>}
@@ -153,7 +153,7 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
           </li>)}</ul>
           {result.suite && <div className="api-ai-author-suite">
             <label className="api-check-row"><input type="checkbox" checked={saveSuite} disabled={saving} onChange={e => setSaveSuite(e.target.checked)} />스위트 ‘{result.suite.name}’{result.suite.groupPath ? ` (${result.suite.groupPath.join(" › ")})` : ""}도 저장</label>
-            <ol>{result.suite.scenarioIds.map(id => <li key={id}>{nameOf(id)}{result.drafts.find(draft => draft.id === id)?.issues.length ? " · 수정 필요라 제외" : ""}</li>)}</ol>
+            <ol>{result.suite.scenarioIds.map(id => <li key={id}>{nameOf(id)}{result.drafts.find(draft => draft.id === id)?.issues.length ? " · 수정 필요라 제외" : result.suite!.saved?.[id] !== undefined ? " · 기존 시나리오" : ""}</li>)}</ol>
             {result.suite.problems.map(problem => <p key={problem} className="api-field-help">{problem}</p>)}
           </div>}
           <div className="api-actions"><button className="api-primary" disabled={saving || !chosen.length} onClick={() => void save()}>{saving ? "저장 중…" : "선택한 것 저장"}</button></div>

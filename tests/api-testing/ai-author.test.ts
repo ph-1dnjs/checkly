@@ -50,10 +50,10 @@ test("checking pasted scenarios reports problems per draft and for the suite wit
     const text = [login, read.replace("GET /items/{id}", "GET /missing"), read.replace("shop/read", "taken"), "suite: { name: 상점 흐름, scenarios: [shop/login, ghost] }\n", "name: ["].join("---\n");
     const result = await workspace.checkAiScenarios(scope, text);
     assert.deepEqual(result.drafts[0].issues, []);
-    assert.match(result.drafts[1].issues.join(), /API를 유일하게 찾을 수 없습니다/);
+    assert.match(result.drafts[1].issues.join(), /명세에 없는 API입니다/);
     assert.match(result.drafts[2].issues.join(), /id 'taken'가 기존 시나리오와 겹칩니다/);
     assert.match(result.drafts[3].issues[0], /^YAML 오류/);
-    assert.deepEqual(result.suite, { name: "상점 흐름", scenarioIds: ["shop/login", "ghost"], problems: ["스위트의 'ghost'가 이번 결과의 시나리오 이름에 없습니다"] });
+    assert.deepEqual(result.suite, { name: "상점 흐름", scenarioIds: ["shop/login", "ghost"], problems: ["스위트의 'ghost'가 이번 결과와 기존 시나리오 이름에 없습니다"] });
     assert.deepEqual((await workspace.listScenarios(project.id)).map(item => item.id), ["taken"]);
     await assert.rejects(workspace.checkAiScenarios(scope, "AI가 아무것도 만들지 않았습니다"), /시나리오 YAML을 찾지 못했습니다/);
   } finally { await rm(dir, { recursive: true, force: true }); }
@@ -191,5 +191,20 @@ test("keeping a scenario's old step names stops the suggestion until the title c
     // A different new title is suggested again.
     await workspace.importSpec(specScope, spec.replace('"summary":"상품 조회"', '"summary":"상품 정보"'));
     assert.deepEqual((await workspace.checkScenarioSpecs(scope)).renamed.map(item => item.steps), [[{ from: "상품 조회", to: "상품 정보" }]]);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test("a suite can reuse a saved scenario by name, and a broken scenario keeps its written name", async () => {
+  const { dir, workspace, scope } = await setup();
+  try {
+    const saved = await workspace.saveScenario(scope, "name: 기존 로그인\nserver: 상점\nsteps:\n  - { api: 'GET /items/{id}', pathParams: { id: 1 } }\n", {});
+    const broken = "name: 깨진 시나리오\nserver: 상점\nsteps:\n  - { api: 'GET /items/{id}', pathParams: { id: '{{steps.2.response.body./id}}' } }\n";
+    const text = [broken, "suite: { name: 흐름, scenarios: [기존 로그인, 깨진 시나리오] }\n"].join("---\n");
+    const result = await workspace.checkAiScenarios(scope, text);
+    assert.equal(result.drafts[0].name, "깨진 시나리오");
+    assert.match(result.drafts[0].issues.join(), /YAML 오류/);
+    assert.deepEqual(result.suite?.scenarioIds, [saved.id, result.drafts[0].id]);
+    assert.deepEqual(result.suite?.saved, { [saved.id]: "기존 로그인" });
+    assert.deepEqual(result.suite?.problems, []);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });

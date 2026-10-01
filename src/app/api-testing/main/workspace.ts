@@ -471,6 +471,17 @@ export class ApiWorkspace {
   private async checkAiAnswer(scope: ApiEnvironmentScope, answer: AiBundle, existing: Array<{ id: string; name: string }>): Promise<ApiAiImportResult> {
     const existingIds = new Set(existing.map(item => item.id)), existingNames = new Set(existing.map(item => item.name));
     const drafts: ApiAiDraft[] = [];
+    // Who makes each global: saved scenarios, and scenarios in this same result.
+    const producers = new Map((await this.aiProjectSummary(scope.projectId)).globals.map(item => [item.name, [...item.producers]]));
+    for (const written of answer.scenarios) {
+      const name = aiScenarioName(written.yaml);
+      if (!name) continue;
+      for (const match of written.yaml.matchAll(/target:\s*['"]?globals\.([A-Za-z][A-Za-z0-9_]*)/g)) producers.set(match[1], [...(producers.get(match[1]) ?? []), name]);
+    }
+    const withProducer = (issue: string) => issue.replace(/전역변수 '([A-Za-z][A-Za-z0-9_]*)' 값이 없습니다\. 전역변수에서 설정하세요/, (text, global: string) => {
+      const from = [...new Set(producers.get(global) ?? [])];
+      return from.length ? `전역변수 '${global}' 값이 없습니다. '${from[0]}'을(를) 먼저 실행하면 만들어집니다` : text;
+    });
     for (const [index, written] of answer.scenarios.entries()) {
       const yaml = withGeneratedId(written.yaml);
       let id = `ai-draft-${index + 1}`, name = `AI 시나리오 ${index + 1}`, stepCount = 0;
@@ -481,9 +492,11 @@ export class ApiWorkspace {
         ({ id, name } = preview.scenario);
         stepCount = preview.scenario.steps.length;
         issues.push(...preview.issues);
-        executionIssues = preview.executionIssues ?? [];
+        executionIssues = groupMissingGlobals((preview.executionIssues ?? []).map(withProducer));
       } catch (error) {
         issues.push(`YAML 오류: ${(error as Error).message}`);
+        // Keep the written name so the list and the suite still recognise this scenario.
+        name = aiScenarioName(written.yaml) ?? name;
       }
       if (existingIds.has(id)) issues.push(`id '${id}'가 기존 시나리오와 겹칩니다. id를 지우면 Checkly가 새로 붙입니다`);
       if (drafts.some(draft => draft.id === id)) issues.push(`id '${id}'가 이번 결과의 다른 시나리오와 겹칩니다`);
@@ -497,16 +510,21 @@ export class ApiWorkspace {
     let suite: ApiAiImportResult["suite"] = null;
     if (answer.suite) {
       const problems: string[] = [];
-      // Scenarios are referenced by name; an explicit id also works.
+      // Scenarios are referenced by name; an explicit id also works. Saved scenarios (e.g. a login that
+      // makes the token) can be reused by their name, as the guide asks.
+      const reused: Record<string, string> = {};
       const scenarioIds = answer.suite.scenarios.map(ref => {
         const draft = drafts.find(item => item.name === ref) ?? drafts.find(item => item.id === ref);
-        if (!draft) problems.push(`스위트의 '${ref}'가 이번 결과의 시나리오 이름에 없습니다`);
-        return draft?.id ?? ref;
+        if (draft) return draft.id;
+        const saved = existing.filter(item => item.name === ref);
+        if (saved.length === 1) { reused[saved[0].id] = saved[0].name; return saved[0].id; }
+        problems.push(saved.length ? `스위트의 '${ref}'와 이름이 같은 기존 시나리오가 여러 개입니다` : `스위트의 '${ref}'가 이번 결과와 기존 시나리오 이름에 없습니다`);
+        return ref;
       });
       if (!scenarioIds.length) problems.push("스위트에 시나리오가 없습니다");
       const group = aiGroupPath(answer.suite.group);
       if (group.error) problems.push(group.error);
-      suite = { name: answer.suite.name.trim() || "AI 스위트", scenarioIds, problems, ...(group.path ? { groupPath: group.path } : {}) };
+      suite = { name: answer.suite.name.trim() || "AI 스위트", scenarioIds, problems, ...(group.path ? { groupPath: group.path } : {}), ...(Object.keys(reused).length ? { saved: reused } : {}) };
     }
     return { drafts, suite };
   }
@@ -922,7 +940,7 @@ export class ApiWorkspace {
         if (!catalogs.has(serverId)) catalogs.set(serverId, await this.getCatalog({ ...scope, serverId }));
         const api = step.api;
         const matches = catalogs.get(serverId)?.operations.filter(o => "operationId" in api ? o.operationId === api.operationId : o.method === api.method && o.path === api.path) ?? [];
-        if (matches.length !== 1) issues.push(`${stepName}: 현재 환경의 명세에서 API를 유일하게 찾을 수 없습니다`);
+        if (matches.length !== 1) issues.push(`${stepName}: ${"operationId" in api ? api.operationId : `${api.method} ${api.path}`}${matches.length ? "는 명세에 같은 API가 여러 개 있습니다" : "는 명세에 없는 API입니다"}`);
         else {
           const op = matches[0];
           issues.push(...op.warnings.map(w => `${stepName}: ${w}`));
@@ -1101,4 +1119,22 @@ export class ApiWorkspace {
       return { status: step.status, httpStatus: step.httpStatus, durationMs: step.durationMs, error: step.error, ...(detail?.request ? { request: detail.request } : {}), ...(detail?.response ? detail.response : {}) };
     } finally { this.active.delete(runKey); }
   }
+}
+
+/** The top-level `name:` of a scenario document, readable even when the rest does not parse. */
+function aiScenarioName(yaml: string): string | undefined {
+  const value = /^name:[ \t]*(.+?)[ \t]*$/m.exec(yaml)?.[1];
+  return value?.replace(/^(['"])(.*)\1$/, "$2").trim() || undefined;
+}
+
+/** One line per missing global ("1·2단계: …") instead of the same message for every step. */
+function groupMissingGlobals(issues: string[]): string[] {
+  const grouped = new Map<string, number[]>();
+  const rest: string[] = [];
+  for (const issue of issues) {
+    const match = /^(\d+)단계 · [^:]+: (?:인증 )?(전역변수 '[A-Za-z][A-Za-z0-9_]*' 값이 없습니다\..*)$/.exec(issue);
+    if (!match) { rest.push(issue); continue; }
+    grouped.set(match[2], [...(grouped.get(match[2]) ?? []), Number(match[1])]);
+  }
+  return [...[...grouped].map(([message, steps]) => `${[...new Set(steps)].join("·")}단계: ${message}`), ...rest];
 }

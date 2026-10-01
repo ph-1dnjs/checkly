@@ -268,7 +268,7 @@ export function SimpleStep({ scenario, index, catalogs, bindings, scope, bridge,
   const spec = catalogs[bindings[step.server] ?? step.server]?.spec;
   return <div className="api-simple-step">
     <header className="api-simple-section-heading"><h3>요청</h3></header>
-    {!operation && (catalogLoading ? <p role="status">명세를 불러오는 중…</p> : <p className="api-warning">현재 API 명세에서 이 API를 찾을 수 없습니다. 경로가 바뀌었다면 위의 <strong>API 바꾸기</strong>로 새 API를 연결하세요. 요청값은 그대로 유지됩니다.{requestOperation && " 요청 필드는 마지막으로 확인한 명세 기준입니다."}</p>)}
+    {!operation && (catalogLoading ? <p role="status">명세를 불러오는 중…</p> : <p className="api-warning">명세에 없는 API입니다. 경로가 바뀌었다면 위의 <strong>API 바꾸기</strong>로 새 API를 연결하세요. 요청값은 그대로 유지됩니다.{requestOperation && " 요청 필드는 마지막으로 확인한 명세 기준입니다."}</p>)}
     {requestOperation && <>
       {fields.filter(field => field.area !== "body").length > 0 ? <div className="api-request-fields">{fields.filter(field => field.area !== "body").map(field => renderField(field))}</div> : !hasRequestBody && <p>입력 가능한 요청 파라미터가 없습니다.</p>}
       {hasRequestBody && <RequestBodyEditor operation={requestOperation} step={step} update={update} bodyFields={fields.filter(field => field.area === "body")} renderField={renderField} />}

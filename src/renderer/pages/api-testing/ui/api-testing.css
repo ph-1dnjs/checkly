@@ -1235,3 +1235,5 @@ body.panel-resizing { cursor:col-resize; user-select:none; }
 .api-project-servers { display:inline-flex; align-items:center; gap:4px; margin-left:4px; font-size:11.5px; color:var(--ck-color-text-mute); }
 .api-project-servers .api-run-server { margin:0; }
 .api-testing-page .api-value-json-line button.api-json-key-token:disabled { opacity:.45; cursor:not-allowed; }
+.api-testing-page .api-json-reference-value { padding:0 5px; border-radius:var(--ck-dim-radius-pill); background:var(--ck-color-wait-tint); color:var(--ck-color-wait-ink); font-family:var(--ck-font-ui); font-size:11px; font-weight:600; }
+.api-testing-page .api-spec-source .api-spec-error { margin:0; border-radius:0; border-width:1px 0 0; }

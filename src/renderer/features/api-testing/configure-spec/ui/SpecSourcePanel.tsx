@@ -29,6 +29,8 @@ type Props = {
   onImport: (kind: "file" | "url", url?: string) => Promise<boolean>;
   onDeleteCatalog: () => Promise<void>;
   onDeleteSavedAccount: () => void;
+  /** The last import failure; the form opens so the URL or account can be fixed in place. */
+  error?: string;
 };
 
 /**
@@ -52,6 +54,7 @@ export function SpecSourcePanel(props: Props) {
   const [askPassword, setAskPassword] = useState(0);
   const passwordInput = useRef<HTMLInputElement>(null);
   useEffect(() => { if (askPassword) passwordInput.current?.focus(); }, [askPassword]);
+  useEffect(() => { if (props.error) setOpen(true); }, [props.error]);
   const needsPassword = props.authKind === "basic" && !(sync?.hasSavedAccount && props.remember && sync.username === props.username) && !props.password;
   const importUrl = async () => { if (await props.onImport("url")) { setOpen(false); setAskPassword(0); } };
   const importFile = async () => { if (await props.onImport("file")) setOpen(false); };
@@ -71,6 +74,7 @@ export function SpecSourcePanel(props: Props) {
         <button type="button" aria-label="명세 설정" aria-expanded={open} disabled={disabled && !open} onClick={() => setOpen(value => !value)}>설정<Icon name="expand_more" size={16} className="api-spec-settings-chevron" /></button>
       </span>
     </div>
+    {props.error && <p className="api-warning api-spec-error" role="alert">{props.error}</p>}
     {!!props.missingApis?.length && <details className="api-spec-missing" role="alert">
       <summary>시나리오 {props.missingApis.length}개가 명세에 없는 API를 씁니다. 시나리오 이름을 눌러 해당 단계의 <strong>API 바꾸기</strong>로 새 API를 연결하세요.</summary>
       <ul>{props.missingApis.map(item => <li key={item.scenarioId}>{scenarioLink(item)} · {item.steps.join(", ")}</li>)}</ul>

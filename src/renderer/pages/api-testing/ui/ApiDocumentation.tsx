@@ -163,7 +163,7 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
     }
     const system = systemRef.current;
     const operation = displayCatalog?.operations.find(op => "operationId" in step.api ? op.operationId === step.api.operationId : op.path === step.api.path && op.method.toUpperCase() === step.api.method);
-    if (!system || !operation) { setNotice("현재 API 명세에서 이 API를 찾을 수 없습니다."); return; }
+    if (!system || !operation) { setNotice("명세에 없는 API입니다."); return; }
     setActiveStepId(step.id);
     system.layoutActions.updateFilter("");
     withoutDeepLink(() => { for (const tag of operation.tags?.length ? operation.tags : [operation.tag]) system.layoutActions.show(["operations-tag", tag], true); });

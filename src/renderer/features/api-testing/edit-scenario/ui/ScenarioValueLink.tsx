@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import type { Json, Scenario, ValueBinding } from "../../../../../app/api-testing/shared/scenario";
+import { scenarioStepInputs } from "../../../../../app/api-testing/shared/scenario";
 import type { ApiCatalog, ApiOperation } from "../../../../../app/api-testing/shared/workspace";
 import { connectValue, type RequestArea } from "../model/scenario-builder-model";
 import { responseFields } from "../../../../entities/api-testing";
 
 // `dynamic`: an input, global or linked value — the only request values worth comparing a response to.
-type RequestValueOption = { pointer: string; type: string; dynamic?: boolean };
+type RequestValueOption = { pointer: string; type: string; dynamic?: boolean; label?: string };
 // `expect` set: the picked value becomes that check's expected value instead of a request field.
 export type ScenarioValueTarget = { area: RequestArea; name: string; expect?: number };
 
@@ -18,14 +19,14 @@ function findOperation(scenario: Scenario, index: number, catalogs: Record<strin
     : operation.path === step.api.path && operation.method.toUpperCase() === step.api.method.toUpperCase());
 }
 
-function requestValueFields(request: Scenario["steps"][number]["request"], area: RequestArea): RequestValueOption[] {
+function requestValueFields(request: Scenario["steps"][number]["request"], area: RequestArea, inputNames: Set<string> = new Set()): RequestValueOption[] {
   const value = request[area];
   if (value === undefined) return [];
   const result: RequestValueOption[] = [];
   const visit = (current: Json, pointer: string, depth: number) => {
     if (depth > 12 || result.length >= 500) return;
     if (current === null || typeof current !== "object") {
-      result.push({ pointer, type: current === null ? "null" : typeof current, dynamic: typeof current === "string" && /\{\{(inputs|globals|vars)\./.test(current) });
+      result.push({ pointer, type: current === null ? "null" : typeof current, label: requestValueText(current, inputNames), dynamic: typeof current === "string" && /\{\{(inputs|globals|vars)\./.test(current) });
       return;
     }
     if (Array.isArray(current)) {
@@ -55,12 +56,21 @@ function jsonTreeKey(pointer: string, rootLabel: string): string {
   return /^\d+$/.test(segment) ? `[${segment}]` : JSON.stringify(segment);
 }
 
+/** A request value as the editor shows it: the set value, or what a reference stands for. */
+function requestValueText(value: Json, inputNames: Set<string>): string {
+  if (typeof value !== "string") return JSON.stringify(value);
+  const reference = /^\{\{(inputs|globals|vars)\.([^}]+)\}\}$/.exec(value);
+  if (!reference) return JSON.stringify(value);
+  // Runtime inputs are stored as vars too; the step's inputs tell them apart from links.
+  return reference[1] === "inputs" || inputNames.has(reference[2]) ? "실행 중 입력" : reference[1] === "globals" ? `전역변수 ${reference[2]}` : "값 연결";
+}
+
 function isJsonContainer(type: string): boolean {
   return type === "object" || type === "array";
 }
 
 function JsonValueTree({ options, selected, onSelect, area, rootLabel, onlyDynamic = false }: {
-  options: Array<{ pointer: string; type: string; status?: string; dynamic?: boolean }>;
+  options: Array<{ pointer: string; type: string; status?: string; dynamic?: boolean; label?: string }>;
   onlyDynamic?: boolean;
   selected: string | null;
   onSelect: (pointer: string) => void;
@@ -75,11 +85,11 @@ function JsonValueTree({ options, selected, onSelect, area, rootLabel, onlyDynam
       const render = (option: typeof fields[number], depth: number, last: boolean, arrayItem = false): ReactNode => {
         const children = fields.filter(child => child.pointer !== option.pointer && child.pointer.slice(0, child.pointer.lastIndexOf("/")) === option.pointer);
         const container = isJsonContainer(option.type);
-        const token = option.type === "array" ? "[" : option.type === "object" ? "{" : option.type === "string" ? '"string"' : option.type === "boolean" ? "false" : ["integer", "number"].includes(option.type) ? "0" : "null";
+        const token = option.type === "array" ? "[" : option.type === "object" ? "{" : option.label !== undefined ? option.label : option.type === "string" ? '"string"' : option.type === "boolean" ? "false" : ["integer", "number"].includes(option.type) ? "0" : "null";
         return <div key={option.pointer}>
           <div style={{ paddingLeft: depth * 16 }} className="api-value-json-line">
             <button type="button" className="api-json-token api-json-key-token" aria-label={`${option.pointer || "전체 값"} ${option.type} 값 선택`} aria-pressed={selected === option.pointer} disabled={onlyDynamic && !option.dynamic} title={onlyDynamic && !option.dynamic ? "고정값은 기대값에 직접 적으세요" : option.pointer || "전체 값"} onClick={() => onSelect(option.pointer)}>{!option.pointer || arrayItem ? token : jsonTreeKey(option.pointer, rootLabel ?? area)}</button>
-            {option.pointer && !arrayItem && <code>: <span className={`api-json-type-${option.type}`}>{token}</span></code>}
+            {option.pointer && !arrayItem && <code>: <span className={option.dynamic ? "api-json-reference-value" : `api-json-type-${option.type}`}>{token}</span></code>}
             {!container && !last && <code>,</code>}
           </div>
           {container && <>{children.map((child, index) => render(child, depth + 1, index === children.length - 1, option.type === "array"))}<div style={{ paddingLeft: depth * 16 }}><code>{option.type === "array" ? "]" : "}"}{!last && ","}</code></div></>}
@@ -125,7 +135,7 @@ export function ScenarioValueLink({ scenario, targetIndex, target, catalogs, bin
   const sourceStep = from >= 0 && from < targetIndex ? scenario.steps[from] : undefined;
   const sourceOperation = sourceStep ? findOperation(scenario, from, catalogs, bindings) : undefined;
   const sourceSpec = sourceStep ? catalogs[bindings[sourceStep.server] ?? sourceStep.server]?.spec : undefined;
-  const requestOptions = source === "request" && sourceStep ? requestValueFields(sourceStep.request, requestArea) : [];
+  const requestOptions = source === "request" && sourceStep ? requestValueFields(sourceStep.request, requestArea, new Set(scenarioStepInputs(sourceStep).map(input => input.name))) : [];
   const responseOptions = source === "response" && responseArea === "body" && sourceOperation ? responseFields(sourceOperation.responses, sourceSpec) : [];
   const ready = source === "request" ? pointer !== null : responseArea === "body" ? pointer !== null : Boolean(header.trim());
 
