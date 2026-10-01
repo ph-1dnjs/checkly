@@ -5,11 +5,13 @@ import { configuredFields } from "../lib/settings-summary-model";
 import { SummaryJson } from "./SummaryJson";
 import { responseFields } from "../lib/response-fields";
 import { GlobalVariableSetupLink } from "./GlobalVariableSetupLink";
-import { expectedValueText, verificationOperatorLabels, verificationSourceLabels } from "../../../../app/api-testing/shared/scenario";
+import { expectedValueText, linkedValueLabel, verificationOperatorLabels, verificationSourceLabels } from "../../../../app/api-testing/shared/scenario";
 
 const jsonKind = (value: unknown) => value === null ? "null" : typeof value === "string" ? "string" : typeof value === "number" ? "number" : typeof value === "boolean" ? "boolean" : "string";
 
 type ApiOperation = ApiCatalog["operations"][number];
+const requestAreas = ["pathParams", "query", "headers", "cookies", "body"] as const;
+const requestAreaLabels: Record<string, string> = { pathParams: "경로", query: "쿼리", headers: "헤더", cookies: "쿠키", body: "본문" };
 
 export type ScenarioStepSummaryProps = {
   scenario: Scenario;
@@ -44,16 +46,21 @@ export function ScenarioStepSummary({ scenario, stepIndex, operation, catalog, g
   const fieldContent = (field: typeof fields[number]) => {
     const value = field.direct
       ? <span className={`api-json-syntax-${jsonKind(field.value)}`}>{JSON.stringify(field.value) ?? "null"}</span>
-      : <span className={`api-field-state api-field-state-${field.global ? "global" : field.label === "실행 중 입력" ? "user-input" : "scenario"}`}><strong>{field.global ? "전역변수" : field.label === "실행 중 입력" ? "사용자 입력" : "값 연결"}</strong>{field.label !== "실행 중 입력" && <code>{field.global ?? field.label}</code>}</span>;
+      : <span className={`api-field-state api-field-state-${field.global ? "global" : field.label === "실행 중 입력" ? "user-input" : "scenario"}`}><strong>{field.global ? "전역변수" : field.label === "실행 중 입력" ? "실행 중 입력" : "값 연결"}</strong>{field.label !== "실행 중 입력" && <code>{field.global ?? field.label}</code>}</span>;
     return <>{action(value, "api-json-token api-summary-value", onSelect ? () => onSelect(step.id, field.key) : undefined, `${field.field} 설정`)}{isMissingGlobal(field) ? <GlobalVariableSetupLink onConfigure={onConfigureGlobal} name={field.global!} /> : field.warning && <span className="api-response-json-badge is-verify" role="status">{field.warning}</span>}</>;
   };
+  const knownRequestPaths = [
+    ...Object.keys(operation?.bodyExample && typeof operation.bodyExample === "object" && !Array.isArray(operation.bodyExample) ? operation.bodyExample : {}).map(key => ["body", key]),
+    ...(operation?.parameters ?? []).map(parameter => [areaForParameter(parameter.location), parameter.name]),
+  ];
   return <>
     {(auth || step.auth === "none") && <p className="api-field-help">인증: {auth ? `Bearer · ${auth.slice(8)}${step.auth ? " (개별 설정)" : " (기본값)"}` : "없음 (개별 설정)"}</p>}
     {!auth && step.auth !== "none" && !fields.length && !step.extract.length && !step.expect?.length && <p>설정 없음</p>}
-    {!!fields.length && <><h4 data-summary-area="request" tabIndex={-1}>요청</h4><SummaryJson knownPaths={[
-      ...Object.keys(operation?.bodyExample && typeof operation.bodyExample === "object" && !Array.isArray(operation.bodyExample) ? operation.bodyExample : {}).map(key => ["body", key]),
-      ...(operation?.parameters ?? []).map(parameter => [parameter.location, parameter.name]),
-    ]} entries={fields.map(field => ({ path: field.path, content: fieldContent(field) }))} /></>}
+    {!!fields.length && <><h4 data-summary-area="request" tabIndex={-1}>요청</h4>{requestAreas.filter(area => fields.some(field => field.path[0] === area)).map(area => <div key={area} className="api-summary-request-area">
+      {/* Each request part is labelled by name, so `body`/`pathParams` never look like keys of the sent JSON. */}
+      <span className="api-summary-area-label">{requestAreaLabels[area]}</span>
+      <SummaryJson knownPaths={knownRequestPaths.filter(path => path[0] === area).map(path => path.slice(1))} entries={fields.filter(field => field.path[0] === area).map(field => ({ path: field.path.slice(1), content: fieldContent(field) }))} />
+    </div>)}</>}
     {!!step.extract.length && <><h4 data-summary-area="response" tabIndex={-1}>응답에서 저장</h4><SummaryJson knownPaths={operation ? responseFields(operation.responses, catalog?.spec).filter(field => /^2/.test(field.status)).map(field => field.pointer.split("/").slice(1).map(part => part.replace(/~1/g, "/").replace(/~0/g, "~"))) : []} entries={step.extract.map(extract => {
       const isGlobal = extract.target.startsWith("globals.");
       const target = isGlobal ? extract.target.slice(8) : extract.target.replace(/^vars\./, "");
@@ -68,7 +75,9 @@ export function ScenarioStepSummary({ scenario, stepIndex, operation, catalog, g
     {!!step.expect?.length && <><h4 data-summary-area="expect" tabIndex={-1}>검증</h4><ul className="api-summary-checks">{step.expect.map((expect, index) => <li key={index}>{action(<>
       <span className="api-summary-check-target">{expect.source === "status" ? verificationSourceLabels.status : <code>{expect.source === "header" ? expect.header : expect.pointer || "전체 응답"}</code>}</span>
       <span className="api-summary-check-operator">{verificationOperatorLabels[expect.operator]}</span>
-      {expect.operator !== "exists" && <code className={`api-json-syntax-${jsonKind(expect.value)}`}>{expectedValueText(expect.value)}</code>}
+      {expect.operator !== "exists" && (linkedValueLabel(scenario, expect.value)
+        ? <span className="api-field-state api-field-state-scenario"><strong>값 연결</strong><code>{linkedValueLabel(scenario, expect.value)}</code></span>
+        : <code className={`api-json-syntax-${jsonKind(expect.value)}`}>{expectedValueText(expect.value)}</code>)}
     </>, "api-summary-check", onSelect ? () => onSelect(step.id) : undefined, "검증 설정")}</li>)}</ul></>}
   </>;
 }

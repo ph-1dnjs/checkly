@@ -163,7 +163,7 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
     }
     const system = systemRef.current;
     const operation = displayCatalog?.operations.find(op => "operationId" in step.api ? op.operationId === step.api.operationId : op.path === step.api.path && op.method.toUpperCase() === step.api.method);
-    if (!system || !operation) { setNotice("현재 API 명세에서 이 API를 찾을 수 없습니다."); return; }
+    if (!system || !operation) { setNotice("명세에 없는 API입니다."); return; }
     setActiveStepId(step.id);
     system.layoutActions.updateFilter("");
     withoutDeepLink(() => { for (const tag of operation.tags?.length ? operation.tags : [operation.tag]) system.layoutActions.show(["operations-tag", tag], true); });
@@ -365,7 +365,7 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
     {composing && composeView === "select" && <aside className="api-selection-basket" aria-label="선택한 API" data-scroll="light">
       <h2>선택한 API · {draft.steps.length}개</h2>
       <p className="api-compose-legend"><Icon name="add" size={14} />로 추가 · <Icon name="expand_more" size={14} />로 상세 열기 · 요청값은 2단계에서 설정</p>
-      <SelectedApiList scenario={draft} disabled={saving} onChange={changeDraft} onLocate={locateStep} getOperation={step => {
+      <SelectedApiList serverNames={Object.fromEntries(project.servers.map(server => [server.id, server.name]))} scenario={draft} disabled={saving} onChange={changeDraft} onLocate={locateStep} getOperation={step => {
         const stepCatalog = composeCatalogs[step.server];
         return stepCatalog?.operations.find(operation => "operationId" in step.api ? operation.operationId === step.api.operationId : operation.path === step.api.path && operation.method.toUpperCase() === step.api.method);
       }} />
@@ -375,7 +375,7 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
     </aside>}
     {/* Only step 2 is resizable: step 1's Swagger | list ratio stays fixed. */}
     {composing && composeView === "edit" && <ResizeHandle label="설정 요약 폭" container={layoutRef} pane=".api-settings-summary" min={240} max={0.6} onChange={setSummaryWidth} />}
-    {composing && composeView === "edit" && <ScenarioSettingsSummary globalRevision={globalAccess.revision} onConfigureGlobal={globalAccess.open} scenario={draft} catalogs={composeCatalogs} projectId={scope.projectId} bridge={bridge} onSelect={setActiveStepId} />}
+    {composing && composeView === "edit" && <ScenarioSettingsSummary serverNames={Object.fromEntries(project.servers.map(server => [server.id, server.name]))} globalRevision={globalAccess.revision} onConfigureGlobal={globalAccess.open} scenario={draft} catalogs={composeCatalogs} projectId={scope.projectId} bridge={bridge} onSelect={setActiveStepId} />}
     {composing && <aside hidden={composeView !== "edit"} className="api-compose-editor" aria-label="Swagger 시나리오 작성" data-scroll="light" onChangeCapture={() => { setDirty(true); setNotice(""); }}>
       <div ref={editorFormHost}><ScenarioBuilder catalogLoading={composeCatalogLoading} globalRevision={globalAccess.revision} onConfigureGlobal={globalAccess.open} key={editorVersion} suppliedCatalogs={composeCatalogs} value={draft} onChange={changeDraft} Markdown={Markdown} onStepFocus={step => setActiveStepId(step.id)} saving={saving} bindings={{}} project={project} scope={scope} bridge={bridge}
         metadata={onSidebarGroupPathChange && <SidebarMetadataFields groupPath={sidebarGroupPath ?? []} existingGroupPaths={sidebarGroupPaths} disabled={saving} onGroupPathChange={value => { onSidebarGroupPathChange(value); setDirty(true); setNotice(""); }} />}

@@ -49,7 +49,7 @@ export function sourceStepIndex(scenario: Scenario, id: string): number {
 }
 
 export function fieldState(scenario: Scenario, index: number, field: RequestField, current: Json | undefined, userInput?: ScenarioInput): FieldState | undefined {
-  if (userInput) return { kind: "user-input", label: "사용자 입력", detail: userInput.name };
+  if (userInput) return { kind: "user-input", label: "실행 중 입력", detail: userInput.name };
   const global = templateVariable(current, "globals");
   if (global) return { kind: "global", label: "전역변수", detail: global };
   const variable = templateVariable(current, "vars");

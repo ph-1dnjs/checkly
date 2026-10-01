@@ -4,6 +4,7 @@ import { ProjectForm, ProjectImportDialog } from "../../features/api-testing/con
 import { ApiDocumentation } from "./ui/ApiDocumentation";
 import { LoadingSpinner } from "../../shared/ui/LoadingSpinner";
 import { Icon } from "../../shared/ui/Icon";
+import { ServerTag } from "../../entities/api-testing";
 import { GlobalVariableMenu } from "../../features/api-testing/configure-globals";
 import { ApiTestingProviders } from "./ui/ApiTestingProviders";
 import { ScenarioPanel } from "./ui/ScenarioPanel";
@@ -43,8 +44,10 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
   const [authKind, setAuthKind] = useState("none");
   const [docsUsername, setDocsUsername] = useState("");
   const [docsPassword, setDocsPassword] = useState("");
-  useEffect(() => { setAuthKind("none"); setDocsUsername(""); setDocsPassword(""); }, [projectId, serverId, environmentId]);
+  useEffect(() => { setAuthKind("none"); setDocsUsername(""); setDocsPassword(""); setSpecError(""); }, [projectId, serverId, environmentId]);
   const [error, setError] = useState("");
+  // Spec import failures show inside the spec panel, next to the URL and account they are about.
+  const [specError, setSpecError] = useState("");
   const [notice, setNotice] = useState("");
   const [importPlan, setImportPlan] = useState<{ text: string; plan: ApiProjectImportPlan } | null>(null);
   const [loading, setLoading] = useState(false);
@@ -180,14 +183,14 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
     return () => { live = false; };
   }, [tab, projectId, environmentId, catalog?.importedAt, missingCheck]);
   const importSpec = async (kind: "file" | "url", targetUrl = url): Promise<boolean> => {
-    setLoading(true); setError("");
+    setLoading(true); setError(""); setSpecError("");
     try {
       if (targetUrl !== url) setUrl(targetUrl);
       const useSavedAuth = authKind === "basic" && remember && sync?.hasSavedAccount && sync.url === targetUrl && sync.username === docsUsername && !docsPassword;
       const next = await bridge.importSpec(scope, kind === "file" ? { kind } : { kind, url: targetUrl, ...(authKind === "basic" ? useSavedAuth ? { useSavedAuth: true } : { remember, auth: { kind: "basic" as const, username: docsUsername, password: docsPassword } } : {}) });
       if (next) { setCatalog(next); return true; }
       return false;
-    } catch (e) { setError((e as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, "")); return false; }
+    } catch (e) { setSpecError((e as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, "")); return false; }
     finally { try { setSync(await bridge.getSpecSync(scope)); } catch { /* Keep the original import error visible. */ } setLoading(false); setDocsPassword(""); }
   };
   if (!bridge) return <section className="api-testing-page api-swagger-shell"><h1>API 테스트</h1><p>프로젝트 저장과 실제 API 호출은 Checkly 데스크톱 앱에서 사용할 수 있습니다.</p></section>;
@@ -203,9 +206,13 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
     </select>
     {project && <button type="button" className="api-icon-button" aria-label="프로젝트 설정" title="프로젝트 설정" disabled={locked || loading} onClick={() => setForm("edit")}><Icon name="settings" size={16} /></button>}
   </div>;
+  // The project's servers in their tag colours, so a step's "인증"/"주문" tag reads as a server name.
+  const environment = project?.environments.find(item => item.id === environmentId);
+  const serverNames = Object.fromEntries((project?.servers ?? []).map(server => [server.id, server.name]));
+  const serverLegend = project && project.servers.length > 1 && <span className="api-project-servers" aria-label="프로젝트 서버">서버{project.servers.map(server => <ServerTag key={server.id} server={server.id} names={serverNames} title={environment?.baseUrls[server.id] ? `${server.name} 서버 · ${environment.name} ${environment.baseUrls[server.id]}` : undefined} />)}</span>;
   return <ApiTestingProviders key={projectId} projectId={projectId} bridge={bridge}><section className="api-testing-page api-swagger-shell">
     {/* Row 1: which project. Row 2 (tabs, or the composer's toolbar): what to do in it and where to call. */}
-    <header className="api-toolbar api-page-head"><h1>API 테스트</h1>{projectPicker}</header>
+    <header className="api-toolbar api-page-head"><h1>API 테스트</h1>{projectPicker}{serverLegend}</header>
     {error && <p className="api-warning" role="alert">{error}</p>}
     {importPlan && <ProjectImportDialog plan={importPlan.plan} onCancel={() => setImportPlan(null)} onImport={async update => { await finishImport(await bridge.importProject(importPlan.text, update)); }} />}
     {notice && !form && <p className="api-page-notice" role="status">{notice}<button type="button" className="api-compose-link" onClick={() => setNotice("")}>닫기</button></p>}
@@ -255,6 +262,7 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
           password={docsPassword} onPasswordChange={setDocsPassword}
           remember={remember} onRememberChange={setRemember}
           onImport={importSpec}
+          error={specError}
           onDeleteCatalog={async () => {
             setLoading(true);
             try { await bridge.deleteCatalog(scope); setCatalog(null); setSync(null); setUrl(""); setRemember(false); setDocsUsername(""); setDocsPassword(""); setAuthKind("none"); onRunAction(null); }

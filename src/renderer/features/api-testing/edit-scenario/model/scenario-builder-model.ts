@@ -25,7 +25,11 @@ export function moveStep(scenario: Scenario, index: number, offset: number): Sce
 
 
 /** Connects any captured request/response value to a later request template. */
-export function connectValue(scenario: Scenario, from: number, to: number, source: ValueBinding["source"], area: BindingArea, pointer: string | undefined, header: string | undefined, variable: string, targetArea: RequestArea, field: string, prefix = ""): Scenario {
+/**
+ * Links a value from step `from` into step `to`: a request field, or (with `targetExpect`) the
+ * expected value of one of its checks — e.g. "the name read back equals the name sent in step 2".
+ */
+export function connectValue(scenario: Scenario, from: number, to: number, source: ValueBinding["source"], area: BindingArea, pointer: string | undefined, header: string | undefined, variable: string, targetArea: RequestArea, field: string, prefix = "", targetExpect?: number): Scenario {
   if (!Number.isInteger(from) || !Number.isInteger(to) || from < 0 || to < 0 || from >= scenario.steps.length || to >= scenario.steps.length || from === to)
     throw new Error("값 출처 단계와 사용 단계는 서로 달라야 합니다");
   if (source === "request" && (area === "header" || pointer === undefined)) throw new Error("요청 출처는 요청 영역과 JSON Pointer가 필요합니다");
@@ -48,12 +52,16 @@ export function connectValue(scenario: Scenario, from: number, to: number, sourc
   if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(variable) || ["constructor", "prototype"].includes(variable)) throw new Error("변수 이름은 영문으로 시작하고 영문·숫자·밑줄만 사용하세요");
   if (Object.hasOwn(scenario.vars, variable) || scenario.valueBindings.some(binding => binding.name === variable && !sameSource(binding)) || scenario.steps.some(step => step.extract.some(extract => extract.target === `vars.${variable}`)))
     throw new Error("이미 사용 중인 변수 이름입니다. 다른 이름을 입력하거나 기존 변수 참조를 사용하세요");
-  if (!field && targetArea !== "body") throw new Error("유효한 요청 필드 이름을 입력하세요");
+  if (targetExpect === undefined && !field && targetArea !== "body") throw new Error("유효한 요청 필드 이름을 입력하세요");
   if (field && ["__proto__", "constructor", "prototype"].includes(field)) throw new Error("유효한 요청 필드 이름을 입력하세요");
   const current = scenario.steps[to].request[targetArea];
   const reference = `${prefix}{{vars.${variable}}}`;
   let request = { ...scenario.steps[to].request };
-  if (targetArea === "body" && !field) {
+  let expect = scenario.steps[to].expect;
+  if (targetExpect !== undefined) {
+    if (!expect?.[targetExpect]) throw new Error("연결할 검증을 찾을 수 없습니다");
+    expect = expect.map((check, index) => index === targetExpect ? { ...check, value: reference } : check);
+  } else if (targetArea === "body" && !field) {
     request.body = reference;
   } else {
     if (current !== undefined && (!current || typeof current !== "object" || Array.isArray(current))) throw new Error("연결 대상은 객체 요청의 필드로 지정하세요. 전체 본문은 본문 전체 연결을 사용하세요");
@@ -68,6 +76,6 @@ export function connectValue(scenario: Scenario, from: number, to: number, sourc
     valueBindings: scenario.valueBindings.some(existing => existing.name === variable)
       ? scenario.valueBindings
       : [...scenario.valueBindings, binding],
-    steps: scenario.steps.map((step, index) => index === to ? { ...step, request } : step),
+    steps: scenario.steps.map((step, index) => index === to ? { ...step, request, ...(expect ? { expect } : {}) } : step),
   };
 }

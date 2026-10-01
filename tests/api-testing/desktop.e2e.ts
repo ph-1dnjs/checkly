@@ -76,7 +76,8 @@ async function main() {
     const importButton = specSource.getByRole("button", { name: "이 URL로 가져오기", exact: true });
     await page.getByLabel("OpenAPI URL").fill(`${url}/openapi.json`);
     await importButton.click();
-    await expect(page.getByRole("alert")).toContainText("명세 인증 실패: HTTP 401");
+    // The failure shows inside the spec panel, next to the account fields.
+    await expect(page.getByRole("region", { name: "API 명세 가져오기" }).getByRole("alert")).toContainText("명세 인증 실패: HTTP 401");
     await page.getByLabel("Swagger 인증 방식").selectOption("basic");
     await page.getByLabel("Swagger 아이디", { exact: true }).fill("docs-user");
     await page.getByLabel("Swagger 비밀번호", { exact: true }).fill("docs-test-password");
@@ -223,7 +224,7 @@ async function main() {
     await page.getByLabel("시나리오 이름", { exact: true }).fill("로그인 후 상품 조회");
     // loginId is typed while the scenario runs (runtime input), not stored in the scenario.
     await page.getByRole("button", { name: "1단계 loginId 키 값 연결", exact: true }).click();
-    await page.getByRole("button", { name: /^실행 중 사용자 입력으로 받기/ }).click();
+    await page.getByRole("button", { name: /^실행 중 입력으로 받기/ }).click();
     await page.getByRole("button", { name: "완료", exact: true }).click();
     await page.getByRole("button", { name: "/accessToken 키 선택", exact: true }).first().click();
     await page.getByRole("button", { name: /^전역변수로 저장/ }).click();
@@ -362,6 +363,10 @@ async function main() {
       await expect(restored.getByText(/최근 동기화 성공/)).toBeVisible();
       await restored.getByRole("button", { name: "저장된 계정 삭제", exact: true }).click();
       await expect(restored.getByRole("button", { name: "저장된 계정 삭제", exact: true })).not.toBeVisible();
+      // Without a remembered account, refreshing asks for the password instead of failing with 401.
+      await restored.getByRole("button", { name: "명세 새로고침", exact: true }).click();
+      await expect(restored.getByText("계정을 기억하지 않아 비밀번호를 다시 입력해야 합니다", { exact: false })).toBeVisible();
+      await expect(restored.getByLabel("Swagger 비밀번호", { exact: true })).toBeFocused();
     }
     await restored.getByRole("button", { name: "태그 모두 펼치기", exact: true }).click();
     await expect(restored.getByRole("button", { name: /GET.*items/ })).toBeVisible();
@@ -422,13 +427,15 @@ async function main() {
     await warnedEntry.click();
     await restored.getByRole("button", { name: "수정", exact: true }).click();
     await restored.locator(".api-compose-steps button").nth(1).click();
-    await restored.locator('details[aria-label="편집 단계 2"] > summary').click();
-    await expect(restored.getByText("현재 API 명세에서 이 API를 찾을 수 없습니다", { exact: false })).toBeVisible();
+    // The step whose API left the spec opens by itself.
+    await expect(restored.locator('details[aria-label="편집 단계 2"]')).toHaveAttribute("open", "");
+    await expect(restored.locator('details[aria-label="편집 단계 2"] .api-step-missing')).toHaveText("명세에 없음");
+    await expect(restored.getByText("명세에 없는 API입니다", { exact: false })).toBeVisible();
     await restored.getByRole("button", { name: "2단계 API 바꾸기", exact: true }).click();
     const replaceDialog = restored.getByRole("dialog", { name: "2단계 API 바꾸기" });
     await replaceDialog.getByLabel("바꿀 API 검색").fill("products");
     await replaceDialog.getByRole("button", { name: /\/products\/\{id\}/ }).click();
-    await expect(restored.getByText("현재 API 명세에서 이 API를 찾을 수 없습니다", { exact: false })).toHaveCount(0);
+    await expect(restored.getByText("명세에 없는 API입니다", { exact: false })).toHaveCount(0);
     await expect(restored.locator('details[aria-label="편집 단계 2"]')).toContainText("값 연결");
     await restored.getByRole("button", { name: "시나리오 검사·저장", exact: true }).click();
     await expect(restored.getByText("시나리오를 저장했습니다. 이 화면에서 계속 수정할 수 있습니다.", { exact: true })).toBeVisible();

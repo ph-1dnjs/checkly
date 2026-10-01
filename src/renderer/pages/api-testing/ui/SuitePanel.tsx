@@ -10,7 +10,7 @@ import { SortableList } from "../../../shared/ui/SortableList";
 import { RunInputModal } from "../../../features/api-testing/submit-run-input";
 import { Icon } from "../../../shared/ui/Icon";
 
-type Props = { project: ApiProject; scope: ApiScope; bridge: ApiTestingBridge; scenarios: SavedApiScenario[]; suites: SavedApiSuite[]; selectedId: string; onSuitesChange: (suites: SavedApiSuite[]) => void; onSelectedIdChange: (id: string) => void; onBusy: (busy: boolean) => void; /** Opens a scenario (with this run as its last result). */ onOpenScenario?: (id: string) => void };
+type Props = { project: ApiProject; scope: ApiScope; bridge: ApiTestingBridge; scenarios: SavedApiScenario[]; suites: SavedApiSuite[]; selectedId: string; onSuitesChange: (suites: SavedApiSuite[]) => void; /** "" opens a new suite; null leaves suites for the scenario view. */ onSelectedIdChange: (id: string | null) => void; onBusy: (busy: boolean) => void; /** Opens a scenario (with this run as its last result). */ onOpenScenario?: (id: string) => void };
 const message = (error: unknown) => (error as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, "");
 const statusName = runStatusName;
 class SuiteDependencyError extends Error {}
@@ -115,7 +115,8 @@ export function SuitePanel({ project, scope, bridge, scenarios, suites, selected
   const remove = async () => {
     if (!selected) return;
     setError("");
-    await bridge.deleteSuite(project.id, selected.id, selected.updatedAt); onSuitesChange(await bridge.listSuites(project.id)); onSelectedIdChange("");
+    // After a delete, show another suite (or the scenario view), not an empty new-suite form.
+    await bridge.deleteSuite(project.id, selected.id, selected.updatedAt); const remaining = await bridge.listSuites(project.id); onSuitesChange(remaining); onSelectedIdChange(remaining[0]?.id ?? null);
   };
   const cancel = async () => { cancelRequested.current = true; await bridge.cancel(scope); };
   const run = async () => {

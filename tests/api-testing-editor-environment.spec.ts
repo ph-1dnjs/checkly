@@ -87,7 +87,7 @@ async function workspace(page: Page, structured = false, linkedGlobal = false) {
     const scenario = parseScenario(source)
     const operations = catalogs[scope.environmentId]?.operations ?? []
     const issues = scenario.steps.flatMap(step => operations.some(operation => 'method' in step.api && operation.method === step.api.method && operation.path === step.api.path)
-      ? [] : [`${step.name ?? step.id}: 현재 환경의 명세에서 API를 찾을 수 없습니다`])
+      ? [] : [`${step.name ?? step.id}: 명세에 없는 API입니다`])
     return { scenario, issues, executionIssues: [] }
   }
   await page.exposeFunction('__apiTestingCall', async (method: string, args: unknown[]) => {
@@ -222,7 +222,7 @@ for (const existing of [false, true]) {
     await environment(page, 'empty').click()
     await expect(environment(page, 'empty')).toHaveAttribute('aria-pressed', 'true')
     await expectDraft(page, name)
-    await expect(stepDetails(page)).toContainText('현재 API 명세에서 이 API를 찾을 수 없습니다')
+    await expect(stepDetails(page)).toContainText('명세에 없는 API입니다')
     // Dirty tracking must survive too, so returning to the list still asks before discarding.
     await page.getByRole('button', { name: '시나리오 목록으로', exact: true }).click()
     await expect(page.getByRole('dialog', { name: '저장하지 않은 변경사항' })).toBeVisible()
@@ -314,7 +314,7 @@ test('unfinished array and body JSON retain their text and validity across envir
     await environment(page, 'stage').click()
     await expect.poll(() => fixture.requests.filter(id => id === environments.stage).length).toBeGreaterThan(0)
     await expect(stepDetails(page)).toContainText('명세를 불러오는 중…')
-    await expect(stepDetails(page)).not.toContainText('현재 API 명세에서 이 API를 찾을 수 없습니다')
+    await expect(stepDetails(page)).not.toContainText('명세에 없는 API입니다')
     await expect(page.getByRole('button', { name: '1단계 API 바꾸기', exact: true })).toBeDisabled()
     await expectUnfinished()
   } finally {
@@ -325,7 +325,7 @@ test('unfinished array and body JSON retain their text and validity across envir
   await expect(page.getByRole('button', { name: '1단계 API 바꾸기', exact: true })).toBeEnabled()
   await expectUnfinished()
   await environment(page, 'empty').click()
-  await expect(stepDetails(page)).toContainText('현재 API 명세에서 이 API를 찾을 수 없습니다')
+  await expect(stepDetails(page)).toContainText('명세에 없는 API입니다')
   await expectUnfinished()
   await environment(page, 'dev').click()
   await expect(structuredApi).toContainText('개발 구조 입력')
@@ -349,7 +349,7 @@ test('unfinished array and body JSON retain their text and validity across envir
   await page.getByRole('dialog', { name: '1단계 API 바꾸기', exact: true }).getByRole('button', { name: /GET.*\/replacement/ }).click()
   await expect(page.getByLabel('1단계 q', { exact: true })).toBeVisible()
   await environment(page, 'empty').click()
-  await expect(stepDetails(page)).toContainText('현재 API 명세에서 이 API를 찾을 수 없습니다')
+  await expect(stepDetails(page)).toContainText('명세에 없는 API입니다')
   await expect(page.getByLabel('1단계 q', { exact: true })).toBeVisible()
   await expect(filters).toHaveCount(0)
   await expect(body).toHaveCount(0)

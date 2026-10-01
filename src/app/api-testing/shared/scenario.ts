@@ -394,8 +394,20 @@ export function expectedValueText(value: Json | undefined): string {
 }
 
 /** A step check in words: `target` (what is checked) and `rule`; no expectation = the automatic 2xx check. */
-export function describeCheck(expectation?: { source: "status" | "body" | "header"; pointer?: string; header?: string; operator: "exists" | "equals" | "contains"; value?: Json }): { target: string; rule: string } {
+/** An expected value that is exactly a value link, in words ("2단계 요청 name"); undefined for plain values. */
+export function linkedValueLabel(scenario: Pick<Scenario, "steps" | "valueBindings"> | undefined, value: unknown): string | undefined {
+  const name = typeof value === "string" ? /^\{\{vars\.([A-Za-z][A-Za-z0-9_]*)\}\}$/.exec(value)?.[1] : undefined;
+  if (!name) return undefined;
+  const binding = scenario?.valueBindings.find(item => item.name === name);
+  const step = binding ? scenario!.steps.findIndex(item => item.id === binding.step) : -1;
+  if (!binding || step < 0) return "앞 단계 값";
+  const where = binding.area === "header" ? `헤더 ${binding.header}` : binding.area === "body" ? (binding.pointer || "본문").replace(/^\//, "") : `${binding.area} ${(binding.pointer ?? "").replace(/^\//, "")}`;
+  return `${step + 1}단계 ${binding.source === "request" ? "요청" : "응답"} ${where}`;
+}
+
+export function describeCheck(expectation?: { source: "status" | "body" | "header"; pointer?: string; header?: string; operator: "exists" | "equals" | "contains"; value?: Json }, scenario?: Pick<Scenario, "steps" | "valueBindings">): { target: string; rule: string } {
   if (!expectation) return { target: "HTTP 상태", rule: "2xx (자동 확인)" };
   const target = expectation.source === "status" ? verificationSourceLabels.status : expectation.source === "header" ? expectation.header ?? "응답 헤더" : expectation.pointer || "전체 응답";
-  return { target, rule: `${verificationOperatorLabels[expectation.operator]}${expectation.operator !== "exists" ? ` ${expectedValueText(expectation.value)}` : ""}` };
+  const linked = linkedValueLabel(scenario, expectation.value);
+  return { target, rule: `${verificationOperatorLabels[expectation.operator]}${expectation.operator !== "exists" ? ` ${linked ? `[${linked}]` : expectedValueText(expectation.value)}` : ""}` };
 }

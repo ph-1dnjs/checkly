@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { isArrayIndexSegment } from "../lib/settings-summary-model";
 
 export type SummaryJsonEntry = { path: string[]; content: ReactNode };
 type Node = { children: Map<string, Node>; content: ReactNode[]; omitted: number };
@@ -38,10 +39,12 @@ export function SummaryJson({ entries, knownPaths = [] }: { entries: SummaryJson
     if (node.content.length) { line(depth, <>{prefix}<span className="api-summary-json-value">{node.content.map((content, i) => <span key={i}>{content}</span>)}{tail}</span></>); return; }
     const members = [...node.children];
     if (!members.length && !node.omitted) { line(depth, <>{prefix}{"{}"}{tail}</>); return; }
-    line(depth, <>{prefix}{"{"}</>);
-    members.forEach(([key, child], index) => visit(child, depth + 1, <><span className="api-json-syntax-key">{JSON.stringify(key)}</span>{": "}</>, index < members.length - 1 || node.omitted > 0));
+    // Array positions print as list items without keys.
+    const array = members.length > 0 && members.every(([key]) => isArrayIndexSegment(key));
+    line(depth, <>{prefix}{array ? "[" : "{"}</>);
+    members.forEach(([key, child], index) => visit(child, depth + 1, array ? null : <><span className="api-json-syntax-key">{JSON.stringify(key)}</span>{": "}</>, index < members.length - 1 || node.omitted > 0));
     if (node.omitted) line(depth + 1, <span className="api-summary-ellipsis" title="값을 설정하지 않은 필드는 생략합니다">… 설정 안 한 필드 {node.omitted}개</span>);
-    line(depth, <>{"}"}{tail}</>);
+    line(depth, <>{array ? "]" : "}"}{tail}</>);
   };
   visit(root, 0, null, false);
   return <div className="api-summary-json">{lines}</div>;

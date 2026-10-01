@@ -1,10 +1,14 @@
 import { scenarioStepInputs, type Scenario } from "../../../../app/api-testing/shared/scenario";
+/** Path segment for an array position, so the summary prints `[ … ]` rather than `{ "0": … }`. */
+export const arrayIndexSegment = (index: number | string) => `\u0000${index}`;
+export const isArrayIndexSegment = (segment: string) => segment.startsWith("\u0000");
+
 export function configuredFields(scenario: Scenario, index: number) {
   const step = scenario.steps[index];
   return Object.entries(step.request).flatMap(([area, values]) => {
     const entries = values && typeof values === "object" && !Array.isArray(values) ? Object.entries(values) : [["", values]];
     const flatten = (key: string, value: unknown, path: string[]): Array<{ key: string; value: unknown; path: string[] }> => {
-      if (value && typeof value === "object" && Object.keys(value).length) return Object.entries(value).flatMap(([child, v]) => flatten(key, v, [...path, child]));
+      if (value && typeof value === "object" && Object.keys(value).length) return Object.entries(value).flatMap(([child, v]) => flatten(key, v, [...path, Array.isArray(value) ? arrayIndexSegment(child) : child]));
       return [{ key, value, path }];
     };
     return entries.flatMap(([key, value]) => flatten(String(key), value, [area, ...(key ? [String(key)] : [])])).map(({ key, value, path }) => {
@@ -25,7 +29,7 @@ export function configuredFields(scenario: Scenario, index: number) {
         if (from < 0) warning = "출처 삭제됨";
         else if (from >= index) warning = "출처가 앞선 단계여야 합니다";
       }
-      return { key: `${area}:${key}`, path, field: path.join("."), value, label, global, warning, direct: !global && !variable && !text?.includes("{{") };
+      return { key: `${area}:${key}`, path, field: path.map(segment => isArrayIndexSegment(segment) ? `[${segment.slice(1)}]` : segment).join(".").replace(/\.\[/g, "["), value, label, global, warning, direct: !global && !variable && !text?.includes("{{") };
     });
   });
 }

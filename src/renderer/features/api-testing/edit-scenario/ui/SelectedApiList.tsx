@@ -3,10 +3,11 @@ import type { ApiOperation } from "../../../../../app/api-testing/shared/workspa
 import { Icon } from "../../../../shared/ui/Icon";
 import { moveStep } from "../model/scenario-builder-model";
 import { SortableList } from "../../../../shared/ui/SortableList";
+import { ServerTag, usesManyServers } from "../../../../entities/api-testing";
 
 type Step = Scenario["steps"][number];
 
-export function SelectedApiList({ scenario, disabled, onChange, onLocate, getLabel = step => step.name ?? step.id, getOperation }: { scenario: Scenario; disabled: boolean; onChange: (next: Scenario) => void; onLocate: (step: Step) => void; getLabel?: (step: Step) => string; getOperation?: (step: Step) => Pick<ApiOperation, "method" | "path"> | undefined }) {
+export function SelectedApiList({ scenario, disabled, onChange, onLocate, getLabel = step => step.name ?? step.id, getOperation, serverNames = {} }: { /** Server id → name, shown per step when the scenario uses more than one. */ serverNames?: Record<string, string>; scenario: Scenario; disabled: boolean; onChange: (next: Scenario) => void; onLocate: (step: Step) => void; getLabel?: (step: Step) => string; getOperation?: (step: Step) => Pick<ApiOperation, "method" | "path"> | undefined }) {
   const describe = (step: Step) => {
     const operation = getOperation?.(step);
     return {
@@ -14,6 +15,7 @@ export function SelectedApiList({ scenario, disabled, onChange, onLocate, getLab
       path: operation?.path ?? ("path" in step.api ? step.api.path : step.api.operationId),
     };
   };
+  const multiServer = usesManyServers(scenario.steps);
   return <SortableList items={scenario.steps} disabled={disabled} className="api-selected-rows"
     itemKey={step => step.id}
     itemLabel={(step, index) => `${index + 1}단계 ${describe(step).path}`}
@@ -26,7 +28,7 @@ export function SelectedApiList({ scenario, disabled, onChange, onLocate, getLab
         <span className="api-selected-method">{method}</span>
         <button type="button" className="api-selected-content" title="API 문서에서 위치 보기" aria-label={`${index + 1}단계 ${path} 문서로 이동`} onClick={() => onLocate(step)}>
           <code className="api-selected-path">{path}</code>
-          <span className="api-selected-description">{getLabel(step)}</span>
+          <span className="api-selected-description">{multiServer && <ServerTag server={step.server} names={serverNames} />}{getLabel(step)}</span>
         </button>
         <button type="button" className="api-selected-remove" disabled={disabled} title="단계 제거" aria-label={`${index + 1}단계 제거`} onClick={() => onChange({ ...scenario, steps: scenario.steps.filter(s => s.id !== step.id) })}><Icon name="close" size={16} /></button>
       </>;

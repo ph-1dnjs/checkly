@@ -1176,3 +1176,64 @@ body.panel-resizing { cursor:col-resize; user-select:none; }
 /* Suite results: open the scenario (its requests and responses), actual value on a failed check. */
 .api-suite-results summary .api-suite-open { margin-left:10px; font-size:11.5px; }
 .api-suite-actual { color:var(--api-body); font-weight:400; }
+/* Request body JSON: values are click-to-edit; empty ones show the spec example faintly (not sent). */
+.api-testing-page button.api-json-value-edit { min-height:0; padding:0 2px; border:0; border-radius:3px; background:transparent; color:inherit; font:inherit; cursor:text; }
+.api-testing-page button.api-json-value-edit:hover { background:var(--ck-color-blue-tint-soft); }
+.api-json-value-edit.is-unset { color:var(--api-muted); font-style:italic; opacity:.75; }
+.api-testing-page input.api-json-inline-input { width:min(260px, 100%); min-height:0; padding:1px 6px; font:inherit; font-size:12px; }
+.api-request-json > header { justify-content:flex-start; }
+.api-request-json > header > small { margin-left:auto; }
+.api-request-json > header .api-json-fill-examples { margin-left:12px; font-size:11.5px; }
+/* Dialogs opened from a JSON line live inside its monospace code box: give them the UI font back. */
+.api-json-edit-code .api-value-modal-backdrop { font-family:var(--ck-font-ui); white-space:normal; }
+.api-json-edit-code .api-value-modal-backdrop :is(code, .api-field-state code) { font-family:var(--ck-font-mono); }
+/* Value link dialog: an info line (not an error), error responses folded, picked source + action pinned at the bottom. */
+.api-value-order-help { display:block; margin:5px 0 0; color:var(--api-muted); font-size:10.5px; line-height:1.5; }
+.api-value-json-other { margin-top:8px; }
+.api-value-json-other > summary { color:var(--api-muted); font-size:11px; cursor:pointer; }
+.api-scenario-value-modal > footer.api-value-link-footer { position:sticky; bottom:-20px; z-index:1; margin:2px -20px -20px; padding:12px 20px; background:var(--ck-color-canvas); box-shadow:0 -6px 12px -10px rgb(0 0 0 / 25%); }
+.api-value-link-footer .api-value-selection-summary { display:flex; align-items:center; gap:6px; min-width:0; margin-right:auto; font-size:11.5px; }
+.api-value-link-footer .api-value-selection-summary > span { color:var(--api-muted); }
+.api-value-link-footer .api-value-selection-summary code { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+/* Same JSON colours as the step's response view: in the value link picker and the request body editor. */
+.api-testing-page :is(.api-value-json-picker, .api-json-edit-code) button.api-json-key-token,
+.api-testing-page .api-json-edit-code button.api-json-request-key-token { color:var(--ck-color-blue-action-hover)!important; }
+.api-testing-page :is(.api-value-json-picker, .api-json-edit-code) .api-json-type-string { color:var(--ck-color-pass); }
+.api-testing-page :is(.api-value-json-picker, .api-json-edit-code) :is(.api-json-type-number, .api-json-type-integer) { color:var(--ck-color-wait-ink); }
+.api-testing-page :is(.api-value-json-picker, .api-json-edit-code) .api-json-type-boolean { color:var(--ck-color-blue-action); }
+.api-testing-page :is(.api-value-json-picker, .api-json-edit-code) .api-json-type-null { color:var(--ck-color-text-secondary); }
+/* Server tags: filled, one colour per server, so 인증 and 주문 steps tell apart at a glance. */
+.api-run-server { display:inline-block; margin-right:6px; padding:0 6px; border:0; border-radius:var(--ck-dim-radius-pill); font-size:10.5px; font-weight:600; line-height:1.6; font-family:var(--ck-font-ui); vertical-align:1px; }
+.api-server-tone-0 { background:#ece7fb; color:#5b3fb5; }
+.api-server-tone-1 { background:#dff3f1; color:#0f6e64; }
+.api-server-tone-2 { background:#fdf0dc; color:#94600a; }
+.api-server-tone-3 { background:#fbe4ec; color:#a3305a; }
+.api-summary-heading .api-run-server { grid-column:2 / -1; justify-self:start; margin:2px 0 0; }
+/* A step whose API left the spec: say so on the folded card. */
+.api-step-missing { display:inline-block; margin-right:6px; padding:0 6px; border-radius:var(--ck-dim-radius-pill); background:var(--ck-color-fail-tint); color:var(--ck-color-fail-ink); font-size:10.5px; font-weight:600; line-height:1.6; vertical-align:1px; }
+/* One edge only: the card's border shows the outcome, no extra stripe; the message inside has no bar of its own. */
+.api-run-result-step:is(.is-failed,.is-error,.is-blocked) { box-shadow:none; }
+.api-run-result-step:is(.is-failed,.is-error) { border-color:var(--ck-color-fail); }
+.api-run-result-step.is-blocked { border-color:var(--ck-color-wait); }
+.api-run-result-step-body > .api-warning { border-left:0; border-radius:var(--ck-dim-radius-base); padding:8px 12px; }
+.api-run-result-step:is(.is-failed,.is-error) .api-run-result-step-body > .api-warning { background:var(--ck-color-fail-tint); color:var(--ck-color-fail-ink); }
+/* 실행 중 입력 settings: the required checkbox sits beside its text, level with the type select. */
+.api-input-settings-grid { grid-template-columns:minmax(0,1fr) auto; }
+.api-input-settings-grid .api-input-required { display:flex; flex-direction:row; align-items:center; gap:6px; margin:0 0 8px; font-weight:400; }
+.api-input-settings-grid .api-input-required input { flex:none; width:16px; height:16px; margin:0; }
+.api-testing-page button.api-json-input-token { min-height:0; padding:0 6px; border:1px solid #f0d9a8; border-radius:var(--ck-dim-radius-pill); background:var(--ck-color-wait-tint); color:var(--ck-color-wait-ink); font-family:var(--ck-font-ui); font-size:11px; font-weight:600; cursor:pointer; }
+.api-expect-value-row { display:flex; gap:6px; align-items:center; }
+.api-expect-value-row > input { flex:1; min-width:0; }
+.api-expect-value-row > button { flex:none; white-space:nowrap; }
+.api-expect-linked { display:grid; gap:4px; font-size:12px; }
+.api-expect-linked-value { display:flex; flex-wrap:wrap; gap:6px; align-items:center; padding:6px 8px; border:1px solid var(--ck-color-line); border-radius:6px; background:var(--ck-color-surface-subtle); }
+.api-expect-linked-value strong { font-size:11px; color:var(--ck-color-text-mute); }
+.api-expect-linked-value code { flex:1; min-width:0; }
+.api-summary-request-area { display:grid; gap:2px; }
+.api-summary-request-area + .api-summary-request-area { margin-top:6px; }
+.api-summary-area-label { font-size:11px; font-weight:600; color:var(--ck-color-text-mute); }
+.api-project-servers { display:inline-flex; align-items:center; gap:4px; margin-left:4px; font-size:11.5px; color:var(--ck-color-text-mute); }
+.api-project-servers .api-run-server { margin:0; }
+.api-testing-page .api-value-json-line button.api-json-key-token:disabled { opacity:.45; cursor:not-allowed; }
+.api-testing-page .api-json-reference-value { padding:0 5px; border-radius:var(--ck-dim-radius-pill); background:var(--ck-color-wait-tint); color:var(--ck-color-wait-ink); font-family:var(--ck-font-ui); font-size:11px; font-weight:600; }
+.api-testing-page .api-spec-source .api-spec-error { margin:0; border-radius:0; border-width:1px 0 0; }

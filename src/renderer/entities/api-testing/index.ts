@@ -16,6 +16,7 @@ export { runStatusName } from "./model/run-status";
 export type { ScenarioLastRun } from "./model/scenario-last-run";
 export { ScenarioRunFlow } from "./ui/ScenarioRunViews";
 export { ScenarioRunResult } from "./ui/ScenarioRunViews";
+export { ServerTag, usesManyServers } from "./ui/ServerTag";
 export { ScenarioSidebarTree } from "./ui/ScenarioSidebarTree";
 export { ScenarioStepSummary } from "./ui/ScenarioStepSummary";
 export { SidebarMetadataFields } from "./ui/SidebarMetadataFields";

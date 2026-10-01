@@ -1,6 +1,6 @@
 import { GlobalVariableSetupLink } from "../../../../entities/api-testing";
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
-import { scenarioStepInputs, type Scenario, type Json, type ScenarioInput } from "../../../../../app/api-testing/shared/scenario";
+import { scenarioStepInputs, linkedValueLabel, type Scenario, type Json, type ScenarioInput } from "../../../../../app/api-testing/shared/scenario";
 import type { ApiCatalog, ApiOperation, ApiScope, ApiTestingBridge, ApiGlobal } from "../../../../../app/api-testing/shared/workspace";
 import { type RequestArea } from "../model/scenario-builder-model";
 import { objectValue } from "../../../../entities/api-testing";
@@ -33,6 +33,8 @@ export function SimpleStep({ scenario, index, catalogs, bindings, scope, bridge,
   }, [operation, requestKey]);
   const [target, setTarget] = useState<{ area: RequestArea; name: string } | null>(null);
   const [valueMenu, setValueMenu] = useState<string | null>(null);
+  // Body value being typed in place (area:name), from clicking the value in the JSON view.
+  const [inlineEdit, setInlineEdit] = useState<string | null>(null);
   const [inputTarget, setInputTarget] = useState<string | null>(null);
   const [responsePointer, setResponsePointer] = useState<string | null>(null);
   const [action, setAction] = useState<"verify" | "global" | null>(null);
@@ -45,6 +47,8 @@ export function SimpleStep({ scenario, index, catalogs, bindings, scope, bridge,
   const [globalsLoaded, setGlobalsLoaded] = useState(false);
   // A just-added check opens with its value field focused (no silent default like 200).
   const [newExpectation, setNewExpectation] = useState<number | null>(null);
+  // Check whose expected value is being linked to an earlier step's value.
+  const [expectLink, setExpectLink] = useState<number | null>(null);
   const responseNameSuggestions = responseGlobalNameSuggestions(operation, responsePointer);
   const existingGlobalExtraction = (pointer: string | null) => pointer === null ? undefined : step.extract.find(extract => extract.source === "body" && (extract.pointer ?? "") === pointer && extract.target.startsWith("globals."));
   const responseBadges = (pointer: string): ResponseBadge[] => {
@@ -171,6 +175,18 @@ export function SimpleStep({ scenario, index, catalogs, bindings, scope, bridge,
     setValueMenu(null);
     setTarget(null);
   };
+  /** Turns typed text into the field's value (JSON for numbers, booleans, objects; templates kept as text); empty unsets. */
+  const commitTyped = (field: RequestField, text: string, clearInput: boolean) => {
+    if (!text.trim()) { setValue(field.area, field.name, undefined, clearInput); setError(""); return; }
+    const exactTemplate = /^\{\{(?:inputs|vars|globals)\.[A-Za-z][A-Za-z0-9_]*\}\}$/.test(text.trim());
+    const typed = ["number", "integer", "boolean", "object", "array"].includes(field.type);
+    let value: Json = text;
+    if (!exactTemplate && typed) {
+      try { value = JSON.parse(text) as Json; } catch { setError(`${field.name}: ${field.type} 형식으로 입력하세요.`); return; }
+      if (!requestFieldValueMatches(value, field.type)) { setError(`${field.name}: ${field.type} 형식으로 입력하세요.`); return; }
+    }
+    setError(""); setValue(field.area, field.name, value, clearInput);
+  };
   const renderField = (field: typeof fields[number], compact = false, last = false) => {
     const current = objectValue(step.request[field.area])[field.name];
     const fieldKey = `${field.area}:${field.name}`;
@@ -192,7 +208,23 @@ export function SimpleStep({ scenario, index, catalogs, bindings, scope, bridge,
     // Shorten only exact, resolved references; keep the original value for editing and execution.
     const linkedValue = typeof current === "string" && scenario.valueBindings.some(binding => current === `{{vars.${binding.name}}}`);
     if (compact) return <span key={fieldKey} data-summary-field={fieldKey} className="api-json-line api-json-request-line">
-      <span className="api-json-request-key-group"><button type="button" className="api-json-token api-json-request-key-token" aria-label={`${index + 1}단계 ${field.name} 키 값 연결`} title={`${field.name} · ${field.type} · 값 연결`} aria-pressed={valueMenu === fieldKey} onClick={openValueMenu}>{JSON.stringify(field.name)}</button>{missingGlobal(state) && <GlobalVariableSetupLink onConfigure={onConfigureGlobal} name={state!.detail!} />}{state && <span className={`api-field-state api-field-state-${state.kind}`} title={state.detail}><strong>{state.label}</strong>{state.detail && (state.kind === "global" || state.detail !== field.name) && <code>{state.detail}</code>}</span>}</span><code>: <span className="api-json-value-token">{linkedValue ? <button type="button" className="api-json-token" onClick={openValueMenu} aria-label={`${field.name} 연결값 설정`}>실행 시 연결값 사용</button> : requestToken(current, field)}</span></code>{!last && ","}
+      <span className="api-json-request-key-group"><button type="button" className="api-json-token api-json-request-key-token" aria-label={`${index + 1}단계 ${field.name} 키 값 연결`} title={`${field.name} · ${field.type} · 값 연결`} aria-pressed={valueMenu === fieldKey} onClick={openValueMenu}>{JSON.stringify(field.name)}</button>{missingGlobal(state) && <GlobalVariableSetupLink onConfigure={onConfigureGlobal} name={state!.detail!} />}{state && !hasUserInput && <span className={`api-field-state api-field-state-${state.kind}`} title={state.detail}><strong>{state.label}</strong>{state.detail && (state.kind === "global" || state.detail !== field.name) && <code>{state.detail}</code>}</span>}</span><code>: <span className="api-json-value-token">{hasUserInput && userInput
+        // A runtime input: show what will be asked, and open its settings (never the raw reference).
+        ? <button type="button" className="api-json-token api-json-input-token" aria-label={`${index + 1}단계 ${field.name} 실행 중 입력 설정`} title="실행할 때 입력받는 값 · 눌러서 설정" onClick={() => { setInputTarget(fieldKey); setValueMenu(null); }}>실행 중 입력 · {userInput.label ?? userInput.name}</button>
+        : linkedValue
+        ? <button type="button" className="api-json-token" onClick={openValueMenu} aria-label={`${field.name} 연결값 설정`}>실행 시 연결값 사용</button>
+        : inlineEdit === fieldKey
+          ? <input className="api-json-inline-input" autoFocus onFocus={event => event.currentTarget.select()} aria-label={`${index + 1}단계 ${field.name} 값`} defaultValue={current === undefined ? "" : typeof current === "string" ? current : JSON.stringify(current)} placeholder={field.example !== undefined ? String(typeof field.example === "string" ? field.example : JSON.stringify(field.example)) : field.type}
+              onKeyDown={event => {
+                if (event.key === "Enter" && !event.nativeEvent.isComposing) { event.preventDefault(); commitTyped(field, event.currentTarget.value, hasUserInput && event.currentTarget.value !== inputReference); setInlineEdit(null); }
+                if (event.key === "Escape") { event.preventDefault(); setInlineEdit(null); }
+              }}
+              onBlur={event => { commitTyped(field, event.currentTarget.value, hasUserInput && event.currentTarget.value !== inputReference); setInlineEdit(null); }} />
+          // Objects and arrays are edited in the value dialog; scalars right here.
+          : <button type="button" className={`api-json-token api-json-value-edit${current === undefined ? " is-unset" : ` api-json-type-${current === null ? "null" : Array.isArray(current) ? "array" : typeof current}`}`} aria-label={`${index + 1}단계 ${field.name} 값 ${current === undefined ? "입력" : "수정"}`} title={current === undefined ? "아직 비어 있습니다 · 눌러서 입력 (흐린 값은 명세 예시이며 보내지 않습니다)" : "눌러서 수정"}
+              onClick={() => { if (isStructuredRequestField(field)) openValueMenu(); else { setInlineEdit(fieldKey); setValueMenu(null); } }}>
+              {current === undefined ? (field.example !== undefined ? `예: ${JSON.stringify(field.example)}` : field.type) : requestToken(current, field)}
+            </button>}</span></code>{!last && ","}
       {valueModal}{inputSettings}{scenarioLink}
     </span>;
     const structured = isStructuredRequestField(field);
@@ -236,7 +268,7 @@ export function SimpleStep({ scenario, index, catalogs, bindings, scope, bridge,
   const spec = catalogs[bindings[step.server] ?? step.server]?.spec;
   return <div className="api-simple-step">
     <header className="api-simple-section-heading"><h3>요청</h3></header>
-    {!operation && (catalogLoading ? <p role="status">명세를 불러오는 중…</p> : <p className="api-warning">현재 API 명세에서 이 API를 찾을 수 없습니다. 경로가 바뀌었다면 위의 <strong>API 바꾸기</strong>로 새 API를 연결하세요. 요청값은 그대로 유지됩니다.{requestOperation && " 요청 필드는 마지막으로 확인한 명세 기준입니다."}</p>)}
+    {!operation && (catalogLoading ? <p role="status">명세를 불러오는 중…</p> : <p className="api-warning">명세에 없는 API입니다. 경로가 바뀌었다면 위의 <strong>API 바꾸기</strong>로 새 API를 연결하세요. 요청값은 그대로 유지됩니다.{requestOperation && " 요청 필드는 마지막으로 확인한 명세 기준입니다."}</p>)}
     {requestOperation && <>
       {fields.filter(field => field.area !== "body").length > 0 ? <div className="api-request-fields">{fields.filter(field => field.area !== "body").map(field => renderField(field))}</div> : !hasRequestBody && <p>입력 가능한 요청 파라미터가 없습니다.</p>}
       {hasRequestBody && <RequestBodyEditor operation={requestOperation} step={step} update={update} bodyFields={fields.filter(field => field.area === "body")} renderField={renderField} />}
@@ -307,11 +339,15 @@ export function SimpleStep({ scenario, index, catalogs, bindings, scope, bridge,
     {(step.expect ?? []).map((expectation, n) => {
       const change = (patch: Partial<typeof expectation>) => updateExpectations(step.expect!.map((v, i) => i === n ? { ...v, ...patch } : v));
       const target = expectation.source === "status" ? "" : ` ${expectation.pointer || expectation.header || "전체 응답"}`;
-      return <details key={n} className="api-verification-item" open={newExpectation === n || undefined}><summary>검증 {n + 1} · {verificationSourceLabels[expectation.source]}{target} · {verificationOperatorLabels[expectation.operator]}{expectation.operator !== "exists" ? ` ${expectedValueText(expectation.value)}` : ""}</summary>
+      const linked = linkedValueLabel(scenario, expectation.value);
+      return <details key={n} className="api-verification-item" open={newExpectation === n || undefined}><summary>검증 {n + 1} · {verificationSourceLabels[expectation.source]}{target} · {verificationOperatorLabels[expectation.operator]}{expectation.operator !== "exists" ? ` ${linked ? `[${linked}]` : expectedValueText(expectation.value)}` : ""}</summary>
       <label>검증 대상<select value={expectation.source} onChange={e => { const source = e.target.value as typeof expectation.source; change(source === "status" ? { source, pointer: undefined, header: undefined, operator: "equals", value: expectation.value ?? 200 } : { source, pointer: source === "body" ? "" : undefined, header: source === "header" ? "content-type" : undefined }); }}>{(Object.keys(verificationSourceLabels) as (keyof typeof verificationSourceLabels)[]).map(source => <option key={source} value={source}>{verificationSourceLabels[source]}</option>)}</select></label>
       {expectation.source !== "status" && <label>{expectation.source === "body" ? "응답 경로 (JSON Pointer)" : "헤더 이름"}<input value={expectation.pointer ?? expectation.header ?? ""} onChange={e => change(expectation.source === "body" ? { pointer: e.target.value } : { header: e.target.value })} /></label>}
       <label>검증 방식<select value={expectation.operator} onChange={e => change({ operator: e.target.value as VerificationOperator })}>{(Object.keys(verificationOperatorLabels) as VerificationOperator[]).filter(operator => expectation.source !== "status" || operator !== "exists").map(operator => <option key={operator} value={operator}>{verificationOperatorLabels[operator]}</option>)}</select></label>
-      {expectation.operator !== "exists" && <label>기대값<DraftInput autoFocus={newExpectation === n} required value={expectedValueText(expectation.value)} placeholder={expectation.source === "status" ? "예: 201 또는 404" : "예: success 또는 200"} onChange={e => change({ value: e.target.value === "" ? undefined : parseExpectedValue(e.target.value) })} /></label>}
+      {expectation.operator !== "exists" && (linked
+        ? <div className="api-expect-linked"><span>기대값</span><span className="api-expect-linked-value"><strong>앞 단계 값</strong><code>{linked}</code><button type="button" onClick={() => setExpectLink(n)}>바꾸기</button><button type="button" onClick={() => change({ value: undefined })}>연결 해제</button></span></div>
+        : <label>기대값<span className="api-expect-value-row"><DraftInput autoFocus={newExpectation === n} required value={expectedValueText(expectation.value)} placeholder={expectation.source === "status" ? "예: 201 또는 404" : "예: success 또는 200"} onChange={e => change({ value: e.target.value === "" ? undefined : parseExpectedValue(e.target.value) })} />{index > 0 && expectation.source !== "status" && <button type="button" title="앞 단계의 요청값·응답값과 같은지 비교합니다" onClick={() => setExpectLink(n)}>앞 단계 값</button>}</span></label>)}
+      {expectLink === n && <ScenarioValueLink scenario={scenario} targetIndex={index} target={{ area: "body", name: expectation.pointer || expectation.header || "기대값", expect: n }} catalogs={catalogs} bindings={bindings} onChange={onChange} onClose={() => setExpectLink(null)} />}
       <button type="button" className="api-danger-action" onClick={() => updateExpectations(step.expect!.filter((_, i) => i !== n))}>검증 제거</button>
     </details>; })}
     {error && <p role="alert" className="api-warning">{error}</p>}
