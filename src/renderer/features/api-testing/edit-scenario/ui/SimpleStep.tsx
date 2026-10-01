@@ -33,6 +33,8 @@ export function SimpleStep({ scenario, index, catalogs, bindings, scope, bridge,
   }, [operation, requestKey]);
   const [target, setTarget] = useState<{ area: RequestArea; name: string } | null>(null);
   const [valueMenu, setValueMenu] = useState<string | null>(null);
+  // Body value being typed in place (area:name), from clicking the value in the JSON view.
+  const [inlineEdit, setInlineEdit] = useState<string | null>(null);
   const [inputTarget, setInputTarget] = useState<string | null>(null);
   const [responsePointer, setResponsePointer] = useState<string | null>(null);
   const [action, setAction] = useState<"verify" | "global" | null>(null);
@@ -171,6 +173,18 @@ export function SimpleStep({ scenario, index, catalogs, bindings, scope, bridge,
     setValueMenu(null);
     setTarget(null);
   };
+  /** Turns typed text into the field's value (JSON for numbers, booleans, objects; templates kept as text); empty unsets. */
+  const commitTyped = (field: RequestField, text: string, clearInput: boolean) => {
+    if (!text.trim()) { setValue(field.area, field.name, undefined, clearInput); setError(""); return; }
+    const exactTemplate = /^\{\{(?:inputs|vars|globals)\.[A-Za-z][A-Za-z0-9_]*\}\}$/.test(text.trim());
+    const typed = ["number", "integer", "boolean", "object", "array"].includes(field.type);
+    let value: Json = text;
+    if (!exactTemplate && typed) {
+      try { value = JSON.parse(text) as Json; } catch { setError(`${field.name}: ${field.type} 형식으로 입력하세요.`); return; }
+      if (!requestFieldValueMatches(value, field.type)) { setError(`${field.name}: ${field.type} 형식으로 입력하세요.`); return; }
+    }
+    setError(""); setValue(field.area, field.name, value, clearInput);
+  };
   const renderField = (field: typeof fields[number], compact = false, last = false) => {
     const current = objectValue(step.request[field.area])[field.name];
     const fieldKey = `${field.area}:${field.name}`;
@@ -192,7 +206,20 @@ export function SimpleStep({ scenario, index, catalogs, bindings, scope, bridge,
     // Shorten only exact, resolved references; keep the original value for editing and execution.
     const linkedValue = typeof current === "string" && scenario.valueBindings.some(binding => current === `{{vars.${binding.name}}}`);
     if (compact) return <span key={fieldKey} data-summary-field={fieldKey} className="api-json-line api-json-request-line">
-      <span className="api-json-request-key-group"><button type="button" className="api-json-token api-json-request-key-token" aria-label={`${index + 1}단계 ${field.name} 키 값 연결`} title={`${field.name} · ${field.type} · 값 연결`} aria-pressed={valueMenu === fieldKey} onClick={openValueMenu}>{JSON.stringify(field.name)}</button>{missingGlobal(state) && <GlobalVariableSetupLink onConfigure={onConfigureGlobal} name={state!.detail!} />}{state && <span className={`api-field-state api-field-state-${state.kind}`} title={state.detail}><strong>{state.label}</strong>{state.detail && (state.kind === "global" || state.detail !== field.name) && <code>{state.detail}</code>}</span>}</span><code>: <span className="api-json-value-token">{linkedValue ? <button type="button" className="api-json-token" onClick={openValueMenu} aria-label={`${field.name} 연결값 설정`}>실행 시 연결값 사용</button> : requestToken(current, field)}</span></code>{!last && ","}
+      <span className="api-json-request-key-group"><button type="button" className="api-json-token api-json-request-key-token" aria-label={`${index + 1}단계 ${field.name} 키 값 연결`} title={`${field.name} · ${field.type} · 값 연결`} aria-pressed={valueMenu === fieldKey} onClick={openValueMenu}>{JSON.stringify(field.name)}</button>{missingGlobal(state) && <GlobalVariableSetupLink onConfigure={onConfigureGlobal} name={state!.detail!} />}{state && <span className={`api-field-state api-field-state-${state.kind}`} title={state.detail}><strong>{state.label}</strong>{state.detail && (state.kind === "global" || state.detail !== field.name) && <code>{state.detail}</code>}</span>}</span><code>: <span className="api-json-value-token">{linkedValue
+        ? <button type="button" className="api-json-token" onClick={openValueMenu} aria-label={`${field.name} 연결값 설정`}>실행 시 연결값 사용</button>
+        : inlineEdit === fieldKey
+          ? <input className="api-json-inline-input" autoFocus onFocus={event => event.currentTarget.select()} aria-label={`${index + 1}단계 ${field.name} 값`} defaultValue={current === undefined ? "" : typeof current === "string" ? current : JSON.stringify(current)} placeholder={field.example !== undefined ? String(typeof field.example === "string" ? field.example : JSON.stringify(field.example)) : field.type}
+              onKeyDown={event => {
+                if (event.key === "Enter" && !event.nativeEvent.isComposing) { event.preventDefault(); commitTyped(field, event.currentTarget.value, hasUserInput && event.currentTarget.value !== inputReference); setInlineEdit(null); }
+                if (event.key === "Escape") { event.preventDefault(); setInlineEdit(null); }
+              }}
+              onBlur={event => { commitTyped(field, event.currentTarget.value, hasUserInput && event.currentTarget.value !== inputReference); setInlineEdit(null); }} />
+          // Objects and arrays are edited in the value dialog; scalars right here.
+          : <button type="button" className={`api-json-token api-json-value-edit${current === undefined ? " is-unset" : ""}`} aria-label={`${index + 1}단계 ${field.name} 값 ${current === undefined ? "입력" : "수정"}`} title={current === undefined ? "아직 비어 있습니다 · 눌러서 입력 (흐린 값은 명세 예시이며 보내지 않습니다)" : "눌러서 수정"}
+              onClick={() => { if (isStructuredRequestField(field)) openValueMenu(); else { setInlineEdit(fieldKey); setValueMenu(null); } }}>
+              {current === undefined ? (field.example !== undefined ? `예: ${JSON.stringify(field.example)}` : field.type) : requestToken(current, field)}
+            </button>}</span></code>{!last && ","}
       {valueModal}{inputSettings}{scenarioLink}
     </span>;
     const structured = isStructuredRequestField(field);

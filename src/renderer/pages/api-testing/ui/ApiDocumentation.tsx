@@ -365,7 +365,7 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
     {composing && composeView === "select" && <aside className="api-selection-basket" aria-label="선택한 API" data-scroll="light">
       <h2>선택한 API · {draft.steps.length}개</h2>
       <p className="api-compose-legend"><Icon name="add" size={14} />로 추가 · <Icon name="expand_more" size={14} />로 상세 열기 · 요청값은 2단계에서 설정</p>
-      <SelectedApiList scenario={draft} disabled={saving} onChange={changeDraft} onLocate={locateStep} getOperation={step => {
+      <SelectedApiList serverNames={Object.fromEntries(project.servers.map(server => [server.id, server.name]))} scenario={draft} disabled={saving} onChange={changeDraft} onLocate={locateStep} getOperation={step => {
         const stepCatalog = composeCatalogs[step.server];
         return stepCatalog?.operations.find(operation => "operationId" in step.api ? operation.operationId === step.api.operationId : operation.path === step.api.path && operation.method.toUpperCase() === step.api.method);
       }} />

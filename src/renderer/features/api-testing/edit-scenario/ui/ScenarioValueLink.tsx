@@ -83,7 +83,12 @@ function JsonValueTree({ options, selected, onSelect, area, rootLabel }: {
         </div>;
       };
       const root = fields.find(option => option.pointer === "");
-      return <section key={status ?? area}>{status && <small>HTTP {status}</small>}<div className="api-json-code">{root && render(root, 0, true)}</div></section>;
+      const body = <div className="api-json-code">{root && render(root, 0, true)}</div>;
+      // Values usually come from a success response: error bodies stay folded unless there is no 2xx.
+      const success = !status || /^2/.test(status) || !statuses.some(other => other && /^2/.test(other));
+      return success
+        ? <section key={status ?? area}>{status && <small>HTTP {status}</small>}{body}</section>
+        : <details key={status} className="api-value-json-other"><summary>HTTP {status} 응답</summary>{body}</details>;
     })}
   </div>;
 }
@@ -165,7 +170,7 @@ export function ScenarioValueLink({ scenario, targetIndex, target, catalogs, bin
           <button type="button" role="tab" aria-selected={source === "response"} className={source === "response" ? "selected" : ""} onClick={() => { setSource("response"); resetSelection(); }}>응답값</button>
           <button type="button" role="tab" aria-selected={source === "request"} className={source === "request" ? "selected" : ""} onClick={() => { setSource("request"); resetSelection(); }}>요청값</button>
         </div>
-        <label>출처 단계<select aria-label="값 출처 단계" aria-describedby="api-value-order-help" value={from} onChange={event => { setFrom(Number(event.target.value)); resetSelection(); }} title="현재 단계보다 앞선 단계만 선택할 수 있습니다.">{sourceSteps.map(({ step, index }) => <option key={step.id} value={index} disabled={index >= targetIndex}>{sourceStepLabel(scenario, index, catalogs, bindings)}{index === targetIndex ? " · 현재 단계" : index > targetIndex ? " · 뒤 단계" : ""}</option>)}</select>{sourceSteps.some(item => item.index >= targetIndex) && <small id="api-value-order-help" className="api-value-order-warning">현재 단계와 뒤 단계는 실행 순서상 선택할 수 없습니다.</small>}</label>
+        <label>출처 단계<select aria-label="값 출처 단계" aria-describedby="api-value-order-help" value={from} onChange={event => { setFrom(Number(event.target.value)); resetSelection(); }} title="현재 단계보다 앞선 단계만 선택할 수 있습니다.">{sourceSteps.map(({ step, index }) => <option key={step.id} value={index} disabled={index >= targetIndex}>{sourceStepLabel(scenario, index, catalogs, bindings)}{index === targetIndex ? " · 현재 단계" : index > targetIndex ? " · 뒤 단계" : ""}</option>)}</select>{sourceSteps.some(item => item.index >= targetIndex) && <small id="api-value-order-help" className="api-value-order-help">현재 단계와 뒤 단계는 실행 순서상 고를 수 없습니다.</small>}</label>
 
         {source === "request" && <section className="api-value-source-section" aria-label="요청값 출처 설정">
           <label>요청 영역<select aria-label="요청 출처 영역" value={requestArea} onChange={event => { setRequestArea(event.target.value as RequestArea); resetSelection(); }}>{(["pathParams", "query", "headers", "cookies", "body"] as const).map(area => <option key={area} value={area}>{area}</option>)}</select></label>
@@ -177,7 +182,6 @@ export function ScenarioValueLink({ scenario, targetIndex, target, catalogs, bin
           {responseArea === "body" ? responseOptions.length ? <JsonValueTree options={responseOptions} selected={pointer} onSelect={setPointer} area="응답" /> : <p className="api-field-menu-help">선택 가능한 응답 구조가 없습니다. 고급 설정에서 JSON Pointer를 직접 입력할 수 있습니다.</p> : <label>응답 헤더 이름<input value={header} onChange={event => setHeader(event.target.value)} placeholder="X-Request-Id" /></label>}
         </section>}
 
-        {ready && <div className="api-value-selection-summary"><span>선택한 출처</span><code>{sourceStepLabel(scenario, from, catalogs, bindings)} · {source === "response" ? responseArea === "header" ? `헤더 ${header}` : `응답 ${pointerLabel(pointer ?? "")}` : `요청 ${requestArea} ${pointerLabel(pointer ?? "")}`}</code></div>}
         <details className="api-value-advanced"><summary>고급 설정 · 연결 이름·JSON Pointer</summary>
           <label>연결 이름 (선택)<input value={variable} onChange={event => setVariable(event.target.value)} placeholder="단계와 값 출처를 기준으로 자동 생성" /></label>
           <label>문자열 접두사 · 선택<input value={prefix} onChange={event => setPrefix(event.target.value)} placeholder="Bearer  " /></label>
@@ -186,7 +190,8 @@ export function ScenarioValueLink({ scenario, targetIndex, target, catalogs, bin
         </details>
       </>}
       {error && <p role="alert" className="api-field-menu-error">{error}</p>}
-      <footer><button type="button" onClick={onClose}>{previousSourceSteps.length > 0 ? "취소" : "닫기"}</button>{previousSourceSteps.length > 0 && <button type="button" className="api-primary" disabled={!ready || from < 0} onClick={apply}>이 값으로 연결</button>}</footer>
+      {/* Stays in view while the JSON above scrolls: what is picked, and the button to use it. */}
+      <footer className="api-value-link-footer">{ready && <span className="api-value-selection-summary"><span>선택</span><code>{sourceStepLabel(scenario, from, catalogs, bindings)} · {source === "response" ? responseArea === "header" ? `헤더 ${header}` : `응답 ${pointerLabel(pointer ?? "")}` : `요청 ${requestArea} ${pointerLabel(pointer ?? "")}`}</code></span>}<button type="button" onClick={onClose}>{previousSourceSteps.length > 0 ? "취소" : "닫기"}</button>{previousSourceSteps.length > 0 && <button type="button" className="api-primary" disabled={!ready || from < 0} onClick={apply}>이 값으로 연결</button>}</footer>
     </section>
   </div>;
 }

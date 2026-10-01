@@ -20,6 +20,9 @@ export function RequestBodyEditor({ operation, step, update, bodyFields, renderF
     setError("");
   }, [step.id, step.request.body]);
   const example = jsonText(operation.bodyExample);
+  const currentBody = step.request.body && typeof step.request.body === "object" && !Array.isArray(step.request.body) ? step.request.body as Record<string, Json> : {};
+  // Fields the spec gives an example for that are still empty: "예시값으로 채우기" copies those in.
+  const fillable = bodyFields.filter(field => field.example !== undefined && currentBody[field.name] === undefined);
   const canUseFieldEditor = bodyFields.length > 0 && (step.request.body === undefined || (step.request.body !== null && typeof step.request.body === "object" && !Array.isArray(step.request.body)));
   const onChange = (nextText: string, element: HTMLTextAreaElement) => {
     setText(nextText);
@@ -42,10 +45,10 @@ export function RequestBodyEditor({ operation, step, update, bodyFields, renderF
     }
   };
   return <section className="api-request-json" aria-label="요청 본문 JSON">
-    <header><strong>Request body</strong><small>{operation.bodyRequired ? "required · " : ""}application/json</small></header>
+    <header><strong>Request body</strong><small>{operation.bodyRequired ? "required · " : ""}application/json</small>{canUseFieldEditor && fillable.length > 0 && <button type="button" className="api-compose-link api-json-fill-examples" onClick={() => update({ request: { ...step.request, body: { ...Object.fromEntries(fillable.map(field => [field.name, field.example as Json])), ...(step.request.body && typeof step.request.body === "object" && !Array.isArray(step.request.body) ? step.request.body : {}) } } })}>예시값으로 채우기 ({fillable.length})</button>}</header>
     {canUseFieldEditor
       ? <div className="api-json-field-editor" aria-label="요청 본문 필드 편집">
-        <p className="api-field-help">JSON 키를 클릭해 이전 응답·전역변수·사용자 입력을 선택하고, 오른쪽 값은 바로 수정하세요.</p>
+        <p className="api-field-help">값을 누르면 바로 입력하고, 키를 누르면 이전 단계 값·전역변수·실행 중 입력을 고릅니다. 흐린 <span className="api-json-value-edit is-unset">예: …</span>는 명세 예시이며 채우기 전에는 보내지 않습니다.</p>
         <div className="api-json-edit-code" aria-label="요청 본문 JSON 값 편집">
           <code className="api-json-edit-brace">&#123;</code>
           <div className="api-json-field-list">{bodyFields.map((field, fieldIndex) => renderField(field, true, fieldIndex === bodyFields.length - 1))}</div>
@@ -156,7 +159,7 @@ export function ValueActionModal({ index, field, current, state, globalNames, ha
         <header><strong>직접 입력</strong><small>입력한 값을 요청에 사용</small></header>
         <div>{structured
           ? <DraftTextarea aria-label={`${index + 1}단계 ${field.name} 직접 입력 JSON`} rows={4} spellCheck={false} value={directText} placeholder={directPlaceholder} onChange={event => { setDirectText(event.target.value); setDirectError(""); }} />
-          : <DraftInput aria-label={`${index + 1}단계 ${field.name} 직접 입력값`} value={directText} placeholder={directPlaceholder} onChange={event => { setDirectText(event.target.value); setDirectError(""); }} />}
+          : <DraftInput aria-label={`${index + 1}단계 ${field.name} 직접 입력값`} value={directText} placeholder={directPlaceholder} onChange={event => { setDirectText(event.target.value); setDirectError(""); }} onKeyDown={event => { if (event.key === "Enter" && !event.nativeEvent.isComposing) { event.preventDefault(); applyDirectValue(); } }} />}
           <button type="button" className="api-primary" onClick={applyDirectValue}>입력값 적용</button></div>
         {directError && <p className="api-field-menu-error" role="alert">{directError}</p>}
       </section>
