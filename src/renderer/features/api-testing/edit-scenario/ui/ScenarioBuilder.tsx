@@ -2,6 +2,7 @@ import { useEffect, useState, type ComponentType, type ReactNode } from "react";
 import { stringifyScenario, scenarioSchema } from "../../../../../app/api-testing/shared/scenario";
 import type { Scenario } from "../../../../../app/api-testing/shared/scenario";
 import type { ApiCatalog, ApiGlobal, ApiProject, ApiScope, ApiTestingBridge, SavedApiScenario } from "../../../../../app/api-testing/shared/workspace";
+import { ServerTag, usesManyServers } from "../../../../entities/api-testing";
 import type { Step } from "../model/scenario-builder-model";
 import { SimpleStep } from "./SimpleStep";
 import { YamlCode } from "../../../../entities/api-testing";
@@ -55,6 +56,7 @@ export function ScenarioBuilder({ bindings, project, scope, bridge, onApply, val
   }, [bridge, project.servers, scope.environmentId, scope.projectId, suppliedCatalogs]);
   const updateStep = (index: number, patch: Partial<Step>) => setDraft({ ...draft, steps: draft.steps.map((s, i) => i === index ? { ...s, ...patch } : s) });
   const authNames = [...new Set([...globalOptions(draft, draft.steps.length, globals, savedScenarios, scope.environmentId).map(option => option.name), ...(draft.auth ? [draft.auth.slice(8)] : []), ...draft.steps.flatMap(step => step.auth && step.auth !== "none" ? [step.auth.slice(8)] : [])])].sort();
+  const serverNames = Object.fromEntries(project.servers.map(server => [server.id, server.name]));
   return <form className="api-builder" aria-label="시나리오 시각 편집기" onInvalidCapture={event => { let element: HTMLElement | null = event.target as HTMLElement; while (element) { if (element instanceof HTMLDetailsElement) element.open = true; element = element.parentElement; } }} onSubmit={event => {
     event.preventDefault();
     const parsed = scenarioSchema.safeParse(draft);
@@ -71,7 +73,7 @@ export function ScenarioBuilder({ bindings, project, scope, bridge, onApply, val
     <div className="api-accordion-editor">
     <div>
     {draft.steps.map((step, index) => { const operation = operationForStep(step, catalogs, bindings); const method = operation?.method ?? ("method" in step.api ? step.api.method : "API"); const path = operation?.path ?? ("path" in step.api ? step.api.path : step.api.operationId); return <details id={`scenario-editor-step-${step.id}`} onToggle={event => { if (event.currentTarget.open) setVisitedSteps(previous => previous.has(step.id) ? previous : new Set([...previous, step.id])); }} className={`api-builder-step api-step-accordion api-selected-${method.toLowerCase()}`} key={step.id} aria-label={`편집 단계 ${index + 1}`}>
-      <summary className="api-step-summary" onClick={() => onStepFocus?.(step)}><span>{index + 1}</span><span className="api-selected-method">{method}</span><code>{path}</code><span className="api-step-summary-name">{step.name || operation?.summary || step.id}</span><small>{[["요청", configuredFields(draft, index).length], ["저장", step.extract.length], ["검증", step.expect?.length ?? 0]].filter(([, count]) => count).map(([label, count]) => `${label} ${count}`).join(" · ") || "설정 없음"}{step.auth ? ` · 인증 ${step.auth === "none" ? "없음" : step.auth.slice(8)}` : draft.auth ? ` · 인증 ${draft.auth.slice(8)}` : ""}</small></summary>
+      <summary className="api-step-summary" onClick={() => onStepFocus?.(step)}><span>{index + 1}</span><span className="api-selected-method">{method}</span><code>{path}</code><span className="api-step-summary-name">{usesManyServers(draft.steps) && <ServerTag server={step.server} names={serverNames} />}{step.name || operation?.summary || step.id}</span><small>{[["요청", configuredFields(draft, index).length], ["저장", step.extract.length], ["검증", step.expect?.length ?? 0]].filter(([, count]) => count).map(([label, count]) => `${label} ${count}`).join(" · ") || "설정 없음"}{step.auth ? ` · 인증 ${step.auth === "none" ? "없음" : step.auth.slice(8)}` : draft.auth ? ` · 인증 ${draft.auth.slice(8)}` : ""}</small></summary>
       {visitedSteps.has(step.id) && <div className="api-step-body">
       <div className="api-step-actions">
         {operation?.description && <button type="button" className="api-step-description-toggle" aria-expanded={descriptionOpen.has(step.id)} onClick={() => setDescriptionOpen(previous => { const next = new Set(previous); if (next.has(step.id)) next.delete(step.id); else next.add(step.id); return next; })}>{descriptionOpen.has(step.id) ? "▾" : "▸"} API 설명</button>}

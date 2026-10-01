@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { type Scenario } from "../../../../../app/api-testing/shared/scenario";
 import type { ApiCatalog, ApiTestingBridge } from "../../../../../app/api-testing/shared/workspace";
-import { ScenarioStepSummary } from "../../../../entities/api-testing";
+import { ScenarioStepSummary, ServerTag, usesManyServers } from "../../../../entities/api-testing";
 
 
-export function ScenarioSettingsSummary({ scenario, catalogs, projectId, bridge, onSelect, globalRevision, onConfigureGlobal }: { globalRevision: number; onConfigureGlobal: (name: string) => void; scenario: Scenario; catalogs: Record<string, ApiCatalog | null>; projectId: string; bridge: ApiTestingBridge; onSelect: (id: string) => void }) {
+export function ScenarioSettingsSummary({ scenario, catalogs, projectId, bridge, onSelect, globalRevision, onConfigureGlobal, serverNames = {} }: { serverNames?: Record<string, string>; globalRevision: number; onConfigureGlobal: (name: string) => void; scenario: Scenario; catalogs: Record<string, ApiCatalog | null>; projectId: string; bridge: ApiTestingBridge; onSelect: (id: string) => void }) {
   const [globals, setGlobals] = useState<Set<string> | null>(null);
   const pending = useRef<MutationObserver | null>(null);
   useEffect(() => () => pending.current?.disconnect(), []);
@@ -38,7 +38,7 @@ export function ScenarioSettingsSummary({ scenario, catalogs, projectId, bridge,
       const method = op?.method ?? ("method" in step.api ? step.api.method : "API");
       const path = op?.path ?? ("path" in step.api ? step.api.path : step.api.operationId);
       return <section key={step.id} className={`api-summary-card api-selected-${method.toLowerCase()}`}>
-        <button type="button" className="api-summary-heading" onClick={() => focus(step.id)}><span>{index + 1}</span><span className="api-method" data-method={method}>{method}</span><code>{path}</code></button>
+        <button type="button" className="api-summary-heading" onClick={() => focus(step.id)}><span>{index + 1}</span><span className="api-method" data-method={method}>{method}</span><code>{path}</code>{usesManyServers(scenario.steps) && <ServerTag server={step.server} names={serverNames} />}</button>
         <div className="api-summary-content"><ScenarioStepSummary onConfigureGlobal={onConfigureGlobal} scenario={scenario} stepIndex={index} operation={op} catalog={catalogs[step.server]} globals={globals} onSelect={focus} /></div>
       </section>;
     })}

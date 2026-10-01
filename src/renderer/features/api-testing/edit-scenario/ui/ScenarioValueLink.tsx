@@ -76,7 +76,7 @@ function JsonValueTree({ options, selected, onSelect, area, rootLabel }: {
         return <div key={option.pointer}>
           <div style={{ paddingLeft: depth * 16 }} className="api-value-json-line">
             <button type="button" className="api-json-token api-json-key-token" aria-label={`${option.pointer || "전체 값"} ${option.type} 값 선택`} aria-pressed={selected === option.pointer} title={option.pointer || "전체 값"} onClick={() => onSelect(option.pointer)}>{!option.pointer || arrayItem ? token : jsonTreeKey(option.pointer, rootLabel ?? area)}</button>
-            {option.pointer && !arrayItem && <code>: {token}</code>}
+            {option.pointer && !arrayItem && <code>: <span className={`api-json-type-${option.type}`}>{token}</span></code>}
             {!container && !last && <code>,</code>}
           </div>
           {container && <>{children.map((child, index) => render(child, depth + 1, index === children.length - 1, option.type === "array"))}<div style={{ paddingLeft: depth * 16 }}><code>{option.type === "array" ? "]" : "}"}{!last && ","}</code></div></>}

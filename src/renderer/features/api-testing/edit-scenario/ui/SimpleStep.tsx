@@ -216,7 +216,7 @@ export function SimpleStep({ scenario, index, catalogs, bindings, scope, bridge,
               }}
               onBlur={event => { commitTyped(field, event.currentTarget.value, hasUserInput && event.currentTarget.value !== inputReference); setInlineEdit(null); }} />
           // Objects and arrays are edited in the value dialog; scalars right here.
-          : <button type="button" className={`api-json-token api-json-value-edit${current === undefined ? " is-unset" : ""}`} aria-label={`${index + 1}단계 ${field.name} 값 ${current === undefined ? "입력" : "수정"}`} title={current === undefined ? "아직 비어 있습니다 · 눌러서 입력 (흐린 값은 명세 예시이며 보내지 않습니다)" : "눌러서 수정"}
+          : <button type="button" className={`api-json-token api-json-value-edit${current === undefined ? " is-unset" : ` api-json-type-${current === null ? "null" : Array.isArray(current) ? "array" : typeof current}`}`} aria-label={`${index + 1}단계 ${field.name} 값 ${current === undefined ? "입력" : "수정"}`} title={current === undefined ? "아직 비어 있습니다 · 눌러서 입력 (흐린 값은 명세 예시이며 보내지 않습니다)" : "눌러서 수정"}
               onClick={() => { if (isStructuredRequestField(field)) openValueMenu(); else { setInlineEdit(fieldKey); setValueMenu(null); } }}>
               {current === undefined ? (field.example !== undefined ? `예: ${JSON.stringify(field.example)}` : field.type) : requestToken(current, field)}
             </button>}</span></code>{!last && ","}
