@@ -101,6 +101,8 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
   };
 
   const problems = result ? problemReport(result) : "";
+  // A suite made only of reused saved scenarios is worth saving even with no new scenario chosen.
+  const suiteReuses = Boolean(saveSuite && result?.suite?.scenarioIds.some(id => result.suite!.saved?.[id] !== undefined || result.suite!.fallbacks?.[id]));
   const nameOf = (id: string) => result?.drafts.find(draft => draft.id === id)?.name ?? result?.suite?.saved?.[id] ?? id;
   const usable = operations.filter(operation => !operation.unavailable).length;
   const unavailable = operations.length - usable;
@@ -157,7 +159,7 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
             <ol>{result.suite.scenarioIds.map(id => <li key={id}>{nameOf(id)}{result.suite!.fallbacks?.[id] && !chosen.includes(id) ? " · 기존 시나리오 사용" : result.drafts.find(draft => draft.id === id)?.issues.length ? " · 수정 필요라 제외" : result.suite!.saved?.[id] !== undefined ? " · 기존 시나리오" : ""}</li>)}</ol>
             {result.suite.problems.map(problem => <p key={problem} className="api-field-help">{problem}</p>)}
           </div>}
-          <div className="api-actions"><button className="api-primary" disabled={saving || !chosen.length} onClick={() => void save()}>{saving ? "저장 중…" : "선택한 것 저장"}</button></div>
+          <div className="api-actions"><button className="api-primary" disabled={saving || (!chosen.length && !suiteReuses)} onClick={() => void save()}>{saving ? "저장 중…" : "선택한 것 저장"}</button></div>
         </section>}
       </li>
     </ol>
