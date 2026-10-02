@@ -1,13 +1,12 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import type { Json, Scenario, ValueBinding } from "../../../../../app/api-testing/shared/scenario";
+import type { Scenario, ValueBinding } from "../../../../../app/api-testing/shared/scenario";
 import { scenarioStepInputs } from "../../../../../app/api-testing/shared/scenario";
-import type { ApiCatalog, ApiOperation } from "../../../../../app/api-testing/shared/workspace";
+import { requestValueFields, responseValueOptions } from "../model/value-link-model";
+import type { ApiCatalog, ApiOperation, ApiScenarioResult } from "../../../../../app/api-testing/shared/workspace";
 import { connectValue, type RequestArea } from "../model/scenario-builder-model";
 import { responseFields } from "../../../../entities/api-testing";
 
-// `dynamic`: an input, global or linked value — the only request values worth comparing a response to.
-type RequestValueOption = { pointer: string; type: string; dynamic?: boolean; label?: string };
 // `expect` set: the picked value becomes that check's expected value instead of a request field.
 export type ScenarioValueTarget = { area: RequestArea; name: string; expect?: number };
 
@@ -17,29 +16,6 @@ function findOperation(scenario: Scenario, index: number, catalogs: Record<strin
   return catalogs[bindings[step.server] ?? step.server]?.operations.find(operation => "operationId" in step.api
     ? operation.operationId === step.api.operationId
     : operation.path === step.api.path && operation.method.toUpperCase() === step.api.method.toUpperCase());
-}
-
-function requestValueFields(request: Scenario["steps"][number]["request"], area: RequestArea, inputNames: Set<string> = new Set()): RequestValueOption[] {
-  const value = request[area];
-  if (value === undefined) return [];
-  const result: RequestValueOption[] = [];
-  const visit = (current: Json, pointer: string, depth: number) => {
-    if (depth > 12 || result.length >= 500) return;
-    if (current === null || typeof current !== "object") {
-      result.push({ pointer, type: current === null ? "null" : typeof current, label: requestValueText(current, inputNames), dynamic: typeof current === "string" && /\{\{(inputs|globals|vars)\./.test(current) });
-      return;
-    }
-    if (Array.isArray(current)) {
-      result.push({ pointer, type: "array" });
-      if (current.length) visit(current[0], `${pointer}/0`, depth + 1);
-      return;
-    }
-    const entries = Object.entries(current);
-    result.push({ pointer, type: "object" });
-    entries.forEach(([key, item]) => visit(item, `${pointer}/${key.replace(/~/g, "~0").replace(/\//g, "~1")}`, depth + 1));
-  };
-  visit(value as Json, "", 0);
-  return result;
 }
 
 function pointerLabel(pointer: string): string {
@@ -56,14 +32,6 @@ function jsonTreeKey(pointer: string, rootLabel: string): string {
   return /^\d+$/.test(segment) ? `[${segment}]` : JSON.stringify(segment);
 }
 
-/** A request value as the editor shows it: the set value, or what a reference stands for. */
-function requestValueText(value: Json, inputNames: Set<string>): string {
-  if (typeof value !== "string") return JSON.stringify(value);
-  const reference = /^\{\{(inputs|globals|vars)\.([^}]+)\}\}$/.exec(value);
-  if (!reference) return JSON.stringify(value);
-  // Runtime inputs are stored as vars too; the step's inputs tell them apart from links.
-  return reference[1] === "inputs" || inputNames.has(reference[2]) ? "실행 중 입력" : reference[1] === "globals" ? `전역변수 ${reference[2]}` : "값 연결";
-}
 
 function isJsonContainer(type: string): boolean {
   return type === "object" || type === "array";
@@ -111,12 +79,14 @@ function sourceStepLabel(scenario: Scenario, index: number, catalogs: Record<str
   return `${index + 1}. ${step.name || findOperation(scenario, index, catalogs, bindings)?.summary || step.id}`;
 }
 
-export function ScenarioValueLink({ scenario, targetIndex, target, catalogs, bindings, onChange, onClose }: {
+export function ScenarioValueLink({ scenario, targetIndex, target, catalogs, bindings, lastRun, onChange, onClose }: {
   scenario: Scenario;
   targetIndex: number;
   target: ScenarioValueTarget;
   catalogs: Record<string, ApiCatalog | null>;
   bindings: Record<string, string>;
+  /** This scenario's last run in this session: its responses show real values next to the fields. */
+  lastRun?: ApiScenarioResult;
   onChange: (next: Scenario) => void;
   onClose: () => void;
 }) {
@@ -136,7 +106,8 @@ export function ScenarioValueLink({ scenario, targetIndex, target, catalogs, bin
   const sourceOperation = sourceStep ? findOperation(scenario, from, catalogs, bindings) : undefined;
   const sourceSpec = sourceStep ? catalogs[bindings[sourceStep.server] ?? sourceStep.server]?.spec : undefined;
   const requestOptions = source === "request" && sourceStep ? requestValueFields(sourceStep.request, requestArea, new Set(scenarioStepInputs(sourceStep).map(input => input.name))) : [];
-  const responseOptions = source === "response" && responseArea === "body" && sourceOperation ? responseFields(sourceOperation.responses, sourceSpec) : [];
+  const sourceRun = sourceStep ? lastRun?.steps.find(step => step.id === sourceStep.id) : undefined;
+  const responseOptions = source === "response" && responseArea === "body" ? responseValueOptions(sourceOperation ? responseFields(sourceOperation.responses, sourceSpec) : [], sourceRun) : [];
   const ready = source === "request" ? pointer !== null : responseArea === "body" ? pointer !== null : Boolean(header.trim());
 
   const resetSelection = () => { setPointer(null); setHeader(""); setError(""); };
@@ -193,6 +164,7 @@ export function ScenarioValueLink({ scenario, targetIndex, target, catalogs, bin
 
         {source === "response" && <section className="api-value-source-section" aria-label="응답값 출처 설정">
           <label>응답 영역<select aria-label="응답 출처 영역" value={responseArea} onChange={event => { setResponseArea(event.target.value as "body" | "header"); resetSelection(); }}><option value="body">본문 JSON</option><option value="header">응답 헤더</option></select></label>
+          {responseArea === "body" && sourceRun?.httpStatus !== undefined && sourceRun.body !== undefined && <p className="api-field-help api-value-run-note">값은 최근 실행 결과입니다 (HTTP {sourceRun.httpStatus}).</p>}
           {responseArea === "body" ? responseOptions.length ? <JsonValueTree options={responseOptions} selected={pointer} onSelect={setPointer} area="응답" /> : <p className="api-field-menu-help">선택 가능한 응답 구조가 없습니다. 고급 설정에서 JSON Pointer를 직접 입력할 수 있습니다.</p> : <label>응답 헤더 이름<input value={header} onChange={event => setHeader(event.target.value)} placeholder="X-Request-Id" /></label>}
         </section>}
 

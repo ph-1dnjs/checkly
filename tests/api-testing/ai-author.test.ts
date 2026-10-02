@@ -223,3 +223,20 @@ test("a same-name draft falls back to the saved scenario, and saved drafts canno
     assert.deepEqual(result.suite?.problems, ["스위트의 '미완성'는 실행할 수 없는 초안이라 넣을 수 없습니다"]);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
+
+test("missing globals are listed once per global with their steps and the scenario that makes them", async () => {
+  const { dir, workspace, scope } = await setup();
+  try {
+    await workspace.saveScenario(scope, login.replace("id: shop/login", "id: shop/issue").replace("name: 로그인", "name: 토큰 발급").replace("globals.accessToken", "globals.otherToken"), {});
+    const uses = "name: 두 번 조회\nserver: 상점\nauth: globals.otherToken\nsteps:\n  - { name: 첫 조회, api: 'GET /items/{id}', pathParams: { id: 1 } }\n  - { name: 둘째 조회, api: 'GET /items/{id}', pathParams: { id: '{{globals.missingId}}' } }\n  - { name: 셋째 조회, api: 'GET /items/{id}', pathParams: { id: '{{globals.batchId}}' } }\n";
+    // A scenario in the same result can make a value too.
+    const makes = "name: 같은 결과의 발급\nserver: 상점\nsteps:\n  - { name: 발급, api: POST /login, auth: none, body: { loginId: tester }, extract: [{ pointer: /id, target: globals.batchId }] }\n";
+    const result = await workspace.checkAiScenarios(scope, [uses, makes].join("---\n"));
+    assert.deepEqual(result.drafts[0].executionIssues, [
+      "1·2·3단계: 전역변수 'otherToken' 값이 없습니다. '토큰 발급'을(를) 먼저 실행하면 만들어집니다",
+      "2단계: 전역변수 'missingId' 값이 없습니다. 전역변수에서 설정하세요",
+      "3단계: 전역변수 'batchId' 값이 없습니다. '같은 결과의 발급'을(를) 먼저 실행하면 만들어집니다",
+    ]);
+    assert.deepEqual(result.drafts[0].issues, []);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});

@@ -71,6 +71,8 @@ async function main() {
     await page.getByLabel("프로젝트 이름").fill("쇼핑몰 QA");
     await page.getByLabel("기본 API 기본 주소").fill(url);
     await page.getByRole("button", { name: "프로젝트 저장", exact: true }).click();
+    // With one server the header lists no servers (step tags only appear with two or more).
+    await expect(page.getByLabel("프로젝트 서버", { exact: true })).toHaveCount(0);
     // No spec yet: the import form is open by itself.
     const specSource = page.getByRole("region", { name: "API 명세 가져오기" });
     const importButton = specSource.getByRole("button", { name: "이 URL로 가져오기", exact: true });
@@ -142,11 +144,15 @@ async function main() {
     const globals = page.getByRole("dialog", { name: "{ } 전역변수", exact: true });
     await page.getByRole("button", { name: "{ } 전역변수", exact: true }).click();
     await globals.getByRole("button", { name: "+ 변수 추가", exact: true }).click();
+    // A new variable starts at its name (the focus waits a frame, and must not move once the user is typing).
+    await expect(page.getByLabel("전역변수 이름", { exact: true })).toBeFocused();
     await page.getByLabel("전역변수 이름", { exact: true }).fill("sampleId");
     await page.getByLabel("전역변수 형식", { exact: true }).selectOption("json");
     await page.getByLabel("전역변수 값", { exact: true }).fill("7");
     await page.getByRole("button", { name: "전역변수 저장", exact: true }).click();
-    await expect(globals.locator(".api-global-row").filter({ hasText: "sampleId" })).toBeVisible();
+    // A refused save says why in the failure, instead of only "row not found".
+    await expect(globals.locator(".api-global-row").filter({ hasText: "sampleId" })).toBeVisible()
+      .catch(async (error: Error) => { throw new Error(`${error.message}\n전역변수 창: ${await globals.innerText().catch(() => "(닫힘)")}\n입력값: ${JSON.stringify(await globals.locator("input, select").evaluateAll(fields => fields.map(field => [field.getAttribute("aria-label"), (field as HTMLInputElement).value])).catch(() => []))}`); });
     await expect(globals.getByRole("region", { name: "세션 쿠키" })).toContainText("세션 쿠키 0개");
     await expect(globals.getByRole("button", { name: "쿠키 비우기", exact: true })).toBeDisabled();
     await page.keyboard.press("Escape");
@@ -172,6 +178,12 @@ async function main() {
     const aiResult = page.getByRole("region", { name: "AI 작성 결과" });
     await expect(aiResult).toContainText("수정 필요");
     await expect(aiResult.getByRole("button", { name: "문제 복사", exact: true })).toBeVisible();
+    // What goes back to the AI: the scenario as it wrote it, the problem, and where valid APIs are listed.
+    await aiResult.getByRole("button", { name: "문제 복사", exact: true }).click();
+    // The copy is asynchronous: wait until the clipboard holds the report instead of the guide.
+    await expect.poll(() => app!.evaluate(({ clipboard }) => clipboard.readText())).toContain("Checkly 검사에서 아래 문제가 나왔습니다");
+    const problems = await app.evaluate(({ clipboard }) => clipboard.readText());
+    if (!problems.includes("### 2번째 시나리오 · AI 상품 조회") || !problems.includes("GET /missing는 명세에 없는 API입니다") || !problems.includes("api-catalog.json") || /scenario-[0-9a-f]{8}/.test(problems)) throw new Error(`Unexpected problem report:\n${problems}`);
     // The fixed result comes from the file the AI writes.
     await writeFile(resultFile, aiOutput("GET /items/{id}"));
     await page.getByRole("button", { name: "AI 결과 불러오기", exact: true }).click();
@@ -186,6 +198,17 @@ async function main() {
     await expect(page.getByRole("heading", { name: "AI 로그인", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: /AI 로그인/ })).toBeVisible();
     await expect(page.getByRole("button", { name: /AI 상점 흐름/ })).toBeVisible();
+    // A later result may only reuse saved scenarios: a same-name draft starts unselected and the suite
+    // falls back to the saved one, so it can be saved with no new scenario chosen.
+    await writeFile(resultFile, "name: AI 로그인\nserver: 기본 API\nsteps:\n  - { name: 로그인, api: POST /login, body: { loginId: tester } }\n---\nsuite: { name: AI 재사용 흐름, scenarios: [AI 로그인, AI 상품 조회] }\n");
+    await page.getByRole("tab", { name: "AI 작성 도우미", exact: true }).click();
+    await page.getByRole("button", { name: "AI 결과 불러오기", exact: true }).click();
+    await expect(aiResult.getByLabel("AI 로그인 저장", { exact: true })).not.toBeChecked();
+    await expect(aiResult.locator(".api-ai-author-suite li")).toHaveText(["AI 로그인 · 기존 시나리오 사용", "AI 상품 조회 · 기존 시나리오"]);
+    await aiResult.getByRole("button", { name: "선택한 것 저장", exact: true }).click();
+    await page.getByRole("button", { name: /AI 재사용 흐름/ }).click();
+    await expect(page.getByRole("region", { name: "스위트 구성" })).toContainText("AI 로그인");
+    await expect(page.getByRole("region", { name: "스위트 구성" })).toContainText("AI 상품 조회");
 
     // Compose: login → item detail, linking the login response id into the path.
     await page.getByRole("tab", { name: "시나리오", exact: true }).click();
@@ -226,6 +249,18 @@ async function main() {
     await page.getByRole("button", { name: "1단계 loginId 키 값 연결", exact: true }).click();
     await page.getByRole("button", { name: /^실행 중 입력으로 받기/ }).click();
     await page.getByRole("button", { name: "완료", exact: true }).click();
+    // The body shows what will be asked (not {{vars.…}}); the badge opens the input settings.
+    const inputBadge = page.getByRole("button", { name: "1단계 loginId 실행 중 입력 설정", exact: true });
+    await expect(inputBadge).toHaveText("실행 중 입력 · loginId 입력");
+    await expect(page.locator('details[aria-label="편집 단계 1"]')).not.toContainText("{{vars.");
+    await inputBadge.click();
+    await expect(page.getByRole("dialog", { name: "loginId 실행 중 입력 설정", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "완료", exact: true }).click();
+    // The settings summary labels each request part instead of showing "body" as a JSON key.
+    const firstSummaryArea = page.locator(".api-summary-request-area").first();
+    await expect(firstSummaryArea.locator(".api-summary-area-label")).toHaveText("본문");
+    await expect(firstSummaryArea).toContainText("loginId");
+    await expect(firstSummaryArea).not.toContainText('"body"');
     await page.getByRole("button", { name: "/accessToken 키 선택", exact: true }).first().click();
     await page.getByRole("button", { name: /^전역변수로 저장/ }).click();
     await page.getByLabel("응답 전역변수 이름", { exact: true }).fill("accessToken");
@@ -248,6 +283,25 @@ async function main() {
     await page.getByRole("button", { name: /^이전 단계 값 선택/ }).click();
     await page.getByRole("button", { name: "/id integer 값 선택", exact: true }).click();
     await page.getByRole("button", { name: "이 값으로 연결", exact: true }).click();
+    // A check can compare with an earlier step's value: step 2's /id must equal step 1's response id.
+    const secondStep = page.locator('details[aria-label="편집 단계 2"]');
+    await secondStep.getByRole("button", { name: "/id 키 선택", exact: true }).click();
+    await page.getByRole("button", { name: /^이 값 검증/ }).click();
+    await page.getByRole("button", { name: "검증 추가", exact: true }).click();
+    await secondStep.locator("details.api-verification-item > summary").click();
+    // A wrapping label names the select with its chosen option too ("검증 방식 존재하는지").
+    await secondStep.getByRole("combobox", { name: /^검증 방식/ }).selectOption("equals");
+    await secondStep.getByRole("button", { name: "앞 단계 값", exact: true }).click();
+    const expectLink = page.getByRole("dialog", { name: "/id 값 연결", exact: true });
+    await expect(expectLink).toContainText("2단계 · 검증 /id 기대값");
+    // Request values: only runtime inputs, globals and links can be picked (a fixed value would just be typed).
+    await expect(expectLink.getByRole("button", { name: "/loginId string 값 선택", exact: true })).toBeEnabled();
+    await expect(expectLink.getByRole("button", { name: "/loginId string 값 선택", exact: true })).toHaveText('"loginId"');
+    await expectLink.getByRole("tab", { name: "응답값", exact: true }).click();
+    await expectLink.getByRole("button", { name: "/id integer 값 선택", exact: true }).click();
+    await expectLink.getByRole("button", { name: "이 값으로 연결", exact: true }).click();
+    await expect(secondStep.locator(".api-expect-linked-value")).toContainText("1단계 응답 id");
+    await expect(secondStep.locator("details.api-verification-item > summary")).toContainText("기대값과 같은지 [1단계 응답 id]");
     await shot("compose");
     await page.getByRole("button", { name: "시나리오 검사·저장", exact: true }).click();
     await expect(page.getByText("시나리오를 저장했습니다. 이 화면에서 계속 수정할 수 있습니다.", { exact: true })).toBeVisible();
@@ -266,6 +320,7 @@ async function main() {
     // Each check is reported: step 1 has its two checks, step 2 only the automatic 2xx.
     await expect(result.locator(".api-run-checks").nth(0)).toContainText("2개 모두 통과");
     await expect(result.locator(".api-run-checks").nth(1)).toContainText("2xx (자동 확인)");
+    await expect(result.locator(".api-run-checks").nth(1)).toContainText("/id기대값과 같은지 [1단계 응답 id]");
     await shot("run-result");
     // The session cookie from login reaches the next request.
     await expect(result).toContainText("SESSION=desktop-session");
@@ -289,6 +344,20 @@ async function main() {
     await expect(globals.getByRole("region", { name: "세션 쿠키" })).toContainText("SESSION");
     await expect(globals.getByRole("region", { name: "세션 쿠키" })).not.toContainText("desktop-session");
     await page.keyboard.press("Escape");
+    // After a run, picking a response value shows what that run returned next to each field.
+    await page.getByRole("button", { name: "수정", exact: true }).click();
+    await page.locator(".api-compose-steps button").nth(1).click();
+    const linkedCheck = page.locator('details[aria-label="편집 단계 2"] details.api-verification-item');
+    await page.locator('details[aria-label="편집 단계 2"] > summary').click();
+    await linkedCheck.locator("> summary").click();
+    await linkedCheck.getByRole("button", { name: "바꾸기", exact: true }).click();
+    const runValues = page.getByRole("dialog", { name: "/id 값 연결", exact: true });
+    await runValues.getByRole("tab", { name: "응답값", exact: true }).click();
+    await expect(runValues).toContainText("값은 최근 실행 결과입니다 (HTTP 200).");
+    await expect(runValues.locator(".api-value-json-line").filter({ has: page.getByRole("button", { name: "/id integer 값 선택", exact: true }) })).toContainText(": 7");
+    await runValues.getByRole("button", { name: "취소", exact: true }).click();
+    await page.getByRole("button", { name: "시나리오 목록으로", exact: true }).click();
+    await page.getByRole("button", { name: /로그인 후 상품 조회/ }).click();
     // The run flow lists the checks with the editor's labels.
     await page.getByRole("button", { name: "실행 흐름", exact: true }).click();
     await page.getByRole("button", { name: "모두 펼치기", exact: true }).first().click();
@@ -333,6 +402,22 @@ async function main() {
     await expect(suiteResult).toContainText("실행 결과 · 통과");
     await suiteResult.locator("summary").first().click();
     await expect(suiteResult).toContainText("✓ HTTP 상태 2xx (자동 확인)");
+    // A suite made in the app: the same scenario twice, saved, then deleted back to another suite.
+    await page.getByRole("button", { name: "+ 새 스위트", exact: true }).click();
+    await page.getByLabel("스위트 이름", { exact: true }).fill("화면에서 만든 스위트");
+    // One AI 로그인 to pick: the earlier same-name draft was not saved.
+    await expect(page.getByRole("combobox", { name: /^시나리오 추가/ }).locator("option", { hasText: "AI 로그인" })).toHaveCount(1);
+    await page.getByRole("combobox", { name: /^시나리오 추가/ }).selectOption({ label: "AI 로그인" });
+    await page.getByRole("combobox", { name: /^시나리오 추가/ }).selectOption({ label: "AI 로그인" });
+    await expect(page.locator(".api-suite-order")).toHaveText(["1AI 로그인", "2AI 로그인"]);
+    await page.getByRole("button", { name: "스위트 저장", exact: true }).click();
+    await expect(page.getByRole("region", { name: "스위트 구성" })).toContainText("2개 시나리오");
+    await page.getByRole("button", { name: "스위트 삭제", exact: true }).click();
+    await page.getByRole("button", { name: "스위트 삭제 확인", exact: true }).click();
+    await expect(page.getByRole("button", { name: /화면에서 만든 스위트/ })).toHaveCount(0);
+    // It shows another suite, not an empty new-suite form.
+    await expect(page.getByRole("region", { name: "스위트 구성" })).toBeVisible();
+    await expect(page.getByLabel("스위트 이름", { exact: true })).toHaveCount(0);
     // Scenarios are deleted from their detail view.
     await page.getByRole("button", { name: "AI 상품 조회", exact: true }).click();
     await page.getByRole("button", { name: "시나리오 삭제", exact: true }).click();

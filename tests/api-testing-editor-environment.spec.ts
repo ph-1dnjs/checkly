@@ -4,6 +4,7 @@ import type { ApiCatalog, ApiEnvironmentScope, ApiGlobal, ApiProject, ApiScenari
 
 const projectId = '00000000-0000-4000-8000-000000000001'
 const serverId = '00000000-0000-4000-8000-000000000002'
+const authServerId = '00000000-0000-4000-8000-000000000007'
 const environments = {
   dev: '00000000-0000-4000-8000-000000000003',
   empty: '00000000-0000-4000-8000-000000000004',
@@ -57,16 +58,17 @@ function structuredCatalog(summary: string): ApiCatalog {
   }
 }
 
-async function workspace(page: Page, structured = false, linkedGlobal = false) {
+// twoServers: the project has a second server. missingGlobals: previewScenario reports globals with no value, per step.
+async function workspace(page: Page, structured = false, linkedGlobal = false, options: { twoServers?: boolean; missingGlobals?: boolean; extra?: SavedApiScenario[] } = {}) {
   const catalogs: Record<string, ApiCatalog | null> = {
     [environments.dev]: structured ? structuredCatalog('개발 구조 입력') : catalog('/dev-items', '개발 환경 조회'),
     [environments.empty]: null,
     [environments.stage]: structured ? structuredCatalog('스테이징 구조 입력') : catalog('/stage-items', '스테이징 환경 조회'),
   }
   const project: ApiProject = {
-    id: projectId, name: '환경 전환 회귀', servers: [{ id: serverId, name: 'API' }],
+    id: projectId, name: '환경 전환 회귀', servers: [{ id: serverId, name: 'API' }, ...(options.twoServers ? [{ id: authServerId, name: '인증' }] : [])],
     environments: Object.entries(environments).map(([name, id]) => ({
-      id, name, baseUrls: { [serverId]: `https://${name}.example.invalid` },
+      id, name, baseUrls: { [serverId]: `https://${name}.example.invalid`, ...(options.twoServers ? { [authServerId]: `https://auth-${name}.example.invalid` } : {}) },
     })),
   }
   const original = parseScenario(`id: stored-scenario\nname: 저장된 시나리오\ndescription: 저장된 설명\nserver: ${serverId}\nsteps:\n  - api: GET /dev-items\n    query: { q: original }\n`)
@@ -77,7 +79,7 @@ async function workspace(page: Page, structured = false, linkedGlobal = false) {
   let saved: SavedApiScenario[] = [{
     id: original.id, name: original.name, source: stringifyScenario(original, true),
     bindings: {}, updatedAt: importedAt, groupPath: ['기존 그룹'],
-  }]
+  }, ...(options.extra ?? [])]
   const saves: Array<{ scope: ApiEnvironmentScope; item: SavedApiScenario }> = []
   const requests: string[] = []
   const unexpected: string[] = []
@@ -88,7 +90,11 @@ async function workspace(page: Page, structured = false, linkedGlobal = false) {
     const operations = catalogs[scope.environmentId]?.operations ?? []
     const issues = scenario.steps.flatMap(step => operations.some(operation => 'method' in step.api && operation.method === step.api.method && operation.path === step.api.path)
       ? [] : [`${step.name ?? step.id}: 명세에 없는 API입니다`])
-    return { scenario, issues, executionIssues: [] }
+    // Like the app: one line per step and global that has no value.
+    const executionIssues = options.missingGlobals ? scenario.steps.flatMap((step, index) => [...JSON.stringify(step.request).matchAll(/\{\{globals\.([A-Za-z][A-Za-z0-9_]*)\}\}/g)]
+      .filter(match => !globals.some(global => global.name === match[1]))
+      .map(match => `${index + 1}단계 · ${step.name ?? step.id}: 전역변수 '${match[1]}' 값이 없습니다. 전역변수에서 설정하세요`)) : []
+    return { scenario, issues, executionIssues }
   }
   await page.exposeFunction('__apiTestingCall', async (method: string, args: unknown[]) => {
     switch (method) {
@@ -385,3 +391,31 @@ test('global setup callbacks refresh the editor, summary and authentication choi
   await expect(page.getByLabel('시나리오 기본 인증', { exact: true }).locator('option[value="globals.otherToken"]')).toHaveCount(1)
   expect(fixture.unexpected).toEqual([])
 })
+
+test('the header lists the project servers in their step-tag colours, only when there are two or more', async ({ page }) => {
+  const fixture = await workspace(page, false, false, { twoServers: true })
+  const legend = page.getByLabel('프로젝트 서버', { exact: true })
+  await expect(legend).toContainText('서버')
+  await expect(legend.locator('.api-run-server')).toHaveText(['API', '인증'])
+  // Each tag keeps the server's colour and tells where it calls in the current environment.
+  await expect(legend.locator('.api-run-server').nth(0)).toHaveClass(/api-server-tone-0/)
+  await expect(legend.locator('.api-run-server').nth(1)).toHaveClass(/api-server-tone-1/)
+  await expect(legend.locator('.api-run-server').nth(1)).toHaveAttribute('title', '인증 서버 · dev https://auth-dev.example.invalid')
+  expect(fixture.unexpected).toEqual([])
+})
+
+test('a global missing in several steps is one line with links to those steps', async ({ page }) => {
+  const twice = parseScenario(`id: token-twice\nname: 토큰 두 번 사용\nserver: ${serverId}\nsteps:\n  - { name: 첫 조회, api: GET /dev-items, query: { q: '{{globals.accessToken}}' } }\n  - { name: 둘째 조회, api: GET /dev-items, query: { q: '{{globals.accessToken}}' } }\n  - { name: 셋째 조회, api: GET /dev-items, query: { q: '{{globals.itemId}}' } }\n`)
+  const fixture = await workspace(page, false, false, { missingGlobals: true, extra: [{ id: twice.id, name: twice.name, source: stringifyScenario(twice, true), bindings: {}, updatedAt: importedAt }] })
+  await page.getByRole('button', { name: '토큰 두 번 사용', exact: true }).click()
+  const readiness = page.getByRole('region', { name: '시나리오 실행 준비' }).getByRole('alert')
+  await expect(readiness.locator('li')).toHaveCount(2)
+  await expect(readiness.locator('li').nth(0)).toContainText('accessToken 값 없음 · 1·2단계')
+  await expect(readiness.locator('li').nth(1)).toContainText('itemId 값 없음 · 3단계')
+  await expect(readiness.getByRole('button', { name: 'accessToken 전역변수 설정하기', exact: true })).toBeVisible()
+  // A step number opens that step in the run flow.
+  await readiness.getByRole('button', { name: '2단계로 이동', exact: true }).click()
+  await expect(page.locator('details.api-run-step').nth(1)).toHaveAttribute('open', '')
+  expect(fixture.unexpected).toEqual([])
+})
+

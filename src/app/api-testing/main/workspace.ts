@@ -9,6 +9,7 @@ import { docInputFromRequest, type ApiDocInput } from "../shared/doc-inputs";
 import { bindingUseLocations, pruneUnusedBrokenBindings, stringifyScenario, parseScenario, ScenarioFormatError, scenarioSchema, scenarioStepInputs, scenarioStepLabel, type Json, type Scenario, type ScenarioInputRequest } from "../shared/scenario";
 import { readOpenApi } from "./openapi";
 import { CookieJar } from "./cookies";
+import { groupMissingGlobals } from "../shared/preflight-issues";
 import { aiCatalogDetails, createAuthorPrompt, splitAiBundle, withGeneratedId, type AiBundle } from "./ai-context";
 
 export const scopeSchema = z.object({ projectId: z.string().uuid(), serverId: z.string().uuid(), environmentId: z.string().uuid() }).strict();
@@ -478,10 +479,14 @@ export class ApiWorkspace {
       if (!name) continue;
       for (const match of written.yaml.matchAll(/target:\s*['"]?globals\.([A-Za-z][A-Za-z0-9_]*)/g)) producers.set(match[1], [...(producers.get(match[1]) ?? []), name]);
     }
-    const withProducer = (issue: string) => issue.replace(/전역변수 '([A-Za-z][A-Za-z0-9_]*)' 값이 없습니다\. 전역변수에서 설정하세요/, (text, global: string) => {
-      const from = [...new Set(producers.get(global) ?? [])];
-      return from.length ? `전역변수 '${global}' 값이 없습니다. '${from[0]}'을(를) 먼저 실행하면 만들어집니다` : text;
-    });
+    // One line per missing global ("1·2단계: …") naming what makes it, instead of the same message for every step.
+    const describeIssues = (issues: string[]) => {
+      const { globals, others } = groupMissingGlobals(issues);
+      return [...globals.map(({ name, steps }) => {
+        const from = producers.get(name)?.[0];
+        return `${steps.length ? `${steps.join("·")}단계: ` : ""}전역변수 '${name}' 값이 없습니다. ${from ? `'${from}'을(를) 먼저 실행하면 만들어집니다` : "전역변수에서 설정하세요"}`;
+      }), ...others];
+    };
     for (const [index, written] of answer.scenarios.entries()) {
       const yaml = withGeneratedId(written.yaml);
       let id = `ai-draft-${index + 1}`, name = `AI 시나리오 ${index + 1}`, stepCount = 0;
@@ -492,7 +497,7 @@ export class ApiWorkspace {
         ({ id, name } = preview.scenario);
         stepCount = preview.scenario.steps.length;
         issues.push(...preview.issues);
-        executionIssues = groupMissingGlobals((preview.executionIssues ?? []).map(withProducer));
+        executionIssues = describeIssues(preview.executionIssues ?? []);
       } catch (error) {
         issues.push(`YAML 오류: ${(error as Error).message}`);
         // Keep the written name so the list and the suite still recognise this scenario.
@@ -1132,16 +1137,4 @@ export class ApiWorkspace {
 function aiScenarioName(yaml: string): string | undefined {
   const value = /^name:[ \t]*(.+?)[ \t]*$/m.exec(yaml)?.[1];
   return value?.replace(/^(['"])(.*)\1$/, "$2").trim() || undefined;
-}
-
-/** One line per missing global ("1·2단계: …") instead of the same message for every step. */
-function groupMissingGlobals(issues: string[]): string[] {
-  const grouped = new Map<string, number[]>();
-  const rest: string[] = [];
-  for (const issue of issues) {
-    const match = /^(\d+)단계 · [^:]+: (?:인증 )?(전역변수 '[A-Za-z][A-Za-z0-9_]*' 값이 없습니다\..*)$/.exec(issue);
-    if (!match) { rest.push(issue); continue; }
-    grouped.set(match[2], [...(grouped.get(match[2]) ?? []), Number(match[1])]);
-  }
-  return [...[...grouped].map(([message, steps]) => `${[...new Set(steps)].join("·")}단계: ${message}`), ...rest];
 }

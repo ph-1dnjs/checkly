@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ApiCatalog, ApiScenarioPreview, ApiScenarioResult } from "../../../../app/api-testing/shared/workspace";
 import { describeCheck, type Scenario } from "../../../../app/api-testing/shared/scenario";
+import { missingGlobalIssue } from "../../../../app/api-testing/shared/preflight-issues";
 import { ScenarioStepSummary } from "./ScenarioStepSummary";
 import { JsonCode } from "./JsonCode";
 import { configuredFields } from "../lib/settings-summary-model";
@@ -73,7 +74,7 @@ export function ScenarioRunFlow({ preview, catalogs, bindings, focusRequest, onC
           { area: "response", label: "저장", title: "응답에서 저장", count: step.extract.length },
           { area: "expect", label: "검증", title: "검증", count: step.expect?.length ?? 0 },
         ];
-        const missingGlobals = new Set((preview.executionIssues ?? []).flatMap(issue => /전역변수 '([A-Za-z][A-Za-z0-9_]*)'/.exec(issue)?.[1] ?? []));
+        const missingGlobals = new Set((preview.executionIssues ?? []).flatMap(issue => missingGlobalIssue(issue)?.name ?? []));
         return <details key={step.id} open={openSteps.has(step.id)} onToggle={event => setStepOpen(step.id, event.currentTarget.open)} className={`api-run-step api-selected-${method.toLowerCase()}`}>
           <summary>
             <span className="api-run-step-chevron" aria-hidden="true">▸</span>

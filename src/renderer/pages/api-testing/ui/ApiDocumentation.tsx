@@ -4,6 +4,7 @@ import SwaggerUI from "swagger-ui-react";
 import "swagger-ui-react/swagger-ui.css";
 import type { Scenario } from "../../../../app/api-testing/shared/scenario";
 import type { ApiCatalog, ApiDocInput, ApiScope, ApiTestingBridge, ApiSidebarMetadata } from "../../../../app/api-testing/shared/workspace";
+import { issueGlobal } from "../../../../app/api-testing/shared/preflight-issues";
 import { SelectedApiList } from "../../../features/api-testing/edit-scenario";
 import { useRunAction } from "../../../shared/hooks/useRunAction";
 import type { OnRunAction } from "../../../shared/model/run-action";
@@ -388,7 +389,7 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
           const preview = await bridge.previewScenario(scope, yaml, {});
           const checks = [...preview.issues, ...(preview.executionIssues ?? [])];
           setIssues(checks);
-          if (checks.some(issue => /전역변수 '[A-Za-z][A-Za-z0-9_]*'/.test(issue))) {
+          if (checks.some(issue => issueGlobal(issue))) {
             void bridge.listScenarios(scope.projectId).then(setProducerScenarios).catch(() => setProducerScenarios([]));
           }
           if (execute && checks.length) { setNotice("아래 항목을 먼저 해결해야 실행할 수 있어 저장하지 않았습니다."); return; }
@@ -401,7 +402,7 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
       }} /></div>
       {notice && <p role="status">{notice}</p>}
       {issues.length > 0 && <ul role="alert" className="api-warning">{issues.map((issue, i) => {
-        const variable = /전역변수 '([A-Za-z][A-Za-z0-9_]*)'/.exec(issue)?.[1];
+        const variable = issueGlobal(issue);
         const producers = variable ? globalProducerScenarios(variable, producerScenarios, draft.id, scope.environmentId) : [];
         return <li key={i}>{issue}{variable && <GlobalVariableSetupLink onConfigure={globalAccess.open} name={variable} />}{producers.length > 0 && <span> 이 값을 추출하는 시나리오: {producers.join(", ")}. 먼저 실행한 뒤 다시 확인하세요.</span>}</li>;
       })}</ul>}
