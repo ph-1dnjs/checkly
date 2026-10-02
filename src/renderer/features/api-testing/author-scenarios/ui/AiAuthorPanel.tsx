@@ -1,3 +1,4 @@
+import { problemReport } from "../model/problem-report";
 import { useEffect, useRef, useState } from "react";
 import { YamlCode } from "../../../../entities/api-testing";
 import { ApiPicker, type PickableOperation } from "./ApiPicker";
@@ -167,12 +168,6 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
 }
 
 /** Text to paste back into the user's AI; empty when everything passed. */
-function problemReport(result: ApiAiImportResult): string {
-  const scenarios = result.drafts.filter(draft => draft.issues.length).map(draft => [`### ${draft.name} (${draft.id})`, ...draft.issues.map(issue => `- ${issue}`)].join("\n"));
-  const suite = result.suite?.problems.length ? [["### 스위트", ...result.suite.problems.map(problem => `- ${problem}`)].join("\n")] : [];
-  if (!scenarios.length && !suite.length) return "";
-  return ["Checkly 검사에서 아래 문제가 나왔습니다. 문제를 고친 전체 결과(모든 시나리오와 스위트)를 같은 결과 파일에 다시 저장하세요.", ...scenarios, ...suite].join("\n\n");
-}
 
 const staleDays = 30;
 /** Servers whose spec is missing, lacks the original document (schemas unresolved) or is old. */

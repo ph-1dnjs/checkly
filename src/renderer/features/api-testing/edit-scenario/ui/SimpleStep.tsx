@@ -1,4 +1,4 @@
-import { GlobalVariableSetupLink } from "../../../../entities/api-testing";
+import { GlobalVariableSetupLink, readLastRun } from "../../../../entities/api-testing";
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { scenarioStepInputs, linkedValueLabel, type Scenario, type Json, type ScenarioInput } from "../../../../../app/api-testing/shared/scenario";
 import type { ApiCatalog, ApiOperation, ApiScope, ApiTestingBridge, ApiGlobal } from "../../../../../app/api-testing/shared/workspace";
@@ -47,6 +47,8 @@ export function SimpleStep({ scenario, index, catalogs, bindings, scope, bridge,
   const [globalsLoaded, setGlobalsLoaded] = useState(false);
   // A just-added check opens with its value field focused (no silent default like 200).
   const [newExpectation, setNewExpectation] = useState<number | null>(null);
+  // This session's last run of the scenario, so picking a response value can show what it was.
+  const lastRun = readLastRun(scope.projectId, scope.environmentId, scenario.id)?.result;
   // Check whose expected value is being linked to an earlier step's value.
   const [expectLink, setExpectLink] = useState<number | null>(null);
   const responseNameSuggestions = responseGlobalNameSuggestions(operation, responsePointer);
@@ -204,7 +206,7 @@ export function SimpleStep({ scenario, index, catalogs, bindings, scope, bridge,
       update({ request, input: undefined, inputs: nextInputs.length ? nextInputs : undefined });
       setInputTarget(null);
     }} onClose={() => setInputTarget(null)} />;
-    const scenarioLink = target?.area === field.area && target.name === field.name && <ScenarioValueLink scenario={scenario} targetIndex={index} target={target} catalogs={catalogs} bindings={bindings} onChange={onChange} onClose={() => setTarget(null)} />;
+    const scenarioLink = target?.area === field.area && target.name === field.name && <ScenarioValueLink lastRun={lastRun} scenario={scenario} targetIndex={index} target={target} catalogs={catalogs} bindings={bindings} onChange={onChange} onClose={() => setTarget(null)} />;
     // Shorten only exact, resolved references; keep the original value for editing and execution.
     const linkedValue = typeof current === "string" && scenario.valueBindings.some(binding => current === `{{vars.${binding.name}}}`);
     if (compact) return <span key={fieldKey} data-summary-field={fieldKey} className="api-json-line api-json-request-line">
@@ -347,7 +349,7 @@ export function SimpleStep({ scenario, index, catalogs, bindings, scope, bridge,
       {expectation.operator !== "exists" && (linked
         ? <div className="api-expect-linked"><span>기대값</span><span className="api-expect-linked-value"><strong>앞 단계 값</strong><code>{linked}</code><button type="button" onClick={() => setExpectLink(n)}>바꾸기</button><button type="button" onClick={() => change({ value: undefined })}>연결 해제</button></span></div>
         : <label>기대값<span className="api-expect-value-row"><DraftInput autoFocus={newExpectation === n} required value={expectedValueText(expectation.value)} placeholder={expectation.source === "status" ? "예: 201 또는 404" : "예: success 또는 200"} onChange={e => change({ value: e.target.value === "" ? undefined : parseExpectedValue(e.target.value) })} />{index > 0 && expectation.source !== "status" && <button type="button" title="앞 단계의 요청값·응답값과 같은지 비교합니다" onClick={() => setExpectLink(n)}>앞 단계 값</button>}</span></label>)}
-      {expectLink === n && <ScenarioValueLink scenario={scenario} targetIndex={index} target={{ area: "body", name: expectation.pointer || expectation.header || "기대값", expect: n }} catalogs={catalogs} bindings={bindings} onChange={onChange} onClose={() => setExpectLink(null)} />}
+      {expectLink === n && <ScenarioValueLink lastRun={lastRun} scenario={scenario} targetIndex={index} target={{ area: "body", name: expectation.pointer || expectation.header || "기대값", expect: n }} catalogs={catalogs} bindings={bindings} onChange={onChange} onClose={() => setExpectLink(null)} />}
       <button type="button" className="api-danger-action" onClick={() => updateExpectations(step.expect!.filter((_, i) => i !== n))}>검증 제거</button>
     </details>; })}
     {error && <p role="alert" className="api-warning">{error}</p>}

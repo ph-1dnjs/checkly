@@ -178,6 +178,12 @@ async function main() {
     const aiResult = page.getByRole("region", { name: "AI 작성 결과" });
     await expect(aiResult).toContainText("수정 필요");
     await expect(aiResult.getByRole("button", { name: "문제 복사", exact: true })).toBeVisible();
+    // What goes back to the AI: the scenario as it wrote it, the problem, and where valid APIs are listed.
+    await aiResult.getByRole("button", { name: "문제 복사", exact: true }).click();
+    // The copy is asynchronous: wait until the clipboard holds the report instead of the guide.
+    await expect.poll(() => app!.evaluate(({ clipboard }) => clipboard.readText())).toContain("Checkly 검사에서 아래 문제가 나왔습니다");
+    const problems = await app.evaluate(({ clipboard }) => clipboard.readText());
+    if (!problems.includes("### 2번째 시나리오 · AI 상품 조회") || !problems.includes("GET /missing는 명세에 없는 API입니다") || !problems.includes("api-catalog.json") || /scenario-[0-9a-f]{8}/.test(problems)) throw new Error(`Unexpected problem report:\n${problems}`);
     // The fixed result comes from the file the AI writes.
     await writeFile(resultFile, aiOutput("GET /items/{id}"));
     await page.getByRole("button", { name: "AI 결과 불러오기", exact: true }).click();
@@ -338,6 +344,20 @@ async function main() {
     await expect(globals.getByRole("region", { name: "세션 쿠키" })).toContainText("SESSION");
     await expect(globals.getByRole("region", { name: "세션 쿠키" })).not.toContainText("desktop-session");
     await page.keyboard.press("Escape");
+    // After a run, picking a response value shows what that run returned next to each field.
+    await page.getByRole("button", { name: "수정", exact: true }).click();
+    await page.locator(".api-compose-steps button").nth(1).click();
+    const linkedCheck = page.locator('details[aria-label="편집 단계 2"] details.api-verification-item');
+    await page.locator('details[aria-label="편집 단계 2"] > summary').click();
+    await linkedCheck.locator("> summary").click();
+    await linkedCheck.getByRole("button", { name: "바꾸기", exact: true }).click();
+    const runValues = page.getByRole("dialog", { name: "/id 값 연결", exact: true });
+    await runValues.getByRole("tab", { name: "응답값", exact: true }).click();
+    await expect(runValues).toContainText("값은 최근 실행 결과입니다 (HTTP 200).");
+    await expect(runValues.locator(".api-value-json-line").filter({ has: page.getByRole("button", { name: "/id integer 값 선택", exact: true }) })).toContainText(": 7");
+    await runValues.getByRole("button", { name: "취소", exact: true }).click();
+    await page.getByRole("button", { name: "시나리오 목록으로", exact: true }).click();
+    await page.getByRole("button", { name: /로그인 후 상품 조회/ }).click();
     // The run flow lists the checks with the editor's labels.
     await page.getByRole("button", { name: "실행 흐름", exact: true }).click();
     await page.getByRole("button", { name: "모두 펼치기", exact: true }).first().click();

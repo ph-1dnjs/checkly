@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { requestValueFields, requestValueText } from "../../src/renderer/features/api-testing/edit-scenario/model/value-link-model";
+import { requestValueFields, requestValueText, responseValueOptions, runValueText, valueAtPointer } from "../../src/renderer/features/api-testing/edit-scenario/model/value-link-model";
 
 test("request values show what they are, not their type", () => {
   const inputs = new Set(["productName"]);
@@ -33,4 +33,33 @@ test("only inputs, globals and links are dynamic, so only they can be an expecte
   ]);
   assert.deepEqual(requestValueFields(request, "query"), []);
   assert.deepEqual(requestValueFields({ query: { q: "{{inputs.q}}" } }, "query").map(option => option.dynamic), [undefined, true]);
+});
+
+test("response fields show the last run's values for the status it returned", () => {
+  const body = { data: { id: 7, name: "테스트 상품", note: null, tags: ["a"], "a/b": "slash" } };
+  assert.equal(valueAtPointer(body, "/data/id"), 7);
+  assert.equal(valueAtPointer(body, "/data/tags/0"), "a");
+  assert.equal(valueAtPointer(body, "/data/a~1b"), "slash");
+  assert.equal(valueAtPointer(body, "/data/missing/x"), undefined);
+  assert.equal(runValueText("x".repeat(60)), `"${"x".repeat(38)}…`);
+  const spec = [
+    { pointer: "", type: "object", status: "200" }, { pointer: "/data", type: "object", status: "200" },
+    { pointer: "/data/id", type: "integer", status: "200" }, { pointer: "/data/name", type: "string", status: "200" },
+    { pointer: "/data/note", type: "string", status: "200" }, { pointer: "/data/gone", type: "string", status: "200" },
+    { pointer: "/message", type: "string", status: "404" },
+  ];
+  const labels = responseValueOptions(spec, { httpStatus: 200, body }).map(option => [option.pointer, option.status, "label" in option ? option.label : undefined]);
+  assert.deepEqual(labels, [
+    ["", "200", undefined], ["/data", "200", undefined],
+    ["/data/id", "200", "7"], ["/data/name", "200", '"테스트 상품"'], ["/data/note", "200", "null"],
+    // Not in this response, or another status: the field stays as the spec describes it.
+    ["/data/gone", "200", undefined], ["/message", "404", undefined],
+  ]);
+  // No run (or no body): the spec fields as they are.
+  assert.equal(responseValueOptions(spec, undefined), spec);
+  assert.equal(responseValueOptions(spec, { httpStatus: 200 }), spec);
+  // No response schema: the last run's body gives the fields.
+  assert.deepEqual(responseValueOptions([], { httpStatus: 201, body: { id: 3 } }), [
+    { pointer: "", type: "object", status: "201" }, { pointer: "/id", type: "number", label: "3", status: "201" },
+  ]);
 });

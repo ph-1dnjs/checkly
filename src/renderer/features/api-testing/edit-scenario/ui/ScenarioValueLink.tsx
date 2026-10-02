@@ -2,8 +2,8 @@ import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import type { Scenario, ValueBinding } from "../../../../../app/api-testing/shared/scenario";
 import { scenarioStepInputs } from "../../../../../app/api-testing/shared/scenario";
-import { requestValueFields } from "../model/value-link-model";
-import type { ApiCatalog, ApiOperation } from "../../../../../app/api-testing/shared/workspace";
+import { requestValueFields, responseValueOptions } from "../model/value-link-model";
+import type { ApiCatalog, ApiOperation, ApiScenarioResult } from "../../../../../app/api-testing/shared/workspace";
 import { connectValue, type RequestArea } from "../model/scenario-builder-model";
 import { responseFields } from "../../../../entities/api-testing";
 
@@ -79,12 +79,14 @@ function sourceStepLabel(scenario: Scenario, index: number, catalogs: Record<str
   return `${index + 1}. ${step.name || findOperation(scenario, index, catalogs, bindings)?.summary || step.id}`;
 }
 
-export function ScenarioValueLink({ scenario, targetIndex, target, catalogs, bindings, onChange, onClose }: {
+export function ScenarioValueLink({ scenario, targetIndex, target, catalogs, bindings, lastRun, onChange, onClose }: {
   scenario: Scenario;
   targetIndex: number;
   target: ScenarioValueTarget;
   catalogs: Record<string, ApiCatalog | null>;
   bindings: Record<string, string>;
+  /** This scenario's last run in this session: its responses show real values next to the fields. */
+  lastRun?: ApiScenarioResult;
   onChange: (next: Scenario) => void;
   onClose: () => void;
 }) {
@@ -104,7 +106,8 @@ export function ScenarioValueLink({ scenario, targetIndex, target, catalogs, bin
   const sourceOperation = sourceStep ? findOperation(scenario, from, catalogs, bindings) : undefined;
   const sourceSpec = sourceStep ? catalogs[bindings[sourceStep.server] ?? sourceStep.server]?.spec : undefined;
   const requestOptions = source === "request" && sourceStep ? requestValueFields(sourceStep.request, requestArea, new Set(scenarioStepInputs(sourceStep).map(input => input.name))) : [];
-  const responseOptions = source === "response" && responseArea === "body" && sourceOperation ? responseFields(sourceOperation.responses, sourceSpec) : [];
+  const sourceRun = sourceStep ? lastRun?.steps.find(step => step.id === sourceStep.id) : undefined;
+  const responseOptions = source === "response" && responseArea === "body" ? responseValueOptions(sourceOperation ? responseFields(sourceOperation.responses, sourceSpec) : [], sourceRun) : [];
   const ready = source === "request" ? pointer !== null : responseArea === "body" ? pointer !== null : Boolean(header.trim());
 
   const resetSelection = () => { setPointer(null); setHeader(""); setError(""); };
@@ -161,6 +164,7 @@ export function ScenarioValueLink({ scenario, targetIndex, target, catalogs, bin
 
         {source === "response" && <section className="api-value-source-section" aria-label="응답값 출처 설정">
           <label>응답 영역<select aria-label="응답 출처 영역" value={responseArea} onChange={event => { setResponseArea(event.target.value as "body" | "header"); resetSelection(); }}><option value="body">본문 JSON</option><option value="header">응답 헤더</option></select></label>
+          {responseArea === "body" && sourceRun?.httpStatus !== undefined && sourceRun.body !== undefined && <p className="api-field-help api-value-run-note">값은 최근 실행 결과입니다 (HTTP {sourceRun.httpStatus}).</p>}
           {responseArea === "body" ? responseOptions.length ? <JsonValueTree options={responseOptions} selected={pointer} onSelect={setPointer} area="응답" /> : <p className="api-field-menu-help">선택 가능한 응답 구조가 없습니다. 고급 설정에서 JSON Pointer를 직접 입력할 수 있습니다.</p> : <label>응답 헤더 이름<input value={header} onChange={event => setHeader(event.target.value)} placeholder="X-Request-Id" /></label>}
         </section>}
 
