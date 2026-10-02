@@ -26,10 +26,12 @@ import { LoadingSpinner } from "../../../shared/ui/LoadingSpinner";
 const StableSwaggerUI = memo(SwaggerUI);
 const emptyCatalogs: Record<string, ApiCatalog | null> = {};
 
-export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy, onRunAction, project, initialEdit, onEditConsumed, mode = "document", onCloseComposer, onSaved, onUnsavedChange, onExecuteSaved, sidebarGroupPath, sidebarGroupPaths = [], onSidebarGroupPathChange, onNewScenario, sidebarMetadata, toolbarContext }: {
+export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy, onRunAction, project, initialEdit, onEditConsumed, mode = "document", onCloseComposer, onSaved, onUnsavedChange, onExecuteSaved, sidebarGroupPath, sidebarGroupPaths = [], onSidebarGroupPathChange, onNewScenario, sidebarMetadata, toolbarContext, onOpenSpecs }: {
   catalog: ApiCatalog | null; scope: ApiScope; bridge: ApiTestingBridge; baseUrl: string; busy: boolean;
   onBusy: (value: boolean) => void; onRunAction: OnRunAction;
   project: ApiProject;
+  /** Compose mode: go to the API 문서 tab when the chosen server has no spec yet. */
+  onOpenSpecs?: () => void;
   initialEdit?: { saved: SavedApiScenario; scenario: Scenario };
   onEditConsumed?: () => void;
   mode?: "document" | "compose";
@@ -361,7 +363,7 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
         supportedSubmitMethods={composing ? [] : submitMethods}
         showExtensions={false}
         showCommonExtensions={false}
-      /> : composeCatalogLoading ? <LoadingSpinner label="선택한 서버의 API 문서를 준비하는 중…" /> : <div className="api-empty api-compose-server-empty"><h2>API 명세를 가져오세요</h2><p>선택한 서버·환경에 API 명세가 없습니다.</p></div>}
+      /> : composeCatalogLoading ? <LoadingSpinner label="선택한 서버의 API 문서를 준비하는 중…" /> : <div className="api-empty api-compose-server-empty"><h2>API 명세를 가져오세요</h2><p>선택한 서버·환경에 API 명세가 없습니다.</p>{onOpenSpecs && <div className="api-actions"><button type="button" className="api-primary" onClick={onOpenSpecs}>API 문서로 이동</button></div>}</div>}
     </div>
     {composing && composeView === "select" && <aside className="api-selection-basket" aria-label="선택한 API" data-scroll="light">
       <h2>선택한 API · {draft.steps.length}개</h2>

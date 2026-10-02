@@ -46,3 +46,21 @@ test("spec refresh persists encrypted credentials, rejects URL/scope changes and
     assert.equal((await restarted.get(scope)).hasSavedAccount,false);
   } finally {server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()));await rm(dir,{recursive:true,force:true});}
 });
+
+test("spec import failures say what to fix in Korean: not a URL, 404, or a Swagger UI page", async () => {
+  const server = createServer((req, res) => {
+    if (req.url === "/swagger-ui/index.html") { res.setHeader("content-type", "text/html"); res.end("<!DOCTYPE html><html><body>Swagger UI</body></html>"); return; }
+    res.statusCode = 404; res.end("{}");
+  });
+  await new Promise<void>(r => server.listen(0, "127.0.0.1", r));
+  const dir = await mkdtemp(path.join(tmpdir(), "checkly-sync-"));
+  try {
+    const workspace = new ApiWorkspace(dir), scope = { projectId: randomUUID(), serverId: randomUUID(), environmentId: randomUUID() };
+    const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+    await workspace.saveProject({ id: scope.projectId, name: "문구", servers: [{ id: scope.serverId, name: "API" }], environments: [{ id: scope.environmentId, name: "dev", baseUrls: { [scope.serverId]: base } }] });
+    const sync = new SpecSync(dir, workspace, { available: () => false, encrypt: () => "", decrypt: () => "" });
+    await assert.rejects(sync.importUrl(scope, { kind: "url", url: "not a url" }), { message: "http:// 또는 https://로 시작하는 명세 주소를 입력하세요" });
+    await assert.rejects(sync.importUrl(scope, { kind: "url", url: `${base}/nope.json` }), { message: "명세 가져오기 실패: HTTP 404. 명세 주소를 확인하세요" });
+    await assert.rejects(sync.importUrl(scope, { kind: "url", url: `${base}/swagger-ui/index.html` }), /웹 페이지\(HTML\)를 받았습니다/);
+  } finally { server.closeAllConnections(); await new Promise<void>(r => server.close(() => r())); await rm(dir, { recursive: true, force: true }); }
+});

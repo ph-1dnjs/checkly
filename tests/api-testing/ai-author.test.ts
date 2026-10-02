@@ -71,7 +71,12 @@ test("scenarios without an id get one, the suite follows names, and name clashes
     assert.match(first.yaml, /^id: scenario-/);
     assert.notEqual(second.id, third.id);
     assert.deepEqual(first.issues, []);
-    assert.deepEqual(second.notices, ["같은 이름의 시나리오가 이미 있습니다. 저장하면 같은 이름이 하나 더 생깁니다"]);
+    // The one saved "상품 조회" is updated by the first draft of that name; the second stays new.
+    const savedRead = (await workspace.listScenarios(scope.projectId)).find(item => item.name === "상품 조회")!;
+    assert.equal(second.id, savedRead.id);
+    assert.equal(second.replaces, savedRead.id);
+    assert.equal(third.replaces, undefined);
+    assert.deepEqual(second.notices, ["같은 이름의 기존 시나리오가 있습니다. 저장하면 그 시나리오를 이 내용으로 업데이트합니다"]);
     assert.equal(second.sameName, true);
     assert.match(third.issues.join(), /이름 '상품 조회'이 이번 결과의 다른 시나리오와 겹칩니다/);
     assert.deepEqual(result.suite?.scenarioIds, [first.id, second.id]);
@@ -238,5 +243,36 @@ test("missing globals are listed once per global with their steps and the scenar
       "3단계: 전역변수 'batchId' 값이 없습니다. '같은 결과의 발급'을(를) 먼저 실행하면 만들어집니다",
     ]);
     assert.deepEqual(result.drafts[0].issues, []);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test("a same-name result updates the one saved scenario, and keeps its id through saving", async () => {
+  const { dir, workspace, scope } = await setup();
+  try {
+    const saved = await workspace.saveScenario(scope, "name: 상품 조회\nserver: 상점\nsteps:\n  - { api: 'GET /items/{id}', pathParams: { id: 1 } }\n", {});
+    const result = await workspace.checkAiScenarios(scope, "name: 상품 조회\nserver: 상점\nsteps:\n  - { name: 고친 조회, api: 'GET /items/{id}', pathParams: { id: 2 } }\n");
+    const [draft] = result.drafts;
+    assert.equal(draft.replaces, saved.id);
+    assert.match(draft.yaml, new RegExp(`^id: ${saved.id}`));
+    // Saving with the saved version updates it in place: still one scenario of that name.
+    await workspace.saveScenario(scope, draft.yaml, {}, saved.updatedAt);
+    const after = (await workspace.listScenarios(scope.projectId)).filter(item => item.name === "상품 조회");
+    assert.equal(after.length, 1);
+    assert.match(after[0].source, /고친 조회/);
+    // Two saved scenarios of that name: it cannot tell which one, so it stays a new scenario.
+    await workspace.saveScenario(scope, "id: read-copy\nname: 상품 조회\nserver: 상점\nsteps:\n  - { api: 'GET /items/{id}', pathParams: { id: 3 } }\n", {});
+    const ambiguous = await workspace.checkAiScenarios(scope, "name: 상품 조회\nserver: 상점\nsteps:\n  - { api: 'GET /items/{id}', pathParams: { id: 4 } }\n");
+    assert.equal(ambiguous.drafts[0].replaces, undefined);
+    assert.deepEqual(ambiguous.drafts[0].notices, ["같은 이름의 시나리오가 이미 있습니다. 저장하면 같은 이름이 하나 더 생깁니다"]);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test("an environment without a spec is one line per server, not 'API not in spec' for every step", async () => {
+  const { dir, workspace, project, scope } = await setup();
+  try {
+    const prod = { id: randomUUID(), name: "prod", baseUrls: { [project.servers[0].id]: "https://prod.example.com" } };
+    await workspace.saveProject({ ...project, environments: [...project.environments, prod] });
+    const preview = await workspace.previewScenario({ projectId: scope.projectId, environmentId: prod.id }, "name: 두 번 조회\nserver: 상점\nsteps:\n  - { name: 첫 조회, api: 'GET /items/{id}', pathParams: { id: 1 } }\n  - { name: 둘째 조회, api: 'GET /items/{id}', pathParams: { id: 2 } }\n", {});
+    assert.deepEqual(preview.issues, ["상점: prod 환경에 가져온 명세가 없습니다. API 문서 탭에서 명세를 가져오세요"]);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });

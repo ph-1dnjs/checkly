@@ -3,8 +3,10 @@ import type { Json, Scenario, ScenarioInputRequest } from "./scenario";
 import type { ApiDocInput } from "./doc-inputs";
 export type { ApiDocInput } from "./doc-inputs";
 
-export const httpUrl = z.string().url().refine((value) => {
-  const url = new URL(value);
+export const httpUrl = z.string().url("http:// 또는 https://로 시작하는 주소를 입력하세요").refine((value) => {
+  // Runs even when the URL check failed: never let `new URL` throw its English "Invalid URL".
+  let url: URL;
+  try { url = new URL(value); } catch { return false; }
   return ["http:", "https:"].includes(url.protocol) && !url.username && !url.password && !url.hash;
 }, "인증정보를 제외한 HTTP(S) 주소를 입력하세요");
 export const projectSchema = z.object({
@@ -112,7 +114,7 @@ export type ApiAiGuideRequest = { scope: ApiEnvironmentScope; tags?: string[]; o
  * issues keep a draft from running; notices are warnings only. sameName: a saved scenario already has
  * this name (often the same result loaded again), so it starts unchosen.
  */
-export type ApiAiDraft = { id: string; name: string; yaml: string; stepCount: number; issues: string[]; notices: string[]; executionIssues: string[]; groupPath?: string[]; sameName?: true };
+export type ApiAiDraft = { id: string; name: string; yaml: string; stepCount: number; issues: string[]; notices: string[]; executionIssues: string[]; groupPath?: string[]; sameName?: true; /** The saved scenario (same name, the only one) this draft updates when saved as is. */ replaces?: string };
 export type ApiAiImportResult = { drafts: ApiAiDraft[]; suite: { name: string; scenarioIds: string[]; problems: string[]; groupPath?: string[]; /** Already-saved scenarios the suite reuses, by id. */ saved?: Record<string, string>; /** Same-name draft id → the saved scenario used when that draft is not saved. */ fallbacks?: Record<string, string> } | null };
 export type ApiTestingBridge = {
   getSpecSync(scope: ApiScope): Promise<ApiSpecSync>;

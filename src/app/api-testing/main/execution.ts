@@ -297,7 +297,7 @@ export class ApiRunner {
         } catch (error) {
           const status = options.signal?.aborted ? "cancelled" : error instanceof MissingValue ? "blocked" : "failed";
           // Never surface network/library errors that could contain credentials or URLs.
-          results.push({ id: step.id, name: scenarioStepLabel(step), status, httpStatus, durationMs: Date.now() - started - waitedMs, ...(checks ? { checks } : {}), ...(inputResults.length === 1 ? { input: inputResults[0] } : inputResults.length > 1 ? { inputs: inputResults } : {}), failure: error instanceof SafeCheckFailure ? error.failure : { kind: status === "blocked" ? "input" : error instanceof RequestValueError ? "request" : "other" }, error: status === "blocked" ? "필수 변수 또는 API 설정이 없습니다" : status === "cancelled" ? "실행 취소" : error instanceof RequestValueError || (error instanceof SafeCheckFailure && error.failure.kind === "extraction") ? error.message : error instanceof SafeCheckFailure ? (error.failure.kind === "http" ? `HTTP ${httpStatus} 응답 (2xx 아님)` : "응답 검증 실패") : httpStatus === undefined ? "요청을 보내지 못했습니다. 서버 주소·연결 상태나 단계 설정을 확인하세요." : "응답을 처리하지 못했습니다" });
+          results.push({ id: step.id, name: scenarioStepLabel(step), status, httpStatus, durationMs: Date.now() - started - waitedMs, ...(checks ? { checks } : {}), ...(inputResults.length === 1 ? { input: inputResults[0] } : inputResults.length > 1 ? { inputs: inputResults } : {}), failure: error instanceof SafeCheckFailure ? error.failure : { kind: status === "blocked" ? "input" : error instanceof RequestValueError ? "request" : "other" }, error: status === "blocked" ? "필수 변수 또는 API 설정이 없습니다" : status === "cancelled" ? "실행 취소" : error instanceof RequestValueError || (error instanceof SafeCheckFailure && error.failure.kind === "extraction") ? error.message : error instanceof SafeCheckFailure ? (error.failure.kind === "http" ? `HTTP ${httpStatus} 응답 (2xx 아님)${authHint(httpStatus, step.auth === "none" ? undefined : step.auth ?? scenario.auth)}` : "응답 검증 실패") : httpStatus === undefined ? "요청을 보내지 못했습니다. 서버 주소·연결 상태나 단계 설정을 확인하세요." : "응답을 처리하지 못했습니다" });
           stopped = scenario.onFailure === "stop" || status === "cancelled";
         }
       }
@@ -305,4 +305,11 @@ export class ApiRunner {
       return { status: results.some(r => r.status === "cancelled") ? "cancelled" : results.some(r => r.status === "failed") ? "failed" : results.some(r => r.status === "blocked") ? "blocked" : "passed", steps: results };
     } finally { release(); }
   }
+}
+
+/** What a 401/403 most likely means for this step's authentication setting. */
+function authHint(httpStatus: number | undefined, auth: string | undefined): string {
+  if (httpStatus === 401) return auth ? ` · 인증 토큰(${auth.slice("globals.".length)})이 만료됐거나 맞지 않을 수 있습니다` : " · 이 단계에 인증이 없습니다. 시나리오 기본 인증이나 단계 인증을 설정하세요";
+  if (httpStatus === 403) return " · 이 계정에 권한이 없을 수 있습니다";
+  return "";
 }

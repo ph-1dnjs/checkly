@@ -27,3 +27,13 @@ test("starting a new scenario clears the previous Swagger endpoint only when req
   assert.equal(fresh.searchParams.has("scenarioId"), false);
   assert.equal(new URL(workspaceUrl(base, { ...state, scenarioId: "existing" })).hash, "#/customers/getCustomerInquiries");
 });
+
+test("another project or server drops the Swagger hash; a tab change keeps it", () => {
+  const base = "http://127.0.0.1:5174/?tab=api&project=p1&server=s1&environment=dev#/진단/serverError";
+  const state = { tab: "scenarios" as const, projectId: "p1", serverId: "s1", environmentId: "dev", scenarioId: "" };
+  const hash = new URL(base).hash;
+  assert.equal(new URL(workspaceUrl(base, state)).hash, hash);
+  assert.equal(new URL(workspaceUrl(base, { ...state, environmentId: "prod" })).hash, hash);
+  assert.equal(new URL(workspaceUrl(base, { ...state, projectId: "p2" })).hash, "");
+  assert.equal(new URL(workspaceUrl(base, { ...state, tab: "api", serverId: "s2" })).hash, "");
+});

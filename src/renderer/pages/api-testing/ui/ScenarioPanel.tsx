@@ -59,11 +59,13 @@ export type ScenarioPanelProps = {
   openSaved?: SavedApiScenario | null;
   onOpenSavedConsumed?: () => void;
   onBackToScenarios?: () => void;
+  /** Leaves the composer for the API 문서 tab (to import a missing spec). */
+  onOpenSpecs?: () => void;
   /** Environment and value controls shown in the composer toolbar, which replaces the page header. */
   composeContext?: ReactNode;
 };
 
-export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mode = "run", startCreateRequest = 0, editScenarioId, onCreateConsumed, onComposerOpenChange, onUnsavedChange, onCreateScenario, onOpenAi, onEditScenario, onExecuteSaved, runSaved, onRunSavedConsumed, openSaved, onOpenSavedConsumed, onBackToScenarios, composeContext }: ScenarioPanelProps) {
+export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mode = "run", startCreateRequest = 0, editScenarioId, onCreateConsumed, onComposerOpenChange, onUnsavedChange, onCreateScenario, onOpenAi, onEditScenario, onExecuteSaved, runSaved, onRunSavedConsumed, openSaved, onOpenSavedConsumed, onBackToScenarios, onOpenSpecs, composeContext }: ScenarioPanelProps) {
   const editorMode = mode === "editor";
   const globalAccess = useGlobalVariableAccess();
   const checkedGlobalRevision = useRef(globalAccess.revision);
@@ -314,6 +316,7 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
       onExecuteSaved={onExecuteSaved}
       onUnsavedChange={onUnsavedChange}
       onCloseComposer={() => { setComposer(null); setDirty(false); setResult(null); onBackToScenarios?.(); }}
+      onOpenSpecs={onOpenSpecs}
       sidebarGroupPath={scenarioGroupPath}
       sidebarGroupPaths={availableGroupPaths}
       onSidebarGroupPathChange={value => { setScenarioGroupPath(value); setDirty(true); }}
@@ -377,7 +380,7 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
     </aside>
     {suiteSelection !== null ? <SuitePanel key={suiteSelection} project={project} scope={scope} bridge={bridge} scenarios={saved} suites={suites} selectedId={suiteSelection} onSuitesChange={setSuites} onSelectedIdChange={setSuiteSelection} onBusy={working} onOpenScenario={id => { const item = saved.find(scenario => scenario.id === id); if (item) { setSuiteSelection(null); setRunView("result"); void load(item); } }} /> : <>
     <article className="api-request-panel api-scenario-detail">
-      {(current || preview) && <header className="api-detail-heading"><div><h2>{preview?.scenario.name ?? current?.name}</h2><p className="api-description">{preview?.scenario.description ?? ""}</p></div>{current && <div className="api-actions api-detail-actions"><span className="api-action-group" role="group" aria-label="실행"><button type="button" ref={runButton} className="api-primary" disabled={busy || !canUse} onClick={() => void runScenario()}>{running ? "실행 중…" : result ? "다시 실행" : "실행"}</button>{running && <button type="button" onClick={() => void bridge.cancel(scope)}>실행 중단</button>}</span><span className="api-action-group" role="group" aria-label="편집"><button type="button" disabled={busy} onClick={() => onEditScenario?.(current)}>수정</button><button type="button" disabled={busy || !preview} title="이 시나리오를 복사해 새 시나리오로 저장합니다" onClick={() => void duplicate(current)}>복제</button></span><span className="api-action-group" role="group" aria-label="관리"><DeleteAction key={current.id} label="시나리오 삭제" text="삭제" disabled={busy} description={`‘${current.name}’${current.draft ? " 초안" : ""}을 프로젝트에서 삭제합니다. API 명세와 전역변수는 유지됩니다.`} onDelete={async () => {
+      {(current || preview) && <header className="api-detail-heading"><div><h2 title={preview?.scenario.name ?? current?.name}>{preview?.scenario.name ?? current?.name}</h2><p className="api-description">{preview?.scenario.description ?? ""}</p></div>{current && <div className="api-actions api-detail-actions"><span className="api-action-group" role="group" aria-label="실행"><button type="button" ref={runButton} className="api-primary" disabled={busy || !canUse} onClick={() => void runScenario()}>{running ? "실행 중…" : result ? "다시 실행" : "실행"}</button>{running && <button type="button" onClick={() => void bridge.cancel(scope)}>실행 중단</button>}</span><span className="api-action-group" role="group" aria-label="편집"><button type="button" disabled={busy} onClick={() => onEditScenario?.(current)}>수정</button><button type="button" disabled={busy || !preview} title="이 시나리오를 복사해 새 시나리오로 저장합니다" onClick={() => void duplicate(current)}>복제</button></span><span className="api-action-group" role="group" aria-label="관리"><DeleteAction key={current.id} label="시나리오 삭제" text="삭제" disabled={busy} description={`‘${current.name}’${current.draft ? " 초안" : ""}을 프로젝트에서 삭제합니다. API 명세와 전역변수는 유지됩니다.`} onDelete={async () => {
         await bridge.deleteScenario(project.id, current.id, current.updatedAt);
         setSaved(await bridge.listScenarios(project.id)); setCurrent(null); setSource(""); setScenarioGroupPath([]); setDirty(false); setPreview(null); setResult(null); setBindings({}); setInputs({}); setNotice("시나리오를 삭제했습니다."); onRunAction(null);
       }} /></span></div>}</header>}
@@ -399,7 +402,9 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
             </>;
           })()}</ul><button type="button" disabled={busy} onClick={() => void check().catch(e => setError(errorText(e)))}>설정 다시 확인</button></div>}
           {/* Only where it went wrong: the result below has the status and each step's message. */}
-          {result && result.status !== "passed" && <div role="alert" className="api-warning api-run-last-problem"><strong>최근 실행 {runStatusName(result.status)}</strong>{result.steps.map((step, index) => step.error && <button key={step.id} type="button" className="api-result-error-link" disabled={running} title={step.error} onClick={() => focusResult(step.id)}>{index + 1}단계 · {step.name}</button>)}</div>}
+          {/* Stopped by the user: not a problem to look into. */}
+          {result?.status === "cancelled" && <p role="status" className="api-run-notice">실행을 중단했습니다. 다시 실행하려면 <strong>다시 실행</strong>을 누르세요.</p>}
+          {result && result.status !== "passed" && result.status !== "cancelled" && <div role="alert" className="api-warning api-run-last-problem"><strong>최근 실행 {runStatusName(result.status)}</strong>{result.steps.map((step, index) => step.error && <button key={step.id} type="button" className="api-result-error-link" disabled={running} title={step.error} onClick={() => focusResult(step.id)}>{index + 1}단계 · {step.name}</button>)}</div>}
           {current?.draft && <p className="api-run-notice">초안은 아직 실행할 수 없습니다. <strong>수정</strong>에서 요청값과 검증을 보완한 뒤 <strong>저장</strong>을 누르세요.</p>}
           {preview.issues.length > 0 && <details className="api-run-issues" open={Boolean(current?.draft)}><summary>보완이 필요한 항목 {preview.issues.length}개</summary><ul>{preview.issues.map(issue => <li key={issue}>{issue}</li>)}</ul></details>}
           {current?.draft && preview.issues.length === 0 && <p className="api-run-notice">현재 검사는 통과했지만 아직 초안으로 저장되어 있습니다. <strong>수정</strong>에서 <strong>저장</strong>을 누르면 실행할 수 있습니다.</p>}

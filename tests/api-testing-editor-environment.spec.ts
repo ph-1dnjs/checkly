@@ -59,7 +59,7 @@ function structuredCatalog(summary: string): ApiCatalog {
 }
 
 // twoServers: the project has a second server. missingGlobals: previewScenario reports globals with no value, per step.
-async function workspace(page: Page, structured = false, linkedGlobal = false, options: { twoServers?: boolean; missingGlobals?: boolean; extra?: SavedApiScenario[] } = {}) {
+async function workspace(page: Page, structured = false, linkedGlobal = false, options: { twoServers?: boolean; missingGlobals?: boolean; extra?: SavedApiScenario[]; failSecondStep?: boolean; cancelRun?: boolean } = {}) {
   const catalogs: Record<string, ApiCatalog | null> = {
     [environments.dev]: structured ? structuredCatalog('개발 구조 입력') : catalog('/dev-items', '개발 환경 조회'),
     [environments.empty]: null,
@@ -112,6 +112,12 @@ async function workspace(page: Page, structured = false, linkedGlobal = false, o
       case 'runScenario': {
         runs++
         const scenario = parseScenario(args[1] as string)
+        if (options.cancelRun) return { status: 'cancelled', variables: {}, steps: scenario.steps.map(step => ({ id: step.id, name: step.name ?? step.id, status: 'cancelled', durationMs: 5, error: '실행 취소' })) }
+        // failSecondStep: step 2 answers 500 and later steps are skipped, like the runner.
+        if (options.failSecondStep) return { status: 'failed', variables: {}, steps: scenario.steps.map((step, index) => index === 0
+          ? { id: step.id, name: step.name ?? step.id, status: 'passed', httpStatus: 200, durationMs: 1, request: { method: 'GET', url: 'https://dev.example.invalid/dev-items', headers: { accept: 'application/json' } }, body: { ok: true }, headers: { 'content-type': 'application/json', date: 'today' } }
+          : index === 1 ? { id: step.id, name: step.name ?? step.id, status: 'failed', httpStatus: 500, durationMs: 1, error: 'HTTP 500 응답 (2xx 아님)', body: { message: 'boom' }, headers: { 'content-type': 'application/json' } }
+          : { id: step.id, name: step.name ?? step.id, status: 'skipped', durationMs: 0 }) }
         return { status: 'passed', variables: {}, steps: scenario.steps.map(step => ({
           id: step.id, name: step.name ?? step.id, status: 'passed', httpStatus: 200, durationMs: 1,
           body: { message: 'before fresh-secret after' }, headers: {},
@@ -228,7 +234,7 @@ for (const existing of [false, true]) {
     await environment(page, 'empty').click()
     await expect(environment(page, 'empty')).toHaveAttribute('aria-pressed', 'true')
     await expectDraft(page, name)
-    await expect(stepDetails(page)).toContainText('명세에 없는 API입니다')
+    await expect(stepDetails(page)).toContainText('이 환경에는 가져온 명세가 없습니다')
     // Dirty tracking must survive too, so returning to the list still asks before discarding.
     await page.getByRole('button', { name: '시나리오 목록으로', exact: true }).click()
     await expect(page.getByRole('dialog', { name: '저장하지 않은 변경사항' })).toBeVisible()
@@ -320,7 +326,7 @@ test('unfinished array and body JSON retain their text and validity across envir
     await environment(page, 'stage').click()
     await expect.poll(() => fixture.requests.filter(id => id === environments.stage).length).toBeGreaterThan(0)
     await expect(stepDetails(page)).toContainText('명세를 불러오는 중…')
-    await expect(stepDetails(page)).not.toContainText('명세에 없는 API입니다')
+    await expect(stepDetails(page)).not.toContainText(/명세에 없는 API입니다|가져온 명세가 없습니다/)
     await expect(page.getByRole('button', { name: '1단계 API 바꾸기', exact: true })).toBeDisabled()
     await expectUnfinished()
   } finally {
@@ -331,7 +337,7 @@ test('unfinished array and body JSON retain their text and validity across envir
   await expect(page.getByRole('button', { name: '1단계 API 바꾸기', exact: true })).toBeEnabled()
   await expectUnfinished()
   await environment(page, 'empty').click()
-  await expect(stepDetails(page)).toContainText('명세에 없는 API입니다')
+  await expect(stepDetails(page)).toContainText('이 환경에는 가져온 명세가 없습니다')
   await expectUnfinished()
   await environment(page, 'dev').click()
   await expect(structuredApi).toContainText('개발 구조 입력')
@@ -355,7 +361,7 @@ test('unfinished array and body JSON retain their text and validity across envir
   await page.getByRole('dialog', { name: '1단계 API 바꾸기', exact: true }).getByRole('button', { name: /GET.*\/replacement/ }).click()
   await expect(page.getByLabel('1단계 q', { exact: true })).toBeVisible()
   await environment(page, 'empty').click()
-  await expect(stepDetails(page)).toContainText('명세에 없는 API입니다')
+  await expect(stepDetails(page)).toContainText('이 환경에는 가져온 명세가 없습니다')
   await expect(page.getByLabel('1단계 q', { exact: true })).toBeVisible()
   await expect(filters).toHaveCount(0)
   await expect(body).toHaveCount(0)
@@ -440,3 +446,81 @@ test('the AI API picker puts servers first, so the same tag and path on two serv
   await expect(servers.locator('> summary')).toContainText('인증')
   expect(fixture.unexpected).toEqual([])
 })
+
+test('run results show bodies first with headers folded, and a skipped step as one line', async ({ page }) => {
+  const three = parseScenario(`id: three-steps\nname: 세 단계\nserver: ${serverId}\nsteps:\n  - { name: 첫째, api: GET /dev-items }\n  - { name: 둘째, api: GET /dev-items }\n  - { name: 셋째, api: GET /dev-items }\n`)
+  const fixture = await workspace(page, false, false, { failSecondStep: true, extra: [{ id: three.id, name: three.name, source: stringifyScenario(three, true), bindings: {}, updatedAt: importedAt }] })
+  await page.getByRole('button', { name: '세 단계', exact: true }).click()
+  await page.getByRole('button', { name: '실행', exact: true }).click()
+  const result = page.getByRole('region', { name: '시나리오 실행 결과' })
+  await result.getByRole('button', { name: '모두 펼치기', exact: true }).click()
+  const steps = result.locator('.api-run-result-step')
+  // The response body is shown as is (no "body"/"headers" wrapper); headers are folded with their count.
+  await expect(steps.nth(0).locator('.api-run-payload').nth(1)).toContainText('"ok": true')
+  await expect(steps.nth(0).locator('.api-run-payload').nth(1)).not.toContainText('"body"')
+  const responseHeaders = steps.nth(0).locator('.api-run-payload').nth(1).locator('.api-run-headers')
+  await expect(responseHeaders.locator('summary')).toHaveText('헤더 2개')
+  await expect(responseHeaders).not.toHaveAttribute('open', '')
+  await expect(steps.nth(0).locator('.api-run-payload').nth(0).locator('.api-run-headers summary')).toHaveText('헤더 1개')
+  // Skipped: one line, no empty request/response boxes, no "0ms".
+  await expect(steps.nth(2).locator('.api-run-result-step-body')).toHaveText('앞 단계가 실패해 이 단계는 실행하지 않았습니다.')
+  await expect(steps.nth(2).locator('.api-run-result-duration')).toHaveCount(0)
+  expect(fixture.unexpected).toEqual([])
+})
+
+test('narrow windows fold the settings summary so the step editor keeps the height', async ({ page }) => {
+  const fixture = await workspace(page)
+  await page.getByRole('button', { name: '저장된 시나리오', exact: true }).click()
+  await page.getByRole('button', { name: '수정', exact: true }).click()
+  await editStep(page).click()
+  const toggle = page.getByRole('button', { name: /^설정 요약 (보기|접기)$/ })
+  await expect(toggle).toBeHidden()
+  await page.setViewportSize({ width: 880, height: 700 })
+  await expect(toggle).toHaveText('설정 요약 보기')
+  await expect(page.locator('.api-settings-summary .api-summary-card').first()).toBeHidden()
+  await toggle.click()
+  await expect(toggle).toHaveText('설정 요약 접기')
+  await expect(page.locator('.api-settings-summary .api-summary-card').first()).toBeVisible()
+  expect(fixture.unexpected).toEqual([])
+})
+
+test('with no spec, the composer links to API 문서 and the AI guide cannot be copied', async ({ page }) => {
+  const fixture = await workspace(page)
+  await page.getByRole('group', { name: 'API 환경' }).getByRole('button', { name: 'empty', exact: true }).click()
+  await page.getByRole('button', { name: '+ 새 시나리오', exact: true }).click()
+  await page.getByRole('button', { name: 'API 문서로 이동', exact: true }).click()
+  await expect(page.getByRole('tab', { name: /^API 문서/ })).toHaveAttribute('aria-selected', 'true')
+  await page.getByRole('tab', { name: 'AI 작성 도우미', exact: true }).click()
+  await expect(page.getByRole('note')).toContainText('명세를 먼저 가져오세요')
+  await expect(page.getByRole('button', { name: 'AI 가이드 복사', exact: true })).toBeDisabled()
+  await expect(page.getByRole('button', { name: '가이드 보기', exact: true })).toBeDisabled()
+  expect(fixture.unexpected).toEqual([])
+})
+
+test('a run the user stopped is a plain note, not a problem alert', async ({ page }) => {
+  const fixture = await workspace(page, false, false, { cancelRun: true })
+  await page.getByRole('button', { name: '저장된 시나리오', exact: true }).click()
+  await page.getByRole('button', { name: '실행', exact: true }).click()
+  const summary = page.getByRole('region', { name: '시나리오 실행 준비' })
+  await expect(summary.getByRole('status')).toHaveText('실행을 중단했습니다. 다시 실행하려면 다시 실행을 누르세요.')
+  await expect(summary.locator('.api-run-last-problem')).toHaveCount(0)
+  expect(fixture.unexpected).toEqual([])
+})
+
+test('the server legend stays off the project form, and an unsavable suite says why', async ({ page }) => {
+  const fixture = await workspace(page, false, false, { twoServers: true })
+  await expect(page.getByLabel('프로젝트 서버', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '프로젝트 설정', exact: true }).click()
+  await expect(page.getByLabel('프로젝트 서버', { exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: '← 돌아가기', exact: true }).click()
+  await page.getByRole('button', { name: '+ 새 스위트', exact: true }).click()
+  const hint = page.locator('.api-suite-save-hint')
+  await expect(hint).toHaveText('이름을 적고 시나리오를 추가하면 저장할 수 있습니다.')
+  await page.getByLabel('스위트 이름', { exact: true }).fill('묶음')
+  await expect(hint).toHaveText('시나리오를 하나 이상 추가하세요.')
+  await page.getByRole('combobox', { name: /^시나리오 추가/ }).selectOption({ label: '저장된 시나리오' })
+  await expect(hint).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '스위트 저장', exact: true })).toBeEnabled()
+  expect(fixture.unexpected).toEqual([])
+})
+

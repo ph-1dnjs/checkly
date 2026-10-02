@@ -3,7 +3,9 @@ import type { ApiTestingBridge } from "../../../app/api-testing/shared/workspace
 async function rpc(method: string, args: unknown[]) {
   const response = await fetch("/__api-testing", {
     method: "POST", headers: { "Content-Type": "application/json", "X-Checkly-Dev": "1" },
-    body: JSON.stringify({ method, args }),
+    // JSON turns an omitted argument into null, which optional parameters reject (Electron IPC keeps undefined):
+    // say which positions were omitted so the dev server restores them.
+    body: JSON.stringify({ method, args, omitted: args.flatMap((arg, index) => arg === undefined ? [index] : []) }),
   });
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || "개발 서버 연결 실패");

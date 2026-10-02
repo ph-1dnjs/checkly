@@ -18,12 +18,15 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
   const [operations, setOperations] = useState<PickableOperation[]>([]);
   const [picked, setPicked] = useState<string[]>([]);
   const [specWarnings, setSpecWarnings] = useState<string[]>([]);
+  const [catalogsLoaded, setCatalogsLoaded] = useState(false);
   const [guide, setGuide] = useState<string | null>(null);
   const [answer, setAnswer] = useState("");
   const [checking, setChecking] = useState(false);
   const [result, setResult] = useState<ApiAiImportResult | null>(null);
   const [chosen, setChosen] = useState<string[]>([]);
   const [saveSuite, setSaveSuite] = useState(true);
+  // Drafts that would update a saved scenario but the user wants added as a new one instead.
+  const [asNew, setAsNew] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -37,6 +40,7 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
       .then(catalogs => {
         if (!live.current) return;
         setSpecWarnings(specWarningsFor(project, catalogs));
+        setCatalogsLoaded(true);
         setOperations(project.servers.flatMap((server, index) => (catalogs[index]?.operations ?? []).map(operation => ({
           id: `${server.id} ${operation.key}`, server: server.id, method: operation.method, path: operation.path, summary: operation.summary,
           tags: [...new Set([operation.tag, ...(operation.tags ?? [])].filter(Boolean))],
@@ -45,6 +49,8 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
       });
   }, []);
   const busy = checking || saving;
+  // No spec on any server: a guide would give the AI no APIs at all.
+  const noSpec = catalogsLoaded && !operations.length;
   const guideRequest = () => ({ scope, ...(picked.length ? { operations: picked } : {}) });
   const act = async (task: () => Promise<void>, step: 1 | 3 = 3) => { setError(""); setMessage(""); setMessageStep(step); try { await task(); } catch (e) { if (live.current) setError(errorText(e)); } };
 
@@ -56,8 +62,11 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
       const next = await bridge.checkAiScenarios(scope, text);
       if (!live.current) return;
       setResult(next);
-      // A name already saved usually means this result was loaded before: don't save it twice by default.
-      setChosen(next.drafts.filter(draft => !draft.sameName).map(draft => draft.id));
+      // A name already saved usually means this result was loaded before: it updates that scenario
+      // (when there is exactly one); otherwise it is not saved a second time by default.
+      // A draft with problems never replaces a saved scenario by default.
+      setChosen(next.drafts.filter(draft => !draft.sameName || (draft.replaces && !draft.issues.length)).map(draft => draft.id));
+      setAsNew([]);
       setSaveSuite(Boolean(next.suite));
     });
     if (live.current) setChecking(false);
@@ -73,21 +82,33 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
     if (!result) return;
     setSaving(true); onBusy(true); setError(""); setMessage(""); setMessageStep(3);
     const runnable = new Set<string>();
+    // Draft id → the id it was saved under (a draft added as new instead of updating gets a fresh id).
+    const savedIds = new Map<string, string>();
     const failures: string[] = [];
     let first: SavedApiScenario | undefined;
     try {
-      for (const draft of result.drafts.filter(item => chosen.includes(item.id))) {
+      const chosenDrafts = result.drafts.filter(item => chosen.includes(item.id));
+      const current = chosenDrafts.some(draft => draft.replaces && !asNew.includes(draft.id)) ? await bridge.listScenarios(scope.projectId) : [];
+      for (const draft of chosenDrafts) {
         try {
           const metadata = draft.groupPath ? { groupPath: draft.groupPath } : undefined;
-          const item = draft.issues.length ? await bridge.saveScenarioDraft(scope, draft.yaml, {}, undefined, metadata) : await bridge.saveScenario(scope, draft.yaml, {}, undefined, metadata);
-          if (!draft.issues.length) runnable.add(draft.id);
+          const updating = Boolean(draft.replaces) && !asNew.includes(draft.id);
+          const yaml = draft.replaces && !updating ? draft.yaml.replace(/^id: .*$/m, `id: scenario-${crypto.randomUUID()}`) : draft.yaml;
+          const expectedUpdatedAt = updating ? current.find(item => item.id === draft.replaces)?.updatedAt : undefined;
+          const item = draft.issues.length ? await bridge.saveScenarioDraft(scope, yaml, {}, expectedUpdatedAt, metadata) : await bridge.saveScenario(scope, yaml, {}, expectedUpdatedAt, metadata);
+          savedIds.set(draft.id, item.id);
+          if (!draft.issues.length) runnable.add(item.id);
           first ??= item;
         } catch (e) { failures.push(`${draft.name}: ${errorText(e)}`); }
       }
       let suiteNote = "";
       if (result.suite && saveSuite) {
         const { saved, fallbacks } = result.suite;
-        const ids = result.suite.scenarioIds.map(id => runnable.has(id) || saved?.[id] !== undefined ? id : fallbacks?.[id]).filter((id): id is string => Boolean(id));
+        const ids = result.suite.scenarioIds.map(id => {
+          const savedAs = savedIds.get(id);
+          if (savedAs && runnable.has(savedAs)) return savedAs;
+          return saved?.[id] !== undefined ? id : fallbacks?.[id];
+        }).filter((id): id is string => Boolean(id));
         const skipped = result.suite.scenarioIds.length - ids.length;
         if (ids.length) {
           try {
@@ -116,13 +137,15 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
     <ol className="api-ai-steps" aria-label="AI 작성 순서">
       <li>
         <header><strong>가이드 복사</strong><span>백엔드 프로젝트 폴더에서 Claude Code나 Codex를 열고 붙여넣습니다.</span></header>
-        {specWarnings.length > 0 && <div className="api-warning" role="note"><strong>명세를 다시 가져오세요</strong><ul>{specWarnings.map(warning => <li key={warning}>{warning}</li>)}</ul>AI는 명세에 있는 API와 필드만 사용합니다. API 문서 탭에서 ‘명세 새로고침’이나 가져오기를 다시 하세요.</div>}
+        {noSpec
+          ? <div className="api-warning" role="note"><strong>명세를 먼저 가져오세요</strong> 가져온 명세가 없어 AI에게 줄 API가 없습니다. API 문서 탭에서 명세를 가져오세요.</div>
+          : specWarnings.length > 0 && <div className="api-warning" role="note"><strong>명세를 다시 가져오세요</strong><ul>{specWarnings.map(warning => <li key={warning}>{warning}</li>)}</ul>AI는 명세에 있는 API와 필드만 사용합니다. API 문서 탭에서 명세를 가져오거나 새로고침하세요.</div>}
         {operations.length > 0 && <details className="api-ai-author-tags"><summary>AI가 쓸 API (선택) · {picked.length ? `${picked.length}개 선택` : `전체 ${usable}개${unavailable ? ` (실행 미지원 ${unavailable}개 제외)` : ""}`}</summary>
           <ApiPicker operations={operations} servers={Object.fromEntries(project.servers.map(server => [server.id, server.name]))} picked={picked} disabled={busy} onChange={next => { setGuide(null); setPicked(next); }} />
         </details>}
         <div className="api-actions">
-          <button type="button" className="api-primary" disabled={busy} onClick={() => void act(async () => { await bridge.copyAiPrompt(guideRequest()); setMessage("가이드를 복사했습니다. AI에 붙여넣으세요."); }, 1)}>AI 가이드 복사</button>
-          <button type="button" aria-expanded={guide !== null} disabled={busy} onClick={() => void act(async () => { if (guide !== null) { setGuide(null); return; } const text = await bridge.getAiPrompt(guideRequest()); if (live.current) setGuide(text); }, 1)}>{guide === null ? "가이드 보기" : "가이드 닫기"}</button>
+          <button type="button" className="api-primary" disabled={busy || noSpec} onClick={() => void act(async () => { await bridge.copyAiPrompt(guideRequest()); setMessage("가이드를 복사했습니다. AI에 붙여넣으세요."); }, 1)}>AI 가이드 복사</button>
+          <button type="button" aria-expanded={guide !== null} disabled={busy || noSpec} onClick={() => void act(async () => { if (guide !== null) { setGuide(null); return; } const text = await bridge.getAiPrompt(guideRequest()); if (live.current) setGuide(text); }, 1)}>{guide === null ? "가이드 보기" : "가이드 닫기"}</button>
         </div>
         {status(1)}
         {guide !== null && <pre className="api-ai-author-guide" aria-label="AI 가이드 내용">{guide}</pre>}
@@ -150,14 +173,15 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
           </div>}
           <ul>{result.drafts.map(draft => <li key={draft.id} className={draft.issues.length ? "has-issues" : ""}>
             <label className="api-check-row"><input type="checkbox" aria-label={`${draft.name} 저장`} checked={chosen.includes(draft.id)} disabled={saving} onChange={e => setChosen(e.target.checked ? [...chosen, draft.id] : chosen.filter(id => id !== draft.id))} /><strong>{draft.name}</strong><small>{draft.stepCount ? `${draft.stepCount}단계` : "단계 확인 불가"}{draft.groupPath ? ` · ${draft.groupPath.join(" › ")}` : ""} · {draft.issues.length ? "수정 필요 (초안으로 저장)" : draft.executionIssues.length ? "저장 가능 · 실행 전 설정 필요" : "바로 실행 가능"}</small></label>
-            {draft.notices.length > 0 && <p className="api-field-help">{draft.notices.join(" · ")}</p>}
+            {draft.replaces && <label className="api-ai-author-replace">저장 방식<select aria-label={`${draft.name} 저장 방식`} value={asNew.includes(draft.id) ? "new" : "update"} disabled={saving || !chosen.includes(draft.id)} onChange={e => setAsNew(e.target.value === "new" ? [...asNew, draft.id] : asNew.filter(id => id !== draft.id))}><option value="update">기존 시나리오 업데이트</option><option value="new">새 시나리오로 추가</option></select></label>}
+            {draft.notices.length > 0 && <p className="api-field-help">{draft.replaces && asNew.includes(draft.id) ? "같은 이름의 기존 시나리오가 있습니다. 저장하면 같은 이름이 하나 더 생깁니다" : draft.notices.join(" · ")}</p>}
             {draft.issues.length > 0 && <ul className="api-ai-author-issues">{draft.issues.map(issue => <li key={issue}>{issue}</li>)}</ul>}
             {draft.executionIssues.length > 0 && <p className="api-field-help">실행 전에 필요: {draft.executionIssues.join(" · ")}</p>}
             <details><summary>내용 보기</summary><YamlCode source={draft.yaml} /></details>
           </li>)}</ul>
           {result.suite && <div className="api-ai-author-suite">
             <label className="api-check-row"><input type="checkbox" checked={saveSuite} disabled={saving} onChange={e => setSaveSuite(e.target.checked)} />스위트 ‘{result.suite.name}’{result.suite.groupPath ? ` (${result.suite.groupPath.join(" › ")})` : ""}도 저장</label>
-            <ol>{result.suite.scenarioIds.map(id => <li key={id}>{nameOf(id)}{result.suite!.fallbacks?.[id] && !chosen.includes(id) ? " · 기존 시나리오 사용" : result.drafts.find(draft => draft.id === id)?.issues.length ? " · 수정 필요라 제외" : result.suite!.saved?.[id] !== undefined ? " · 기존 시나리오" : ""}</li>)}</ol>
+            <ol>{result.suite.scenarioIds.map(id => <li key={id}>{nameOf(id)}{result.drafts.find(draft => draft.id === id)?.replaces && chosen.includes(id) && !asNew.includes(id) ? " · 기존 시나리오 업데이트" : result.suite!.fallbacks?.[id] && !chosen.includes(id) ? " · 기존 시나리오 사용" : result.drafts.find(draft => draft.id === id)?.issues.length ? " · 수정 필요라 제외" : result.suite!.saved?.[id] !== undefined ? " · 기존 시나리오" : ""}</li>)}</ol>
             {result.suite.problems.map(problem => <p key={problem} className="api-field-help">{problem}</p>)}
           </div>}
           <div className="api-actions"><button className="api-primary" disabled={saving || (!chosen.length && !suiteReuses)} onClick={() => void save()}>{saving ? "저장 중…" : "선택한 것 저장"}</button></div>

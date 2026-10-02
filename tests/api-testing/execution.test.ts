@@ -270,3 +270,20 @@ test("a value missing for a response save says where it was looked for", async (
     assert.equal(result.steps[0].error, "응답 저장 실패: 응답 본문 /data/token에 값이 없어 전역변수 token에 저장하지 못했습니다.");
   } finally { await new Promise<void>(r => server.close(() => r())); }
 });
+
+test("a 401 or 403 says what the step's authentication setting likely means", async () => {
+  const server = createServer((req, res) => { res.statusCode = req.url === "/forbidden" ? 403 : 401; res.setHeader("content-type", "application/json"); res.end("{}"); });
+  await new Promise<void>(r => server.listen(0, "127.0.0.1", r));
+  try {
+    const options = { projectId: "auth-hint", environment: "dev", servers: { api: { baseUrl: `http://127.0.0.1:${(server.address() as { port: number }).port}` } } };
+    const run = async (auth: string | undefined, path = "/") => {
+      const runner = new ApiRunner();
+      runner.globals.commit("auth-hint", { token: "abc" });
+      const scenario = scenarioSchema.parse({ version: 1, id: "auth-hint", name: "인증", ...(auth ? { auth } : {}), steps: [{ id: "only", server: "api", api: { method: "GET", path } }] });
+      return (await runner.run(scenario, options)).steps[0].error;
+    };
+    assert.equal(await run(undefined), "HTTP 401 응답 (2xx 아님) · 이 단계에 인증이 없습니다. 시나리오 기본 인증이나 단계 인증을 설정하세요");
+    assert.equal(await run("globals.token"), "HTTP 401 응답 (2xx 아님) · 인증 토큰(token)이 만료됐거나 맞지 않을 수 있습니다");
+    assert.equal(await run("globals.token", "/forbidden"), "HTTP 403 응답 (2xx 아님) · 이 계정에 권한이 없을 수 있습니다");
+  } finally { await new Promise<void>(r => server.close(() => r())); }
+});

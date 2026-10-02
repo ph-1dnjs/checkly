@@ -14,6 +14,10 @@ export function readWorkspaceUrl(href: string) {
 }
 export function workspaceUrl(href: string, state: WorkspaceUrlState, clearHash = false) {
   const url = new URL(href);
+  // A Swagger hash (#/태그/operation) is kept across tabs (back on API 문서 the same API opens), but it points
+  // into one project's and server's spec: another project or server drops it.
+  const previousProject = url.searchParams.get("project"), previousServer = url.searchParams.get("server");
+  if ((previousProject && previousProject !== state.projectId) || (previousServer && previousServer !== state.serverId)) clearHash = true;
   url.searchParams.set("tab", state.tab);
   for (const [key, value] of [["project", state.projectId], ["server", state.serverId], ["environment", state.environmentId], ["scenarioId", state.scenarioId]]) {
     if (value) url.searchParams.set(key, value); else url.searchParams.delete(key);
