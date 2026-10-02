@@ -49,6 +49,8 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
   // Spec import failures show inside the spec panel, next to the URL and account they are about.
   const [specError, setSpecError] = useState("");
   const [notice, setNotice] = useState("");
+  // An import notice about specs to fetch: shown on API 문서 only, gone once every server here has its spec.
+  const [specNotice, setSpecNotice] = useState(false);
   const [importPlan, setImportPlan] = useState<{ text: string; plan: ApiProjectImportPlan } | null>(null);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -147,9 +149,10 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
     setProjects(await bridge.listProjects()); selectProject(result.project); setForm(null);
     // A new project needs its specs first: open where they are imported.
     if (!result.merged) setTab("api");
+    setSpecNotice(!result.merged);
     setNotice(result.merged
-      ? `‘${result.project.name}’에 합쳤습니다 · 추가 ${result.merged.added} · 반영 ${result.merged.updated} · 내 변경 유지 ${result.merged.kept}.${result.specUrls ? " 새로 생긴 명세는 API 문서 탭에서 새로고침하세요." : ""}`
-      : `‘${result.project.name}’ 프로젝트를 가져왔습니다 · 시나리오 ${result.scenarios}개, 스위트 ${result.suites}개. ${result.specUrls ? "API 문서 탭에서 명세를 새로고침하세요(문서 인증이 있으면 계정 입력)." : "API 문서 탭에서 명세를 다시 가져오세요."}`);
+      ? `‘${result.project.name}’에 합쳤습니다 · 추가 ${result.merged.added} · 반영 ${result.merged.updated} · 내 변경 유지 ${result.merged.kept}.${result.specUrls ? " 새로 생긴 명세는 API 문서 탭에서 [이 URL로 가져오기]로 받으세요." : ""}`
+      : `‘${result.project.name}’ 프로젝트를 가져왔습니다 · 시나리오 ${result.scenarios}개, 스위트 ${result.suites}개. ${result.specUrls ? "서버·환경마다 [이 URL로 가져오기]로 명세를 받으세요(문서 인증이 있으면 계정 입력)." : "서버·환경마다 명세를 가져오세요."}`);
   };
   const selectProject = (p: ApiProject) => { setProjectId(p.id); setServerId(p.servers[0].id); setEnvironmentId(p.environments[0].id); setUrl(""); setScenarioEditorScenarioId(null); };
   useEffect(() => {
@@ -195,7 +198,13 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
       if (targetUrl !== url) setUrl(targetUrl);
       const useSavedAuth = authKind === "basic" && remember && sync?.hasSavedAccount && sync.url === targetUrl && sync.username === docsUsername && !docsPassword;
       const next = await bridge.importSpec(scope, kind === "file" ? { kind } : { kind, url: targetUrl, ...(authKind === "basic" ? useSavedAuth ? { useSavedAuth: true } : { remember, auth: { kind: "basic" as const, username: docsUsername, password: docsPassword } } : {}) });
-      if (next) { setCatalog(next); return true; }
+      if (next) {
+        setCatalog(next);
+        // The import notice is done once no server in this environment still lacks its spec.
+        if (specNotice && project) void Promise.all(project.servers.filter(server => server.id !== serverId).map(server => bridge.getCatalog({ projectId, serverId: server.id, environmentId }).catch(() => null)))
+          .then(others => { if (others.every(Boolean)) { setNotice(""); setSpecNotice(false); } });
+        return true;
+      }
       return false;
     } catch (e) { setSpecError((e as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, "")); return false; }
     finally { try { setSync(await bridge.getSpecSync(scope)); } catch { /* Keep the original import error visible. */ } setLoading(false); setDocsPassword(""); }
@@ -206,7 +215,7 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
   const valueActions = <div className="api-context-value-actions"><GlobalVariableMenu projectId={projectId} bridge={bridge} disabled={busy} /></div>;
   // "+ 새 프로젝트" is the list's last entry: it's rare, and the header stays one row.
   const projectPicker = <div className="api-actions api-project-picker">
-    <select aria-label="API 프로젝트" disabled={locked || loading} value={projectId} onChange={e => { if (e.target.value === newProjectOption) setForm("new"); else selectProject(projects.find(p => p.id === e.target.value)!); }}>
+    <select aria-label="API 프로젝트" disabled={locked || loading} value={projectId} onChange={e => { if (e.target.value === newProjectOption) setForm("new"); else { setNotice(""); setSpecNotice(false); } if (e.target.value !== newProjectOption) selectProject(projects.find(p => p.id === e.target.value)!); }}>
       <option value="" disabled>프로젝트 선택</option>
       {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
       <option value={newProjectOption}>+ 새 프로젝트</option>
@@ -223,7 +232,7 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
     <header className="api-toolbar api-page-head"><h1>API 테스트</h1>{projectPicker}{serverLegend}</header>
     {error && <p className="api-warning" role="alert">{error}</p>}
     {importPlan && <ProjectImportDialog plan={importPlan.plan} onCancel={() => setImportPlan(null)} onImport={async update => { await finishImport(await bridge.importProject(importPlan.text, update)); }} />}
-    {notice && !form && <p className="api-page-notice" role="status">{notice}<button type="button" className="api-compose-link" onClick={() => setNotice("")}>닫기</button></p>}
+    {notice && !form && (!specNotice || tab === "api") && <p className="api-page-notice" role="status">{notice}<button type="button" className="api-compose-link" onClick={() => { setNotice(""); setSpecNotice(false); }}>닫기</button></p>}
     {form ? <ProjectForm key={`${form}:${projectId}`} initial={form === "edit" ? project : undefined} onCancel={() => setForm(null)} onDelete={async () => {
       setBusy(true);
       try {
@@ -235,7 +244,7 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
     }} onSave={async p => { const isNew = form === "new"; const saved = await bridge.saveProject(p); setProjects(await bridge.listProjects()); selectProject(saved); setForm(null); if (isNew) setTab("api"); }}
     onExport={async () => { const saved = await bridge.exportProject(projectId); return saved ? `저장했습니다 · ${saved}` : ""; }}
     onImport={importProject} /> : <>
-      {!project ? <div className="api-empty"><h2>API 테스트를 시작하세요</h2><p>프로젝트를 만든 뒤 API 명세(OpenAPI) 파일이나 URL을 가져오세요.</p><button className="api-primary" onClick={() => setForm("new")}>프로젝트 만들기</button></div> : <>
+      {!project ? <div className="api-empty"><h2>API 테스트를 시작하세요</h2><p>프로젝트를 만든 뒤 API 명세(OpenAPI) 파일이나 URL을 가져오세요.</p><div className="api-actions"><button className="api-primary" onClick={() => setForm("new")}>프로젝트 만들기</button><button type="button" onClick={() => void importProject().catch(error => setError((error as Error).message))}>공유받은 파일 가져오기</button></div></div> : <>
         {/* Tabs and the server/environment context share the second row. */}
         <div className="api-workbar">
           <div className="api-tabs" role="tablist" aria-label="API 작업 영역">

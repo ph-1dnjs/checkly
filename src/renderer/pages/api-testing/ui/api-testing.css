@@ -1034,7 +1034,7 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 .api-ai-steps > li > .api-warning { margin:10px 0 0; }
 .api-ai-step-status { margin:8px 0 0; color:var(--api-muted); font-size:12px; }
 .api-ai-steps .api-ai-author-result { margin-top:14px; }
-.api-scenario-detail > .api-empty .api-actions { justify-content:center; margin-top:12px; }
+.api-scenario-detail > .api-empty .api-actions,.api-empty .api-actions { justify-content:center; margin-top:12px; }
 /* Tabs (left) and server/environment/value controls (right) in one row under the title. */
 .api-workbar { display:flex; flex-wrap:wrap; align-items:flex-end; justify-content:space-between; gap:8px 16px; margin-bottom:16px; border-bottom:1px solid var(--ck-color-line-strong); }
 .api-swagger-shell .api-workbar > .api-tabs { margin:0; border-bottom:0; }
@@ -1266,3 +1266,5 @@ body.panel-resizing { cursor:col-resize; user-select:none; }
 .api-suite-save-hint { align-self:center; margin-right:auto; color:var(--ck-color-text-mute); font-size:12px; }
 /* Long names stop at two lines (the full name is the tooltip) so the action buttons stay in place. */
 .api-testing-page .api-detail-heading h2 { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; overflow-wrap:anywhere; }
+/* Prose (a scenario's description) reads in the UI font; code-like text areas stay monospace. */
+.api-testing-page textarea.api-prose-input:not(.swagger-ui textarea) { font-family:inherit; font-size:inherit; font-variant-numeric:normal; }

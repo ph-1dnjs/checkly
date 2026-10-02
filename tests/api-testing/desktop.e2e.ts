@@ -67,6 +67,12 @@ async function main() {
       void (dialog.type() === "beforeunload" ? dialog.accept() : dialog.dismiss()).catch(() => undefined);
     });
     await page.getByRole("button", { name: "API 테스트", exact: true }).click();
+    // First run offers both making a project and importing a shared one.
+    await expect(page.getByRole("button", { name: "공유받은 파일 가져오기", exact: true })).toBeVisible();
+    // Both sit centered under the message, like the other empty states.
+    const centerOf = (name: string) => page.getByRole("button", { name, exact: true }).evaluate(element => { const box = element.getBoundingClientRect(); return box.left + box.width / 2; });
+    const pageCenter = await page.locator(".api-empty").first().evaluate(element => { const box = element.getBoundingClientRect(); return box.left + box.width / 2; });
+    if (Math.abs((await centerOf("프로젝트 만들기") + await centerOf("공유받은 파일 가져오기")) / 2 - pageCenter) > 40) throw new Error("First-run buttons are not centered");
     await page.getByRole("button", { name: "프로젝트 만들기", exact: true }).click();
     await page.getByLabel("프로젝트 이름").fill("쇼핑몰 QA");
     await page.getByLabel("기본 API 기본 주소").fill(url);
@@ -250,6 +256,9 @@ async function main() {
     await page.locator('details[aria-label="편집 단계 1"] > summary').click();
     await page.locator('details[aria-label="편집 단계 2"] > summary').click();
     await page.getByLabel("시나리오 이름", { exact: true }).fill("로그인 후 상품 조회");
+    // The description is prose: the same font as the name, not the monospace of JSON fields.
+    const fontOf = (label: string) => page.getByLabel(label, { exact: true }).evaluate(element => getComputedStyle(element).fontFamily);
+    if (await fontOf("시나리오 설명") !== await fontOf("시나리오 이름")) throw new Error("Description is not in the UI font");
     // loginId is typed while the scenario runs (runtime input), not stored in the scenario.
     await page.getByRole("button", { name: "1단계 loginId 키 값 연결", exact: true }).click();
     await page.getByRole("button", { name: /^실행 중 입력으로 받기/ }).click();
@@ -580,13 +589,22 @@ async function main() {
     await expect(firstImport).toContainText("대상 · 쇼핑몰 QA");
     await firstImport.getByLabel("새 프로젝트로 추가").check();
     await firstImport.getByRole("button", { name: "새 프로젝트로 가져오기", exact: true }).click();
-    await expect(restored.getByRole("status").filter({ hasText: "프로젝트를 가져왔습니다" })).toContainText("‘쇼핑몰 QA (2)’");
+    const importNotice = restored.getByRole("status").filter({ hasText: "프로젝트를 가져왔습니다" });
+    await expect(importNotice).toContainText("‘쇼핑몰 QA (2)’");
+    // The notice names the actual button, and stays on API 문서 (not over the scenario screens).
+    await expect(importNotice).toContainText("[이 URL로 가져오기]");
     await expect(restored.getByLabel("API 프로젝트").locator("option:checked")).toHaveText("쇼핑몰 QA (2)");
     await expect(restored.getByRole("tab", { name: /^API 문서/ })).toHaveAttribute("aria-selected", "true");
     // The imported project works once its spec is refreshed from the carried URL: the scenario runs.
     await expect(refreshedSource).toContainText("/openapi.json");
+    await restored.getByRole("tab", { name: "시나리오", exact: true }).click();
+    await expect(importNotice).toHaveCount(0);
+    await restored.getByRole("tab", { name: /^API 문서/ }).click();
+    await expect(importNotice).toBeVisible();
     await refreshSpec();
     await expect(refreshedSource).toContainText("최근 동기화 성공");
+    // Every server now has its spec: the notice has done its job.
+    await expect(importNotice).toHaveCount(0);
     await restored.getByRole("tab", { name: "시나리오", exact: true }).click();
     await expect(restored.locator(".api-sidebar-entry").filter({ hasText: "로그인 후 상품 조회" })).toBeVisible();
     await restored.getByRole("button", { name: /로그인 후 상품 조회/ }).click();

@@ -81,7 +81,7 @@ export function ScenarioBuilder({ bindings, project, scope, bridge, onApply, val
     <fieldset disabled={saving} style={{ border:0, padding:0, margin:0 }}>
     <label>시나리오 이름<input aria-label="시나리오 이름" required placeholder="예: 로그인 후 상품 조회" value={draft.name} onChange={e => setDraft({ ...draft, name: e.target.value })} /></label>
     {metadata}
-    <label>설명<textarea aria-label="시나리오 설명" value={draft.description ?? ""} placeholder="이 시나리오가 확인하는 흐름을 적어 두세요" onChange={e => setDraft({ ...draft, description: e.target.value })} /></label>
+    <label>설명<textarea className="api-prose-input" aria-label="시나리오 설명" value={draft.description ?? ""} placeholder="이 시나리오가 확인하는 흐름을 적어 두세요" onChange={e => setDraft({ ...draft, description: e.target.value })} /></label>
     <label>기본 인증<select aria-label="시나리오 기본 인증" value={draft.auth ?? ""} onChange={e => setDraft({ ...draft, auth: e.target.value || undefined })}><option value="">없음</option>{authNames.map(name => <option key={name} value={`globals.${name}`}>전역변수 · {name}</option>)}</select></label>
     <p className="api-field-help">모든 단계에 적용됩니다. 토큰 값은 실행할 때 전역변수에서 읽습니다.</p>
     <div className="api-accordion-editor">
