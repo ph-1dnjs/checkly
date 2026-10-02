@@ -2,7 +2,7 @@ import { runStatusName } from "../../../entities/api-testing";
 import { useEffect, useRef, useState } from "react";
 import type { ApiProject, ApiScope, ApiScenarioInputRequest, ApiScenarioResult, ApiTestingBridge, SavedApiScenario, SavedApiSuite } from "../../../../app/api-testing/shared/workspace";
 import { formatDuration, producedGlobalNames, renderSuiteReport, reportScenario, usesInvalidatedGlobal, type SuiteReport, type SuiteReportScenario } from "../../../../app/api-testing/shared/suite-report";
-import { groupMissingGlobals, issueGlobal, missingGlobalIssue } from "../../../../app/api-testing/shared/preflight-issues";
+import { groupMissingGlobals, issueGlobal, missingGlobalIssue, stepNumbersText } from "../../../../app/api-testing/shared/preflight-issues";
 import { GlobalVariableSetupLink, SidebarMetadataFields, writeLastRun } from "../../../entities/api-testing";
 import { useGlobalVariableAccess } from "../../../features/api-testing/configure-globals";
 
@@ -31,7 +31,7 @@ const missingGlobal = (issue: string) => missingGlobalIssue(issue)?.name;
 function IssueList({ issues, className, onConfigure }: { issues: string[]; className?: string; onConfigure: (name: string) => void }) {
   const { globals, others } = groupMissingGlobals(issues);
   return <ul className={className}>
-    {globals.map(({ name, steps }) => <li key={name}><code>{name}</code> 값 없음{steps.length > 0 && ` · ${steps.join("·")}단계`} <GlobalVariableSetupLink name={name} onConfigure={onConfigure} /></li>)}
+    {globals.map(({ name, steps }) => <li key={name}><code>{name}</code> 값 없음{steps.length > 0 && ` · ${stepNumbersText(steps)}단계`} <GlobalVariableSetupLink name={name} onConfigure={onConfigure} /></li>)}
     {others.map(issue => { const name = issueGlobal(issue); return <li key={issue}>{issue}{name && <> <GlobalVariableSetupLink name={name} onConfigure={onConfigure} /></>}</li>; })}
   </ul>;
 }
@@ -193,7 +193,7 @@ export function SuitePanel({ project, scope, bridge, scenarios, suites, selected
           <span className="api-suite-order-number">{position + 1}</span>
           <span className="api-suite-order-name">{item?.name ?? "삭제된 시나리오"}</span>
           <button type="button" className="api-suite-order-remove" title="제거" aria-label={`${index + 1}번째 ${item?.name ?? "삭제된 시나리오"} 제거`} onClick={() => setIds(ids.filter((_, i) => i !== index))}><Icon name="close" size={16} /></button>
-        </>; }} /><label>시나리오 추가<select value="" onChange={event => { if (event.target.value) setIds([...ids, event.target.value]); }}><option value="">선택하세요</option>{scenarios.filter(item => !item.draft).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><small>같은 시나리오를 여러 번 추가할 수 있습니다. 각 항목을 순서대로 다시 실행합니다.</small></fieldset><label>실패 시 동작<select value={onFailure} disabled={running} onChange={event => setOnFailure(event.target.value as "stop" | "continue") }><option value="stop">중단하고 나머지 건너뛰기</option><option value="continue">다음 시나리오 계속 실행</option></select></label><div className="api-actions"><button type="button" className={unsaved ? "api-primary" : undefined} disabled={running || !name.trim() || !ids.length || !unsaved} onClick={() => void save()}>스위트 저장</button>{selected && <button type="button" disabled={running} onClick={stopEditing}>취소</button>}</div></div>}
+        </>; }} /><label>시나리오 추가<select value="" onChange={event => { if (event.target.value) setIds([...ids, event.target.value]); }}><option value="">선택하세요</option>{scenarios.filter(item => !item.draft).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><small>같은 시나리오를 여러 번 추가할 수 있습니다. 각 항목을 순서대로 다시 실행합니다.</small></fieldset><label>실패 시 동작<select value={onFailure} disabled={running} onChange={event => setOnFailure(event.target.value as "stop" | "continue") }><option value="stop">중단하고 나머지 건너뛰기</option><option value="continue">다음 시나리오 계속 실행</option></select></label><div className="api-actions">{/* Say why saving is off instead of a silent disabled button. */}{!running && (!name.trim() || !ids.length) && <small className="api-suite-save-hint">{!name.trim() && !ids.length ? "이름을 적고 시나리오를 추가하면 저장할 수 있습니다." : !name.trim() ? "스위트 이름을 적으세요." : "시나리오를 하나 이상 추가하세요."}</small>}<button type="button" className={unsaved ? "api-primary" : undefined} disabled={running || !name.trim() || !ids.length || !unsaved} onClick={() => void save()}>스위트 저장</button>{selected && <button type="button" disabled={running} onClick={stopEditing}>취소</button>}</div></div>}
       {selected && !editing && !running && !report && readiness.length > 0 && <div role="alert" className="api-warning api-suite-readiness"><strong>실행 전 설정 필요</strong><ul>{readiness.map(row => <li key={row.index}>{row.index + 1}. {row.name}<IssueList issues={row.issues} onConfigure={globalAccess.open} /></li>)}</ul></div>}
       {running && <p role="status">{progress || "스위트 실행 준비 중…"}</p>}
       {pending && <RunInputModal key={pending.requestId} request={pending} scope={{ projectId: scope.projectId, environmentId: scope.environmentId }} bridge={bridge} context={progress.replace(/^\d+\/\d+ · /, "") || undefined} onSubmitted={() => setPending(null)} onCancel={() => { setPending(null); void cancel(); }} />}

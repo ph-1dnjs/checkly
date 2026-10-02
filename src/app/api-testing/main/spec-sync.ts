@@ -42,7 +42,10 @@ export class SpecSync {
   }
   async importUrl(scope: ApiScope, rawSource: unknown) {
     const parsed = specSourceSchema.safeParse(rawSource);
-    if (!parsed.success || parsed.data.kind !== "url") throw new Error("명세 주소와 인증 입력을 확인하세요");
+    if (!parsed.success || parsed.data.kind !== "url") {
+      const url = (rawSource as { url?: unknown } | null)?.url;
+      throw new Error(typeof url === "string" && !/^https?:\/\/[^\s]+$/i.test(url.trim()) ? "http:// 또는 https://로 시작하는 명세 주소를 입력하세요" : "명세 주소와 인증 입력을 확인하세요");
+    }
     const source = parsed.data;
     const key = this.filename(scope);
     if (this.active.has(key)) throw new Error("이 명세를 이미 동기화하고 있습니다");
@@ -71,14 +74,17 @@ export class SpecSync {
         catch { throw new Error("명세 URL에 연결할 수 없습니다. 직접 JSON/YAML 주소를 확인하세요"); }
         if (!response.ok) {
           await response.body?.cancel();
-          throw new Error([401,403].includes(response.status) ? `명세 인증 실패: HTTP ${response.status}. 문서용 아이디·비밀번호와 접근 권한을 확인하세요` : `명세 가져오기 실패: HTTP ${response.status}`);
+          throw new Error([401,403].includes(response.status) ? `명세 인증 실패: HTTP ${response.status}. 문서용 아이디·비밀번호와 접근 권한을 확인하세요` : `명세 가져오기 실패: HTTP ${response.status}${response.status === 404 ? ". 명세 주소를 확인하세요" : ""}`);
         }
         if (!response.body) throw new Error("명세 응답이 비어 있습니다");
         const reader = response.body.getReader();
         const chunks: Uint8Array[] = []; let size = 0;
         try { while (true) { const chunk = await reader.read(); if (chunk.done) break; size += chunk.value.length; if (size > 5_000_000) throw new Error("명세는 5MB 이하만 지원합니다"); chunks.push(chunk.value); } }
         finally { await reader.cancel().catch(() => undefined); }
-        const catalog = await this.workspace.importSpec(scope, Buffer.concat(chunks).toString("utf8"));
+        const text = Buffer.concat(chunks).toString("utf8");
+        // A Swagger UI page instead of the document it shows: the usual mistake, said plainly.
+        if (/^\s*</.test(text)) throw new Error("명세 대신 웹 페이지(HTML)를 받았습니다. Swagger 화면 주소가 아니라 /v3/api-docs 같은 JSON·YAML 명세 주소를 넣으세요");
+        const catalog = await this.workspace.importSpec(scope, text);
         await this.save(scope, { url: source.url, username: auth?.username, encrypted, lastAttemptAt: attempt, lastSuccessAt: catalog.importedAt, status: "success" });
         return catalog;
       } catch (e) {

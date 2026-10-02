@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { groupMissingGlobals, issueGlobal, missingGlobalIssue } from "../../src/app/api-testing/shared/preflight-issues";
+import { groupMissingGlobals, issueGlobal, missingGlobalIssue, stepNumbersText } from "../../src/app/api-testing/shared/preflight-issues";
 
 const missing = (step: number, name: string, global: string, auth = false) => `${step}단계 · ${name}: ${auth ? "인증 " : ""}전역변수 '${global}' 값이 없습니다. 전역변수에서 설정하세요`;
 
@@ -33,4 +33,12 @@ test("missing globals group into one entry per global with their steps, others s
     others: [other, malformed],
   });
   assert.deepEqual(groupMissingGlobals([]), { globals: [], others: [] });
+});
+
+test("step numbers read short: three or more in a row become a range", () => {
+  assert.equal(stepNumbersText([1, 2, 3, 4, 5, 6]), "1~6");
+  assert.equal(stepNumbersText([1, 2]), "1·2");
+  assert.equal(stepNumbersText([5, 1, 2, 3, 7, 8]), "1~3·5·7·8");
+  assert.equal(stepNumbersText([3, 3]), "3");
+  assert.equal(stepNumbersText([]), "");
 });

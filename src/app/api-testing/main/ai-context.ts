@@ -158,10 +158,11 @@ export function createAuthorPrompt(input: AiAuthorPromptInput): string {
 export type AiBundle = { scenarios: Array<{ yaml: string; group?: string }>; suite: { name: string; group?: string; scenarios: string[] } | null };
 
 /** Scenarios the AI wrote without an id get the same kind of id the editor creates. */
-export function withGeneratedId(yaml: string): string {
+/** Gives a scenario without an id one: `id` when given (the saved scenario it replaces), otherwise a new one. */
+export function withGeneratedId(yaml: string, id?: string): string {
   const document = parseDocument(yaml);
   if (document.errors.length || !isMap(document.contents) || document.contents.has("id")) return yaml;
-  (document.contents.items as unknown[]).unshift(document.createPair("id", `scenario-${randomUUID()}`));
+  (document.contents.items as unknown[]).unshift(document.createPair("id", id ?? `scenario-${randomUUID()}`));
   return document.toString({ lineWidth: 0 });
 }
 

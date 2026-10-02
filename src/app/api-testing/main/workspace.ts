@@ -9,7 +9,7 @@ import { docInputFromRequest, type ApiDocInput } from "../shared/doc-inputs";
 import { bindingUseLocations, pruneUnusedBrokenBindings, stringifyScenario, parseScenario, ScenarioFormatError, scenarioSchema, scenarioStepInputs, scenarioStepLabel, type Json, type Scenario, type ScenarioInputRequest } from "../shared/scenario";
 import { readOpenApi } from "./openapi";
 import { CookieJar } from "./cookies";
-import { groupMissingGlobals } from "../shared/preflight-issues";
+import { groupMissingGlobals, stepNumbersText } from "../shared/preflight-issues";
 import { aiCatalogDetails, createAuthorPrompt, splitAiBundle, withGeneratedId, type AiBundle } from "./ai-context";
 
 export const scopeSchema = z.object({ projectId: z.string().uuid(), serverId: z.string().uuid(), environmentId: z.string().uuid() }).strict();
@@ -484,11 +484,17 @@ export class ApiWorkspace {
       const { globals, others } = groupMissingGlobals(issues);
       return [...globals.map(({ name, steps }) => {
         const from = producers.get(name)?.[0];
-        return `${steps.length ? `${steps.join("·")}단계: ` : ""}전역변수 '${name}' 값이 없습니다. ${from ? `'${from}'을(를) 먼저 실행하면 만들어집니다` : "전역변수에서 설정하세요"}`;
+        return `${steps.length ? `${stepNumbersText(steps)}단계: ` : ""}전역변수 '${name}' 값이 없습니다. ${from ? `'${from}'을(를) 먼저 실행하면 만들어집니다` : "전역변수에서 설정하세요"}`;
       }), ...others];
     };
     for (const [index, written] of answer.scenarios.entries()) {
-      const yaml = withGeneratedId(written.yaml);
+      // One saved scenario with the same name: this result is a new version of it, so it keeps that id
+      // (saving updates it). The user can still choose to add it as a new scenario.
+      const writtenName = aiScenarioName(written.yaml);
+      const sameSaved = writtenName ? existing.filter(item => item.name === writtenName) : [];
+      // Only the first draft of that name may take it (a second one in the same result stays new).
+      const replaceable = sameSaved.length === 1 && !drafts.some(draft => draft.replaces === sameSaved[0].id) ? sameSaved[0].id : undefined;
+      const yaml = withGeneratedId(written.yaml, replaceable);
       let id = `ai-draft-${index + 1}`, name = `AI 시나리오 ${index + 1}`, stepCount = 0;
       const issues: string[] = [], notices: string[] = [];
       let executionIssues: string[] = [];
@@ -503,14 +509,15 @@ export class ApiWorkspace {
         // Keep the written name so the list and the suite still recognise this scenario.
         name = aiScenarioName(written.yaml) ?? name;
       }
-      if (existingIds.has(id)) issues.push(`id '${id}'가 기존 시나리오와 겹칩니다. id를 지우면 Checkly가 새로 붙입니다`);
+      const replaces = replaceable !== undefined && id === replaceable ? replaceable : undefined;
+      if (existingIds.has(id) && !replaces) issues.push(`id '${id}'가 기존 시나리오와 겹칩니다. id를 지우면 Checkly가 새로 붙입니다`);
       if (drafts.some(draft => draft.id === id)) issues.push(`id '${id}'가 이번 결과의 다른 시나리오와 겹칩니다`);
       if (drafts.some(draft => draft.name === name)) issues.push(`이름 '${name}'이 이번 결과의 다른 시나리오와 겹칩니다. 스위트 순서를 알 수 없습니다`);
       const sameName = existingNames.has(name);
-      if (sameName) notices.push("같은 이름의 시나리오가 이미 있습니다. 저장하면 같은 이름이 하나 더 생깁니다");
+      if (sameName) notices.push(replaces ? "같은 이름의 기존 시나리오가 있습니다. 저장하면 그 시나리오를 이 내용으로 업데이트합니다" : "같은 이름의 시나리오가 이미 있습니다. 저장하면 같은 이름이 하나 더 생깁니다");
       const group = aiGroupPath(written.group);
       if (group.error) issues.push(group.error);
-      drafts.push({ id, name, yaml, stepCount, issues, notices, executionIssues, ...(group.path ? { groupPath: group.path } : {}), ...(sameName ? { sameName: true as const } : {}) });
+      drafts.push({ id, name, yaml, stepCount, issues, notices, executionIssues, ...(group.path ? { groupPath: group.path } : {}), ...(sameName ? { sameName: true as const } : {}), ...(replaces ? { replaces } : {}) });
     }
     let suite: ApiAiImportResult["suite"] = null;
     if (answer.suite) {
@@ -952,7 +959,9 @@ export class ApiWorkspace {
         if (!catalogs.has(serverId)) catalogs.set(serverId, await this.getCatalog({ ...scope, serverId }));
         const api = step.api;
         const matches = catalogs.get(serverId)?.operations.filter(o => "operationId" in api ? o.operationId === api.operationId : o.method === api.method && o.path === api.path) ?? [];
-        if (matches.length !== 1) issues.push(`${stepName}: ${"operationId" in api ? api.operationId : `${api.method} ${api.path}`}${matches.length ? "는 명세에 같은 API가 여러 개 있습니다" : "는 명세에 없는 API입니다"}`);
+        // No spec in this environment at all: one line for the server, not "API not in spec" for every step.
+        if (!catalogs.get(serverId)) issues.push(`${project.servers.find(s => s.id === serverId)?.name ?? "서버"}: ${environment.name} 환경에 가져온 명세가 없습니다. API 문서 탭에서 명세를 가져오세요`);
+        else if (matches.length !== 1) issues.push(`${stepName}: ${"operationId" in api ? api.operationId : `${api.method} ${api.path}`}${matches.length ? "는 명세에 같은 API가 여러 개 있습니다" : "는 명세에 없는 API입니다"}`);
         else {
           const op = matches[0];
           issues.push(...op.warnings.map(w => `${stepName}: ${w}`));

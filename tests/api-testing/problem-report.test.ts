@@ -26,3 +26,10 @@ test("the report names scenarios as the AI wrote them, with notes marked, and ne
   ].join("\n\n"));
   assert.doesNotMatch(report, /scenario-/);
 });
+
+test("a same-name note is not sent back: the AI would rename and leave duplicates", () => {
+  const sameName = "같은 이름의 시나리오가 이미 있습니다. 저장하면 같은 이름이 하나 더 생깁니다";
+  const report = problemReport({ drafts: [draft({ name: "로그인", issues: ["YAML 오류: 3단계 연결은 앞선 단계만 참조할 수 있습니다 (5단계)"], notices: [sameName], sameName: true })], suite: null });
+  assert.match(report, /### 1번째 시나리오 · 로그인\n- YAML 오류/);
+  assert.doesNotMatch(report, /같은 이름의 시나리오/);
+});

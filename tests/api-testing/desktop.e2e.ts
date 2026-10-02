@@ -71,6 +71,8 @@ async function main() {
     await page.getByLabel("프로젝트 이름").fill("쇼핑몰 QA");
     await page.getByLabel("기본 API 기본 주소").fill(url);
     await page.getByRole("button", { name: "프로젝트 저장", exact: true }).click();
+    // A new project opens on API 문서, where its spec is imported.
+    await expect(page.getByRole("tab", { name: /^API 문서/ })).toHaveAttribute("aria-selected", "true");
     // With one server the header lists no servers (step tags only appear with two or more).
     await expect(page.getByLabel("프로젝트 서버", { exact: true })).toHaveCount(0);
     // No spec yet: the import form is open by itself.
@@ -198,12 +200,15 @@ async function main() {
     await expect(page.getByRole("heading", { name: "AI 로그인", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: /AI 로그인/ })).toBeVisible();
     await expect(page.getByRole("button", { name: /AI 상점 흐름/ })).toBeVisible();
-    // A later result may only reuse saved scenarios: a same-name draft starts unselected and the suite
-    // falls back to the saved one, so it can be saved with no new scenario chosen.
+    // A later result with the same name is a new version: it updates the saved scenario by default.
+    // Not saving it makes the suite fall back to the saved one, so the suite still saves.
     await writeFile(resultFile, "name: AI 로그인\nserver: 기본 API\nsteps:\n  - { name: 로그인, api: POST /login, body: { loginId: tester } }\n---\nsuite: { name: AI 재사용 흐름, scenarios: [AI 로그인, AI 상품 조회] }\n");
     await page.getByRole("tab", { name: "AI 작성 도우미", exact: true }).click();
     await page.getByRole("button", { name: "AI 결과 불러오기", exact: true }).click();
-    await expect(aiResult.getByLabel("AI 로그인 저장", { exact: true })).not.toBeChecked();
+    await expect(aiResult.getByLabel("AI 로그인 저장", { exact: true })).toBeChecked();
+    await expect(aiResult.getByLabel("AI 로그인 저장 방식", { exact: true })).toHaveValue("update");
+    await expect(aiResult.locator(".api-ai-author-suite li")).toHaveText(["AI 로그인 · 기존 시나리오 업데이트", "AI 상품 조회 · 기존 시나리오"]);
+    await aiResult.getByLabel("AI 로그인 저장", { exact: true }).uncheck();
     await expect(aiResult.locator(".api-ai-author-suite li")).toHaveText(["AI 로그인 · 기존 시나리오 사용", "AI 상품 조회 · 기존 시나리오"]);
     await aiResult.getByRole("button", { name: "선택한 것 저장", exact: true }).click();
     await page.getByRole("button", { name: /AI 재사용 흐름/ }).click();
@@ -577,13 +582,13 @@ async function main() {
     await firstImport.getByRole("button", { name: "새 프로젝트로 가져오기", exact: true }).click();
     await expect(restored.getByRole("status").filter({ hasText: "프로젝트를 가져왔습니다" })).toContainText("‘쇼핑몰 QA (2)’");
     await expect(restored.getByLabel("API 프로젝트").locator("option:checked")).toHaveText("쇼핑몰 QA (2)");
-    await expect(restored.locator(".api-sidebar-entry").filter({ hasText: "로그인 후 상품 조회" })).toBeVisible();
+    await expect(restored.getByRole("tab", { name: /^API 문서/ })).toHaveAttribute("aria-selected", "true");
     // The imported project works once its spec is refreshed from the carried URL: the scenario runs.
-    await restored.getByRole("tab", { name: /^API 문서/ }).click();
     await expect(refreshedSource).toContainText("/openapi.json");
     await refreshSpec();
     await expect(refreshedSource).toContainText("최근 동기화 성공");
     await restored.getByRole("tab", { name: "시나리오", exact: true }).click();
+    await expect(restored.locator(".api-sidebar-entry").filter({ hasText: "로그인 후 상품 조회" })).toBeVisible();
     await restored.getByRole("button", { name: /로그인 후 상품 조회/ }).click();
     await restored.getByRole("button", { name: "실행", exact: true }).click();
     const importedInput = restored.getByRole("dialog", { name: "loginId 입력", exact: true });

@@ -16,6 +16,19 @@ export function issueGlobal(issue: string): string | undefined {
   return globalPattern.exec(issue)?.[1];
 }
 
+/** Step numbers as short text: consecutive runs become ranges ([1,2,3,5] → "1~3·5"). */
+export function stepNumbersText(steps: number[]): string {
+  const sorted = [...new Set(steps)].sort((a, b) => a - b);
+  const parts: string[] = [];
+  for (let index = 0; index < sorted.length;) {
+    let end = index;
+    while (end + 1 < sorted.length && sorted[end + 1] === sorted[end] + 1) end++;
+    parts.push(end - index >= 2 ? `${sorted[index]}~${sorted[end]}` : sorted.slice(index, end + 1).join("·"));
+    index = end + 1;
+  }
+  return parts.join("·");
+}
+
 /** One entry per missing global with the steps that need it (in order of appearance); everything else as written, once. */
 export function groupMissingGlobals(issues: string[]): { globals: Array<{ name: string; steps: number[] }>; others: string[] } {
   const globals = new Map<string, number[]>();

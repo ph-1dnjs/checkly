@@ -96,6 +96,11 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
     history.pushState(history.state, "", workspaceUrl(window.location.href, { tab: next, projectId, serverId, environmentId, scenarioId: targetScenarioId }, clearHash));
     setTab(next);
   };
+  // From an empty composer to the spec import: a draft with edits stays (asking would lose it).
+  const openSpecs = () => {
+    if (scenarioDirty) { setError("저장하지 않은 변경사항이 있습니다. 저장하거나 ← 목록에서 변경사항을 버린 뒤 API 문서로 이동하세요."); return; }
+    setScenarioComposerOpen(false); setScenarioEditorScenarioId(null); setScenarioCreateRequest(0); setError(""); setTab("api");
+  };
   const backToScenarios = () => { setScenarioDirty(false); setScenarioComposerOpen(false); setScenarioEditorScenarioId(null); setScenarioCreateRequest(0); setError(""); setTab("scenarios"); };
   const openScenarioEditor = (scenarioId?: string) => {
     const target = scenarioId ?? "";
@@ -140,6 +145,8 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
   const finishImport = async (result: ApiProjectImportResult) => {
     setImportPlan(null);
     setProjects(await bridge.listProjects()); selectProject(result.project); setForm(null);
+    // A new project needs its specs first: open where they are imported.
+    if (!result.merged) setTab("api");
     setNotice(result.merged
       ? `‘${result.project.name}’에 합쳤습니다 · 추가 ${result.merged.added} · 반영 ${result.merged.updated} · 내 변경 유지 ${result.merged.kept}.${result.specUrls ? " 새로 생긴 명세는 API 문서 탭에서 새로고침하세요." : ""}`
       : `‘${result.project.name}’ 프로젝트를 가져왔습니다 · 시나리오 ${result.scenarios}개, 스위트 ${result.suites}개. ${result.specUrls ? "API 문서 탭에서 명세를 새로고침하세요(문서 인증이 있으면 계정 입력)." : "API 문서 탭에서 명세를 다시 가져오세요."}`);
@@ -209,7 +216,8 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
   // The project's servers in their tag colours, so a step's "인증"/"주문" tag reads as a server name.
   const environment = project?.environments.find(item => item.id === environmentId);
   const serverNames = Object.fromEntries((project?.servers ?? []).map(server => [server.id, server.name]));
-  const serverLegend = project && project.servers.length > 1 && <span className="api-project-servers" aria-label="프로젝트 서버">서버{project.servers.map(server => <ServerTag key={server.id} server={server.id} names={serverNames} title={environment?.baseUrls[server.id] ? `${server.name} 서버 · ${environment.name} ${environment.baseUrls[server.id]}` : undefined} />)}</span>;
+  // Not over the project form: the servers being edited may differ (or belong to the project being replaced).
+  const serverLegend = !form && project && project.servers.length > 1 && <span className="api-project-servers" aria-label="프로젝트 서버">서버{project.servers.map(server => <ServerTag key={server.id} server={server.id} names={serverNames} title={environment?.baseUrls[server.id] ? `${server.name} 서버 · ${environment.name} ${environment.baseUrls[server.id]}` : undefined} />)}</span>;
   return <ApiTestingProviders key={projectId} projectId={projectId} bridge={bridge}><section className="api-testing-page api-swagger-shell">
     {/* Row 1: which project. Row 2 (tabs, or the composer's toolbar): what to do in it and where to call. */}
     <header className="api-toolbar api-page-head"><h1>API 테스트</h1>{projectPicker}{serverLegend}</header>
@@ -224,7 +232,7 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
       if (remaining[0]) selectProject(remaining[0]);
       else { setProjectId(""); setServerId(""); setEnvironmentId(""); setCatalog(null); setSync(null); setLoading(false); }
       } finally { setBusy(false); }
-    }} onSave={async p => { const saved = await bridge.saveProject(p); setProjects(await bridge.listProjects()); selectProject(saved); setForm(null); }}
+    }} onSave={async p => { const isNew = form === "new"; const saved = await bridge.saveProject(p); setProjects(await bridge.listProjects()); selectProject(saved); setForm(null); if (isNew) setTab("api"); }}
     onExport={async () => { const saved = await bridge.exportProject(projectId); return saved ? `저장했습니다 · ${saved}` : ""; }}
     onImport={importProject} /> : <>
       {!project ? <div className="api-empty"><h2>API 테스트를 시작하세요</h2><p>프로젝트를 만든 뒤 API 명세(OpenAPI) 파일이나 URL을 가져오세요.</p><button className="api-primary" onClick={() => setForm("new")}>프로젝트 만들기</button></div> : <>
@@ -245,7 +253,7 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
         </div>
         {tab === "ai" && <AiAuthorPanel key={`${projectId}:${environmentId}`} project={project} scope={{ projectId, environmentId }} bridge={bridge} onBusy={setBusy} onSaved={first => { setBusy(false); setOpenSaved(first ?? null); setTab("scenarios"); }} />}
         {tab === "scenarios" && <ScenarioPanel key={`${projectId}:${environmentId}:${serverId}`} project={project} scope={scope} bridge={bridge} onBusy={setBusy} onRunAction={onRunAction} runSaved={runSaved} onRunSavedConsumed={() => setRunSaved(null)} openSaved={openSaved} onOpenSavedConsumed={() => setOpenSaved(null)} onOpenAi={() => changeTab("ai")} onCreateScenario={() => openScenarioEditor()} onEditScenario={item => openScenarioEditor(item.id)} />}
-        {tab === "scenario-editor" && <ScenarioEditorPanel key={`${projectId}:${serverId}`} project={project} scope={scope} bridge={bridge} onBusy={setBusy} onRunAction={onRunAction} onBackToScenarios={backToScenarios} onExecuteSaved={executeSaved} startCreateRequest={scenarioCreateRequest} editScenarioId={scenarioEditorScenarioId} onCreateConsumed={() => setScenarioCreateRequest(0)} onComposerOpenChange={setScenarioComposerOpen} onUnsavedChange={setScenarioDirty} onCreateScenario={() => openScenarioEditor()} onEditScenario={item => openScenarioEditor(item.id)} composeContext={<div className="api-compose-context">{environmentPicker}{valueActions}</div>} />}
+        {tab === "scenario-editor" && <ScenarioEditorPanel key={`${projectId}:${serverId}`} project={project} scope={scope} bridge={bridge} onBusy={setBusy} onRunAction={onRunAction} onBackToScenarios={backToScenarios} onOpenSpecs={openSpecs} onExecuteSaved={executeSaved} startCreateRequest={scenarioCreateRequest} editScenarioId={scenarioEditorScenarioId} onCreateConsumed={() => setScenarioCreateRequest(0)} onComposerOpenChange={setScenarioComposerOpen} onUnsavedChange={setScenarioDirty} onCreateScenario={() => openScenarioEditor()} onEditScenario={item => openScenarioEditor(item.id)} composeContext={<div className="api-compose-context">{environmentPicker}{valueActions}</div>} />}
         {tab === "api" && <>
         {(catalog || sync || !loading) && <SpecSourcePanel key={`${projectId}:${serverId}:${environmentId}:${catalog ? "loaded" : "empty"}`}
           scopeLabel={`${project.servers.find(s => s.id === serverId)?.name ?? ""} · ${project.environments.find(e => e.id === environmentId)?.name ?? ""}`}

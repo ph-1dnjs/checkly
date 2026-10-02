@@ -69,9 +69,11 @@ export function apiWebDev(): Plugin {
             if (size > 8_000_000) throw new Error("요청은 8MB 이하만 지원합니다");
             chunks.push(Buffer.from(chunk));
           }
-          const { method, args } = z.object({
-            method: z.string(), args: z.array(z.unknown()).max(5),
+          const { method, args: sent, omitted = [] } = z.object({
+            method: z.string(), args: z.array(z.unknown()).max(5), omitted: z.array(z.number().int().min(0).max(4)).optional(),
           }).strict().parse(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+          // Arguments the renderer left out arrive as null; give them back as undefined, like Electron IPC.
+          const args = sent.map((arg, index) => omitted.includes(index) ? undefined : arg);
           let result: unknown;
           if (method === "runScenario") {
             const scope = inputScopeSchema.parse(args[0]);
