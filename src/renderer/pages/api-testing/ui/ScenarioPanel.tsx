@@ -385,12 +385,26 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
       </div>}
       {preview && <>
         <section className="api-run-summary" aria-label="시나리오 실행 준비">
-          {!!preview.executionIssues?.length && <div role="alert" className="api-warning"><strong>실행 전 설정 필요</strong><ul>{preview.executionIssues.map(issue => {
-            const variable = /전역변수 '([A-Za-z][A-Za-z0-9_]*)' 값이 없습니다/.exec(issue)?.[1];
-            const stepNumber = /^(\d+)단계/.exec(issue)?.[1];
-            const producers = variable ? globalProducerScenarios(variable, saved, preview.scenario.id, scope.environmentId) : [];
-            return <li key={issue}>{variable ? <>{stepNumber && Number(stepNumber) <= preview.scenario.steps.length && <><button type="button" className="api-issue-step-link" onClick={() => focusPreview(Number(stepNumber) - 1)}>{stepNumber}단계</button> · </>}<code>{variable}</code> 값 없음 <GlobalVariableSetupLink onConfigure={globalAccess.open} name={variable} />{producers.length > 0 && <span> · 이 값을 추출하는 시나리오: {producers.join(", ")}. 먼저 실행한 뒤 다시 확인하세요.</span>}</> : issue}</li>;
-          })}</ul><button type="button" disabled={busy} onClick={() => void check().catch(e => setError(errorText(e)))}>설정 다시 확인</button></div>}
+          {!!preview.executionIssues?.length && <div role="alert" className="api-warning"><strong>실행 전 설정 필요</strong><ul>{(() => {
+            // One line per missing global with the steps that need it, instead of the same sentence per step.
+            const globals = new Map<string, number[]>();
+            const others: string[] = [];
+            for (const issue of preview.executionIssues) {
+              const variable = /전역변수 '([A-Za-z][A-Za-z0-9_]*)' 값이 없습니다/.exec(issue)?.[1];
+              if (!variable) { if (!others.includes(issue)) others.push(issue); continue; }
+              const step = Number(/^(\d+)단계/.exec(issue)?.[1]);
+              const steps = globals.get(variable) ?? [];
+              if (step && step <= preview.scenario.steps.length && !steps.includes(step)) steps.push(step);
+              globals.set(variable, steps);
+            }
+            return <>
+              {[...globals].map(([variable, steps]) => {
+                const producers = globalProducerScenarios(variable, saved, preview.scenario.id, scope.environmentId);
+                return <li key={variable}><code>{variable}</code> 값 없음{steps.length > 0 && <> · {steps.map((step, index) => <span key={step}>{index > 0 && "·"}<button type="button" className="api-issue-step-link" aria-label={`${step}단계로 이동`} onClick={() => focusPreview(step - 1)}>{step}</button></span>)}단계</>} <GlobalVariableSetupLink onConfigure={globalAccess.open} name={variable} />{producers.length > 0 && <span> · 이 값을 추출하는 시나리오: {producers.join(", ")}. 먼저 실행한 뒤 다시 확인하세요.</span>}</li>;
+              })}
+              {others.map(issue => <li key={issue}>{issue}</li>)}
+            </>;
+          })()}</ul><button type="button" disabled={busy} onClick={() => void check().catch(e => setError(errorText(e)))}>설정 다시 확인</button></div>}
           {/* Only where it went wrong: the result below has the status and each step's message. */}
           {result && result.status !== "passed" && <div role="alert" className="api-warning api-run-last-problem"><strong>최근 실행 {runStatusName(result.status)}</strong>{result.steps.map((step, index) => step.error && <button key={step.id} type="button" className="api-result-error-link" disabled={running} title={step.error} onClick={() => focusResult(step.id)}>{index + 1}단계 · {step.name}</button>)}</div>}
           {current?.draft && <p className="api-run-notice">초안은 아직 실행할 수 없습니다. <strong>수정</strong>에서 요청값과 검증을 보완한 뒤 <strong>저장</strong>을 누르세요.</p>}
