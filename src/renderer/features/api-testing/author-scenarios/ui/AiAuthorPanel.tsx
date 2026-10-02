@@ -38,7 +38,7 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
         if (!live.current) return;
         setSpecWarnings(specWarningsFor(project, catalogs));
         setOperations(project.servers.flatMap((server, index) => (catalogs[index]?.operations ?? []).map(operation => ({
-          id: `${server.id} ${operation.key}`, method: operation.method, path: operation.path, summary: operation.summary,
+          id: `${server.id} ${operation.key}`, server: server.id, method: operation.method, path: operation.path, summary: operation.summary,
           tags: [...new Set([operation.tag, ...(operation.tags ?? [])].filter(Boolean))],
           ...(operation.warnings.length ? { unavailable: operation.warnings.join(" · ") } : {}),
         }))));
@@ -118,7 +118,7 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
         <header><strong>가이드 복사</strong><span>백엔드 프로젝트 폴더에서 Claude Code나 Codex를 열고 붙여넣습니다.</span></header>
         {specWarnings.length > 0 && <div className="api-warning" role="note"><strong>명세를 다시 가져오세요</strong><ul>{specWarnings.map(warning => <li key={warning}>{warning}</li>)}</ul>AI는 명세에 있는 API와 필드만 사용합니다. API 문서 탭에서 ‘명세 새로고침’이나 가져오기를 다시 하세요.</div>}
         {operations.length > 0 && <details className="api-ai-author-tags"><summary>AI가 쓸 API (선택) · {picked.length ? `${picked.length}개 선택` : `전체 ${usable}개${unavailable ? ` (실행 미지원 ${unavailable}개 제외)` : ""}`}</summary>
-          <ApiPicker operations={operations} picked={picked} disabled={busy} onChange={next => { setGuide(null); setPicked(next); }} />
+          <ApiPicker operations={operations} servers={Object.fromEntries(project.servers.map(server => [server.id, server.name]))} picked={picked} disabled={busy} onChange={next => { setGuide(null); setPicked(next); }} />
         </details>}
         <div className="api-actions">
           <button type="button" className="api-primary" disabled={busy} onClick={() => void act(async () => { await bridge.copyAiPrompt(guideRequest()); setMessage("가이드를 복사했습니다. AI에 붙여넣으세요."); }, 1)}>AI 가이드 복사</button>

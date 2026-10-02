@@ -419,3 +419,24 @@ test('a global missing in several steps is one line with links to those steps', 
   expect(fixture.unexpected).toEqual([])
 })
 
+
+test('the AI API picker puts servers first, so the same tag and path on two servers stay apart', async ({ page }) => {
+  // Both servers get the same catalog here: one tag and one path on each.
+  const fixture = await workspace(page, false, false, { twoServers: true })
+  await page.getByRole('tab', { name: 'AI 작성 도우미', exact: true }).click()
+  await page.getByText(/^AI가 쓸 API/).click()
+  const servers = page.locator('.api-picker-server')
+  await expect(servers.locator('> summary')).toHaveText(['API1', '인증1'])
+  await servers.nth(1).locator('> summary').click()
+  await expect(servers.nth(1).locator('.api-picker-group > summary')).toHaveText('조회1')
+  // A server's box picks only that server's APIs.
+  await page.getByLabel('인증 서버 전체 선택', { exact: true }).check()
+  await expect(servers.nth(1).locator('> summary small')).toHaveText('1/1')
+  await expect(servers.nth(0).locator('> summary small')).toHaveText('1')
+  await expect(page.getByText(/^AI가 쓸 API/)).toContainText('1개 선택')
+  // The server name is searchable with the other words.
+  await page.getByLabel('API 검색', { exact: true }).fill('인증 dev-items')
+  await expect(servers).toHaveCount(1)
+  await expect(servers.locator('> summary')).toContainText('인증')
+  expect(fixture.unexpected).toEqual([])
+})

@@ -10,7 +10,8 @@ export function problemReport(result: ApiAiImportResult): string {
   const scenarios = result.drafts.flatMap((draft, index) => {
     const lines = [
       ...draft.issues.map(issue => `- ${issue}`),
-      ...draft.notices.map(notice => `- (참고) ${notice}`),
+      // Same-name notices are left out: the user decides that in Checkly, and the AI would only rename and duplicate.
+      ...draft.notices.filter(notice => !draft.sameName || !notice.startsWith("같은 이름의 시나리오가 이미 있습니다")).map(notice => `- (참고) ${notice}`),
       ...draft.executionIssues.map(issue => `- (실행 전 확인, YAML 문제가 아닐 수 있음) ${issue}`),
     ];
     return lines.length ? [[`### ${index + 1}번째 시나리오 · ${draft.name}`, ...lines].join("\n")] : [];

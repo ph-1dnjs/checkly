@@ -9,7 +9,7 @@ import { docInputFromRequest, type ApiDocInput } from "../shared/doc-inputs";
 import { bindingUseLocations, pruneUnusedBrokenBindings, stringifyScenario, parseScenario, ScenarioFormatError, scenarioSchema, scenarioStepInputs, scenarioStepLabel, type Json, type Scenario, type ScenarioInputRequest } from "../shared/scenario";
 import { readOpenApi } from "./openapi";
 import { CookieJar } from "./cookies";
-import { groupMissingGlobals } from "../shared/preflight-issues";
+import { groupMissingGlobals, stepNumbersText } from "../shared/preflight-issues";
 import { aiCatalogDetails, createAuthorPrompt, splitAiBundle, withGeneratedId, type AiBundle } from "./ai-context";
 
 export const scopeSchema = z.object({ projectId: z.string().uuid(), serverId: z.string().uuid(), environmentId: z.string().uuid() }).strict();
@@ -484,7 +484,7 @@ export class ApiWorkspace {
       const { globals, others } = groupMissingGlobals(issues);
       return [...globals.map(({ name, steps }) => {
         const from = producers.get(name)?.[0];
-        return `${steps.length ? `${steps.join("·")}단계: ` : ""}전역변수 '${name}' 값이 없습니다. ${from ? `'${from}'을(를) 먼저 실행하면 만들어집니다` : "전역변수에서 설정하세요"}`;
+        return `${steps.length ? `${stepNumbersText(steps)}단계: ` : ""}전역변수 '${name}' 값이 없습니다. ${from ? `'${from}'을(를) 먼저 실행하면 만들어집니다` : "전역변수에서 설정하세요"}`;
       }), ...others];
     };
     for (const [index, written] of answer.scenarios.entries()) {

@@ -2,7 +2,7 @@ import { runStatusName } from "../../../entities/api-testing";
 import { useEffect, useRef, useState } from "react";
 import type { ApiProject, ApiScope, ApiScenarioInputRequest, ApiScenarioResult, ApiTestingBridge, SavedApiScenario, SavedApiSuite } from "../../../../app/api-testing/shared/workspace";
 import { formatDuration, producedGlobalNames, renderSuiteReport, reportScenario, usesInvalidatedGlobal, type SuiteReport, type SuiteReportScenario } from "../../../../app/api-testing/shared/suite-report";
-import { groupMissingGlobals, issueGlobal, missingGlobalIssue } from "../../../../app/api-testing/shared/preflight-issues";
+import { groupMissingGlobals, issueGlobal, missingGlobalIssue, stepNumbersText } from "../../../../app/api-testing/shared/preflight-issues";
 import { GlobalVariableSetupLink, SidebarMetadataFields, writeLastRun } from "../../../entities/api-testing";
 import { useGlobalVariableAccess } from "../../../features/api-testing/configure-globals";
 
@@ -31,7 +31,7 @@ const missingGlobal = (issue: string) => missingGlobalIssue(issue)?.name;
 function IssueList({ issues, className, onConfigure }: { issues: string[]; className?: string; onConfigure: (name: string) => void }) {
   const { globals, others } = groupMissingGlobals(issues);
   return <ul className={className}>
-    {globals.map(({ name, steps }) => <li key={name}><code>{name}</code> 값 없음{steps.length > 0 && ` · ${steps.join("·")}단계`} <GlobalVariableSetupLink name={name} onConfigure={onConfigure} /></li>)}
+    {globals.map(({ name, steps }) => <li key={name}><code>{name}</code> 값 없음{steps.length > 0 && ` · ${stepNumbersText(steps)}단계`} <GlobalVariableSetupLink name={name} onConfigure={onConfigure} /></li>)}
     {others.map(issue => { const name = issueGlobal(issue); return <li key={issue}>{issue}{name && <> <GlobalVariableSetupLink name={name} onConfigure={onConfigure} /></>}</li>; })}
   </ul>;
 }

@@ -233,7 +233,7 @@ test("missing globals are listed once per global with their steps and the scenar
     const makes = "name: 같은 결과의 발급\nserver: 상점\nsteps:\n  - { name: 발급, api: POST /login, auth: none, body: { loginId: tester }, extract: [{ pointer: /id, target: globals.batchId }] }\n";
     const result = await workspace.checkAiScenarios(scope, [uses, makes].join("---\n"));
     assert.deepEqual(result.drafts[0].executionIssues, [
-      "1·2·3단계: 전역변수 'otherToken' 값이 없습니다. '토큰 발급'을(를) 먼저 실행하면 만들어집니다",
+      "1~3단계: 전역변수 'otherToken' 값이 없습니다. '토큰 발급'을(를) 먼저 실행하면 만들어집니다",
       "2단계: 전역변수 'missingId' 값이 없습니다. 전역변수에서 설정하세요",
       "3단계: 전역변수 'batchId' 값이 없습니다. '같은 결과의 발급'을(를) 먼저 실행하면 만들어집니다",
     ]);
