@@ -1,13 +1,12 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import type { Json, Scenario, ValueBinding } from "../../../../../app/api-testing/shared/scenario";
+import type { Scenario, ValueBinding } from "../../../../../app/api-testing/shared/scenario";
 import { scenarioStepInputs } from "../../../../../app/api-testing/shared/scenario";
+import { requestValueFields } from "../model/value-link-model";
 import type { ApiCatalog, ApiOperation } from "../../../../../app/api-testing/shared/workspace";
 import { connectValue, type RequestArea } from "../model/scenario-builder-model";
 import { responseFields } from "../../../../entities/api-testing";
 
-// `dynamic`: an input, global or linked value — the only request values worth comparing a response to.
-type RequestValueOption = { pointer: string; type: string; dynamic?: boolean; label?: string };
 // `expect` set: the picked value becomes that check's expected value instead of a request field.
 export type ScenarioValueTarget = { area: RequestArea; name: string; expect?: number };
 
@@ -17,29 +16,6 @@ function findOperation(scenario: Scenario, index: number, catalogs: Record<strin
   return catalogs[bindings[step.server] ?? step.server]?.operations.find(operation => "operationId" in step.api
     ? operation.operationId === step.api.operationId
     : operation.path === step.api.path && operation.method.toUpperCase() === step.api.method.toUpperCase());
-}
-
-function requestValueFields(request: Scenario["steps"][number]["request"], area: RequestArea, inputNames: Set<string> = new Set()): RequestValueOption[] {
-  const value = request[area];
-  if (value === undefined) return [];
-  const result: RequestValueOption[] = [];
-  const visit = (current: Json, pointer: string, depth: number) => {
-    if (depth > 12 || result.length >= 500) return;
-    if (current === null || typeof current !== "object") {
-      result.push({ pointer, type: current === null ? "null" : typeof current, label: requestValueText(current, inputNames), dynamic: typeof current === "string" && /\{\{(inputs|globals|vars)\./.test(current) });
-      return;
-    }
-    if (Array.isArray(current)) {
-      result.push({ pointer, type: "array" });
-      if (current.length) visit(current[0], `${pointer}/0`, depth + 1);
-      return;
-    }
-    const entries = Object.entries(current);
-    result.push({ pointer, type: "object" });
-    entries.forEach(([key, item]) => visit(item, `${pointer}/${key.replace(/~/g, "~0").replace(/\//g, "~1")}`, depth + 1));
-  };
-  visit(value as Json, "", 0);
-  return result;
 }
 
 function pointerLabel(pointer: string): string {
@@ -56,14 +32,6 @@ function jsonTreeKey(pointer: string, rootLabel: string): string {
   return /^\d+$/.test(segment) ? `[${segment}]` : JSON.stringify(segment);
 }
 
-/** A request value as the editor shows it: the set value, or what a reference stands for. */
-function requestValueText(value: Json, inputNames: Set<string>): string {
-  if (typeof value !== "string") return JSON.stringify(value);
-  const reference = /^\{\{(inputs|globals|vars)\.([^}]+)\}\}$/.exec(value);
-  if (!reference) return JSON.stringify(value);
-  // Runtime inputs are stored as vars too; the step's inputs tell them apart from links.
-  return reference[1] === "inputs" || inputNames.has(reference[2]) ? "실행 중 입력" : reference[1] === "globals" ? `전역변수 ${reference[2]}` : "값 연결";
-}
 
 function isJsonContainer(type: string): boolean {
   return type === "object" || type === "array";

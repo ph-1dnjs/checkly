@@ -2,6 +2,7 @@ import { runStatusName } from "../../../entities/api-testing";
 import { useEffect, useRef, useState } from "react";
 import type { ApiProject, ApiScope, ApiScenarioInputRequest, ApiScenarioResult, ApiTestingBridge, SavedApiScenario, SavedApiSuite } from "../../../../app/api-testing/shared/workspace";
 import { formatDuration, producedGlobalNames, renderSuiteReport, reportScenario, usesInvalidatedGlobal, type SuiteReport, type SuiteReportScenario } from "../../../../app/api-testing/shared/suite-report";
+import { groupMissingGlobals, issueGlobal, missingGlobalIssue } from "../../../../app/api-testing/shared/preflight-issues";
 import { GlobalVariableSetupLink, SidebarMetadataFields, writeLastRun } from "../../../entities/api-testing";
 import { useGlobalVariableAccess } from "../../../features/api-testing/configure-globals";
 
@@ -23,23 +24,15 @@ function preflightReason(issues: string[]): string {
 
 /** A scenario's pre-run problems, kept apart so the app can show them per scenario (never in the HTML report). */
 class SuitePreflightError extends Error { constructor(readonly issues: string[]) { super(issues.join("\n")); } }
-const missingGlobal = (issue: string) => /전역변수 '([A-Za-z][A-Za-z0-9_]*)'/.exec(issue)?.[1];
+// Only "no value" issues count as missing; a malformed token is reported as written.
+const missingGlobal = (issue: string) => missingGlobalIssue(issue)?.name;
 
 /** A scenario's pre-run problems, one line per missing global ("`name` 값 없음 · 1·2단계 [설정하기]"), others as written. */
 function IssueList({ issues, className, onConfigure }: { issues: string[]; className?: string; onConfigure: (name: string) => void }) {
-  const globals = new Map<string, string[]>();
-  const others: string[] = [];
-  for (const issue of issues) {
-    const variable = missingGlobal(issue);
-    if (!variable) { if (!others.includes(issue)) others.push(issue); continue; }
-    const step = /^(\d+)단계/.exec(issue)?.[1];
-    const steps = globals.get(variable) ?? [];
-    if (step && !steps.includes(step)) steps.push(step);
-    globals.set(variable, steps);
-  }
+  const { globals, others } = groupMissingGlobals(issues);
   return <ul className={className}>
-    {[...globals].map(([variable, steps]) => <li key={variable}><code>{variable}</code> 값 없음{steps.length > 0 && ` · ${steps.join("·")}단계`} <GlobalVariableSetupLink name={variable} onConfigure={onConfigure} /></li>)}
-    {others.map(issue => <li key={issue}>{issue}</li>)}
+    {globals.map(({ name, steps }) => <li key={name}><code>{name}</code> 값 없음{steps.length > 0 && ` · ${steps.join("·")}단계`} <GlobalVariableSetupLink name={name} onConfigure={onConfigure} /></li>)}
+    {others.map(issue => { const name = issueGlobal(issue); return <li key={issue}>{issue}{name && <> <GlobalVariableSetupLink name={name} onConfigure={onConfigure} /></>}</li>; })}
   </ul>;
 }
 
@@ -95,7 +88,7 @@ export function SuitePanel({ project, scope, bridge, scenarios, suites, selected
         if (!item || item.draft) { rows.push({ index, name: item?.name ?? "삭제된 시나리오", issues: [item ? "초안이라 실행할 수 없습니다. 시나리오를 저장하세요." : "시나리오가 삭제되었습니다."] }); continue; }
         try {
           const preview = await bridge.previewScenario({ projectId: scope.projectId, environmentId: scope.environmentId }, item.source, item.bindings);
-          const issues = [...preview.issues, ...(preview.executionIssues ?? []).filter(issue => { const variable = missingGlobal(issue); return !variable || !produced.has(variable); })];
+          const issues = [...preview.issues, ...(preview.executionIssues ?? []).filter(issue => { const variable = issueGlobal(issue); return !variable || !produced.has(variable); })];
           if (issues.length) rows.push({ index, name: item.name, issues });
           // Only a scenario that can run will create its globals; a blocked one leaves later users short too.
           else producedGlobalNames(preview.scenario).forEach(name => produced.add(name));

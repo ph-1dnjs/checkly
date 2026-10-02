@@ -15,15 +15,22 @@ export function GlobalVariablesPanel({ scope, bridge, targetName = "", targetReq
   const [busy, setBusy] = useState(false);
   // Tokens gather here, so values start hidden (for screen sharing); the choice is remembered.
   const [showValues, toggleValues] = useGlobalValuesVisible();
-  const focusForm = () => {
+  // A new variable starts at its name, an existing one at its value. The focus waits a frame for the form,
+  // so it must not pull the cursor out of a field the user already went to (their typing would land in another field).
+  const focusForm = (field: "name" | "value") => {
     setFormOpen(true);
     requestAnimationFrame(() => {
-      formRef.current?.scrollIntoView({ block: "nearest" });
-      formRef.current?.querySelector<HTMLInputElement>('[aria-label="전역변수 값"]')?.focus();
+      const form = formRef.current;
+      if (!form) return;
+      form.scrollIntoView({ block: "nearest" });
+      if (form.contains(document.activeElement)) return;
+      form.querySelector<HTMLInputElement>(`[aria-label="${field === "name" ? "전역변수 이름" : "전역변수 값"}"]`)?.focus();
     });
   };
   const [cookies, setCookies] = useState<ApiCookie[]>([]);
-  const refresh = async () => setVariables(await bridge.listGlobals(scope));
+  // The list loaded on open must not land after (and overwrite) the list read right after a save.
+  const listRequest = useRef(0);
+  const refresh = async () => { const request = ++listRequest.current; const items = await bridge.listGlobals(scope); if (request === listRequest.current) setVariables(items); };
   const refreshCookies = async () => setCookies(await bridge.listCookies(scope));
   const visibleVariables = variables
     .filter(variable => variable.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))
@@ -39,7 +46,7 @@ export function GlobalVariablesPanel({ scope, bridge, targetName = "", targetReq
       if (!active) return;
       const existing = items.find(item => item.name === targetName);
       setName(targetName); setValue(existing?.displayValue ?? ""); setType(existing && existing.type !== "string" ? "json" : "string");
-      focusForm();
+      focusForm("value");
     }).catch(() => { if (active) setError("전역변수를 읽지 못했습니다"); });
     return () => { active = false; };
   }, [targetName, targetRequest]);
@@ -50,7 +57,7 @@ export function GlobalVariablesPanel({ scope, bridge, targetName = "", targetReq
     <header className="api-globals-section-heading"><h3>전역변수 <small aria-live="polite">{query.trim() ? `${visibleVariables.length}개 / ${variables.length}개` : `${variables.length}개`}</small></h3>
       <span className="api-globals-heading-actions">
         {(variables.length > 0 || formOpen) && <button type="button" aria-pressed={showValues} onClick={toggleValues}>{showValues ? "값 숨기기" : "값 보기"}</button>}
-        {!formOpen && <button type="button" disabled={busy} onClick={() => { setName(""); setValue(""); setType("string"); setError(""); focusForm(); }}>+ 변수 추가</button>}
+        {!formOpen && <button type="button" disabled={busy} onClick={() => { setName(""); setValue(""); setType("string"); setError(""); focusForm("name"); }}>+ 변수 추가</button>}
       </span>
     </header>
     {variables.length > 0 && <div className="api-global-list-tools">
@@ -63,7 +70,7 @@ export function GlobalVariablesPanel({ scope, bridge, targetName = "", targetReq
         <div className="api-global-meta"><code title={v.name}>{v.name}</code><small>{({ string: "문자열", number: "숫자", boolean: "불리언", object: "객체", array: "배열", null: "null" } as Record<string, string>)[v.type] ?? v.type}</small></div>
         <span className="api-global-value">{v.displayValue}</span>
         <div className="api-global-actions">
-          <button disabled={busy} onClick={() => { setError(""); setName(v.name); setValue(v.displayValue); setType(v.type === "string" ? "string" : "json"); focusForm(); }}>수정</button>
+          <button disabled={busy} onClick={() => { setError(""); setName(v.name); setValue(v.displayValue); setType(v.type === "string" ? "string" : "json"); focusForm("value"); }}>수정</button>
           <button disabled={busy} onClick={async () => { setBusy(true); try { await bridge.deleteGlobal(scope, v.name); await refresh(); } catch { setError("변수를 삭제하지 못했습니다"); } finally { setBusy(false); } }}>삭제</button>
         </div>
       </div>)}

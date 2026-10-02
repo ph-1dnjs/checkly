@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNod
 import { ResizeHandle, useStoredWidth } from "../../../shared/ui/ResizeHandle";
 import type { ApiCatalog, ApiProject, ApiScope, ApiTestingBridge, ApiScenarioInputRequest, ApiScenarioPreview, ApiScenarioResult, SavedApiScenario, SavedApiSuite } from "../../../../app/api-testing/shared/workspace";
 import { parseScenario, stringifyScenario, type Json, type Scenario } from "../../../../app/api-testing/shared/scenario";
+import { groupMissingGlobals, issueGlobal } from "../../../../app/api-testing/shared/preflight-issues";
 import { useRunAction } from "../../../shared/hooks/useRunAction";
 import type { OnRunAction } from "../../../shared/model/run-action";
 import { ApiDocumentation } from "./ApiDocumentation";
@@ -387,22 +388,14 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
         <section className="api-run-summary" aria-label="시나리오 실행 준비">
           {!!preview.executionIssues?.length && <div role="alert" className="api-warning"><strong>실행 전 설정 필요</strong><ul>{(() => {
             // One line per missing global with the steps that need it, instead of the same sentence per step.
-            const globals = new Map<string, number[]>();
-            const others: string[] = [];
-            for (const issue of preview.executionIssues) {
-              const variable = /전역변수 '([A-Za-z][A-Za-z0-9_]*)' 값이 없습니다/.exec(issue)?.[1];
-              if (!variable) { if (!others.includes(issue)) others.push(issue); continue; }
-              const step = Number(/^(\d+)단계/.exec(issue)?.[1]);
-              const steps = globals.get(variable) ?? [];
-              if (step && step <= preview.scenario.steps.length && !steps.includes(step)) steps.push(step);
-              globals.set(variable, steps);
-            }
+            const { globals, others } = groupMissingGlobals(preview.executionIssues);
             return <>
-              {[...globals].map(([variable, steps]) => {
-                const producers = globalProducerScenarios(variable, saved, preview.scenario.id, scope.environmentId);
-                return <li key={variable}><code>{variable}</code> 값 없음{steps.length > 0 && <> · {steps.map((step, index) => <span key={step}>{index > 0 && "·"}<button type="button" className="api-issue-step-link" aria-label={`${step}단계로 이동`} onClick={() => focusPreview(step - 1)}>{step}</button></span>)}단계</>} <GlobalVariableSetupLink onConfigure={globalAccess.open} name={variable} />{producers.length > 0 && <span> · 이 값을 추출하는 시나리오: {producers.join(", ")}. 먼저 실행한 뒤 다시 확인하세요.</span>}</li>;
+              {globals.map(({ name, steps }) => {
+                const producers = globalProducerScenarios(name, saved, preview.scenario.id, scope.environmentId);
+                const shown = steps.filter(step => step <= preview.scenario.steps.length);
+                return <li key={name}><code>{name}</code> 값 없음{shown.length > 0 && <> · {shown.map((step, index) => <span key={step}>{index > 0 && "·"}<button type="button" className="api-issue-step-link" aria-label={`${step}단계로 이동`} onClick={() => focusPreview(step - 1)}>{step}</button></span>)}단계</>} <GlobalVariableSetupLink onConfigure={globalAccess.open} name={name} />{producers.length > 0 && <span> · 이 값을 추출하는 시나리오: {producers.join(", ")}. 먼저 실행한 뒤 다시 확인하세요.</span>}</li>;
               })}
-              {others.map(issue => <li key={issue}>{issue}</li>)}
+              {others.map(issue => { const name = issueGlobal(issue); return <li key={issue}>{issue}{name && <> <GlobalVariableSetupLink onConfigure={globalAccess.open} name={name} /></>}</li>; })}
             </>;
           })()}</ul><button type="button" disabled={busy} onClick={() => void check().catch(e => setError(errorText(e)))}>설정 다시 확인</button></div>}
           {/* Only where it went wrong: the result below has the status and each step's message. */}
