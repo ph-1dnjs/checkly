@@ -3,21 +3,29 @@ import { createServer } from "node:http";
 import { mkdtemp, rm, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { tmpdir } from "node:os";
+import type { ApiTestingBridge } from "../../src/app/api-testing/shared/workspace";
 
 async function main() {
   const dir = await mkdtemp(path.join(tmpdir(), "checkly-desktop-"));
   const docsAuth = `Basic ${Buffer.from("docs-user:docs-test-password").toString("base64")}`;
   let leakedAuth = false;
   let lastApiAuth: string | undefined;
+  const loginInputs: string[] = [];
+  const decimalInputs: unknown[] = [];
   // Version 2 of the spec renames /items/{id}, as a backend refactor might.
   let itemsPath = "/items/{id}";
   let itemsTitle = "상품 상세 조회";
-  const server = createServer((req, res) => {
+  const server = createServer(async (req, res) => {
     res.setHeader("content-type", "application/json");
     if (req.url === "/openapi.json" && req.headers.authorization !== docsAuth) { res.statusCode = 401; res.end('{}'); return; }
     if (req.url !== "/openapi.json" && req.headers.authorization === docsAuth) leakedAuth = true;
     if (req.url !== "/openapi.json") lastApiAuth = req.headers.authorization;
     if (req.url === "/login") {
+      let body = "";
+      for await (const chunk of req) body += chunk;
+      const input = JSON.parse(body);
+      loginInputs.push(input.loginId);
+      if (Object.hasOwn(input, "amount")) decimalInputs.push(input.amount);
       res.setHeader("set-cookie", "SESSION=desktop-session; Path=/; HttpOnly");
       res.end(JSON.stringify({ accessToken: "login-secret-token", id: 7 }));
       return;
@@ -134,7 +142,7 @@ async function main() {
     await page.keyboard.press("Escape");
     await page.getByRole("button", { name: "선택한 API 테스트 실행", exact: true }).click();
     await expect(page.getByRole("region", { name: "API 응답" })).toContainText("200");
-    if (lastApiAuth !== "Bearer desktop-api-token") throw new Error("Selected token not applied");
+    await expect.poll(() => lastApiAuth).toBe("Bearer desktop-api-token");
     await page.getByRole("button", { name: "Authorize", exact: true }).click();
     await page.getByRole("button", { name: "연결 해제", exact: true }).click();
     await expect(page.getByRole("dialog", { name: "API 요청 인증", exact: true }).getByRole("status")).toContainText("연결된 토큰 없음");
@@ -327,10 +335,46 @@ async function main() {
     await page.getByRole("button", { name: "실행", exact: true }).click();
     const inputDialog = page.getByRole("dialog", { name: "loginId 입력", exact: true });
     await expect(inputDialog).toContainText("1/2단계");
+    // Cancel while the API is waiting for input, then start a fresh request through the real IPC.
+    const inputScope = await page.evaluate(async () => {
+      const api = (window as unknown as { electronAPI: { apiTesting: ApiTestingBridge } }).electronAPI.apiTesting;
+      const project = (await api.listProjects()).find(item => item.name === "쇼핑몰 QA")!;
+      return { projectId: project.id, environmentId: project.environments[0].id };
+    });
+    const pendingInput = () => page.evaluate(scope => (window as unknown as { electronAPI: { apiTesting: ApiTestingBridge } }).electronAPI.apiTesting.getPendingScenarioInput(scope), inputScope);
+    const firstInput = await pendingInput();
+    if (!firstInput) throw new Error("First input request is missing");
+    const loginCallsBefore = loginInputs.length;
+    await inputDialog.getByRole("textbox").fill("abandoned-input");
+    await inputDialog.getByRole("button", { name: "실행 중단", exact: true }).click();
+    await expect(inputDialog).not.toBeVisible();
+    await expect(page.getByRole("button", { name: "다시 실행", exact: true })).toBeEnabled();
+    expect(await pendingInput()).toBeNull();
+    expect(loginInputs).toHaveLength(loginCallsBefore);
+    await page.getByRole("button", { name: "다시 실행", exact: true }).click();
+    await expect(inputDialog).toBeVisible();
+    await expect(inputDialog.getByRole("textbox")).toHaveValue("");
+    const nextInput = await pendingInput();
+    if (!nextInput) throw new Error("Retry input request is missing");
+    expect(nextInput.requestId).not.toBe(firstInput.requestId);
+    expect(nextInput.runId).not.toBe(firstInput.runId);
+    const lateSubmission = await page.evaluate(async ({ scope, request }) => {
+      const api = (window as unknown as { electronAPI: { apiTesting: ApiTestingBridge } }).electronAPI.apiTesting;
+      try {
+        await api.submitScenarioInput(scope, { requestId: request.requestId, runId: request.runId, stepId: request.stepId, name: request.name, value: "late-old-input" });
+        return "accepted";
+      } catch (error) { return (error as Error).message; }
+    }, { scope: inputScope, request: firstInput });
+    expect(lateSubmission).toContain("실행 중인 입력 요청이 아닙니다");
+    expect((await pendingInput())?.requestId).toBe(nextInput.requestId);
+    expect(loginInputs).toHaveLength(loginCallsBefore);
     await inputDialog.getByRole("textbox").fill("tester");
     await inputDialog.getByRole("button", { name: "입력 완료 · 계속", exact: true }).click();
     const result = page.getByRole("region", { name: "시나리오 실행 결과" });
     await expect(result).toContainText("통과");
+    expect(loginInputs).toHaveLength(loginCallsBefore + 1);
+    expect(loginInputs.at(-1)).toBe("tester");
+    expect(await pendingInput()).toBeNull();
     // Each check is reported: step 1 has its two checks, step 2 only the automatic 2xx.
     await expect(result.locator(".api-run-checks").nth(0)).toContainText("2개 모두 통과");
     await expect(result.locator(".api-run-checks").nth(1)).toContainText("2xx (자동 확인)");
@@ -416,6 +460,18 @@ async function main() {
     await expect(suiteResult).toContainText("실행 결과 · 통과");
     await suiteResult.locator("summary").first().click();
     await expect(suiteResult).toContainText("✓ HTTP 상태 2xx (자동 확인)");
+    // Save through the actual native report IPC and check the file, not just the render helper.
+    const suiteReportFile = path.join(dir, "suite-report.html");
+    await app.evaluate(({ dialog }, target) => {
+      dialog.showSaveDialog = (async () => ({ canceled: false, filePath: target })) as unknown as typeof dialog.showSaveDialog;
+    }, suiteReportFile);
+    await suiteResult.getByRole("button", { name: "HTML 리포트 받기", exact: true }).click();
+    await expect.poll(() => readFile(suiteReportFile, "utf8").catch(() => "")).toContain("<!doctype html>");
+    const suiteReportHtml = await readFile(suiteReportFile, "utf8");
+    expect(suiteReportHtml).toContain("AI 상점 흐름");
+    expect(suiteReportHtml).toContain("POST /login");
+    expect(suiteReportHtml).toContain("GET /items/{id}");
+    expect(suiteReportHtml).not.toMatch(/login-secret-token|hidden-secret|desktop-session|desktop-api-token|Authorization|Bearer/);
     // A suite made in the app: the same scenario twice, saved, then deleted back to another suite.
     await page.getByRole("button", { name: "+ 새 스위트", exact: true }).click();
     await page.getByLabel("스위트 이름", { exact: true }).fill("화면에서 만든 스위트");
@@ -437,6 +493,36 @@ async function main() {
     await page.getByRole("button", { name: "시나리오 삭제", exact: true }).click();
     await page.getByRole("button", { name: "시나리오 삭제 확인", exact: true }).click();
     await expect(page.getByRole("button", { name: "AI 상품 조회", exact: true })).toHaveCount(0);
+    // Decimal input goes through the form, real IPC and HTTP body as a number, not a string.
+    await page.evaluate(async scope => {
+      const api = (window as unknown as { electronAPI: { apiTesting: ApiTestingBridge } }).electronAPI.apiTesting;
+      await api.saveScenario(scope, [
+        "id: decimal-input",
+        "name: 소수 실행 입력",
+        "server: 기본 API",
+        "steps:",
+        "  - name: 소수 전달",
+        "    api: POST /login",
+        "    auth: none",
+        "    inputs: [{ name: decimalAmount, label: 금액 입력, type: number }]",
+        "    body: { loginId: tester, amount: '{{inputs.decimalAmount}}' }",
+      ].join("\n"), {});
+    }, inputScope);
+    await page.reload();
+    await page.getByRole("button", { name: "API 테스트", exact: true }).click();
+    await page.getByRole("tab", { name: "시나리오", exact: true }).click();
+    await page.getByRole("button", { name: "소수 실행 입력", exact: true }).click();
+    await page.getByRole("button", { name: "실행", exact: true }).click();
+    const decimalDialog = page.getByRole("dialog", { name: "금액 입력", exact: true });
+    await decimalDialog.getByRole("spinbutton", { name: "금액 입력", exact: true }).fill("1.5");
+    await decimalDialog.getByRole("button", { name: "입력 완료 · 계속", exact: true }).click();
+    await expect(decimalDialog).not.toBeVisible();
+    await expect(page.getByRole("region", { name: "시나리오 실행 결과" })).toContainText("통과");
+    expect(decimalInputs).toEqual([1.5]);
+    expect(await pendingInput()).toBeNull();
+    await page.getByRole("button", { name: "시나리오 삭제", exact: true }).click();
+    await page.getByRole("button", { name: "시나리오 삭제 확인", exact: true }).click();
+    await expect(page.getByRole("button", { name: "소수 실행 입력", exact: true })).toHaveCount(0);
     await shot("final");
     await app.close();
     app = await electron.launch({ args: [".", `--user-data-dir=${dir}`], env });

@@ -45,7 +45,7 @@ export function RunInputModal({ request, scope, bridge, context, onSubmitted, on
     {/* The first step has nothing before it to report on. */}
     <p>{request.index > 0 ? "앞 단계까지 실행했습니다. " : ""}이 단계의 API를 호출하기 전에 값을 입력하세요.</p>
     <p className="api-input-note">이번 실행에만 쓰고 시나리오에는 저장하지 않습니다. 요청에 들어간 값은 실행 결과에 보입니다.</p>
-    <label>입력값{request.type !== "string" ? ` (${request.type} JSON)` : ""}{request.required ? " *" : ""}<input autoFocus aria-label={request.label ?? request.name} autoComplete="off" type={request.type === "number" ? "number" : "text"} value={value} disabled={submitting} placeholder={request.type === "string" ? "값 입력" : `${request.type} JSON 입력`} onChange={event => setValue(event.target.value)} /></label>
+    <label>입력값{request.type !== "string" ? ` (${request.type} JSON)` : ""}{request.required ? " *" : ""}<input autoFocus aria-label={request.label ?? request.name} autoComplete="off" type={request.type === "number" ? "number" : "text"} step={request.type === "number" ? "any" : undefined} value={value} disabled={submitting} placeholder={request.type === "string" ? "값 입력" : `${request.type} JSON 입력`} onChange={event => setValue(event.target.value)} /></label>
     {error && <p className="api-warning" role="alert">{error}</p>}
     <footer className="api-actions"><button type="button" disabled={submitting} onClick={onCancel}>실행 중단</button><button type="submit" className="api-primary" disabled={submitting}>{submitting ? "전달 중…" : "입력 완료 · 계속"}</button></footer>
   </form></div>;

@@ -102,18 +102,21 @@ test("two servers, step 2 to step 6, global reuse and project isolation", async 
   }
 });
 
-test("step input waits for a value and exposes it only through vars", async () => {
+test("step input waits for a value and exposes it only through vars", async t => {
   const seen: string[] = [];
+  let now = Date.now();
   const server = createServer(async (req, res) => {
     seen.push(`${req.method} ${req.url}`);
     res.setHeader("content-type", "application/json");
-    if (req.url === "/send") { res.end(JSON.stringify({ sent: true })); return; }
+    if (req.url === "/send") { now += 25; res.end(JSON.stringify({ sent: true })); return; }
     let body = "";
     for await (const chunk of req) body += chunk;
     assert.deepEqual(JSON.parse(body), { code: "123456" });
+    now += 40;
     res.end(JSON.stringify({ verified: true }));
   });
   await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+  const clock = t.mock.method(Date, "now", () => now);
   try {
     const scenario = scenarioSchema.parse({ version: 1, id: "otp", name: "SMS 인증", steps: [
       { id: "send", name: "인증번호 발송", server: "api", api: { method: "POST", path: "/send" } },
@@ -123,15 +126,15 @@ test("step input waits for a value and exposes it only through vars", async () =
     const result = await new ApiRunner().run(scenario, {
       projectId: "otp-project", environment: "local", runId: "otp-run",
       servers: { api: { baseUrl: `http://127.0.0.1:${(server.address() as { port: number }).port}` } },
-      // Someone takes a while to type it: that wait is not the step's time.
-      requestInput: async request => { prompts.push(`${request.stepId}:${request.name}`); await new Promise(resolve => setTimeout(resolve, 300)); return "123456"; },
+      // Advance only the measured clock; real HTTP timers and machine load do not affect this assertion.
+      requestInput: async request => { prompts.push(`${request.stepId}:${request.name}`); now += 30_000; return "123456"; },
     });
     assert.equal(result.status, "passed");
-    assert.ok(result.steps[1].durationMs < 250, `input wait counted in durationMs: ${result.steps[1].durationMs}`);
+    assert.deepEqual(result.steps.map(step => step.durationMs), [25, 40]);
     assert.deepEqual(prompts, ["verify:phoneCode"]);
     assert.deepEqual(seen, ["POST /send", "POST /verify"]);
     assert.deepEqual(result.steps[1].input, { name: "phoneCode", provided: true });
-  } finally { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); }
+  } finally { clock.mock.restore(); server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); }
 });
 
 test("a step can wait for multiple runtime inputs", async () => {
