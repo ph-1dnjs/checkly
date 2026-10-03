@@ -7,12 +7,20 @@ import path from 'node:path'
 import { ApiWorkspace } from '../src/app/api-testing/main/workspace'
 
 // The screen uses the real workspace and HTTP runner; only native IPC/file dialogs are replaced.
-async function withFailedLogin(page: Page, onFailure: 'stop' | 'continue', check: (fixture: { calls: string[]; reportFile: string }) => Promise<void>) {
+async function withFailedLogin(
+  page: Page,
+  onFailure: 'stop' | 'continue',
+  check: (fixture: { calls: string[]; reportFile: string }) => Promise<void>,
+  whileHealthPending?: (fixture: { calls: string[]; release: () => void }) => Promise<void>,
+) {
   const directory = await mkdtemp(path.join(tmpdir(), 'checkly-suite-failure-'))
   const calls: string[] = []
-  const server = createServer((request, response) => {
+  let releaseHealth = () => {}
+  const healthReleased = new Promise<void>(resolve => { releaseHealth = resolve })
+  const server = createServer(async (request, response) => {
     calls.push(`${request.method} ${request.url}`)
     response.setHeader('content-type', 'application/json')
+    if (request.url === '/health' && whileHealthPending) await healthReleased
     if (request.url === '/login') {
       response.writeHead(401).end(JSON.stringify({ message: 'server-response-secret' }))
     } else {
@@ -73,10 +81,12 @@ async function withFailedLogin(page: Page, onFailure: 'stop' | 'continue', check
     await page.getByRole('button', { name: 'API 테스트', exact: true }).click()
     await page.getByRole('button', { name: '로그인 실패 스위트', exact: true }).click()
     await page.getByRole('button', { name: '실행', exact: true }).click()
+    if (whileHealthPending) await whileHealthPending({ calls, release: releaseHealth })
     await expect(page.getByRole('region', { name: '스위트 실행 결과' })).toContainText('실행 결과 · 실패')
     await expect(page.getByRole('button', { name: '실행', exact: true })).toBeEnabled()
     await check({ calls, reportFile })
   } finally {
+    releaseHealth()
     await page.goto('about:blank').catch(() => undefined)
     server.closeAllConnections()
     await new Promise<void>(resolve => server.close(() => resolve()))
@@ -106,3 +116,26 @@ for (const onFailure of ['stop', 'continue'] as const) {
     })
   })
 }
+
+test('suite results cannot open a scenario while a later scenario is still running', async ({ page }) => {
+  await withFailedLogin(page, 'continue', async ({ calls }) => {
+    const result = page.getByRole('region', { name: '스위트 실행 결과' })
+    const openScenario = result.locator('details').first().getByRole('button', { name: '시나리오 열기', exact: true })
+    await expect(openScenario).toBeEnabled()
+    expect(calls).toEqual(['POST /login', 'GET /health'])
+    await openScenario.click()
+    await expect(result).not.toBeVisible()
+    await expect(page.getByRole('heading', { name: '로그인', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: '최근 실행', exact: true })).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByRole('region', { name: '시나리오 실행 결과' })).toContainText('HTTP 401')
+  }, async ({ calls, release }) => {
+    // The HTTP response stays deferred until the running-state checks finish.
+    await expect.poll(() => calls).toEqual(['POST /login', 'GET /health'])
+    const result = page.getByRole('region', { name: '스위트 실행 결과' })
+    await expect(result.locator('summary .api-run-result-status').first()).toHaveText('실패')
+    await expect(result.locator('details').first().getByRole('button', { name: '시나리오 열기', exact: true })).toBeDisabled()
+    await expect(page.getByRole('heading', { name: '로그인 실패 스위트', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: '실행 중단', exact: true })).toBeVisible()
+    release()
+  })
+})
