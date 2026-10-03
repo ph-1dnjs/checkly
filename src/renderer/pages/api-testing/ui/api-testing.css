@@ -1174,7 +1174,7 @@ body.panel-resizing { cursor:col-resize; user-select:none; }
 /* Which server a step calls, shown only in scenarios that use more than one. */
 .api-run-server { display:inline-block; margin-right:6px; padding:0 5px; border:1px solid var(--api-border); border-radius:var(--ck-dim-radius-pill); color:var(--api-muted); font-size:10.5px; line-height:1.5; }
 /* Suite results: open the scenario (its requests and responses), actual value on a failed check. */
-.api-suite-results summary .api-suite-open { margin-left:10px; font-size:11.5px; }
+.api-suite-results summary .api-suite-open, .api-suite-readiness .api-suite-open { margin-left:10px; font-size:11.5px; }
 .api-suite-actual { color:var(--api-body); font-weight:400; }
 /* Request body JSON: values are click-to-edit; empty ones show the spec example faintly (not sent). */
 .api-testing-page button.api-json-value-edit { min-height:0; padding:0 2px; border:0; border-radius:3px; background:transparent; color:inherit; font:inherit; cursor:text; }

@@ -14,6 +14,10 @@ async function withFailedLogin(
   options: {
     whileHealthPending?: (fixture: { calls: string[]; release: () => void }) => Promise<void>
     deleteHealth?: boolean
+    /** Re-imports the spec without /health after the scenarios are saved. */
+    removeHealthApi?: boolean
+    /** Runs on the saved suite view instead of running the suite. */
+    beforeRun?: (fixture: { calls: string[] }) => Promise<void>
   } = {},
 ) {
   const directory = await mkdtemp(path.join(tmpdir(), 'checkly-suite-failure-'))
@@ -49,6 +53,10 @@ async function withFailedLogin(
       'id: health\nname: 독립 상태 확인\nserver: API\nsteps:\n  - api: GET /health\n',
     ]) await workspace.saveScenario({ projectId, environmentId }, source, {})
     await workspace.saveSuite(projectId, { id: randomUUID(), name: '로그인 실패 스위트', scenarioIds: ['login', 'private', 'health'], onFailure })
+    if (options.removeHealthApi) await workspace.importSpec(scope, JSON.stringify({ openapi: '3.0.3', info: { title: '회귀 API', version: '2' }, paths: {
+      '/login': { post: { responses: { '200': { description: '로그인' }, '401': { description: '인증 실패' } } } },
+      '/private': { get: { responses: { '200': { description: '인증 조회' } } } },
+    } }))
     if (options.deleteHealth) {
       const health = (await workspace.listScenarios(projectId)).find(scenario => scenario.id === 'health')!
       await workspace.deleteScenario(projectId, health.id, health.updatedAt)
@@ -87,6 +95,7 @@ async function withFailedLogin(
     await page.goto(`/?tab=scenarios&project=${projectId}&server=${serverId}&environment=${environmentId}`)
     await page.getByRole('button', { name: 'API 테스트', exact: true }).click()
     await page.getByRole('button', { name: '로그인 실패 스위트', exact: true }).click()
+    if (options.beforeRun) return await options.beforeRun({ calls })
     await page.getByRole('button', { name: '실행', exact: true }).click()
     if (options.whileHealthPending) await options.whileHealthPending({ calls, release: releaseHealth })
     await expect(page.getByRole('region', { name: '스위트 실행 결과' })).toContainText('실행 결과 · 실패')
@@ -170,4 +179,25 @@ test('suite results do not offer a scenario link for a deleted reference', async
     await expect(result.locator('details').nth(1).getByRole('button', { name: '시나리오 열기', exact: true })).toBeEnabled()
     expect(calls).toEqual(['POST /login'])
   }, { deleteHealth: true })
+})
+
+test('suite readiness opens a scenario whose API left the spec', async ({ page }) => {
+  await withFailedLogin(page, 'continue', async () => {}, { removeHealthApi: true, beforeRun: async ({ calls }) => {
+    const readiness = page.locator('.api-suite-readiness')
+    await expect(readiness).toContainText('실행 전 설정 필요')
+    const health = readiness.locator(':scope > ul > li').filter({ hasText: '독립 상태 확인' })
+    await expect(health).toContainText('/health')
+    await health.getByRole('button', { name: '시나리오 열기', exact: true }).click()
+    await expect(page.getByRole('heading', { name: '독립 상태 확인', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: '실행 흐름', exact: true })).toHaveAttribute('aria-pressed', 'true')
+    expect(calls).toEqual([])
+  } })
+})
+
+test('suite readiness does not offer a scenario link for a deleted reference', async ({ page }) => {
+  await withFailedLogin(page, 'continue', async () => {}, { deleteHealth: true, beforeRun: async () => {
+    const deleted = page.locator('.api-suite-readiness > ul > li').filter({ hasText: '삭제된 시나리오' })
+    await expect(deleted).toContainText('시나리오가 삭제되었습니다.')
+    await expect(deleted.getByRole('button', { name: '시나리오 열기', exact: true })).toHaveCount(0)
+  } })
 })
