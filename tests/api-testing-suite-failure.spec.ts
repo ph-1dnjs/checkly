@@ -11,7 +11,10 @@ async function withFailedLogin(
   page: Page,
   onFailure: 'stop' | 'continue',
   check: (fixture: { calls: string[]; reportFile: string }) => Promise<void>,
-  whileHealthPending?: (fixture: { calls: string[]; release: () => void }) => Promise<void>,
+  options: {
+    whileHealthPending?: (fixture: { calls: string[]; release: () => void }) => Promise<void>
+    deleteHealth?: boolean
+  } = {},
 ) {
   const directory = await mkdtemp(path.join(tmpdir(), 'checkly-suite-failure-'))
   const calls: string[] = []
@@ -20,7 +23,7 @@ async function withFailedLogin(
   const server = createServer(async (request, response) => {
     calls.push(`${request.method} ${request.url}`)
     response.setHeader('content-type', 'application/json')
-    if (request.url === '/health' && whileHealthPending) await healthReleased
+    if (request.url === '/health' && options.whileHealthPending) await healthReleased
     if (request.url === '/login') {
       response.writeHead(401).end(JSON.stringify({ message: 'server-response-secret' }))
     } else {
@@ -46,6 +49,10 @@ async function withFailedLogin(
       'id: health\nname: 독립 상태 확인\nserver: API\nsteps:\n  - api: GET /health\n',
     ]) await workspace.saveScenario({ projectId, environmentId }, source, {})
     await workspace.saveSuite(projectId, { id: randomUUID(), name: '로그인 실패 스위트', scenarioIds: ['login', 'private', 'health'], onFailure })
+    if (options.deleteHealth) {
+      const health = (await workspace.listScenarios(projectId)).find(scenario => scenario.id === 'health')!
+      await workspace.deleteScenario(projectId, health.id, health.updatedAt)
+    }
     const reportFile = path.join(directory, 'report.html')
     const allowed = new Set(['listProjects', 'listScenarios', 'listSuites', 'listGlobals', 'listCookies', 'getRequestAuth', 'getCatalog', 'previewScenario', 'runScenario', 'checkScenarioSpecs'])
     await page.exposeFunction('__suiteTestingCall', async (method: string, args: unknown[]) => {
@@ -81,7 +88,7 @@ async function withFailedLogin(
     await page.getByRole('button', { name: 'API 테스트', exact: true }).click()
     await page.getByRole('button', { name: '로그인 실패 스위트', exact: true }).click()
     await page.getByRole('button', { name: '실행', exact: true }).click()
-    if (whileHealthPending) await whileHealthPending({ calls, release: releaseHealth })
+    if (options.whileHealthPending) await options.whileHealthPending({ calls, release: releaseHealth })
     await expect(page.getByRole('region', { name: '스위트 실행 결과' })).toContainText('실행 결과 · 실패')
     await expect(page.getByRole('button', { name: '실행', exact: true })).toBeEnabled()
     await check({ calls, reportFile })
@@ -113,6 +120,19 @@ for (const onFailure of ['stop', 'continue'] as const) {
         await expect(report.getByRole('heading', { name: '로그인 실패 스위트', exact: true })).toBeVisible()
         await expect(report.getByRole('heading', { name: '확인이 필요한 항목', exact: true })).toBeVisible()
       } finally { await report.close() }
+      if (onFailure === 'continue') {
+        // A dependency-blocked row has no run to show, but its saved scenario can still be opened.
+        const openScenario = result.locator('details').nth(1).getByRole('button', { name: '시나리오 열기', exact: true })
+        await expect(openScenario).toBeEnabled()
+        await openScenario.click()
+        await expect(result).not.toBeVisible()
+        await expect(page.getByRole('heading', { name: '인증 조회', exact: true })).toBeVisible()
+        await expect(page.getByRole('region', { name: '시나리오 실행 흐름' })).toContainText(/GET\s*\/private/)
+        await expect(page.getByRole('button', { name: '실행 흐름', exact: true })).toHaveAttribute('aria-pressed', 'true')
+        await expect(page.getByRole('button', { name: '최근 실행', exact: true })).toBeDisabled()
+        await expect(page.getByRole('region', { name: '시나리오 실행 결과' })).toHaveCount(0)
+        expect(calls).toEqual(['POST /login', 'GET /health'])
+      }
     })
   })
 }
@@ -128,7 +148,7 @@ test('suite results cannot open a scenario while a later scenario is still runni
     await expect(page.getByRole('heading', { name: '로그인', exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: '최근 실행', exact: true })).toHaveAttribute('aria-pressed', 'true')
     await expect(page.getByRole('region', { name: '시나리오 실행 결과' })).toContainText('HTTP 401')
-  }, async ({ calls, release }) => {
+  }, { whileHealthPending: async ({ calls, release }) => {
     // The HTTP response stays deferred until the running-state checks finish.
     await expect.poll(() => calls).toEqual(['POST /login', 'GET /health'])
     const result = page.getByRole('region', { name: '스위트 실행 결과' })
@@ -137,5 +157,17 @@ test('suite results cannot open a scenario while a later scenario is still runni
     await expect(page.getByRole('heading', { name: '로그인 실패 스위트', exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: '실행 중단', exact: true })).toBeVisible()
     release()
-  })
+  } })
+})
+
+test('suite results do not offer a scenario link for a deleted reference', async ({ page }) => {
+  await withFailedLogin(page, 'continue', async ({ calls }) => {
+    const result = page.getByRole('region', { name: '스위트 실행 결과' })
+    const deleted = result.locator('details').nth(2)
+    await expect(deleted.locator('summary')).toContainText('삭제된 시나리오')
+    await expect(deleted.locator('.api-run-result-status')).toHaveText('설정 필요')
+    await expect(deleted.getByRole('button', { name: '시나리오 열기', exact: true })).toHaveCount(0)
+    await expect(result.locator('details').nth(1).getByRole('button', { name: '시나리오 열기', exact: true })).toBeEnabled()
+    expect(calls).toEqual(['POST /login'])
+  }, { deleteHealth: true })
 })
