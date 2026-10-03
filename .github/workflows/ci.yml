@@ -25,6 +25,7 @@ jobs:
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
       - run: npx tsc --noEmit --types node,electron
+      - run: npm run test:api
       - run: npm run build
       - run: npx playwright install --with-deps chromium
       - run: npm test
