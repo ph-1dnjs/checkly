@@ -288,11 +288,11 @@ Then `주문 목록` 텍스트가 보인다 [대기 10초]
 | 원문·저장·마커 반영·복제 | [useScenarioState.ts](../src/renderer/app/hooks/useScenarioState.ts) |
 | 복제 대화상자·값·제목 | [DuplicateScenarioModal.tsx](../src/renderer/pages/editor/DuplicateScenarioModal.tsx), [scenario-duplication.ts](../src/renderer/shared/model/scenario-duplication.ts) |
 | 시나리오 문법·데이터 | [scenario.ts](../src/renderer/shared/model/scenario.ts) |
-| 파일·폴더 선택 | [ScenarioPickerPage.tsx](../src/renderer/pages/picker/ScenarioPickerPage.tsx), [fileStorage.ts](../src/app/ipc/fileStorage.ts) |
+| 파일·폴더 선택 | [ScenarioPickerPage.tsx](../src/renderer/pages/picker/ScenarioPickerPage.tsx), [fileStorage.ts](../src/app/ipc/scenario-file/fileStorage.ts) |
 | 화면 연결·저장 복귀·전역 수동 판정 | [App.tsx](../src/renderer/app/App.tsx) |
 | 실행 큐·취소·기록·세션·재실행 | [useRunOrchestration.ts](../src/renderer/app/hooks/useRunOrchestration.ts) |
 | 실행 화면·수동 조작·결과 표시 | [RunPage.tsx](../src/renderer/pages/run/RunPage.tsx) |
-| 실제 브라우저 실행·대기·판정 | [qaExecution.ts](../src/app/ipc/qaExecution.ts), [main.ts](../src/app/main.ts) |
-| 리포트·영상 보존 | [reports.ts](../src/app/ipc/reports.ts), [video.ts](../src/app/ipc/video.ts) |
+| 실제 브라우저 실행·대기·판정 | [qaExecution.ts](../src/app/ipc/qa/qaExecution.ts), [main.ts](../src/app/main.ts) |
+| 리포트·영상 보존 | [reports.ts](../src/app/ipc/qa/reports.ts), [video.ts](../src/app/ipc/qa/video.ts) |
 
 기술 계약과 상세 예외는 기존 [시나리오 편집 개발 문서](04-pages/020-scenario-editor/README.md), [시나리오 선택 개발 문서](04-pages/030-scenario-picker/README.md), [시나리오 실행 개발 문서](04-pages/040-scenario-run/README.md)를 함께 참고한다.

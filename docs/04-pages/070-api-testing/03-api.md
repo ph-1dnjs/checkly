@@ -1,6 +1,6 @@
 # [IPC 연동] API 테스트
 
-앱은 `window.electronAPI.apiTesting`을 사용합니다. 타입은 `src/app/api-testing/shared/workspace.ts`, 등록은 `main/register.ts`, 연결은 `src/app/preload.ts`에 있습니다.
+앱은 `window.electronAPI.apiTesting`을 사용합니다. 타입은 `src/app/api-testing/shared/workspace.ts`, 등록은 `main/register.ts`(도메인 진입점 `src/app/api-testing/index.ts`), 연결은 `src/app/api-testing/bridge.ts`에 있습니다.
 
 아래 모든 채널에는 `api-testing:` 접두사가 붙습니다.
 

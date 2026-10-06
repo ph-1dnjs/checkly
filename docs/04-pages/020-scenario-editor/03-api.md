@@ -16,7 +16,7 @@
 | saveMarkerPositions / `marker-positions:save` | JSON string → void | 로드 완료 후 좌표 store 변경 시 자동 저장 |
 | inspectScenario / `qa:inspect` | Scenario → `{id,connected}[]` | 별도 headless 기본 URL 검사 |
 
-브리지·등록 근거: [preload.ts](../../../src/app/preload.ts), [main.ts](../../../src/app/main.ts). `loadScenarioMarkdown`·`loadMarkerPositions`는 파일 없음과 권한 오류를 구분하지 않고 null로 반환합니다. 반면 `importScenarioFile`은 선택 파일의 읽기 실패를 reject하며, 쓰기도 reject합니다. dialog 취소는 null입니다.
+브리지·등록 근거: [scenario-file/bridge.ts](../../../src/app/ipc/scenario-file/bridge.ts), [scenario-file/index.ts](../../../src/app/ipc/scenario-file/index.ts). `loadScenarioMarkdown`·`loadMarkerPositions`는 파일 없음과 권한 오류를 구분하지 않고 null로 반환합니다. 반면 `importScenarioFile`은 선택 파일의 읽기 실패를 reject하며, 쓰기도 reject합니다. dialog 취소는 null입니다.
 
 ## 메모리 모델
 

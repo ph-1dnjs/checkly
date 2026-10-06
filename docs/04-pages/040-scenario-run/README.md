@@ -19,9 +19,9 @@
 | [useRunOrchestration.ts](../../../src/renderer/app/hooks/useRunOrchestration.ts) | 큐, sequence, 이벤트 구독, 결과·최근 기록·영상 수집 |
 | [RunPage.tsx](../../../src/renderer/pages/run/RunPage.tsx) | 단계/시나리오 목록, 로그, 캡처, viewport, 직접 제어 |
 | [BottomNavigation.tsx](../../../src/renderer/widgets/BottomNavigation.tsx) | 실행/중지와 화면 전환 |
-| [qaExecution.ts](../../../src/app/ipc/qaExecution.ts) | Chromium worker, locator, 수동 대기, 캡처, 정리 |
-| [qaTypes.ts](../../../src/app/ipc/qaTypes.ts) | native 실행 입력·수동 제어 타입 |
-| [reports.ts](../../../src/app/ipc/reports.ts), [video.ts](../../../src/app/ipc/video.ts) | 리포트·영상 파일과 다운로드 |
-| [preload.ts](../../../src/app/preload.ts), [main.ts](../../../src/app/main.ts) | IPC 공개·등록 |
+| [qaExecution.ts](../../../src/app/ipc/qa/qaExecution.ts) | Chromium worker, locator, 수동 대기, 캡처, 정리 |
+| [qaTypes.ts](../../../src/app/ipc/qa/qaTypes.ts) | native 실행 입력·수동 제어 타입 |
+| [reports.ts](../../../src/app/ipc/qa/reports.ts), [video.ts](../../../src/app/ipc/qa/video.ts) | 리포트·영상 파일과 다운로드 |
+| [qa/bridge.ts](../../../src/app/ipc/qa/bridge.ts), [qa/index.ts](../../../src/app/ipc/qa/index.ts) | IPC 공개·등록 |
 
 변경 완료 기준은 실행 결과뿐 아니라 실패 후 다음 항목 진행, 취소 시 큐·파일 처리, 수동 대기, 메모리 기록과 디스크 산출물의 차이가 설명과 일치하는 것입니다.
