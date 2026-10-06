@@ -35,6 +35,10 @@ export type ScenarioRunResult = {
   status: "passed" | "failed" | "cancelled";
   failedStepIndex?: number;
   message?: string;
+  // 리포트용 부가 정보. 이전 기록이나 예외로 끝난 실행에는 없을 수 있다.
+  startedAt?: string;
+  elapsedSeconds?: number;
+  log?: string[];
 };
 export type RunRecord = {
   id: string;
@@ -43,6 +47,7 @@ export type RunRecord = {
   passed: number;
   failed: number;
   ranAt: string;
+  startedAt?: string;
   results: ScenarioRunResult[];
 };
 export type RunSummary = { total: number; passed: number; failed: number };
