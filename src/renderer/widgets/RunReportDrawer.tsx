@@ -9,9 +9,15 @@ type Props = {
   record: RunRecord | null;
   onClose: () => void;
   onRerun: (scenarios: Scenario[]) => void;
+  onOpenReport: (record: RunRecord) => void;
 };
 
-export const RunReportDrawer = ({ record, onClose, onRerun }: Props) => {
+export const RunReportDrawer = ({
+  record,
+  onClose,
+  onRerun,
+  onOpenReport,
+}: Props) => {
   if (!record) return null;
   const total = record.passed + record.failed;
   const title =
@@ -106,6 +112,9 @@ export const RunReportDrawer = ({ record, onClose, onRerun }: Props) => {
               onClick={() => onRerun(record.scenarios)}
             >
               다시 실행
+            </Button>
+            <Button variant="secondary" onClick={() => onOpenReport(record)}>
+              리포트 보기 · 다운로드
             </Button>
           </div>
         </div>

@@ -129,6 +129,8 @@ type Props = {
   fullRunVideoAvailable: boolean;
   onDownloadRunVideo: (path: string) => void;
   onDownloadFullRunVideo: () => void;
+  reportAvailable: boolean;
+  onOpenReport: () => void;
 };
 
 export const RunPage = ({
@@ -174,6 +176,8 @@ export const RunPage = ({
   fullRunVideoAvailable,
   onDownloadRunVideo,
   onDownloadFullRunVideo,
+  reportAvailable,
+  onOpenReport,
 }: Props) => {
   const [manualFailureReason, setManualFailureReason] = useState("");
   const [selStep, setSelStep] = useState<string | null>(null);
@@ -541,6 +545,16 @@ export const RunPage = ({
           {canReplay && (
             <Button variant="secondary" onClick={onGoToPicker}>
               시나리오 다시 선택
+            </Button>
+          )}
+          {reportAvailable && !running && (
+            <Button
+              className="run-report-btn"
+              title="실행 결과 리포트 보기 · Markdown 다운로드"
+              onClick={onOpenReport}
+            >
+              <span className="msi">description</span>
+              리포트
             </Button>
           )}
           {fullRunVideoAvailable && !running && (

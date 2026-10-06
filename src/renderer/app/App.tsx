@@ -10,6 +10,7 @@ import { ScenarioPickerPage } from "../pages/picker/ScenarioPickerPage";
 import { FormAutomationPage } from "../pages/form-automation/FormAutomationPage";
 import { BottomNavigation } from "../widgets/BottomNavigation";
 import { RunReportDrawer } from "../widgets/RunReportDrawer";
+import { RunReportViewer } from "../widgets/RunReportViewer";
 import "../shared/model/electron-api";
 import { useNavigation } from "./hooks/useNavigation";
 import { useScenarioState } from "./hooks/useScenarioState";
@@ -108,6 +109,10 @@ export const App = (): ReactElement => {
     liveResults,
     openRunRecord,
     setOpenRunRecord,
+    lastRunRecord,
+    reportRecord,
+    setReportRecord,
+    downloadRunReport,
     runQueue,
     runValidationError,
     setRunValidationError,
@@ -254,6 +259,8 @@ export const App = (): ReactElement => {
             fullRunVideoAvailable={Boolean(fullRunVideoPath)}
             onDownloadRunVideo={downloadRunVideo}
             onDownloadFullRunVideo={downloadFullRunVideo}
+            reportAvailable={Boolean(lastRunRecord)}
+            onOpenReport={() => setReportRecord(lastRunRecord)}
           />
         )}
         {route === "settings" && <SettingsPage scenario={scenario} />}
@@ -262,10 +269,16 @@ export const App = (): ReactElement => {
       <RunReportDrawer
         record={openRunRecord}
         onClose={() => setOpenRunRecord(null)}
+        onOpenReport={setReportRecord}
         onRerun={(scenarios) => {
           setOpenRunRecord(null);
           beginRuns(scenarios);
         }}
+      />
+      <RunReportViewer
+        record={reportRecord}
+        onClose={() => setReportRecord(null)}
+        onDownload={downloadRunReport}
       />
       {toast && (
         <div className="toast" role="status" aria-live="polite">
