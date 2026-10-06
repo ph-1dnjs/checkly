@@ -254,27 +254,6 @@
 @media(max-width:1240px) { .run-cols { grid-template-columns:340px 1fr; } .run-side .run-viewport { display:none; } }
 @media(max-width:900px) { .run-cols { grid-template-columns:1fr; } .run-execution { border-right:0; border-bottom:1px solid #e4e7ea; max-height:40vh; } }
 
-/* Settings */
-.settings-page { max-width:720px; margin:0 auto; padding:44px 26px 128px; }
-.settings-page h1 { margin:0 0 0; font-family:'Nunito',Verdana,'Apple SD Gothic Neo',sans-serif; font-size:26px; font-weight:800; letter-spacing:-.02em; color:#14181c; }
-.settings-group { padding-top:26px; }
-.settings-group-label { display:flex; align-items:center; gap:12px; margin-bottom:4px; padding-bottom:8px; border-bottom:1px solid #e4e7ea; }
-.settings-group-label span { font-family:D2Coding,ui-monospace,monospace; font-size:10px; letter-spacing:.12em; color:#8a939c; }
-.settings-group-label i { display:none; }
-.settings-row { display:flex; align-items:center; gap:20px; min-height:44px; padding:10px 0; border-bottom:1px solid #edf0f2; }
-.settings-row-label { flex:1 1 auto; min-width:0; font-size:12.5px; color:#14181c; }
-.settings-row-hint { font-size:11.5px; color:#8a939c; margin-top:3px; }
-.settings-row-value { flex:none; display:flex; align-items:center; gap:8px; font-family:D2Coding,ui-monospace,monospace; font-size:11.5px; color:#3d4650; }
-.settings-row-value .button { font-family:"Helvetica Neue",Helvetica,"Apple SD Gothic Neo","Malgun Gothic",sans-serif; }
-.settings-toggle { width:30px; height:17px; flex:none; padding:2px; border-radius:99px; background:#d3d8dd; cursor:pointer; border:0; transition:background .14s ease; }
-.settings-toggle.on { background:#1f63ae; }
-.settings-toggle i { display:block; width:13px; height:13px; border-radius:99px; background:#fff; transition:transform .14s ease; }
-.settings-toggle.on i { transform:translateX(13px); }
-.settings-brand-footer { display:flex; flex-direction:column; align-items:center; gap:12px; margin-top:30px; padding:40px 30px; border:1px solid #e4e7ea; background:#f8f8f8; }
-.settings-brand-footer img { display:block; width:64px; height:64px; }
-.settings-brand-wordmark { font-family:'Nunito',Verdana,'Apple SD Gothic Neo',sans-serif; font-size:22px; font-weight:800; letter-spacing:-.015em; line-height:1; color:#14181c; }
-.settings-brand-wordmark span { color:#3d8ce0; }
-.settings-brand-tagline { font-size:11.5px; color:#8a939c; }
 
 /* Run report drawer */
 .run-report-drawer { position:fixed; inset:0; z-index:80; display:flex; justify-content:flex-end; }
