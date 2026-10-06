@@ -20,7 +20,7 @@ import {
   saveMarkerPositions,
   saveScenarioMarkdown,
   selectUploadFile,
-} from "./ipc/fileStorage";
+} from "./ipc/scenario-file/fileStorage";
 import {
   cancelActiveRun,
   controlManualBrowser,
@@ -32,14 +32,14 @@ import {
   resolveManualResult,
   setQaViewport,
   shutdownScenarioWorker,
-} from "./ipc/qaExecution";
+} from "./ipc/qa/qaExecution";
 import type {
   ManualBrowserEvent,
   ManualControlResult,
   ManualResult,
   QaRunOptions,
   QaScenario,
-} from "./ipc/qaTypes";
+} from "./ipc/qa/qaTypes";
 import {
   checkForUpdates,
   getLatestUpdateStatus,
@@ -47,13 +47,13 @@ import {
   loadUpdateSettings,
   saveUpdateSettings,
   startPeriodicUpdateChecks,
-} from "./ipc/update";
-import { downloadRunVideo, mergeRunVideos } from "./ipc/video";
+} from "./ipc/update/update";
+import { downloadRunVideo, mergeRunVideos } from "./ipc/qa/video";
 import {
   applyInitialWindowState,
   loadInitialWindowOptions,
   registerWindowSettingsIpc,
-} from "./ipc/windowSettings";
+} from "./ipc/window-settings/windowSettings";
 import {
   appendFormAutomationSessionEvent,
   attachFormAutomationFixture,
@@ -68,7 +68,7 @@ import {
   requestFormAutomationUrl,
   type FormAutomationFixtureInput,
   type FormAutomationTextInput,
-} from "./ipc/formAutomation";
+} from "./ipc/form-automation/formAutomation";
 
 const formAutomationSessions = new Set<ReturnType<typeof session.fromPartition>>();
 
