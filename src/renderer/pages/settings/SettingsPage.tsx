@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { Button } from "../../shared/ui/Button";
+import { Toggle } from "./Toggle";
+import { WindowSettingsSection } from "./WindowSettingsSection";
 import type { Scenario } from "../../shared/model/scenario";
 import type { UpdateStatus } from "../../shared/model/update";
 import checklyMark from "../../assets/checkly-mark.png";
@@ -27,34 +29,6 @@ const updateStatusLabel = (status: UpdateStatus): string => {
       return "";
   }
 };
-
-const Toggle = ({
-  on,
-  onToggle,
-  label,
-  hint,
-}: {
-  on: boolean;
-  onToggle: () => void;
-  label: string;
-  hint: string;
-}) => (
-  <div className="settings-row">
-    <div>
-      <div className="settings-row-label">{label}</div>
-      <div className="settings-row-hint">{hint}</div>
-    </div>
-    <Button
-      className={`settings-toggle${on ? " on" : ""}`}
-      onClick={onToggle}
-      role="switch"
-      aria-checked={on}
-      aria-label={label}
-    >
-      <i />
-    </Button>
-  </div>
-);
 
 export const SettingsPage = ({ scenario }: Props) => {
   const [keepVideo, setKeepVideo] = useState(true);
@@ -154,6 +128,8 @@ export const SettingsPage = ({ scenario }: Props) => {
           </div>
         </div>
       </div>
+
+      <WindowSettingsSection />
 
       <div className="settings-group">
         <div className="settings-group-label">

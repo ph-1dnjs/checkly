@@ -64,7 +64,7 @@ electron-builder의 GitHub publish는 기본적으로 release를 **draft(비공�
 
 ## 앱 업데이트
 
-`main.ts`는 패키지된 앱이 시작될 때 `electron-updater`로 즉시 한 번 확인하고, 이후 4시간(`UPDATE_CHECK_INTERVAL_MS`)마다 주기적으로 다시 확인합니다. 이 주기 확인은 `userData/update-settings.json`의 `autoCheck` 값이 꺼져 있으면 건너뜁니다. 확인·다운로드·에러 상태는 `update:status` 이벤트로 렌더러에 전달되어 설정 화면에 표시됩니다. 다운로드가 끝나면(`autoDownload`가 기본 켜져 있어 자동으로 받습니다) 설정 화면에 "재시작하여 설치" 버튼이 나타나고, 클릭하면 `autoUpdater.quitAndInstall()`이 실행됩니다. 설정 화면의 "지금 확인"은 `autoCheck` 값과 무관하게 언제든 수동으로 확인을 트리거합니다.
+`src/app/ipc/update` 도메인은 패키지된 앱의 첫 창이 뜬 뒤 `electron-updater`로 즉시 한 번 확인하고, 이후 4시간(`UPDATE_CHECK_INTERVAL_MS`)마다 주기적으로 다시 확인합니다. 이 주기 확인은 `userData/update-settings.json`의 `autoCheck` 값이 꺼져 있으면 건너뜁니다. 확인·다운로드·에러 상태는 `update:status` 이벤트로 렌더러에 전달되어 설정 화면에 표시됩니다. 다운로드가 끝나면(`autoDownload`가 기본 켜져 있어 자동으로 받습니다) 설정 화면에 "재시작하여 설치" 버튼이 나타나고, 클릭하면 `autoUpdater.quitAndInstall()`이 실행됩니다. 설정 화면의 "지금 확인"은 `autoCheck` 값과 무관하게 언제든 수동으로 확인을 트리거합니다.
 
 개발(미패키지) 빌드에서는 모든 업데이트 확인이 `not-available`로 즉시 반환되고 `electron-updater`를 실제로 호출하지 않습니다.
 

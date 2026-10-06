@@ -31,24 +31,27 @@
 - 타입만 가져오면 `import type`을 사용합니다.
 - renderer는 Node.js·Electron·Playwright를 직접 import하지 않습니다.
 - main/preload는 renderer 컴포넌트나 DOM 코드를 import하지 않습니다.
-- native 기능은 `main.ts` → `preload.ts` → `App.tsx`의 `electronAPI` 타입과 호출부를 함께 변경합니다.
+- native 기능은 `src/app/ipc/<도메인>/index.ts`(main 등록) → `bridge.ts`(preload 노출) → `src/renderer/shared/model/electron-api/<도메인>.ts`(타입)와 호출부를 함께 변경합니다.
+- `bridge.ts`는 preload에서 실행되므로 `electron`, `../subscribe` 외의 모듈은 `import type`으로만 가져옵니다.
 - renderer에 raw `ipcRenderer`, 파일 API, Playwright 객체를 노출하지 않습니다.
 
 ## 파일 배치
 
 | 위치 | 대상 |
 | --- | --- |
-| `src/app/main.ts` | BrowserWindow 생성, `ipcMain.handle` 등록, 앱 lifecycle (조립만, 로직 없음) |
-| `src/app/preload.ts` | 허용할 command와 event 구독 |
-| `src/app/ipc/{도메인}.ts` | 파일 저장·QA 실행·영상·업데이트 등 도메인별 서비스 로직 |
+| `src/app/main.ts` | BrowserWindow 생성, 앱 lifecycle, 도메인 목록 조립 (`ipcMain` 직접 사용 금지) |
+| `src/app/preload.ts` | 도메인 bridge 조립 (`ipcRenderer` 직접 사용 금지) |
+| `src/app/ipc/{도메인}/index.ts` | 도메인의 IPC 등록·창 연결·종료 처리 (`MainDomain`) |
+| `src/app/ipc/{도메인}/bridge.ts` | 도메인이 preload에서 노출하는 command와 event 구독 |
+| `src/app/ipc/{도메인}/*.ts` | 파일 저장·QA 실행·영상·업데이트 등 도메인별 서비스 로직 |
 | `src/renderer/app/App.tsx` | 훅 조립과 화면 렌더링 (상태·부수효과는 훅으로 위임) |
 | `src/renderer/app/hooks/{관심사}.ts` | 화면 전환, 시나리오 편집 상태, 실행 오케스트레이션 등 관심사별 상태·부수효과 |
 | `src/renderer/pages/{기능}` | 화면 UI와 화면 전용 상태 |
 | `src/renderer/widgets` | 여러 화면 흐름에서 재사용하는 조합 UI |
-| `src/renderer/shared/model` | 공통 타입, 순수 parser·formatter, `window.electronAPI` 타입 |
+| `src/renderer/shared/model` | 공통 타입, 순수 parser·formatter, `window.electronAPI` 타입(`electron-api/<도메인>.ts`) |
 | `src/renderer/styles` | 전역·화면별 CSS |
 
-`src/app/ipc`와 `src/renderer/app/hooks`는 이미 도입된 도메인/관심사 분리이므로, 새 IPC 채널이나 새 App 상태를 추가할 때는 `main.ts`나 `App.tsx`에 직접 붙이지 말고 이 디렉터리 아래에 파일을 추가한 뒤 조립부에서만 연결합니다.
+`src/app/ipc`와 `src/renderer/app/hooks`는 이미 도입된 도메인/관심사 분리이므로, 새 IPC 채널이나 새 App 상태를 추가할 때는 `main.ts`나 `App.tsx`에 직접 붙이지 말고 이 디렉터리 아래에 파일을 추가한 뒤 조립부에서만 연결합니다. IPC는 도메인 `index.ts`·`bridge.ts`에 추가하므로 기존 도메인의 기능 추가로는 `main.ts`·`preload.ts`가 바뀌지 않습니다.
 
 ## 상태와 컴포넌트
 

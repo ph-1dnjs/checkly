@@ -34,7 +34,7 @@ API 테스트 기능 문서는 이 디렉터리에서 관리합니다. 디자인
 | --- | --- | --- |
 | 서비스 | `src/app/api-testing/main/` | 저장·명세·HTTP 실행·변수·인증 |
 | 계약 | `src/app/api-testing/shared/` | YAML 모델·검증·브리지 타입 |
-| 연결 | `src/app/preload.ts`, `src/renderer/app/App.tsx` | IPC·페이지 조립 |
+| 연결 | `src/app/api-testing/index.ts`, `src/app/api-testing/bridge.ts`, `src/renderer/app/App.tsx` | IPC·페이지 조립 |
 | 검증 | `tests/api-testing/`, `tests/api-testing-editor-environment.spec.ts` | 코어·저장·모듈 경계·환경 전환·변수 상태 연결·웹·Electron |
 
 새 파일의 배치와 공개 범위는 [폴더·파일 분리 가이드](06-folder-file-separation.md)를 참고하세요.

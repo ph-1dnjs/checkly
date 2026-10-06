@@ -16,6 +16,10 @@ git worktree add ../checkly-my-feature -b codex/my-feature origin/main
 - 공통 액션 표시: `src/renderer/shared/ui/ActionTag.tsx`
 - 기능별 테스트: `tests/<feature>.spec.ts`
 
+- main 프로세스 IPC: `src/app/ipc/<도메인>/index.ts`(등록), `bridge.ts`(preload 노출), `src/renderer/shared/model/electron-api/<도메인>.ts`(타입)
+
+기존 도메인에 기능을 추가할 때는 `main.ts`, `preload.ts`, `electron-api/index.ts`를 수정하지 않습니다. 이 세 파일은 새 도메인을 만들 때만 한 줄씩 추가하며, `tests/app-structure.spec.ts`가 직접 등록을 막습니다.
+
 새 기능은 해당 기능의 파일에 구현하고 `App.tsx`, `ScenarioEditorPage.tsx`, 공통 모델과 전역 CSS 수정은 연결에 필요한 범위로 제한합니다. 같은 파일을 수정해야 하면 담당 범위를 먼저 맞춥니다. 기능 변경에 전체 포맷팅이나 관계없는 정리를 섞지 않습니다. 의존성을 바꿀 때만 `package.json`과 `package-lock.json`을 함께 커밋합니다.
 
 ## 커밋과 통합
