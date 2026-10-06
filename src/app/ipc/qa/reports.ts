@@ -1,4 +1,4 @@
-import { app } from "electron";
+import { app, BrowserWindow, dialog } from "electron";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { QaScenario } from "./qaTypes";
@@ -39,4 +39,28 @@ export const writeRunReport = async (
     "utf8",
   );
   return directory;
+};
+
+// 렌더러가 만든 Markdown 리포트를 사용자가 고른 위치에 저장한다.
+export const saveRunReport = async (
+  window: BrowserWindow | null,
+  markdown: string,
+  fileName: string,
+): Promise<string | null> => {
+  const safeName =
+    path.basename(fileName).replace(/[\\/:*?"<>|]/g, "_") || "checkly-report.md";
+  const options = {
+    title: "실행 리포트 저장",
+    defaultPath: path.join(
+      app.getPath("downloads"),
+      safeName.endsWith(".md") ? safeName : `${safeName}.md`,
+    ),
+    filters: [{ name: "Markdown 리포트", extensions: ["md"] }],
+  };
+  const result = window
+    ? await dialog.showSaveDialog(window, options)
+    : await dialog.showSaveDialog(options);
+  if (result.canceled || !result.filePath) return null;
+  await writeFile(result.filePath, markdown, "utf8");
+  return result.filePath;
 };
