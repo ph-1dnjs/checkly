@@ -1,4 +1,5 @@
 /* Settings */
+.settings-scroll { height:100%; overflow-y:auto; }
 .settings-page { max-width:720px; margin:0 auto; padding:44px 26px 128px; }
 .settings-page h1 { margin:0 0 0; font-family:'Nunito',Verdana,'Apple SD Gothic Neo',sans-serif; font-size:26px; font-weight:800; letter-spacing:-.02em; color:#14181c; }
 .settings-group { padding-top:26px; }

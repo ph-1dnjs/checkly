@@ -11,7 +11,7 @@
   },
   "scripts": {
     "dev:api:web": "vite --mode api-web",
-    "dev": "tsc -p tsconfig.electron.json && concurrently -k \"vite --host 127.0.0.1 --port 5173 --strictPort\" \"tsc -p tsconfig.electron.json --watch --preserveWatchOutput\" \"wait-on --timeout 30000 http-get://127.0.0.1:5173 && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .\"",
+    "dev": "tsc -p tsconfig.electron.json --incremental --tsBuildInfoFile dist-electron/.tsbuildinfo && concurrently -k \"vite --host 127.0.0.1 --port 5173 --strictPort\" \"tsc -p tsconfig.electron.json --incremental --tsBuildInfoFile dist-electron/.tsbuildinfo --watch --preserveWatchOutput\" \"wait-on --timeout 30000 http-get://127.0.0.1:5173 && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electronmon .\"",
     "build": "vite build && tsc -p tsconfig.electron.json",
     "start": "npm run build && electron .",
     "preview": "vite preview",
@@ -98,11 +98,28 @@
     "dotenv-cli": "^10.0.0",
     "electron": "^37.2.6",
     "electron-builder": "^26.0.12",
+    "electronmon": "^2.0.4",
     "storybook": "^10.6.0",
     "tsx": "^4.20.5",
     "typescript": "^5.9.2",
     "vite": "^7.1.3",
     "wait-on": "^8.0.3"
+  },
+  "electronmon": {
+    "patterns": [
+      "!src/**",
+      "!dist/**",
+      "!build/**",
+      "!docs/**",
+      "!outputs/**",
+      "!release/**",
+      "!test-results/**",
+      "!tests/**",
+      "!work/**",
+      "!*.md",
+      "!*.json",
+      "!*.ts"
+    ]
   },
   "allowScripts": {
     "electron@37.10.3": true

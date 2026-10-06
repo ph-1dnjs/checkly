@@ -63,143 +63,145 @@ export const SettingsPage = ({ scenario }: Props) => {
   };
 
   return (
-    <div className="settings-page">
-      <h1>설정</h1>
+    <div className="settings-scroll">
+      <div className="settings-page">
+        <h1>설정</h1>
 
-      <div className="settings-group">
-        <div className="settings-group-label">
-          <span>UPDATE</span>
-          <i />
-        </div>
-        <div className="settings-row">
-          <div>
-            <div className="settings-row-label">현재 버전</div>
-            <div className="settings-row-hint">
-              {updateStatus.state === "idle" || updateStatus.state === "not-available"
-                ? "최신 버전입니다"
-                : updateStatusLabel(updateStatus)}
+        <div className="settings-group">
+          <div className="settings-group-label">
+            <span>UPDATE</span>
+            <i />
+          </div>
+          <div className="settings-row">
+            <div>
+              <div className="settings-row-label">현재 버전</div>
+              <div className="settings-row-hint">
+                {updateStatus.state === "idle" || updateStatus.state === "not-available"
+                  ? "최신 버전입니다"
+                  : updateStatusLabel(updateStatus)}
+              </div>
+            </div>
+            <div className="settings-row-value">
+              v{appVersion || "—"}
+              {updateStatus.state === "downloaded" ? (
+                <Button
+                  variant="primary"
+                  onClick={() => void window.electronAPI.installUpdate()}
+                >
+                  재시작하여 설치
+                </Button>
+              ) : (
+                <Button
+                  variant="default"
+                  disabled={updateStatus.state === "checking" || updateStatus.state === "downloading"}
+                  onClick={checkNow}
+                >
+                  {updateStatus.state === "checking" ? "확인 중…" : "지금 확인"}
+                </Button>
+              )}
             </div>
           </div>
-          <div className="settings-row-value">
-            v{appVersion || "—"}
-            {updateStatus.state === "downloaded" ? (
-              <Button
-                variant="primary"
-                onClick={() => void window.electronAPI.installUpdate()}
+          <Toggle
+            label="자동 업데이트 확인"
+            hint="앱을 실행하는 동안 주기적으로 새 버전을 확인합니다"
+            on={autoCheck}
+            onToggle={toggleAutoCheck}
+          />
+          <div className="settings-row">
+            <div>
+              <div className="settings-row-label">다운로드</div>
+              <div className="settings-row-hint">
+                최신 설치 파일을 GitHub Releases에서 내려받습니다
+                {isMac
+                  ? " · 아직 서명되지 않아 실행 시 \"손상되었기 때문에 열 수 없습니다\"가 뜨면 터미널에서 xattr -cr /Applications/Checkly.app 실행 후 다시 여세요"
+                  : ""}
+              </div>
+            </div>
+            <div className="settings-row-value">
+              <a
+                className="button"
+                href={RELEASES_URL}
+                target="_blank"
+                rel="noreferrer"
               >
-                재시작하여 설치
-              </Button>
-            ) : (
-              <Button
-                variant="default"
-                disabled={updateStatus.state === "checking" || updateStatus.state === "downloading"}
-                onClick={checkNow}
-              >
-                {updateStatus.state === "checking" ? "확인 중…" : "지금 확인"}
-              </Button>
-            )}
-          </div>
-        </div>
-        <Toggle
-          label="자동 업데이트 확인"
-          hint="앱을 실행하는 동안 주기적으로 새 버전을 확인합니다"
-          on={autoCheck}
-          onToggle={toggleAutoCheck}
-        />
-        <div className="settings-row">
-          <div>
-            <div className="settings-row-label">다운로드</div>
-            <div className="settings-row-hint">
-              최신 설치 파일을 GitHub Releases에서 내려받습니다
-              {isMac
-                ? " · 아직 서명되지 않아 실행 시 \"손상되었기 때문에 열 수 없습니다\"가 뜨면 터미널에서 xattr -cr /Applications/Checkly.app 실행 후 다시 여세요"
-                : ""}
+                다운로드 페이지 열기
+              </a>
             </div>
           </div>
-          <div className="settings-row-value">
-            <a
-              className="button"
-              href={RELEASES_URL}
-              target="_blank"
-              rel="noreferrer"
-            >
-              다운로드 페이지 열기
-            </a>
+        </div>
+
+        <WindowSettingsSection />
+
+        <div className="settings-group">
+          <div className="settings-group-label">
+            <span>PROJECT</span>
+            <i />
+          </div>
+          <div className="settings-row">
+            <div>
+              <div className="settings-row-label">기본 URL</div>
+              <div className="settings-row-hint">실행 시 상대 경로의 기준</div>
+            </div>
+            <div className="settings-row-value">{scenario.url || "—"}</div>
+          </div>
+          <div className="settings-row">
+            <div>
+              <div className="settings-row-label">환경</div>
+              <div className="settings-row-hint">dev / staging / prod</div>
+            </div>
+            <div className="settings-row-value">dev</div>
           </div>
         </div>
-      </div>
 
-      <WindowSettingsSection />
-
-      <div className="settings-group">
-        <div className="settings-group-label">
-          <span>PROJECT</span>
-          <i />
-        </div>
-        <div className="settings-row">
-          <div>
-            <div className="settings-row-label">기본 URL</div>
-            <div className="settings-row-hint">실행 시 상대 경로의 기준</div>
+        <div className="settings-group">
+          <div className="settings-group-label">
+            <span>RUN DEFAULTS</span>
+            <i />
           </div>
-          <div className="settings-row-value">{scenario.url || "—"}</div>
-        </div>
-        <div className="settings-row">
-          <div>
-            <div className="settings-row-label">환경</div>
-            <div className="settings-row-hint">dev / staging / prod</div>
+          <div className="settings-row">
+            <div>
+              <div className="settings-row-label">기본 브라우저</div>
+              <div className="settings-row-hint">새 실행에 적용됩니다</div>
+            </div>
+            <div className="settings-row-value">
+              Chromium
+              <Button variant="default">변경</Button>
+            </div>
           </div>
-          <div className="settings-row-value">dev</div>
+          <Toggle
+            label="실행 영상 보관"
+            hint="실패한 실행은 30일간 보관"
+            on={keepVideo}
+            onToggle={() => setKeepVideo((value) => !value)}
+          />
         </div>
-      </div>
 
-      <div className="settings-group">
-        <div className="settings-group-label">
-          <span>RUN DEFAULTS</span>
-          <i />
-        </div>
-        <div className="settings-row">
-          <div>
-            <div className="settings-row-label">기본 브라우저</div>
-            <div className="settings-row-hint">새 실행에 적용됩니다</div>
+        <div className="settings-group">
+          <div className="settings-group-label">
+            <span>NOTIFICATIONS</span>
+            <i />
           </div>
-          <div className="settings-row-value">
-            Chromium
-            <Button variant="default">변경</Button>
+          <Toggle
+            label="실패 시 알림"
+            hint="실행 종료 후 즉시 전송"
+            on={notifyFail}
+            onToggle={() => setNotifyFail((value) => !value)}
+          />
+          <Toggle
+            label="Slack 연동"
+            hint="#qa-alerts 채널"
+            on={notifySlack}
+            onToggle={() => setNotifySlack((value) => !value)}
+          />
+        </div>
+
+        <div className="settings-brand-footer">
+          <img src={checklyMark} alt="Checkly 마크" />
+          <div className="settings-brand-wordmark">
+            Check<span>ly</span>
           </div>
+          <div className="settings-brand-tagline">반복되는 확인을 대신 맡습니다</div>
         </div>
-        <Toggle
-          label="실행 영상 보관"
-          hint="실패한 실행은 30일간 보관"
-          on={keepVideo}
-          onToggle={() => setKeepVideo((value) => !value)}
-        />
-      </div>
-
-      <div className="settings-group">
-        <div className="settings-group-label">
-          <span>NOTIFICATIONS</span>
-          <i />
-        </div>
-        <Toggle
-          label="실패 시 알림"
-          hint="실행 종료 후 즉시 전송"
-          on={notifyFail}
-          onToggle={() => setNotifyFail((value) => !value)}
-        />
-        <Toggle
-          label="Slack 연동"
-          hint="#qa-alerts 채널"
-          on={notifySlack}
-          onToggle={() => setNotifySlack((value) => !value)}
-        />
-      </div>
-
-      <div className="settings-brand-footer">
-        <img src={checklyMark} alt="Checkly 마크" />
-        <div className="settings-brand-wordmark">
-          Check<span>ly</span>
-        </div>
-        <div className="settings-brand-tagline">반복되는 확인을 대신 맡습니다</div>
       </div>
     </div>
   );
