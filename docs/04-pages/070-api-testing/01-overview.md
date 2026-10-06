@@ -31,7 +31,7 @@ YAML의 `{{steps.N.…}}` 참조는 파싱할 때 내부 실행 모델의 `value
 | 시나리오 | `scenarios-{projectId}.json` | 동일 형식 |
 | 시나리오 묶음 | `suites-{projectId}.json` | 동일 형식 |
 | API 문서 Try it out 입력값 | `doc-inputs-{projectId}.json` (키 `{serverId} {METHOD path}`, 민감 이름 값 제외) | 동일 형식 |
-| AI 가이드용 명세·외부 AI 결과 | `ai/{projectId}/api-catalog.json`, `scenarios.yaml` | 동일 형식 |
+| AI 가이드용 명세·프로젝트 상태·외부 AI 결과 | `ai/{projectId}/api-catalog.json`, `project-state.json`, `scenarios.yaml` | 동일 형식 |
 | 전역변수·API 인증 연결 | 프로세스 메모리 | 개발 서버 메모리 |
 | 세션 쿠키(프로젝트별) | 프로세스 메모리 | 개발 서버 메모리 |
 | 실행 입력·결과 | 일시적 화면/실행 상태. 최근 시나리오 결과는 renderer 세션 메모리 | 동일 방식 |

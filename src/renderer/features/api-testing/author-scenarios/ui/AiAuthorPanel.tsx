@@ -1,8 +1,9 @@
 import { problemReport } from "../model/problem-report";
 import { useEffect, useRef, useState } from "react";
-import { YamlCode } from "../../../../entities/api-testing";
 import { ApiPicker, type PickableOperation } from "./ApiPicker";
-import type { ApiAiImportResult, ApiCatalog, ApiEnvironmentScope, ApiProject, ApiTestingBridge, SavedApiScenario } from "../../../../../app/api-testing/shared/workspace";
+import { AiResultReview } from "./AiResultReview";
+import { AiChatPanel } from "./AiChatPanel";
+import type { ApiAiChatStatus, ApiAiImportResult, ApiCatalog, ApiEnvironmentScope, ApiProject, ApiTestingBridge, SavedApiScenario } from "../../../../../app/api-testing/shared/workspace";
 
 const errorText = (error: unknown) => (error as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, "");
 
@@ -23,11 +24,10 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
   const [answer, setAnswer] = useState("");
   const [checking, setChecking] = useState(false);
   const [result, setResult] = useState<ApiAiImportResult | null>(null);
-  const [chosen, setChosen] = useState<string[]>([]);
-  const [saveSuite, setSaveSuite] = useState(true);
-  // Drafts that would update a saved scenario but the user wants added as a new one instead.
-  const [asNew, setAsNew] = useState<string[]>([]);
-  const [saving, setSaving] = useState(false);
+  // A new check starts a fresh review (choices reset).
+  const [resultKey, setResultKey] = useState(0);
+  const [mode, setMode] = useState<"chat" | "copy">("chat");
+  const [chatStatus, setChatStatus] = useState<ApiAiChatStatus | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   // Which step the last message belongs to, so it shows next to the button that caused it.
@@ -48,7 +48,8 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
         }))));
       });
   }, []);
-  const busy = checking || saving;
+  const busy = checking;
+  useEffect(() => { void bridge.getAiChatStatus().then(status => { if (live.current) { setChatStatus(status); if (!status.available) setMode("copy"); } }).catch(() => { if (live.current) { setChatStatus({ available: false, error: "AI 대화를 확인하지 못했습니다" }); setMode("copy"); } }); }, []);
   // No spec on any server: a guide would give the AI no APIs at all.
   const noSpec = catalogsLoaded && !operations.length;
   const guideRequest = () => ({ scope, ...(picked.length ? { operations: picked } : {}) });
@@ -62,12 +63,7 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
       const next = await bridge.checkAiScenarios(scope, text);
       if (!live.current) return;
       setResult(next);
-      // A name already saved usually means this result was loaded before: it updates that scenario
-      // (when there is exactly one); otherwise it is not saved a second time by default.
-      // A draft with problems never replaces a saved scenario by default.
-      setChosen(next.drafts.filter(draft => !draft.sameName || (draft.replaces && !draft.issues.length)).map(draft => draft.id));
-      setAsNew([]);
-      setSaveSuite(Boolean(next.suite));
+      setResultKey(key => key + 1);
     });
     if (live.current) setChecking(false);
   };
@@ -78,54 +74,7 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
     return file.text;
   });
 
-  const save = async () => {
-    if (!result) return;
-    setSaving(true); onBusy(true); setError(""); setMessage(""); setMessageStep(3);
-    const runnable = new Set<string>();
-    // Draft id → the id it was saved under (a draft added as new instead of updating gets a fresh id).
-    const savedIds = new Map<string, string>();
-    const failures: string[] = [];
-    let first: SavedApiScenario | undefined;
-    try {
-      const chosenDrafts = result.drafts.filter(item => chosen.includes(item.id));
-      const current = chosenDrafts.some(draft => draft.replaces && !asNew.includes(draft.id)) ? await bridge.listScenarios(scope.projectId) : [];
-      for (const draft of chosenDrafts) {
-        try {
-          const metadata = draft.groupPath ? { groupPath: draft.groupPath } : undefined;
-          const updating = Boolean(draft.replaces) && !asNew.includes(draft.id);
-          const yaml = draft.replaces && !updating ? draft.yaml.replace(/^id: .*$/m, `id: scenario-${crypto.randomUUID()}`) : draft.yaml;
-          const expectedUpdatedAt = updating ? current.find(item => item.id === draft.replaces)?.updatedAt : undefined;
-          const item = draft.issues.length ? await bridge.saveScenarioDraft(scope, yaml, {}, expectedUpdatedAt, metadata) : await bridge.saveScenario(scope, yaml, {}, expectedUpdatedAt, metadata);
-          savedIds.set(draft.id, item.id);
-          if (!draft.issues.length) runnable.add(item.id);
-          first ??= item;
-        } catch (e) { failures.push(`${draft.name}: ${errorText(e)}`); }
-      }
-      let suiteNote = "";
-      if (result.suite && saveSuite) {
-        const { saved, fallbacks } = result.suite;
-        const ids = result.suite.scenarioIds.map(id => {
-          const savedAs = savedIds.get(id);
-          if (savedAs && runnable.has(savedAs)) return savedAs;
-          return saved?.[id] !== undefined ? id : fallbacks?.[id];
-        }).filter((id): id is string => Boolean(id));
-        const skipped = result.suite.scenarioIds.length - ids.length;
-        if (ids.length) {
-          try {
-            await bridge.saveSuite(scope.projectId, { id: crypto.randomUUID(), name: result.suite.name, scenarioIds: ids, onFailure: "stop", ...(result.suite.groupPath ? { groupPath: result.suite.groupPath } : {}) });
-            suiteNote = ` 스위트 '${result.suite.name}'를 저장했습니다${skipped ? ` (저장하지 않았거나 수정이 필요한 ${skipped}개 제외)` : ""}.`;
-          } catch (e) { failures.push(`스위트: ${errorText(e)}`); }
-        } else suiteNote = " 바로 실행할 수 있는 시나리오가 없어 스위트는 저장하지 않았습니다.";
-      }
-      if (failures.length) { setError(failures.join("\n")); setMessage(`일부만 저장했습니다.${suiteNote}`); return; }
-      onSaved(first);
-    } finally { if (live.current) setSaving(false); onBusy(false); }
-  };
-
   const problems = result ? problemReport(result) : "";
-  // A suite made only of reused saved scenarios is worth saving even with no new scenario chosen.
-  const suiteReuses = Boolean(saveSuite && result?.suite?.scenarioIds.some(id => result.suite!.saved?.[id] !== undefined || result.suite!.fallbacks?.[id]));
-  const nameOf = (id: string) => result?.drafts.find(draft => draft.id === id)?.name ?? result?.suite?.saved?.[id] ?? id;
   const usable = operations.filter(operation => !operation.unavailable).length;
   const unavailable = operations.length - usable;
   const status = (step: 1 | 3) => messageStep === step && <>
@@ -134,7 +83,16 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
   </>;
   return <section className="api-ai-author" aria-label="AI 시나리오 작성">
     <h2>AI 작성 도우미</h2>
-    <ol className="api-ai-steps" aria-label="AI 작성 순서">
+    <div className="api-ai-mode" role="tablist" aria-label="AI 작성 방식">
+      <button type="button" role="tab" aria-selected={mode === "chat"} disabled={!chatStatus?.available} title={chatStatus && !chatStatus.available ? chatStatus.error : undefined} onClick={() => setMode("chat")}>AI 대화</button>
+      <button type="button" role="tab" aria-selected={mode === "copy"} onClick={() => setMode("copy")}>가이드 복사로 쓰기</button>
+    </div>
+    {chatStatus && !chatStatus.available && <p className="api-field-help">AI 대화를 쓸 수 없습니다: {chatStatus.error}</p>}
+    {mode === "chat" && chatStatus?.available ? <AiChatPanel project={project} scope={scope} bridge={bridge} onBusy={onBusy} onSaved={onSaved}
+      picker={operations.length > 0 && <details className="api-ai-author-tags"><summary>AI가 쓸 API (선택) · {picked.length ? `${picked.length}개 선택` : `전체 ${usable}개${unavailable ? ` (실행 미지원 ${unavailable}개 제외)` : ""}`}</summary>
+        <ApiPicker operations={operations} servers={Object.fromEntries(project.servers.map(server => [server.id, server.name]))} picked={picked} disabled={busy} onChange={setPicked} />
+      </details>}
+      picked={picked} noSpec={noSpec} specNote={noSpec ? "가져온 명세가 없어 AI에게 줄 API가 없습니다. API 문서 탭에서 명세를 가져오세요." : specWarnings.join(" · ")} /> : <ol className="api-ai-steps" aria-label="AI 작성 순서">
       <li>
         <header><strong>가이드 복사</strong><span>백엔드 프로젝트 폴더에서 Claude Code나 Codex를 열고 붙여넣습니다.</span></header>
         {noSpec
@@ -166,28 +124,12 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
           </div>
         </details>
         {status(3)}
-        {result && <section className="api-ai-author-result" aria-label="AI 작성 결과">
-          <h3>시나리오 {result.drafts.length}개</h3>
-          {problems && <div className="api-ai-author-notes">검사에서 문제가 나왔습니다. 문제를 복사해 AI에 붙여넣고, AI가 고쳐 저장하면 다시 불러오세요. 그대로 저장하면 초안이 됩니다.
+        {result && <AiResultReview key={resultKey} result={result} scope={scope} bridge={bridge} onBusy={onBusy} onSaved={onSaved}
+          notes={problems && <div className="api-ai-author-notes">검사에서 문제가 나왔습니다. 문제를 복사해 AI에 붙여넣고, AI가 고쳐 저장하면 다시 불러오세요. 그대로 저장하면 초안이 됩니다.
             <div className="api-actions"><button type="button" onClick={() => void act(async () => { await navigator.clipboard.writeText(problems); setMessage("문제를 복사했습니다. AI에 붙여넣으세요."); })}>문제 복사</button></div>
-          </div>}
-          <ul>{result.drafts.map(draft => <li key={draft.id} className={draft.issues.length ? "has-issues" : ""}>
-            <label className="api-check-row"><input type="checkbox" aria-label={`${draft.name} 저장`} checked={chosen.includes(draft.id)} disabled={saving} onChange={e => setChosen(e.target.checked ? [...chosen, draft.id] : chosen.filter(id => id !== draft.id))} /><strong>{draft.name}</strong><small>{draft.stepCount ? `${draft.stepCount}단계` : "단계 확인 불가"}{draft.groupPath ? ` · ${draft.groupPath.join(" › ")}` : ""} · {draft.issues.length ? "수정 필요 (초안으로 저장)" : draft.executionIssues.length ? "저장 가능 · 실행 전 설정 필요" : "바로 실행 가능"}</small></label>
-            {draft.replaces && <label className="api-ai-author-replace">저장 방식<select aria-label={`${draft.name} 저장 방식`} value={asNew.includes(draft.id) ? "new" : "update"} disabled={saving || !chosen.includes(draft.id)} onChange={e => setAsNew(e.target.value === "new" ? [...asNew, draft.id] : asNew.filter(id => id !== draft.id))}><option value="update">기존 시나리오 업데이트</option><option value="new">새 시나리오로 추가</option></select></label>}
-            {draft.notices.length > 0 && <p className="api-field-help">{draft.replaces && asNew.includes(draft.id) ? "같은 이름의 기존 시나리오가 있습니다. 저장하면 같은 이름이 하나 더 생깁니다" : draft.notices.join(" · ")}</p>}
-            {draft.issues.length > 0 && <ul className="api-ai-author-issues">{draft.issues.map(issue => <li key={issue}>{issue}</li>)}</ul>}
-            {draft.executionIssues.length > 0 && <p className="api-field-help">실행 전에 필요: {draft.executionIssues.join(" · ")}</p>}
-            <details><summary>내용 보기</summary><YamlCode source={draft.yaml} /></details>
-          </li>)}</ul>
-          {result.suite && <div className="api-ai-author-suite">
-            <label className="api-check-row"><input type="checkbox" checked={saveSuite} disabled={saving} onChange={e => setSaveSuite(e.target.checked)} />스위트 ‘{result.suite.name}’{result.suite.groupPath ? ` (${result.suite.groupPath.join(" › ")})` : ""}도 저장</label>
-            <ol>{result.suite.scenarioIds.map(id => <li key={id}>{nameOf(id)}{result.drafts.find(draft => draft.id === id)?.replaces && chosen.includes(id) && !asNew.includes(id) ? " · 기존 시나리오 업데이트" : result.suite!.fallbacks?.[id] && !chosen.includes(id) ? " · 기존 시나리오 사용" : result.drafts.find(draft => draft.id === id)?.issues.length ? " · 수정 필요라 제외" : result.suite!.saved?.[id] !== undefined ? " · 기존 시나리오" : ""}</li>)}</ol>
-            {result.suite.problems.map(problem => <p key={problem} className="api-field-help">{problem}</p>)}
-          </div>}
-          <div className="api-actions"><button className="api-primary" disabled={saving || (!chosen.length && !suiteReuses)} onClick={() => void save()}>{saving ? "저장 중…" : "선택한 것 저장"}</button></div>
-        </section>}
+          </div>} />}
       </li>
-    </ol>
+    </ol>}
   </section>;
 }
 

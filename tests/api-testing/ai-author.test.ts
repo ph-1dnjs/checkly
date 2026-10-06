@@ -89,9 +89,18 @@ test("groups from the AI become folders; the guide lists groups and who makes an
   try {
     await workspace.saveScenario(scope, login, {}, undefined, { groupPath: ["상점", "인증"] });
     await workspace.saveScenario(scope, read, {});
+    await workspace.saveSuite(scope.projectId, { id: randomUUID(), name: "상점 흐름", scenarioIds: ["shop/login", "shop/read"], onFailure: "stop", groupPath: ["상점"] });
     const prompt = await workspace.buildAiPrompt({ scope });
-    assert.ok(prompt.includes("- accessToken (string) ← 만듦: 로그인 / 사용: 상품 조회"));
-    assert.ok(prompt.includes("- 상점/인증") && prompt.includes("- 로그인 [상점/인증]"));
+    const stateFile = path.join(dir, "ai", scope.projectId, "project-state.json");
+    assert.ok(prompt.includes(stateFile) && !prompt.includes("- 로그인 [상점/인증]"));
+    const state = JSON.parse(await readFile(stateFile, "utf8"));
+    assert.deepEqual(state.globals, [{ name: "accessToken", type: "string", producers: ["로그인"], consumers: ["상품 조회"] }]);
+    assert.deepEqual(state.groups, ["상점", "상점/인증"]);
+    const saved = new Map(state.scenarios.map((item: { name: string; group?: string; yaml: string }) => [item.name, item]));
+    assert.equal((saved.get("로그인") as { group?: string }).group, "상점/인증");
+    assert.equal((saved.get("상품 조회") as { group?: string }).group, undefined);
+    assert.ok((saved.get("로그인") as { yaml: string }).yaml.startsWith("name: 로그인") && (saved.get("로그인") as { yaml: string }).yaml.includes("api: POST /login"));
+    assert.deepEqual(state.suites, [{ name: "상점 흐름", group: "상점", scenarios: ["로그인", "상품 조회"] }]);
     const noId = (yaml: string) => yaml.replace(/^id: .*\n/, "").replace("name: 로그인", "name: 관리자 로그인").replace("name: 상품 조회", "name: 상품 다시 조회");
     const result = await workspace.checkAiScenarios(scope, [`group: 상점/인증\n${noId(login)}`, `group: "a/${"b/".repeat(10)}c"\n${noId(read)}`, "suite: { name: 흐름, group: 상점, scenarios: [관리자 로그인] }\n"].join("---\n"));
     assert.deepEqual(result.drafts[0].groupPath, ["상점", "인증"]);

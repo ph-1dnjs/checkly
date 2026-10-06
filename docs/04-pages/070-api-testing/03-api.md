@@ -14,6 +14,8 @@
 | spec-sync / delete-spec-account | scope → 동기화·계정 저장 여부/완료 |
 | get-request-auth / set-request-auth | scope, 변수 이름 또는 null → 연결 이름/완료 |
 | list-globals / set-global / delete-global | 프로젝트, 이름·JSON 값 → 원문 값 목록/완료 |
+| ai-chat-status / get-backend-folders / save-backend-folders / choose-directories | Claude Code 사용 가능 여부·버전 / 프로젝트의 서버별 백엔드 폴더(`{ [serverId]: 절대경로[] }`, 이 PC 전용 `backend-folders.json`) 저장·조회 / 폴더 다중 선택 |
+| list-ai-chats / get-ai-chat / start-ai-chat / send-ai-chat / cancel-ai-chat / delete-ai-chat | 프로젝트별 대화 목록·내용(진행 중이면 `running`에 스트리밍 텍스트·확인한 파일) / `{ scope, operations?, model? }`로 시작(가이드 전송, 첫 답은 백그라운드) / 메시지 보내기 / 중단 / 삭제. 대화는 `ai-chats-<projectId>.json`에 저장, 웹 개발 모드는 미지원 |
 | copy-ai-prompt / get-ai-prompt | `{ scope: 프로젝트·환경, tags?, operations? }` → 스키마 파일을 쓰고 가이드를 클립보드로 / 같은 가이드 텍스트. operations는 `["<serverId> <METHOD path>"]` 형식 |
 | read-ai-result | 프로젝트·환경 → 결과 파일의 경로·내용·수정 시각, 없으면 null(2MB 이하) |
 | check-ai-scenarios | 프로젝트·환경, AI 결과 텍스트 → 검사된 초안·스위트(저장하지 않음) |

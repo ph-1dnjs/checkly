@@ -6,6 +6,8 @@ import { ApiWorkspace, scopeSchema } from "./workspace";
 import { specSourceSchema } from "../shared/workspace";
 import { z } from "zod";
 import { SpecSync } from "./spec-sync";
+import { AiChatService } from "./ai-chat";
+import { describeClaude } from "./ai-cli";
 import { isProvidedScenarioInput, matchesScenarioInputType, type Json, type ScenarioInputRequest } from "../shared/scenario";
 import type { ApiScenarioInputRequest } from "../shared/workspace";
 
@@ -56,12 +58,31 @@ export function registerApiTesting() {
   ipcMain.handle("api-testing:copy-ai-prompt", async (_event, request) => {
     clipboard.writeText(await workspace.buildAiPrompt(request));
   });
+  const chats = new AiChatService(workspace);
+  // A quitting app does not take its child processes along on macOS.
+  app.on("before-quit", () => chats.cancelAll());
+  ipcMain.handle("api-testing:ai-chat-status", async (_event, refresh) => {
+    const status = await describeClaude(refresh === true);
+    return status.available ? { available: true, version: status.version } : { available: false, error: status.error };
+  });
+  ipcMain.handle("api-testing:get-backend-folders", (_event, projectId) => workspace.getBackendFolders(projectId));
+  ipcMain.handle("api-testing:save-backend-folders", (_event, projectId, folders) => workspace.saveBackendFolders(projectId, folders));
+  ipcMain.handle("api-testing:choose-directories", async () => {
+    const selected = await dialog.showOpenDialog({ title: "백엔드 코드 폴더 선택", properties: ["openDirectory", "multiSelections"] });
+    return selected.canceled ? [] : selected.filePaths;
+  });
+  ipcMain.handle("api-testing:list-ai-chats", (_event, projectId) => chats.list(projectId));
+  ipcMain.handle("api-testing:get-ai-chat", (_event, projectId, chatId) => chats.get(projectId, chatId));
+  ipcMain.handle("api-testing:start-ai-chat", (_event, request) => chats.start(request));
+  ipcMain.handle("api-testing:send-ai-chat", (_event, projectId, chatId, text) => chats.send(projectId, chatId, text));
+  ipcMain.handle("api-testing:cancel-ai-chat", (_event, projectId, chatId) => chats.cancel(projectId, chatId));
+  ipcMain.handle("api-testing:delete-ai-chat", (_event, projectId, chatId) => chats.remove(projectId, chatId));
   ipcMain.handle("api-testing:get-ai-prompt", (_event, request) => workspace.buildAiPrompt(request));
   ipcMain.handle("api-testing:read-ai-result", (_event, scope) => workspace.readAiResult(scope));
   ipcMain.handle("api-testing:check-ai-scenarios", (_event, scope, text) => workspace.checkAiScenarios(scope, text));
   ipcMain.handle("api-testing:list-projects", () => workspace.listProjects());
   ipcMain.handle("api-testing:save-project", (_event, project) => workspace.saveProject(project));
-  ipcMain.handle("api-testing:delete-project", (_event, id) => workspace.deleteProject(id));
+  ipcMain.handle("api-testing:delete-project", (_event, id) => chats.deleteProject(id, projectId => workspace.deleteProject(projectId)));
   ipcMain.handle("api-testing:delete-catalog", (_event, scope) => workspace.deleteCatalog(scope));
   ipcMain.handle("api-testing:delete-scenario", (_event, projectId, id, revision) => workspace.deleteScenario(projectId, id, revision));
   ipcMain.handle("api-testing:catalog", (_event, scope) => workspace.getCatalog(scope));

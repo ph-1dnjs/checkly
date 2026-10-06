@@ -116,7 +116,33 @@ export type ApiAiGuideRequest = { scope: ApiEnvironmentScope; tags?: string[]; o
  */
 export type ApiAiDraft = { id: string; name: string; yaml: string; stepCount: number; issues: string[]; notices: string[]; executionIssues: string[]; groupPath?: string[]; sameName?: true; /** The saved scenario (same name, the only one) this draft updates when saved as is. */ replaces?: string };
 export type ApiAiImportResult = { drafts: ApiAiDraft[]; suite: { name: string; scenarioIds: string[]; problems: string[]; groupPath?: string[]; /** Already-saved scenarios the suite reuses, by id. */ saved?: Record<string, string>; /** Same-name draft id → the saved scenario used when that draft is not saved. */ fallbacks?: Record<string, string> } | null };
+/** Backend source folders on this PC per server id (absolute paths). Kept out of the shareable project. */
+export type ApiBackendFolders = Record<string, string[]>;
+export type ApiAiChatStatus = { available: boolean; version?: string; error?: string };
+/** checkly: messages Checkly adds (guide sent, check results); `result` is a checked AI answer to review and save. */
+export type ApiAiChatMessage = { id: string; role: "user" | "assistant" | "checkly"; text: string; at: string; result?: ApiAiImportResult; tools?: string[]; error?: true };
+export type ApiAiChat = {
+  id: string; title: string; environmentId: string; createdAt: string; updatedAt: string; model?: string;
+  messages: ApiAiChatMessage[];
+  /** While the AI answers or Checkly checks: the text so far and the files it looked at. */
+  running?: { phase: "answering" | "checking"; text: string; tools: string[] };
+};
+export type ApiAiChatSummary = { id: string; title: string; updatedAt: string; running: boolean };
+export type ApiAiChatStartRequest = { scope: ApiEnvironmentScope; operations?: string[]; model?: string };
 export type ApiTestingBridge = {
+  /** In-app AI chat (Claude Code on this PC). Desktop app only. */
+  getAiChatStatus(refresh?: boolean): Promise<ApiAiChatStatus>;
+  getBackendFolders(projectId: string): Promise<ApiBackendFolders>;
+  saveBackendFolders(projectId: string, folders: ApiBackendFolders): Promise<ApiBackendFolders>;
+  /** Native picker allowing several folders; empty when cancelled. */
+  chooseDirectories(): Promise<string[]>;
+  listAiChats(projectId: string): Promise<ApiAiChatSummary[]>;
+  getAiChat(projectId: string, chatId: string): Promise<ApiAiChat | null>;
+  /** Creates the chat and sends the guide; the AI's first answer arrives in the background. */
+  startAiChat(request: ApiAiChatStartRequest): Promise<ApiAiChat>;
+  sendAiChatMessage(projectId: string, chatId: string, text: string): Promise<void>;
+  cancelAiChat(projectId: string, chatId: string): Promise<void>;
+  deleteAiChat(projectId: string, chatId: string): Promise<void>;
   getSpecSync(scope: ApiScope): Promise<ApiSpecSync>;
   deleteSpecAccount(scope: ApiScope): Promise<void>;
   getRequestAuth(scope: ApiScope): Promise<string | null>;

@@ -153,6 +153,9 @@ async function workspace(page: Page, structured = false, linkedGlobal = false, o
         saves.push({ scope, item })
         return item
       }
+      // The in-app AI chat needs Claude Code on the PC; this page uses the copy-and-paste guide.
+      case 'getAiChatStatus':
+        return { available: false, error: 'Claude Code가 설치되어 있지 않습니다' }
       default:
         unexpected.push(method)
         throw new Error(`Unexpected bridge call: ${method}`)
