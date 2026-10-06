@@ -15,6 +15,12 @@ import { scenarioFileDomain } from "./ipc/scenario-file";
 import { updateDomain } from "./ipc/update";
 import { loadInitialWindowOptions, windowSettingsDomain } from "./ipc/window-settings";
 
+// 개발 실행에서도 메뉴·About·종료 항목에 "Electron" 대신 앱 이름이 보이게 한다.
+// 이름을 바꾸면 userData 경로도 따라 바뀌므로, 기존 데이터 위치는 그대로 유지한다.
+const userDataPath = app.getPath("userData");
+app.setName("Checkly");
+app.setPath("userData", userDataPath);
+
 // 새 기능은 해당 도메인의 index.ts에 추가한다. 이 목록은 도메인을 새로 만들 때만 수정한다.
 const domains: MainDomain[] = [
   apiTestingDomain,
