@@ -47,6 +47,15 @@
 - 재실행도 `beginRuns`와 동일하게 `keepSession`이 켜져 있으면 세션 workerId를 재사용하고, 아니면 매번 새 workerId로 실행 후 `qa:finish-worker`를 호출합니다.
 - `beginRuns`에는 실행 중 재호출을 막는 가드가 없다는 기존 제약이 `rerunScenario`에도 동일하게 적용됩니다. 재실행이 진행되는 도중 별도로 `beginRuns`(예: 상단 "실행" 버튼)를 호출하면 sequence가 앞당겨져 진행 중이던 재실행의 `qa:finish-worker` 호출이 생략될 수 있습니다.
 
+### 실행 리포트 (Markdown)
+
+취소되지 않고 끝난 묶음 실행은 `recordRun`이 `RunRecord`로 남기고, 같은 기록을 `lastRunRecord`로도 보관합니다. 실행 화면 상단의 **리포트** 버튼(실행 중이 아닐 때만 노출)이나 대시보드 최근 실행 drawer의 **리포트 보기 · 다운로드**로 `RunReportViewer`를 열 수 있습니다.
+
+- 리포트는 `src/renderer/shared/report/run-report.template.md` 템플릿의 `{{키}}` 자리를 `buildRunReportMarkdown`이 채워 만듭니다. 구성: 요약 → 시나리오 결과 표 → 실패 분석 → 시나리오별 단계·실행 로그 → 후속 조치 체크리스트 → 실행 환경. 템플릿 문구·순서를 바꾸려면 이 파일만 고치면 됩니다(알 수 없는 키는 그대로 남습니다).
+- 단계 결과는 `failedStepIndex` 기준으로 그 이전은 통과, 해당 단계는 실패, 이후는 미실행으로 표시합니다. 시나리오 소요 시간은 실제 측정값(`elapsedSeconds`)을 쓰고, 값이 없는 예전 기록은 예상 시간에 "(예상)"을 붙입니다.
+- 뷰어는 미리보기(Remarkable + DOMPurify, HTML 비활성)와 Markdown 원문 탭을 제공하고, **다운로드 (.md)** 는 `qa:save-run-report`로 저장 대화상자를 엽니다. 기본 파일 이름은 `checkly-report_<시나리오|전체_회귀>_<YYYYMMDD-HHmmss>.md`입니다.
+- 실행 기록은 메모리에만 있으므로 앱을 다시 시작하면 이전 실행의 리포트는 다시 열 수 없습니다. 수동 입력값은 실행 로그에 남지 않아 리포트에도 포함되지 않습니다.
+
 ## 브라우저와 화면 크기
 
 | 항목 | 설정 |
