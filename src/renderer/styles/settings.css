@@ -10,6 +10,7 @@
 .settings-row-hint { font-size:11.5px; color:#8a939c; margin-top:3px; }
 .settings-row-value { flex:none; display:flex; align-items:center; gap:8px; font-family:D2Coding,ui-monospace,monospace; font-size:11.5px; color:#3d4650; }
 .settings-row-value .button { font-family:"Helvetica Neue",Helvetica,"Apple SD Gothic Neo","Malgun Gothic",sans-serif; }
+.settings-row-value select { font-family:D2Coding,ui-monospace,monospace; font-size:11.5px; color:#3d4650; padding:5px 8px; border:1px solid #d8dde2; border-radius:0; background:#fff; }
 .settings-toggle { width:30px; height:17px; flex:none; padding:2px; border-radius:99px; background:#d3d8dd; cursor:pointer; border:0; transition:background .14s ease; }
 .settings-toggle.on { background:#1f63ae; }
 .settings-toggle i { display:block; width:13px; height:13px; border-radius:99px; background:#fff; transition:transform .14s ease; }

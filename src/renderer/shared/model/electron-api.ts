@@ -1,5 +1,6 @@
 import type { RunProgress, Scenario, Step } from "./scenario";
 import type { UpdateStatus } from "./update";
+import type { WindowSettingsBridge } from "./windowSettings";
 import type { ApiTestingBridge } from "../../../app/api-testing/shared/workspace";
 
 export {};
@@ -15,6 +16,7 @@ declare global {
       getUpdateSettings: () => Promise<{ autoCheck: boolean }>;
       setUpdateAutoCheck: (autoCheck: boolean) => Promise<void>;
       onUpdateStatus: (callback: (status: UpdateStatus) => void) => () => void;
+      windowSettings: WindowSettingsBridge;
       loadScenarioMarkdown: () => Promise<string | null>;
       saveScenarioMarkdown: (value: string) => Promise<void>;
       importScenarioFile: () => Promise<{

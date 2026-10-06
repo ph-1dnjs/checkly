@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Button } from "../../shared/ui/Button";
 import { Toggle } from "./Toggle";
+import { WindowSettingsSection } from "./WindowSettingsSection";
 import type { Scenario } from "../../shared/model/scenario";
 import type { UpdateStatus } from "../../shared/model/update";
 import checklyMark from "../../assets/checkly-mark.png";
@@ -127,6 +128,8 @@ export const SettingsPage = ({ scenario }: Props) => {
           </div>
         </div>
       </div>
+
+      <WindowSettingsSection />
 
       <div className="settings-group">
         <div className="settings-group-label">

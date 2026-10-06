@@ -50,6 +50,11 @@ import {
 } from "./ipc/update";
 import { downloadRunVideo, mergeRunVideos } from "./ipc/video";
 import {
+  applyInitialWindowState,
+  loadInitialWindowOptions,
+  registerWindowSettingsIpc,
+} from "./ipc/windowSettings";
+import {
   appendFormAutomationSessionEvent,
   attachFormAutomationFixture,
   captureFormAutomationPage,
@@ -112,10 +117,9 @@ const configureFormAutomationPopups = (
   });
 };
 
-const createWindow = (): void => {
+const createWindow = async (): Promise<void> => {
   const mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
+    ...(await loadInitialWindowOptions()),
     minWidth: 900,
     minHeight: 600,
     webPreferences: {
@@ -126,6 +130,7 @@ const createWindow = (): void => {
       webviewTag: true,
     },
   });
+  await applyInitialWindowState(mainWindow);
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
@@ -170,8 +175,9 @@ const createWindow = (): void => {
   }
 };
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   registerApiTesting();
+  registerWindowSettingsIpc();
   if (process.platform === "darwin" && is.dev) {
     app.dock?.setIcon(path.join(process.cwd(), "build/icons/icon.png"));
   }
@@ -282,12 +288,12 @@ app.whenReady().then(() => {
     requestFormAutomationUrl(input),
   );
   ipcMain.handle("form-automation:pick-openapi", () => pickFormAutomationOpenApi());
-  createWindow();
+  await createWindow();
 
   startPeriodicUpdateChecks();
 
   app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    if (BrowserWindow.getAllWindows().length === 0) void createWindow();
   });
 });
 
