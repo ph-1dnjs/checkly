@@ -30,7 +30,8 @@ type Props = {
 
 const SAVED_FLASH_MS = 1400;
 
-export const ScenarioWorkspaceHeader = ({
+/** PageLayout 헤더의 extra: 편집/실행 탭 · 하위 화면 · 저장 액션 */
+export const ScenarioWorkspaceHeaderExtra = ({
   route,
   editorMode,
   lastRunRoute,
@@ -116,11 +117,7 @@ export const ScenarioWorkspaceHeader = ({
         ];
 
   return (
-    <header className="ws-header">
-      <div className="ws-title">
-        <span className="msi" aria-hidden="true">fact_check</span>
-        <span>시나리오</span>
-      </div>
+    <>
       <div className="ws-tabs" role="tablist" aria-label="시나리오 작업">
         <Button
           role="tab"
@@ -214,6 +211,6 @@ export const ScenarioWorkspaceHeader = ({
           </>
         )}
       </div>
-    </header>
+    </>
   );
 };

@@ -9,7 +9,8 @@ import { SettingsPage } from "../pages/settings/SettingsPage";
 import { ScenarioPickerPage } from "../pages/picker/ScenarioPickerPage";
 import { FormAutomationPage } from "../pages/form-automation/FormAutomationPage";
 import { BottomNavigation } from "../widgets/BottomNavigation";
-import { ScenarioWorkspaceHeader } from "../widgets/ScenarioWorkspaceHeader";
+import { ScenarioWorkspaceHeaderExtra } from "../widgets/ScenarioWorkspaceHeaderExtra";
+import { PageLayout } from "../shared/ui/PageLayout";
 import { useScenarioFolder } from "../entities/scenario-folder";
 import { isScenarioWorkspaceRoute } from "../shared/model/scenario";
 import { RunReportDrawer } from "../widgets/RunReportDrawer";
@@ -197,29 +198,6 @@ export const App = (): ReactElement => {
       className={`workspace${inWorkspace ? " scenario-workspace" : ""}${route === "form-automation" ? " form-automation-workspace" : ""}`}
     >
       <section className="content">
-        {inWorkspace && (
-          <ScenarioWorkspaceHeader
-            route={route}
-            editorMode={editorMode}
-            lastRunRoute={lastRunRoute}
-            onNavigate={setRoute}
-            onEditorModeChange={(mode) => {
-              if (mode === editorMode) return;
-              if (mode === "text") setSaveBeforeReturning(true);
-              else setEditorMode(mode);
-            }}
-            running={running}
-            awaiting={awaitingManual}
-            progressPercent={runProgressPercent}
-            progressSteps={`${runProgress.current}/${runProgress.total}`}
-            pickedCount={folder.pickedCount}
-            isDirty={isDirty}
-            onSave={() => saveAndRefresh(saveScenarioFile)}
-            onSaveAs={() => saveAndRefresh(saveScenarioFileAs)}
-            onImport={() => void importScenario()}
-            onReloadFolder={() => void folder.refreshFolder()}
-          />
-        )}
         {route === "api-testing" && <ApiTestingPage onRunAction={setApiRunAction} />}
         {route === "dashboard" && (
           <DashboardPage
@@ -230,7 +208,34 @@ export const App = (): ReactElement => {
           />
         )}
         {inWorkspace && (
-          <div className="ws-page">
+          <PageLayout
+            icon="fact_check"
+            title="시나리오"
+            extra={
+              <ScenarioWorkspaceHeaderExtra
+                route={route}
+                editorMode={editorMode}
+                lastRunRoute={lastRunRoute}
+                onNavigate={setRoute}
+                onEditorModeChange={(mode) => {
+                  if (mode === editorMode) return;
+                  if (mode === "text") setSaveBeforeReturning(true);
+                  else setEditorMode(mode);
+                }}
+                running={running}
+                awaiting={awaitingManual}
+                progressPercent={runProgressPercent}
+                progressSteps={`${runProgress.current}/${runProgress.total}`}
+                pickedCount={folder.pickedCount}
+                isDirty={isDirty}
+                onSave={() => saveAndRefresh(saveScenarioFile)}
+                onSaveAs={() => saveAndRefresh(saveScenarioFileAs)}
+                onImport={() => void importScenario()}
+                onReloadFolder={() => void folder.refreshFolder()}
+              />
+            }
+          >
+            <div className="ws-page">
         {route === "editor" && (
           <ScenarioEditorPage
             mode={editorMode}
@@ -333,7 +338,8 @@ export const App = (): ReactElement => {
             onOpenReport={() => setReportRecord(lastRunRecord)}
           />
         )}
-          </div>
+            </div>
+          </PageLayout>
         )}
         {route === "settings" && <SettingsPage scenario={scenario} />}
         {route === "form-automation" && <FormAutomationPage />}
