@@ -21,7 +21,7 @@
 | [scenario.ts](../../../src/renderer/shared/model/scenario.ts) | Scenario/Step 타입과 Markdown 파서 |
 | [scenario-duplication.ts](../../../src/renderer/shared/model/scenario-duplication.ts) | 복제 값 종류·기본값·이름 중복 처리 |
 | [App.tsx](../../../src/renderer/app/App.tsx) | 편집·실행 훅 연결, 복귀 확인 모달 |
-| [fileStorage.ts](../../../src/app/ipc/fileStorage.ts) | 기본 원문·외부 파일·좌표 읽기/쓰기 |
-| [qaExecution.ts](../../../src/app/ipc/qaExecution.ts) | 연결 검사와 실행 대상 탐색 |
+| [fileStorage.ts](../../../src/app/ipc/scenario-file/fileStorage.ts) | 기본 원문·외부 파일·좌표 읽기/쓰기 |
+| [qaExecution.ts](../../../src/app/ipc/qa/qaExecution.ts) | 연결 검사와 실행 대상 탐색 |
 
 변경 완료 기준은 정상 흐름뿐 아니라 미저장 상태, 저장 취소·실패, 재시작 복원, 파싱/직렬화 차이까지 설명과 코드가 일치하는 것입니다.

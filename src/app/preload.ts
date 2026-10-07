@@ -1,171 +1,19 @@
-import { contextBridge, ipcRenderer } from 'electron'
-import type { ApiTestingBridge } from './api-testing/shared/workspace'
+import { contextBridge } from 'electron'
+import { apiTestingBridge } from './api-testing/bridge'
+import { formAutomationBridge } from './ipc/form-automation/bridge'
+import { qaBridge } from './ipc/qa/bridge'
+import { scenarioFileBridge } from './ipc/scenario-file/bridge'
+import { updateBridge } from './ipc/update/bridge'
+import { windowSettingsBridge } from './ipc/window-settings/bridge'
 
-const apiTesting: ApiTestingBridge = {
-  getSpecSync: (scope) => ipcRenderer.invoke('api-testing:spec-sync', scope),
-  deleteSpecAccount: (scope) => ipcRenderer.invoke('api-testing:delete-spec-account', scope),
-  getRequestAuth: (scope) => ipcRenderer.invoke('api-testing:get-request-auth', scope),
-  setRequestAuth: (scope, variable) => ipcRenderer.invoke('api-testing:set-request-auth', scope, variable),
-  getAiChatStatus: (refresh) => ipcRenderer.invoke('api-testing:ai-chat-status', refresh),
-  getBackendFolders: (projectId) => ipcRenderer.invoke('api-testing:get-backend-folders', projectId),
-  saveBackendFolders: (projectId, folders) => ipcRenderer.invoke('api-testing:save-backend-folders', projectId, folders),
-  chooseDirectories: () => ipcRenderer.invoke('api-testing:choose-directories'),
-  listAiChats: (projectId) => ipcRenderer.invoke('api-testing:list-ai-chats', projectId),
-  getAiChat: (projectId, chatId) => ipcRenderer.invoke('api-testing:get-ai-chat', projectId, chatId),
-  startAiChat: (request) => ipcRenderer.invoke('api-testing:start-ai-chat', request),
-  sendAiChatMessage: (projectId, chatId, text) => ipcRenderer.invoke('api-testing:send-ai-chat', projectId, chatId, text),
-  cancelAiChat: (projectId, chatId) => ipcRenderer.invoke('api-testing:cancel-ai-chat', projectId, chatId),
-  deleteAiChat: (projectId, chatId) => ipcRenderer.invoke('api-testing:delete-ai-chat', projectId, chatId),
-  copyAiPrompt: (request) => ipcRenderer.invoke('api-testing:copy-ai-prompt', request),
-  getAiPrompt: (request) => ipcRenderer.invoke('api-testing:get-ai-prompt', request),
-  readAiResult: (scope) => ipcRenderer.invoke('api-testing:read-ai-result', scope),
-  checkAiScenarios: (scope, text) => ipcRenderer.invoke('api-testing:check-ai-scenarios', scope, text),
-  listProjects: () => ipcRenderer.invoke('api-testing:list-projects'),
-  saveProject: (project) => ipcRenderer.invoke('api-testing:save-project', project),
-  deleteProject: (id) => ipcRenderer.invoke('api-testing:delete-project', id),
-  deleteCatalog: (scope) => ipcRenderer.invoke('api-testing:delete-catalog', scope),
-  deleteScenario: (projectId, id, revision) => ipcRenderer.invoke('api-testing:delete-scenario', projectId, id, revision),
-  getCatalog: (scope) => ipcRenderer.invoke('api-testing:catalog', scope),
-  importSpec: (scope, source) => ipcRenderer.invoke('api-testing:import', scope, source),
-  execute: (scope, key, request) => ipcRenderer.invoke('api-testing:execute', scope, key, request),  cancel: (scope) => ipcRenderer.invoke('api-testing:cancel', scope),
-  listGlobals: (scope) => ipcRenderer.invoke('api-testing:list-globals', scope),
-  setGlobal: (scope, name, value) => ipcRenderer.invoke('api-testing:set-global', scope, name, value),
-  deleteGlobal: (scope, name) => ipcRenderer.invoke('api-testing:delete-global', scope, name),
-  listCookies: (scope) => ipcRenderer.invoke('api-testing:list-cookies', scope),
-  clearCookies: (scope) => ipcRenderer.invoke('api-testing:clear-cookies', scope),
-  listScenarios: (projectId) => ipcRenderer.invoke('api-testing:list-scenarios', projectId),
-  checkScenarioSpecs: (scope) => ipcRenderer.invoke('api-testing:check-scenario-specs', scope),
-  applyTitleRenames: (scope) => ipcRenderer.invoke('api-testing:apply-title-renames', scope),
-  keepTitles: (scope, scenarioId) => ipcRenderer.invoke('api-testing:keep-titles', scope, scenarioId),
-  getDocInputs: (scope) => ipcRenderer.invoke('api-testing:get-doc-inputs', scope),
-  forgetDocInput: (scope, key) => ipcRenderer.invoke('api-testing:forget-doc-input', scope, key),
-  exportProject: (projectId) => ipcRenderer.invoke('api-testing:export-project', projectId),
-  readProjectFile: () => ipcRenderer.invoke('api-testing:read-project-file'),
-  planProjectImport: (text) => ipcRenderer.invoke('api-testing:plan-project-import', text),
-  importProject: (text, update) => ipcRenderer.invoke('api-testing:import-project', text, update),
-  listSuites: (projectId) => ipcRenderer.invoke('api-testing:list-suites', projectId),
-  saveSuite: (projectId, suite, revision) => ipcRenderer.invoke('api-testing:save-suite', projectId, suite, revision),
-  deleteSuite: (projectId, id, revision) => ipcRenderer.invoke('api-testing:delete-suite', projectId, id, revision),
-  saveSuiteReport: (filename, html) => ipcRenderer.invoke('api-testing:save-suite-report', filename, html),
-  readScenarioFile: () => ipcRenderer.invoke('api-testing:read-scenario-file'),
-  previewScenario: (scope, source, bindings) => ipcRenderer.invoke('api-testing:preview-scenario', scope, source, bindings),
-  saveScenario: (scope, source, bindings, revision, metadata) => ipcRenderer.invoke('api-testing:save-scenario', scope, source, bindings, revision, metadata),
-  saveScenarioDraft: (scope, source, bindings, revision, metadata) => ipcRenderer.invoke('api-testing:save-scenario-draft', scope, source, bindings, revision, metadata),
-  runScenario: (scope, source, bindings, inputs) => ipcRenderer.invoke('api-testing:run-scenario', scope, source, bindings, inputs),
-  getPendingScenarioInput: (scope) => ipcRenderer.invoke('api-testing:get-pending-input', scope),
-  submitScenarioInput: (scope, submission) => ipcRenderer.invoke('api-testing:submit-input', scope, submission),
-}
-
-type UpdateStatus =
-  | { state: 'idle' }
-  | { state: 'checking' }
-  | { state: 'available'; version: string }
-  | { state: 'not-available' }
-  | { state: 'downloading'; percent: number }
-  | { state: 'downloaded'; version: string }
-  | { state: 'error'; message: string }
-
+// 새 기능은 해당 도메인의 bridge.ts에 추가한다. 이 파일은 도메인을 새로 만들 때만 수정하며,
+// 새 도메인은 펼치지 말고 apiTesting·windowSettings처럼 이름 공간으로 노출한다.
+// bridge.ts는 preload에서 실행되므로 main 전용 모듈(index.ts 등)을 값으로 import하지 않는다.
 contextBridge.exposeInMainWorld('electronAPI', {
-  apiTesting,
-  getAppVersion: (): Promise<string> => ipcRenderer.invoke('app:version'),
-  checkForUpdates: (): Promise<UpdateStatus> => ipcRenderer.invoke('update:check'),
-  getUpdateStatus: (): Promise<UpdateStatus> => ipcRenderer.invoke('update:get-status'),
-  installUpdate: (): Promise<void> => ipcRenderer.invoke('update:install'),
-  getUpdateSettings: (): Promise<{ autoCheck: boolean }> => ipcRenderer.invoke('update:get-settings'),
-  setUpdateAutoCheck: (autoCheck: boolean): Promise<void> => ipcRenderer.invoke('update:set-auto-check', autoCheck),
-  onUpdateStatus: (callback: (status: UpdateStatus) => void): (() => void) => {
-    const listener = (_event: Electron.IpcRendererEvent, status: UpdateStatus): void => callback(status)
-    ipcRenderer.on('update:status', listener)
-    return () => ipcRenderer.removeListener('update:status', listener)
-  },
-  loadScenarioMarkdown: (): Promise<string | null> => ipcRenderer.invoke('scenario:load'),
-  saveScenarioMarkdown: (markdown: string): Promise<void> => ipcRenderer.invoke('scenario:save', markdown),
-  importScenarioFile: (): Promise<{ markdown: string; filePath: string } | null> => ipcRenderer.invoke('scenario:import-file'),
-  saveImportedScenarioFile: (markdown: string): Promise<string | null> => ipcRenderer.invoke('scenario:save-imported-file', markdown),
-  exportScenarioFile: (markdown: string): Promise<string | null> => ipcRenderer.invoke('scenario:export-file', markdown),
-  selectUploadFile: (): Promise<string | null> => ipcRenderer.invoke('qa:select-upload-file'),
-  loadMarkerPositions: (): Promise<string | null> => ipcRenderer.invoke('marker-positions:load'),
-  saveMarkerPositions: (positions: string): Promise<void> => ipcRenderer.invoke('marker-positions:save', positions),
-  listScenarioFolder: (): Promise<{ folderPath: string | null; files: Array<{ name: string; path: string; updatedAt: string }> }> => ipcRenderer.invoke('scenario:list-folder'),
-  chooseScenarioFolder: (): Promise<{ folderPath: string | null; files: Array<{ name: string; path: string; updatedAt: string }> }> => ipcRenderer.invoke('scenario:choose-folder'),
-  readScenarioFile: (filePath: string): Promise<string | null> => ipcRenderer.invoke('scenario:read-file', filePath),
-  inspectScenario: (scenario: unknown): Promise<unknown> => ipcRenderer.invoke('qa:inspect', scenario),
-  runQa: (scenario: unknown, options?: { preview?: boolean; workerId?: string; headed?: boolean }): Promise<unknown> => ipcRenderer.invoke('qa:start', scenario, options),
-  finishQaWorker: (workerId: string): Promise<void> => ipcRenderer.invoke('qa:finish-worker', workerId),
-  downloadRunVideo: (filePath: string): Promise<string | null> => ipcRenderer.invoke('qa:download-run-video', filePath),
-  mergeRunVideos: (filePaths: string[]): Promise<string | null> => ipcRenderer.invoke('qa:merge-run-videos', filePaths),
-  submitManualInput: (value: string): Promise<void> => ipcRenderer.invoke('qa:manual-input', value),
-  submitManualControl: (result: { status: 'continue' | 'failed'; reason?: string }): Promise<void> => ipcRenderer.invoke('qa:manual-control', result),
-  controlManualBrowser: (event: { type: 'click' | 'wheel' | 'key' | 'text'; x?: number; y?: number; deltaY?: number; key?: string; text?: string }): Promise<void> => ipcRenderer.invoke('qa:manual-browser-event', event),
-  setQaViewport: (size: { width: number; height: number }): Promise<void> => ipcRenderer.invoke('qa:set-viewport', size),
-  submitManualResult: (result: { status: 'passed' | 'failed'; reason?: string }): Promise<void> => ipcRenderer.invoke('qa:manual-result', result),
-  cancelQa: (options?: { keepWorker?: boolean }): Promise<void> => ipcRenderer.invoke('qa:cancel', options),
-  insertFormAutomationText: (input: { webContentsId: number; text: string }): Promise<void> =>
-    ipcRenderer.invoke('form-automation:insert-text', input),
-  attachFormAutomationFixture: (input: {
-    webContentsId: number
-    token: string
-    valid: boolean
-    accept: string
-    multiple: boolean
-  }): Promise<void> => ipcRenderer.invoke('form-automation:attach-fixture', input),
-  captureFormAutomationPage: (): Promise<{ dataUrl: string; size: { width: number; height: number } }> =>
-    ipcRenderer.invoke('form-automation:capture-page'),
-  copyFormAutomationImage: (dataUrl: string): Promise<boolean> =>
-    ipcRenderer.invoke('form-automation:copy-image', dataUrl),
-  copyFormAutomationText: (text: string): Promise<boolean> =>
-    ipcRenderer.invoke('form-automation:copy-text', text),
-  saveFormAutomationSessionEvent: (payload: unknown): Promise<boolean> =>
-    ipcRenderer.invoke('form-automation:save-session-event', payload),
-  readFormAutomationSessionEvents: (limit = 1000): Promise<unknown[]> =>
-    ipcRenderer.invoke('form-automation:read-session-events', limit),
-  clearFormAutomationSessionEvents: (): Promise<boolean> =>
-    ipcRenderer.invoke('form-automation:clear-session-events'),
-  exportFormAutomationSessionEvents: (): Promise<{ filePath: string; count: number; errorCount: number; format: 'xlsx' } | null> =>
-    ipcRenderer.invoke('form-automation:export-session-events'),
-  requestFormAutomationUrl: (input: {
-    url: string
-    method?: string
-    headers?: Record<string, string>
-    body?: string
-    timeout?: number
-  }): Promise<{ ok: boolean; status: number; statusText: string; text: string; elapsed: number; url: string }> =>
-    ipcRenderer.invoke('form-automation:http-request', input),
-  pickFormAutomationOpenApi: (): Promise<{ filePath: string; text: string } | null> =>
-    ipcRenderer.invoke('form-automation:pick-openapi'),
-  onManualInputRequired: (callback: (step: unknown) => void): (() => void) => {
-    const listener = (_event: Electron.IpcRendererEvent, step: unknown): void => callback(step)
-    ipcRenderer.on('qa:manual-required', listener)
-    return () => ipcRenderer.removeListener('qa:manual-required', listener)
-  },
-  onManualResultRequired: (callback: (step: unknown) => void): (() => void) => {
-    const listener = (_event: Electron.IpcRendererEvent, step: unknown): void => callback(step)
-    ipcRenderer.on('qa:manual-result-required', listener)
-    return () => ipcRenderer.removeListener('qa:manual-result-required', listener)
-  },
-  onManualControlRequired: (callback: (step: unknown) => void): (() => void) => {
-    const listener = (_event: Electron.IpcRendererEvent, step: unknown): void => callback(step)
-    ipcRenderer.on('qa:manual-control-required', listener)
-    return () => ipcRenderer.removeListener('qa:manual-control-required', listener)
-  },
-  onQaProgress: (callback: (progress: unknown) => void): (() => void) => {
-    const listener = (_event: Electron.IpcRendererEvent, progress: unknown): void => callback(progress)
-    ipcRenderer.on('qa:progress', listener)
-    return () => ipcRenderer.removeListener('qa:progress', listener)
-  },
-  onQaPreview: (callback: (image: unknown) => void): (() => void) => {
-    const listener = (_event: Electron.IpcRendererEvent, image: unknown): void => callback(image)
-    ipcRenderer.on('qa:preview', listener)
-    return () => ipcRenderer.removeListener('qa:preview', listener)
-  },
-  onQaStepPreview: (callback: (preview: unknown) => void): (() => void) => {
-    const listener = (_event: Electron.IpcRendererEvent, preview: unknown): void => callback(preview)
-    ipcRenderer.on('qa:step-preview', listener)
-    return () => ipcRenderer.removeListener('qa:step-preview', listener)
-  },
-  onRunVideo: (callback: (filePath: unknown) => void): (() => void) => {
-    const listener = (_event: Electron.IpcRendererEvent, filePath: unknown): void => callback(filePath)
-    ipcRenderer.on('qa:run-video', listener)
-    return () => ipcRenderer.removeListener('qa:run-video', listener)
-  }
+  apiTesting: apiTestingBridge,
+  windowSettings: windowSettingsBridge,
+  ...updateBridge,
+  ...scenarioFileBridge,
+  ...qaBridge,
+  ...formAutomationBridge,
 })

@@ -21,5 +21,5 @@
 | 화면 캡처 | `src/renderer/pages/form-automation/ScreenshotEditor.tsx` | 캡처 이미지 주석·클립보드 복사 |
 | Swagger | `src/renderer/pages/form-automation/OpenApiDialog.tsx` | URL·파일 방식 OpenAPI 연결 |
 | 웹뷰 preload | `src/app/formAutomationWebviewPreload.ts` | fetch/XHR 관찰·오버라이드 적용·페이지 오류 수집 |
-| main IPC | `src/app/ipc/formAutomation.ts` | 캡처·클립보드·로그·HTTP·fixture 처리 |
-| 로그 리포트 | `src/app/ipc/formAutomationReport.ts` | 네트워크 로그 XLSX 생성 |
+| main IPC | `src/app/ipc/form-automation/formAutomation.ts` | 캡처·클립보드·로그·HTTP·fixture 처리 |
+| 로그 리포트 | `src/app/ipc/form-automation/formAutomationReport.ts` | 네트워크 로그 XLSX 생성 |
