@@ -60,6 +60,13 @@ export type Route =
   | "form-automation"
   | "api-testing"
   | "settings";
+/** 시나리오 작업공간 하나로 묶인 화면: 편집 탭(editor)과 실행 탭(picker · run). */
+export type ScenarioWorkspaceRoute = Extract<Route, "editor" | "picker" | "run">;
+export type ScenarioRunRoute = Extract<Route, "picker" | "run">;
+export const isScenarioWorkspaceRoute = (
+  route: Route,
+): route is ScenarioWorkspaceRoute =>
+  route === "editor" || route === "picker" || route === "run";
 
 export const emptyScenario: Scenario = {
   id: "",
