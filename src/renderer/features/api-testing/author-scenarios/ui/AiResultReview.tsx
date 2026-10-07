@@ -11,22 +11,26 @@ const initiallyChosen = (result: ApiAiImportResult) => result.drafts.filter(draf
  * Checked AI scenarios and suite: pick what to save, update or add as new, then save.
  * Shared by the copy-and-paste flow and the in-app chat.
  */
-export function AiResultReview({ result, scope, bridge, onBusy, onSaved, notes }: {
+export function AiResultReview({ result, scope, bridge, onBusy, onSaved, notes, readOnly = false }: {
   result: ApiAiImportResult; scope: ApiEnvironmentScope; bridge: ApiTestingBridge; onBusy: (busy: boolean) => void; onSaved: (first?: SavedApiScenario) => void;
   /** Shown above the list, e.g. how to get problems fixed. */
   notes?: ReactNode;
+  readOnly?: boolean;
 }) {
   const [chosen, setChosen] = useState<string[]>(() => initiallyChosen(result));
   const [saveSuite, setSaveSuite] = useState(Boolean(result.suite));
   // Drafts that would update a saved scenario but the user wants added as a new one instead.
   const [asNew, setAsNew] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const savingNow = useRef(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const live = useRef(true);
   useEffect(() => { live.current = true; return () => { live.current = false; }; }, []);
 
   const save = async () => {
+    if (readOnly || savingNow.current) return;
+    savingNow.current = true;
     setSaving(true); onBusy(true); setError(""); setMessage("");
     const runnable = new Set<string>();
     // Draft id → the id it was saved under (a draft added as new instead of updating gets a fresh id).
@@ -66,7 +70,7 @@ export function AiResultReview({ result, scope, bridge, onBusy, onSaved, notes }
       }
       if (failures.length) { setError(failures.join("\n")); setMessage(`일부만 저장했습니다.${suiteNote}`); return; }
       onSaved(first);
-    } finally { if (live.current) setSaving(false); onBusy(false); }
+    } finally { savingNow.current = false; if (live.current) setSaving(false); onBusy(false); }
   };
 
   // A suite made only of reused saved scenarios is worth saving even with no new scenario chosen.
@@ -76,20 +80,20 @@ export function AiResultReview({ result, scope, bridge, onBusy, onSaved, notes }
     <h3>시나리오 {result.drafts.length}개</h3>
     {notes}
     <ul>{result.drafts.map(draft => <li key={draft.id} className={draft.issues.length ? "has-issues" : ""}>
-      <label className="api-check-row"><input type="checkbox" aria-label={`${draft.name} 저장`} checked={chosen.includes(draft.id)} disabled={saving} onChange={e => setChosen(e.target.checked ? [...chosen, draft.id] : chosen.filter(id => id !== draft.id))} /><strong>{draft.name}</strong><small>{draft.stepCount ? `${draft.stepCount}단계` : "단계 확인 불가"}{draft.groupPath ? ` · ${draft.groupPath.join(" › ")}` : ""} · {draft.issues.length ? "수정 필요 (초안으로 저장)" : draft.executionIssues.length ? "저장 가능 · 실행 전 설정 필요" : "바로 실행 가능"}</small></label>
-      {draft.replaces && <label className="api-ai-author-replace">저장 방식<select aria-label={`${draft.name} 저장 방식`} value={asNew.includes(draft.id) ? "new" : "update"} disabled={saving || !chosen.includes(draft.id)} onChange={e => setAsNew(e.target.value === "new" ? [...asNew, draft.id] : asNew.filter(id => id !== draft.id))}><option value="update">기존 시나리오 업데이트</option><option value="new">새 시나리오로 추가</option></select></label>}
+      <label className="api-check-row"><input type="checkbox" aria-label={`${draft.name} 저장`} checked={chosen.includes(draft.id)} disabled={saving || readOnly} onChange={e => setChosen(e.target.checked ? [...chosen, draft.id] : chosen.filter(id => id !== draft.id))} /><strong>{draft.name}</strong><small>{draft.stepCount ? `${draft.stepCount}단계` : "단계 확인 불가"}{draft.groupPath ? ` · ${draft.groupPath.join(" › ")}` : ""} · {draft.issues.length ? "수정 필요 (초안으로 저장)" : draft.executionIssues.length ? "저장 가능 · 실행 전 설정 필요" : "바로 실행 가능"}</small></label>
+      {draft.replaces && <label className="api-ai-author-replace">저장 방식<select aria-label={`${draft.name} 저장 방식`} value={asNew.includes(draft.id) ? "new" : "update"} disabled={saving || readOnly || !chosen.includes(draft.id)} onChange={e => setAsNew(e.target.value === "new" ? [...asNew, draft.id] : asNew.filter(id => id !== draft.id))}><option value="update">기존 시나리오 업데이트</option><option value="new">새 시나리오로 추가</option></select></label>}
       {draft.notices.length > 0 && <p className="api-field-help">{draft.replaces && asNew.includes(draft.id) ? "같은 이름의 기존 시나리오가 있습니다. 저장하면 같은 이름이 하나 더 생깁니다" : draft.notices.join(" · ")}</p>}
       {draft.issues.length > 0 && <ul className="api-ai-author-issues">{draft.issues.map(issue => <li key={issue}>{issue}</li>)}</ul>}
       {draft.executionIssues.length > 0 && <p className="api-field-help">실행 전에 필요: {draft.executionIssues.join(" · ")}</p>}
       <details><summary>내용 보기</summary><YamlCode source={draft.yaml} /></details>
     </li>)}</ul>
     {result.suite && <div className="api-ai-author-suite">
-      <label className="api-check-row"><input type="checkbox" checked={saveSuite} disabled={saving} onChange={e => setSaveSuite(e.target.checked)} />스위트 ‘{result.suite.name}’{result.suite.groupPath ? ` (${result.suite.groupPath.join(" › ")})` : ""}도 저장</label>
+      <label className="api-check-row"><input type="checkbox" checked={saveSuite} disabled={saving || readOnly} onChange={e => setSaveSuite(e.target.checked)} />스위트 ‘{result.suite.name}’{result.suite.groupPath ? ` (${result.suite.groupPath.join(" › ")})` : ""}도 저장</label>
       <ol>{result.suite.scenarioIds.map(id => <li key={id}>{nameOf(id)}{result.drafts.find(draft => draft.id === id)?.replaces && chosen.includes(id) && !asNew.includes(id) ? " · 기존 시나리오 업데이트" : result.suite!.fallbacks?.[id] && !chosen.includes(id) ? " · 기존 시나리오 사용" : result.drafts.find(draft => draft.id === id)?.issues.length ? " · 수정 필요라 제외" : result.suite!.saved?.[id] !== undefined ? " · 기존 시나리오" : ""}</li>)}</ol>
       {result.suite.problems.map(problem => <p key={problem} className="api-field-help">{problem}</p>)}
     </div>}
     {error && <p className="api-warning" role="alert">{error}</p>}
     {message && <p className="api-ai-step-status" role="status">{message}</p>}
-    <div className="api-actions"><button type="button" className="api-primary" disabled={saving || (!chosen.length && !suiteReuses)} onClick={() => void save()}>{saving ? "저장 중…" : "선택한 것 저장"}</button></div>
+    <div className="api-actions"><button type="button" className="api-primary" disabled={saving || readOnly || (!chosen.length && !suiteReuses)} onClick={() => void save()}>{saving ? "저장 중…" : "선택한 것 저장"}</button></div>
   </section>;
 }

@@ -1,10 +1,12 @@
-import { useState, type CSSProperties } from "react";
-import { projectSchema, type ApiProject } from "../../../../../app/api-testing/shared/workspace";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { projectSchema, type ApiAiChatSettings, type ApiProject, type ApiTestingBridge } from "../../../../../app/api-testing/shared/workspace";
 import { Icon } from "../../../../shared/ui/Icon";
 import { DeleteAction } from "../../../../entities/api-testing";
+import { ProjectAiSettings } from "./ProjectAiSettings";
 
-export function ProjectForm({ initial, onSave, onCancel, onDelete, onExport, onImport }: {
-  initial?: ApiProject; onSave: (project: ApiProject) => Promise<void>; onCancel: () => void; onDelete?: () => Promise<void>;
+export function ProjectForm({ initial, bridge, focusBackendFolders = false, onSave, onCancel, onDelete, onExport, onImport }: {
+  initial?: ApiProject; bridge: ApiTestingBridge; onSave: (project: ApiProject, settings?: ApiAiChatSettings) => Promise<void>; onCancel: () => void; onDelete?: () => Promise<void>;
+  focusBackendFolders?: boolean;
   /** Saves the stored project as a share file; resolves to a short result, or "" when cancelled. */
   onExport?: () => Promise<string>;
   /** Adds a shared project file as a new project instead of filling in this form. */
@@ -16,8 +18,30 @@ export function ProjectForm({ initial, onSave, onCancel, onDelete, onExport, onI
   });
   // Leaving with edits asks first (same dialog as the scenario editor).
   const [original] = useState(() => JSON.stringify(draft));
+  const [aiSettings, setAiSettings] = useState<ApiAiChatSettings | null>(null);
+  const [originalAiSettings, setOriginalAiSettings] = useState("");
+  const [folderDrafts, setFolderDrafts] = useState<Record<string, string>>({});
+  const [loadingAi, setLoadingAi] = useState(true);
+  const [aiError, setAiError] = useState("");
+  const aiSettingsArea = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!focusBackendFolders || loadingAi) return;
+    const input = aiSettingsArea.current?.querySelector<HTMLInputElement>("input");
+    input?.scrollIntoView({ block: "center", behavior: "instant" });
+    input?.focus({ preventScroll: true });
+  }, [focusBackendFolders, loadingAi]);
+  useEffect(() => {
+    let live = true;
+    void (initial ? bridge.getAiChatSettings(initial.id) : Promise.resolve({ folders: {} } as ApiAiChatSettings))
+      .then(settings => {
+        if (!live) return;
+        setAiSettings(settings); setOriginalAiSettings(JSON.stringify(settings));
+      }).catch(e => { if (live) setAiError(`AI 설정을 불러오지 못했습니다. ${(e as Error).message}`); })
+      .finally(() => { if (live) setLoadingAi(false); });
+    return () => { live = false; };
+  }, [bridge, initial?.id]);
   const [confirmLeave, setConfirmLeave] = useState(false);
-  const leave = () => { if (JSON.stringify(draft) !== original) setConfirmLeave(true); else onCancel(); };
+  const leave = () => { if (JSON.stringify(draft) !== original || (aiSettings && JSON.stringify(aiSettings) !== originalAiSettings) || Object.values(folderDrafts).some(value => value.trim())) setConfirmLeave(true); else onCancel(); };
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [exported, setExported] = useState("");
@@ -40,7 +64,8 @@ export function ProjectForm({ initial, onSave, onCancel, onDelete, onExport, onI
     const parsed = projectSchema.safeParse(draft);
     if (!parsed.success) { setError("프로젝트·서버·환경 이름과 모든 HTTP(S) 기본 주소를 확인하세요."); return; }
     setSaving(true);
-    try { await onSave(parsed.data); } catch (e) { setError((e as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, "")); } finally { setSaving(false); }
+    const settings = aiSettings ? { ...aiSettings, folders: Object.fromEntries(draft.servers.map(server => [server.id, [...(aiSettings.folders[server.id] ?? []), ...(folderDrafts[server.id]?.trim() ? [folderDrafts[server.id].trim()] : [])]])) } : undefined;
+    try { await onSave(parsed.data, settings); } catch (e) { setError((e as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, "")); } finally { setSaving(false); }
   }}>
     <header className="api-project-form-heading">
       <button type="button" className="api-project-back" disabled={saving} onClick={leave}>← 돌아가기</button>
@@ -76,6 +101,8 @@ export function ProjectForm({ initial, onSave, onCancel, onDelete, onExport, onI
       </section>
 
       {!!removed.length && <label className="api-project-removal" key={removed.join(",")}><input type="checkbox" required /><span><strong>{removed.join(", ")}</strong>을(를) 저장할 때 삭제합니다. 관련 API 명세·저장 계정·인증 연결도 지워지고, 환경을 지우면 그 환경의 전역변수도 삭제됩니다. 시나리오가 쓰는 서버·환경은 저장 단계에서 거부됩니다. 확인했습니다.</span></label>}
+      {loadingAi ? <p className="api-field-help" role="status">백엔드 폴더를 불러오는 중…</p> : aiSettings && <div ref={aiSettingsArea}><ProjectAiSettings project={draft} settings={aiSettings} drafts={folderDrafts} onDrafts={setFolderDrafts} onChange={setAiSettings} chooseDirectories={() => bridge.chooseDirectories()} /></div>}
+      {aiError && <p role="alert" className="api-warning">{aiError}</p>}
       {error && <p role="alert" className="api-warning">{error}</p>}
     </fieldset>
     <footer className="api-project-form-footer">
@@ -85,7 +112,7 @@ export function ProjectForm({ initial, onSave, onCancel, onDelete, onExport, onI
         {exported && <small role="status">{exported}</small>}
       </span>}
       {initial && onDelete && <DeleteAction label="프로젝트 삭제" disabled={saving} description={`‘${initial.name}’의 모든 서버·환경, API 명세, 시나리오·초안, 저장된 문서 계정과 전역변수를 삭제합니다. 실제 API 서버의 데이터는 삭제하지 않습니다.`} onDelete={onDelete} />}
-      <span className="api-project-form-actions"><button className="api-primary" disabled={saving}>{saving ? "저장 중…" : "프로젝트 저장"}</button></span>
+      <span className="api-project-form-actions"><button className="api-primary" disabled={saving || loadingAi}>{saving ? "저장 중…" : "프로젝트 저장"}</button></span>
     </footer>
     {confirmLeave && <div className="api-confirm-dialog-backdrop">
       <section className="api-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="api-project-leave-title">

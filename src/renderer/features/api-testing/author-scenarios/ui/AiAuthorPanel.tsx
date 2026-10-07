@@ -1,19 +1,25 @@
 import { problemReport } from "../model/problem-report";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiPicker, type PickableOperation } from "./ApiPicker";
 import { AiResultReview } from "./AiResultReview";
 import { AiChatPanel } from "./AiChatPanel";
-import type { ApiAiChatStatus, ApiAiImportResult, ApiCatalog, ApiEnvironmentScope, ApiProject, ApiTestingBridge, SavedApiScenario } from "../../../../../app/api-testing/shared/workspace";
+import { AiToolSettings, aiSettingsSummary } from "./AiToolSettings";
+import { Icon } from "../../../../shared/ui/Icon";
+import { aiToolNames, backendFolderCount, chatTool } from "../../../../entities/api-testing";
+import type { ApiAiChatSettings, ApiAiChatStatus, ApiAiImportResult, ApiCatalog, ApiEnvironmentScope, ApiProject, ApiTestingBridge, SavedApiScenario } from "../../../../../app/api-testing/shared/workspace";
 
 const errorText = (error: unknown) => (error as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, "");
 
 /**
- * The user writes scenarios with their own AI (Claude Code, Codex…) opened in the
- * backend project: Checkly hands over a guide, the AI asks what to test and writes a
- * result file, and Checkly checks it and saves the chosen scenarios and suite.
+ * The user writes scenarios with their own AI (Claude Code, Codex…). Two ways:
+ * - AI 대화: when a CLI is installed and backend folders are set in the project settings, the app runs the
+ *   AI itself and the chat happens here.
+ * - 가이드 복사: otherwise the user pastes the guide into their AI, which writes a
+ *   result file that Checkly checks and saves.
  */
-export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
+export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved, onConfigureProject }: {
   project: ApiProject; scope: ApiEnvironmentScope; bridge: ApiTestingBridge; onBusy: (busy: boolean) => void; onSaved: (first?: SavedApiScenario) => void;
+  onConfigureProject: () => void;
 }) {
   // Every operation the AI could use, and the ones picked for it (empty = all).
   const [operations, setOperations] = useState<PickableOperation[]>([]);
@@ -26,8 +32,15 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
   const [result, setResult] = useState<ApiAiImportResult | null>(null);
   // A new check starts a fresh review (choices reset).
   const [resultKey, setResultKey] = useState(0);
-  const [mode, setMode] = useState<"chat" | "copy">("chat");
   const [chatStatus, setChatStatus] = useState<ApiAiChatStatus | null>(null);
+  const [chatSettings, setChatSettings] = useState<ApiAiChatSettings | null>(null);
+  const [chatBusy, setChatBusy] = useState(false);
+  const [settingsBusy, setSettingsBusy] = useState(false);
+  const [reviewBusy, setReviewBusy] = useState(false);
+  const [checkingAi, setCheckingAi] = useState(true);
+  const [statusRevision, setStatusRevision] = useState(0);
+  // The way chosen on the first step, remembered per project on this PC; null shows the choice.
+  const [way, setWay] = useState<AiWay | null>(() => readWay(project.id));
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   // Which step the last message belongs to, so it shows next to the button that caused it.
@@ -48,8 +61,25 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
         }))));
       });
   }, []);
-  const busy = checking;
-  useEffect(() => { void bridge.getAiChatStatus().then(status => { if (live.current) { setChatStatus(status); if (!status.available) setMode("copy"); } }).catch(() => { if (live.current) { setChatStatus({ available: false, error: "AI 대화를 확인하지 못했습니다" }); setMode("copy"); } }); }, []);
+  const busy = checking || chatBusy || settingsBusy || reviewBusy || checkingAi;
+  useEffect(() => { onBusy(busy); }, [busy, onBusy]);
+  const chatActivity = useCallback((next: boolean) => { setChatBusy(next); if (next) onBusy(true); }, [onBusy]);
+  useEffect(() => {
+    let active = true;
+    setCheckingAi(true);
+    void bridge.getAiChatStatus(statusRevision > 0).catch((): ApiAiChatStatus => ({ tools: [], error: "AI 대화를 확인하지 못했습니다" }))
+      .then(async status => {
+        const settings = await bridge.getAiChatSettings(project.id).catch(() => ({ folders: {} }));
+        if (live.current && active) { setChatSettings(settings); setChatStatus(status); setCheckingAi(false); }
+      });
+    return () => { active = false; };
+  }, [bridge, project.id, statusRevision]);
+  const tools = chatStatus?.tools ?? [];
+  const tool = chatTool(chatSettings, tools);
+  const chatReady = Boolean(tool) && backendFolderCount(chatSettings) > 0;
+  // The chat needs both checks; a remembered chat choice whose checks no longer pass asks again.
+  const view: AiWay | "choose" = way === "copy" || (way === "chat" && chatReady) ? way : "choose";
+  const choose = (next: AiWay | null) => { setWay(next); writeWay(project.id, next); };
   // No spec on any server: a guide would give the AI no APIs at all.
   const noSpec = catalogsLoaded && !operations.length;
   const guideRequest = () => ({ scope, ...(picked.length ? { operations: picked } : {}) });
@@ -82,17 +112,41 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
     {message && <p className="api-ai-step-status" role="status">{message}</p>}
   </>;
   return <section className="api-ai-author" aria-label="AI 시나리오 작성">
-    <h2>AI 작성 도우미</h2>
-    <div className="api-ai-mode" role="tablist" aria-label="AI 작성 방식">
-      <button type="button" role="tab" aria-selected={mode === "chat"} disabled={!chatStatus?.available} title={chatStatus && !chatStatus.available ? chatStatus.error : undefined} onClick={() => setMode("chat")}>AI 대화</button>
-      <button type="button" role="tab" aria-selected={mode === "copy"} onClick={() => setMode("copy")}>가이드 복사로 쓰기</button>
-    </div>
-    {chatStatus && !chatStatus.available && <p className="api-field-help">AI 대화를 쓸 수 없습니다: {chatStatus.error}</p>}
-    {mode === "chat" && chatStatus?.available ? <AiChatPanel project={project} scope={scope} bridge={bridge} onBusy={onBusy} onSaved={onSaved}
-      picker={operations.length > 0 && <details className="api-ai-author-tags"><summary>AI가 쓸 API (선택) · {picked.length ? `${picked.length}개 선택` : `전체 ${usable}개${unavailable ? ` (실행 미지원 ${unavailable}개 제외)` : ""}`}</summary>
-        <ApiPicker operations={operations} servers={Object.fromEntries(project.servers.map(server => [server.id, server.name]))} picked={picked} disabled={busy} onChange={setPicked} />
+    {/* The tab already names the screen; the header only offers the way back to the first step. */}
+    {!checkingAi && view !== "choose" && <header className="api-ai-author-heading">
+      <div className="api-actions"><button type="button" disabled={busy} onClick={() => choose(null)}>작성 방식 바꾸기</button></div>
+    </header>}
+    {checkingAi ? <p role="status" className="api-field-help">설치된 AI를 확인하는 중…</p> : view === "choose" ? <div className="api-ai-ways" role="group" aria-label="작성 방식">
+      <section className="api-ai-way" aria-label="앱에서 AI와 대화">
+        <h3>앱에서 AI와 대화</h3>
+        <p>이 PC의 AI가 백엔드 코드를 읽으며 이 화면에서 함께 작성합니다.</p>
+        <ul className="api-ai-way-checks">
+          <li className={tool ? "is-ok" : "is-missing"}>
+            <span>AI</span>
+            <strong title={tools.map(item => `${aiToolNames[item.tool]} ${item.version}`).join("\n") || undefined}>{tools.length ? tools.map(item => aiToolNames[item.tool]).join(" · ") : "없음"}</strong>
+            <button type="button" className="api-icon-button" aria-label="AI 다시 확인" title="AI 다시 확인" disabled={busy} onClick={() => setStatusRevision(value => value + 1)}><Icon name="refresh" size={16} /></button>
+          </li>
+          <li className={backendFolderCount(chatSettings) ? "is-ok" : "is-missing"}>
+            <span>백엔드 코드 폴더</span>
+            <strong>{backendFolderCount(chatSettings) ? `${backendFolderCount(chatSettings)}개` : "없음"}</strong>
+            {tools.length > 0 && <button type="button" className="api-issue-step-link" disabled={busy} onClick={onConfigureProject}>{backendFolderCount(chatSettings) ? "바꾸기" : "설정하기"}</button>}
+          </li>
+        </ul>
+        <div className="api-actions"><button type="button" className="api-primary" disabled={!chatReady || busy} onClick={() => choose("chat")}>AI와 대화하기</button></div>
+        {!tools.length && <p className="api-field-help">{chatStatus?.error ? `${chatStatus.error}. ` : ""}Claude Code나 Codex CLI를 설치한 뒤 다시 확인하세요.</p>}
+      </section>
+      <section className="api-ai-way" aria-label="내 AI 앱에서 쓰기">
+        <h3>내 AI 앱에서 쓰기</h3>
+        <p>가이드를 복사해 평소 쓰는 AI에 붙여넣고, 결과를 불러옵니다.</p>
+        <div className="api-actions"><button type="button" disabled={busy} onClick={() => choose("copy")}>가이드 복사로 쓰기</button></div>
+      </section>
+    </div> : view === "chat" ? <>
+      {chatStatus && chatSettings && <details className="api-ai-tool-settings-fold"><summary>AI 설정 · {aiSettingsSummary(chatSettings, chatStatus)}</summary>
+        <AiToolSettings key={statusRevision} projectId={project.id} bridge={bridge} status={chatStatus} settings={chatSettings} disabled={busy} onBusy={setSettingsBusy} onSaved={setChatSettings} />
       </details>}
-      picked={picked} noSpec={noSpec} specNote={noSpec ? "가져온 명세가 없어 AI에게 줄 API가 없습니다. API 문서 탭에서 명세를 가져오세요." : specWarnings.join(" · ")} /> : <ol className="api-ai-steps" aria-label="AI 작성 순서">
+      <AiChatPanel project={project} scope={scope} bridge={bridge} onBusy={chatActivity} onSaved={onSaved} toolName={aiToolNames[tool!]}
+        noSpec={noSpec} specNote={noSpec ? "가져온 명세가 없어 AI에게 줄 API가 없습니다. API 문서 탭에서 명세를 가져오세요." : specWarnings.join(" · ")} />
+    </> : <ol className="api-ai-steps" aria-label="AI 작성 순서">
       <li>
         <header><strong>가이드 복사</strong><span>백엔드 프로젝트 폴더에서 Claude Code나 Codex를 열고 붙여넣습니다.</span></header>
         {noSpec
@@ -124,7 +178,7 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
           </div>
         </details>
         {status(3)}
-        {result && <AiResultReview key={resultKey} result={result} scope={scope} bridge={bridge} onBusy={onBusy} onSaved={onSaved}
+        {result && <AiResultReview key={resultKey} result={result} scope={scope} bridge={bridge} onBusy={setReviewBusy} onSaved={onSaved}
           notes={problems && <div className="api-ai-author-notes">검사에서 문제가 나왔습니다. 문제를 복사해 AI에 붙여넣고, AI가 고쳐 저장하면 다시 불러오세요. 그대로 저장하면 초안이 됩니다.
             <div className="api-actions"><button type="button" onClick={() => void act(async () => { await navigator.clipboard.writeText(problems); setMessage("문제를 복사했습니다. AI에 붙여넣으세요."); })}>문제 복사</button></div>
           </div>} />}
@@ -134,6 +188,15 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
 }
 
 /** Text to paste back into the user's AI; empty when everything passed. */
+
+type AiWay = "chat" | "copy";
+const wayKey = (projectId: string) => `checkly.api-testing.ai-way.${projectId}`;
+function readWay(projectId: string): AiWay | null {
+  try { const value = localStorage.getItem(wayKey(projectId)); return value === "chat" || value === "copy" ? value : null; } catch { return null; }
+}
+function writeWay(projectId: string, value: AiWay | null) {
+  try { if (value) localStorage.setItem(wayKey(projectId), value); else localStorage.removeItem(wayKey(projectId)); } catch { /* only a convenience */ }
+}
 
 const staleDays = 30;
 /** Servers whose spec is missing, lacks the original document (schemas unresolved) or is old. */

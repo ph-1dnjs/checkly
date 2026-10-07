@@ -894,7 +894,7 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 .api-env-head { color:var(--api-muted); font-size:11px; font-weight:600; }
 .api-project-removal { display:flex!important; flex-direction:row!important; align-items:flex-start; gap:8px; margin:0; padding:12px; border-left:3px solid var(--ck-color-wait); background:var(--ck-color-line-faint); color:var(--ck-color-wait-ink); font-size:12px; line-height:1.6; }
 .api-project-removal input { flex:none; margin-top:3px; }
-.api-project-form-footer { position:sticky; bottom:96px; display:flex; align-items:center; gap:12px; padding:12px 0; border-top:1px solid var(--api-border); background:var(--api-surface); }
+.api-project-form-footer { position:static; display:flex; flex-wrap:wrap; align-items:center; gap:12px; padding:12px 0; border-top:1px solid var(--api-border); background:var(--api-surface); }
 .api-project-form-footer .shared-popover { margin-left:0; }
 .api-project-form-footer .shared-popover > button { color:var(--ck-color-fail-ink); }
 .api-project-form-actions { display:flex; gap:8px; margin-left:auto; }
@@ -1024,7 +1024,7 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 .api-run-flow-tools { margin-bottom:8px!important; }
 /* AI authoring: the three steps as a numbered row */
 /* AI author: three steps top to bottom, each with its own actions. */
-.api-ai-steps { display:grid; gap:10px; margin:8px 0 0; padding:0; list-style:none; counter-reset:ai-step; }
+.api-ai-steps { display:grid; gap:10px; margin:0; padding:0; list-style:none; counter-reset:ai-step; }
 .api-ai-steps > li { min-width:0; padding:14px 16px; border:1px solid var(--api-border); border-radius:var(--ck-dim-radius-base); background:var(--api-surface); counter-increment:ai-step; }
 .api-ai-steps > li > header { display:grid; gap:2px; font-size:12.5px; word-break:keep-all; }
 .api-ai-steps > li > header strong { color:var(--api-ink); font-size:13.5px; }
@@ -1273,20 +1273,9 @@ body.panel-resizing { cursor:col-resize; user-select:none; }
 .api-ai-mode { display:inline-flex; gap:2px; margin:4px 0 12px; padding:2px; border:1px solid var(--api-border); border-radius:var(--ck-dim-radius-base); }
 .api-ai-mode button { border:0; padding:5px 12px; background:transparent; color:var(--ck-color-text-secondary); }
 .api-ai-mode button[aria-selected="true"] { background:var(--ck-color-blue-tint-soft); color:var(--ck-color-blue-action); font-weight:700; }
-.api-ai-author:has(.api-ai-chat) { max-width:none; }
-.api-ai-chat { display:grid; grid-template-columns:220px minmax(0,1fr); gap:20px; align-items:start; }
-.api-ai-chat > aside { display:grid; gap:8px; position:sticky; top:12px; }
-.api-ai-chat > aside ul { display:grid; gap:2px; margin:0; padding:0; list-style:none; }
-.api-ai-chat > aside li button { display:grid; gap:2px; width:100%; padding:7px 8px; border:0; border-radius:var(--ck-dim-radius-base); background:transparent; text-align:left; }
-.api-ai-chat > aside li button.selected { background:var(--ck-color-blue-tint-soft); }
-.api-ai-chat > aside li strong { overflow:hidden; color:var(--ck-color-text-ink); font-size:12.5px; text-overflow:ellipsis; white-space:nowrap; }
-.api-ai-chat > aside li small { color:var(--ck-color-text-mute); font-size:11px; }
+.api-ai-author:has(.api-ai-chat) { max-width:none; padding-bottom:0; }
+.api-ai-chat { display:grid; gap:20px; align-items:start; }
 .api-ai-chat-main { display:grid; gap:12px; min-width:0; max-width:900px; }
-.api-ai-chat-setup { display:grid; gap:12px; }
-.api-ai-chat-setup > p { margin:0; color:var(--ck-color-text-secondary); }
-.api-ai-chat-folders { display:grid; gap:8px; padding:10px 12px; border:1px solid var(--api-border); border-radius:var(--ck-dim-radius-base); }
-.api-ai-chat-folders header { display:grid; gap:2px; }
-.api-ai-chat-folders header small { color:var(--ck-color-text-mute); }
 .api-ai-chat-folder-server { display:grid; gap:4px; }
 .api-ai-chat-folder-server > span { font-weight:700; color:var(--ck-color-text-ink); }
 .api-ai-chat-folder-server ul { display:grid; gap:2px; margin:0; padding:0; list-style:none; }
@@ -1296,6 +1285,8 @@ body.panel-resizing { cursor:col-resize; user-select:none; }
 .api-ai-chat-folder-server .api-actions input { flex:1; min-width:0; }
 .api-ai-chat-model { max-width:240px; }
 .api-ai-chat-heading { display:flex; justify-content:space-between; align-items:center; gap:12px; padding-bottom:8px; border-bottom:var(--ck-fx-hairline); }
+.api-ai-chat-heading > div { display:grid; gap:4px; min-width:0; }
+.api-ai-chat-heading > button { flex:none; }
 .api-ai-chat-messages { display:grid; gap:10px; margin:0; padding:0; list-style:none; }
 .api-ai-chat-message { display:grid; gap:6px; max-width:100%; padding:10px 12px; border-radius:var(--ck-dim-radius-base); background:var(--ck-color-surface-subtle); }
 .api-ai-chat-message.is-user { justify-self:end; max-width:80%; background:var(--ck-color-blue-tint-soft); }
@@ -1306,6 +1297,59 @@ body.panel-resizing { cursor:col-resize; user-select:none; }
 .api-ai-chat-tools summary { color:var(--ck-color-text-mute); font-size:11px; cursor:pointer; }
 .api-ai-chat-tools ul { margin:4px 0 0; padding-left:16px; font-size:11px; }
 .api-ai-chat-message .api-ai-author-result { margin-top:4px; }
-.api-ai-chat-input { display:grid; gap:6px; position:sticky; bottom:96px; padding:8px 0; background:var(--ck-color-canvas); }
+.api-ai-chat-input { display:grid; gap:6px; position:sticky; bottom:0; z-index:1; padding:10px 0 104px; border-top:var(--ck-fx-hairline); background:var(--ck-color-canvas); }
 .api-ai-chat-input textarea { width:100%; resize:vertical; }
 .api-ai-chat-input .api-actions { display:flex; justify-content:flex-end; margin:0; }
+.api-ai-author-heading { display:flex; justify-content:flex-end; margin:0 0 12px; }
+.api-ai-author-heading h2 { margin:0; color:var(--ck-color-text-ink); font-family:var(--ck-font-display); font-size:18px; font-weight:800; }
+.api-ai-author-heading .api-actions { display:flex; gap:6px; margin:0; }
+.api-ai-chat-empty { display:grid; gap:12px; padding:24px; border:1px dashed var(--api-border); border-radius:var(--ck-dim-radius-base); }
+.api-ai-chat-empty p { margin:0; color:var(--ck-color-text-secondary); line-height:1.6; }
+.api-ai-chat-settings { display:grid; gap:12px; width:100%; }
+.api-ai-chat-settings-group { display:grid; gap:8px; }
+.api-ai-chat-settings-group h3 { margin:0; color:var(--api-ink); font-size:14px; }
+.api-ai-chat-settings .api-ai-chat-folder-server { padding:8px 10px; border:1px solid var(--api-border); border-radius:var(--ck-dim-radius-base); }
+.api-ai-chat-tools-choice { display:flex; gap:16px; flex-wrap:wrap; }
+.api-ai-chat-tools-choice small { margin-left:4px; color:var(--ck-color-text-mute); }
+.api-ai-chat-settings > footer { display:flex; justify-content:flex-end; gap:8px; margin:0; padding-top:12px; border-top:1px solid var(--api-border); }
+
+/* Project settings own their scroll area; focusing a field must not trap wheel scrolling. */
+.content:has(.api-project-form) { overflow-y:auto; scrollbar-gutter:stable; }
+.api-ai-tool-settings { display:flex; flex-wrap:wrap; align-items:flex-end; gap:12px; padding:12px 0 4px; }
+.api-ai-tool-settings label { display:grid; gap:4px; margin:0; }
+.api-ai-tool-settings p { flex-basis:100%; margin:0; color:var(--api-muted); font-size:12px; }
+.api-ai-ways { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+.api-ai-way { display:grid; grid-template-rows:auto auto 1fr auto; gap:10px; padding:18px 20px; border:1px solid var(--api-border); border-radius:var(--ck-dim-radius-base); background:var(--api-surface); }
+.api-ai-way h3 { margin:0; color:var(--api-ink); font-size:15px; }
+.api-ai-way > p { margin:0; color:var(--ck-color-text-secondary); font-size:12.5px; line-height:1.6; }
+.api-ai-way .api-actions { margin:0; }
+.api-ai-way-checks { display:grid; gap:6px; align-self:start; margin:4px 0 0; padding:0; list-style:none; }
+.api-ai-way-checks li { display:grid; grid-template-columns:16px 104px minmax(0,auto) auto; justify-content:start; align-items:center; gap:4px 8px; min-height:30px; font-size:12.5px; }
+.api-ai-way-checks li::before { color:var(--ck-color-pass); font-weight:700; content:"✓"; }
+.api-ai-way-checks li.is-missing::before { color:var(--ck-color-text-mute); content:"–"; }
+.api-ai-way-checks li > span { color:var(--ck-color-text-mute); }
+.api-testing-page .api-ai-way-checks button.api-icon-button { padding:3px; border-color:transparent; background:transparent; color:var(--ck-color-text-mute); }
+.api-testing-page .api-ai-way-checks button.api-icon-button:hover { color:var(--ck-color-blue-action); }
+.api-ai-way-checks li > strong { min-width:0; overflow:hidden; color:var(--api-ink); font-weight:600; text-overflow:ellipsis; white-space:nowrap; }
+.api-ai-way-checks li.is-missing > strong { color:var(--ck-color-text-mute); font-weight:400; }
+.api-ai-tool-settings-fold { margin-bottom:16px; padding-bottom:8px; border-bottom:1px solid var(--api-border); }
+.api-ai-tool-settings-fold > summary { color:var(--ck-color-text-secondary); font-size:12px; cursor:pointer; }
+@media (max-width: 720px) { .api-ai-ways { grid-template-columns:1fr; } }
+/* The app keeps .content from scrolling (each screen scrolls itself). The API testing page fills it:
+   the title, project and tabs rows stay and only .api-page-body below the tabs scrolls.
+   The composer keeps its own inner scroll panes; the project form still scrolls .content. */
+/* clip, not hidden: a hidden overflow can still be scrolled by focus or scrollIntoView, which pushed the title rows off screen. */
+.content:has(> .api-testing-page > .api-page-body) { box-sizing:border-box; display:flex; flex-direction:column; height:100%; overflow:clip; }
+.content:has(> .api-testing-page > .api-page-body) > * { flex:none; }
+.content > .api-testing-page:has(> .api-page-body) { box-sizing:border-box; display:flex; flex-direction:column; flex:1 1 auto; width:100%; min-height:0; padding-bottom:0; overflow:clip; }
+/* One rule under the tabs: the tabs row keeps its underline; the list below starts right at it. */
+.api-testing-page:has(> .api-page-body) > .api-workbar { margin-bottom:0; }
+.api-page-body { padding-top:16px; }
+.api-page-body:has(> .api-columns:first-child), .api-page-body:has(.api-compose-layout) { padding-top:0; padding-bottom:0; }
+.api-page-body > .api-columns { border-top:0; min-height:100%; }
+.api-testing-page:has(> .api-page-body) > :not(.api-page-body) { flex:none; }
+.api-page-body { flex:1 1 auto; min-height:0; overflow-y:auto; scrollbar-gutter:stable; padding-bottom:24px; }
+.api-page-body:has(.api-compose-layout) { display:flex; flex-direction:column; overflow:hidden; padding-bottom:0; }
+/* The body already ends above the bottom navigation, so bottom-stuck rows need no extra room for it. */
+.api-page-body .api-builder > footer { bottom:0; }
+.api-page-body .api-ai-chat-input { padding-bottom:12px; }

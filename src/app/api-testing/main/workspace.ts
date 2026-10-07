@@ -1,7 +1,7 @@
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile, unlink } from "node:fs/promises";
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
-import { httpUrl, projectSchema, type ApiCatalog, type ApiCookie, type ApiProject, type ApiScope, type ApiResponse, type ApiProjectScope, type ApiEnvironmentScope, type ApiGlobal, type SavedApiScenario, type SavedApiSuite, type ApiSidebarMetadata, type ApiScenarioPreview, type ApiScenarioResult, type ApiRequestTrace, type ApiAiImportResult, type ApiBackendFolders, type ApiAiDraft, type ApiMissingApi, type ApiTitleRename, type ApiSpecImpact, type ApiProjectExport, type ApiProjectImportResult, type ApiProjectImportPlan, type ApiShareDiff } from "../shared/workspace";
+import { httpUrl, projectSchema, type ApiCatalog, type ApiCookie, type ApiProject, type ApiScope, type ApiResponse, type ApiProjectScope, type ApiEnvironmentScope, type ApiGlobal, type SavedApiScenario, type SavedApiSuite, type ApiSidebarMetadata, type ApiScenarioPreview, type ApiScenarioResult, type ApiRequestTrace, type ApiAiImportResult, type ApiAiChatSettings, type ApiAiDraft, type ApiMissingApi, type ApiTitleRename, type ApiSpecImpact, type ApiProjectExport, type ApiProjectImportResult, type ApiProjectImportPlan, type ApiShareDiff } from "../shared/workspace";
 import { z } from "zod";
 import { ApiRunner, resolveRequestUrl } from "./execution";
 import { resolve } from "./variables";
@@ -51,7 +51,11 @@ function migrateSidebarMetadata<T extends Record<string, unknown>>(item: T): T &
   });
   return { ...rest, ...metadata } as T & Partial<ApiSidebarMetadata>;
 }
-const backendFoldersSchema = z.record(z.string().uuid(), z.array(z.string().trim().min(1).max(4096).refine(value => path.isAbsolute(value), "폴더는 절대 경로로 입력하세요")).max(20));
+const aiChatSettingsSchema = z.object({
+  folders: z.record(z.string().uuid(), z.array(z.string().trim().min(1).max(4096).refine(value => path.isAbsolute(value), "폴더는 절대 경로로 입력하세요")).max(20)),
+  tool: z.enum(["claude", "codex"]).optional(),
+  effort: z.enum(["low", "medium", "high"]).optional(),
+});
 const aiGuideRequestSchema = z.object({
   scope: environmentScopeSchema, tags: z.array(z.string().max(200)).max(100).optional(),
   operations: z.array(z.string().max(400)).max(2000).optional(),
@@ -124,9 +128,9 @@ export class ApiWorkspace {
       this.cookieJars.delete(id);
       await this.removeFile(`scenarios-${id}.json`);
       await this.removeFile(`suites-${id}.json`);
-      await this.removeFile(`ai-chats-${id}.json`);
-      const folders = await this.readBackendFolderFile();
-      if (folders[id]) { delete folders[id]; await this.save("backend-folders.json", folders); }
+      await this.removeFile(`ai-chat-${id}.json`);
+      const chatSettings = await this.readAiChatSettingsFile();
+      if (chatSettings[id]) { delete chatSettings[id]; await this.save("ai-chat-settings.json", chatSettings); }
       await this.removeFile(`doc-inputs-${id}.json`);
       const origins = await this.readShareOrigins(), bases = await this.readShareBases();
       delete origins[id]; delete bases[id];
@@ -409,6 +413,21 @@ export class ApiWorkspace {
     return { dir, catalog: path.join(dir, "api-catalog.json"), state: path.join(dir, "project-state.json"), result: path.join(dir, "scenarios.yaml") };
   }
 
+  /** The in-app chat has its own inputs; copying a filtered guide must not replace them. */
+  private aiChatFiles(projectId: string) {
+    const dir = path.join(this.aiFiles(projectId).dir, "chat");
+    return { dir, catalog: path.join(dir, "api-catalog.json"), state: path.join(dir, "project-state.json") };
+  }
+
+  private async writeAiFile(file: string, text: string): Promise<void> {
+    await mkdir(path.dirname(file), { recursive: true });
+    const temp = path.join(path.dirname(file), `${randomUUID()}.tmp`);
+    try {
+      await writeFile(temp, text, { mode: 0o600 });
+      await rename(temp, file);
+    } finally { await rm(temp, { force: true }); }
+  }
+
   /** What the guide tells the AI about saved work: globals with producers/consumers, groups, scenarios. */
   private async aiProjectSummary(projectId: string) {
     const saved = await this.listScenarios(projectId);
@@ -439,6 +458,11 @@ export class ApiWorkspace {
   async writeAiState(rawProjectId: unknown): Promise<string> {
     const projectId = z.string().uuid().parse(rawProjectId);
     const files = this.aiFiles(projectId);
+    await this.writeAiProjectState(projectId, files.state);
+    return files.state;
+  }
+
+  private async writeAiProjectState(projectId: string, file: string): Promise<void> {
     const scenarios = await this.listScenarios(projectId), suites = await this.listSuites(projectId);
     const summary = await this.aiProjectSummary(projectId);
     const nameOf = new Map(scenarios.map(item => [item.id, item.name]));
@@ -450,9 +474,7 @@ export class ApiWorkspace {
       groups: summary.groups,
       globals: summary.globals,
     };
-    await mkdir(files.dir, { recursive: true });
-    await writeFile(files.state, this.aiRedact(projectId)(JSON.stringify(state, null, 1)), { mode: 0o600 });
-    return files.state;
+    await this.writeAiFile(file, this.aiRedact(projectId)(JSON.stringify(state, null, 1)));
   }
 
   /**
@@ -474,57 +496,71 @@ export class ApiWorkspace {
     return prompt;
   }
 
-  private async readBackendFolderFile(): Promise<Record<string, ApiBackendFolders>> {
-    const parsed = z.record(z.string(), backendFoldersSchema).safeParse(await this.read("backend-folders.json"));
+  private async readAiChatSettingsFile(): Promise<Record<string, ApiAiChatSettings>> {
+    const parsed = z.record(z.string(), aiChatSettingsSchema).safeParse(await this.read("ai-chat-settings.json"));
     return parsed.success ? parsed.data : {};
   }
 
-  /** Backend folders on this PC for each server of the project. */
-  async getBackendFolders(rawProjectId: unknown): Promise<ApiBackendFolders> {
+  /** In-app chat settings on this PC (backend folders per server, AI CLI, effort); kept out of the shareable project. */
+  async getAiChatSettings(rawProjectId: unknown): Promise<ApiAiChatSettings> {
     const projectId = z.string().uuid().parse(rawProjectId);
-    return (await this.readBackendFolderFile())[projectId] ?? {};
+    return (await this.readAiChatSettingsFile())[projectId] ?? { folders: {} };
   }
 
-  async saveBackendFolders(rawProjectId: unknown, raw: unknown): Promise<ApiBackendFolders> {
+  async saveAiChatSettings(rawProjectId: unknown, raw: unknown): Promise<ApiAiChatSettings> {
     const projectId = z.string().uuid().parse(rawProjectId);
     const project = (await this.listProjects()).find(item => item.id === projectId);
     if (!project) throw new Error("프로젝트를 찾을 수 없습니다");
-    const folders = Object.fromEntries(Object.entries(backendFoldersSchema.parse(raw))
-      .filter(([serverId, paths]) => project.servers.some(server => server.id === serverId) && paths.length)
-      .map(([serverId, paths]) => [serverId, [...new Set(paths.map(item => path.resolve(item)))]]));
-    const all = await this.readBackendFolderFile();
-    if (Object.keys(folders).length) all[projectId] = folders; else delete all[projectId];
-    await this.save("backend-folders.json", all);
-    return folders;
+    const parsed = aiChatSettingsSchema.parse(raw);
+    const settings: ApiAiChatSettings = {
+      folders: Object.fromEntries(Object.entries(parsed.folders)
+        .filter(([serverId, paths]) => project.servers.some(server => server.id === serverId) && paths.length)
+        .map(([serverId, paths]) => [serverId, [...new Set(paths.map(item => path.resolve(item)))]])),
+      ...(parsed.tool ? { tool: parsed.tool } : {}), ...(parsed.effort ? { effort: parsed.effort } : {}),
+    };
+    const all = await this.readAiChatSettingsFile();
+    if (Object.keys(settings.folders).length || settings.tool || settings.effort) all[projectId] = settings; else delete all[projectId];
+    await this.save("ai-chat-settings.json", all);
+    return settings;
   }
 
   /**
    * Everything the in-app chat needs to start: the chat guide (schemas written to the API
-   * file), the folder Claude runs in (the first backend folder) and the other folders it may read.
+   * file), the folder the AI runs in (the first backend folder) and the other folders it may read.
+   * The chat needs at least one backend folder; without one the copy-and-paste guide is used.
    */
   async aiChatSetup(raw: unknown): Promise<{ prompt: string; cwd: string; readDirs: string[]; apiCount: number; folderCount: number }> {
     const request = aiGuideRequestSchema.parse(raw);
     const { scope, project } = await this.environment(request.scope);
     const servers = await this.aiServers(scope, project, request.tags, request.operations);
-    const configured = await this.getBackendFolders(scope.projectId);
+    const configured = (await this.getAiChatSettings(scope.projectId)).folders;
     const backendFolders = project.servers.map(server => ({ server: server.name, folders: configured[server.id] ?? [] })).filter(item => item.folders.length);
     const folders = [...new Set(backendFolders.flatMap(item => item.folders))];
+    if (!folders.length) throw new Error("백엔드 코드 폴더를 먼저 설정하세요");
     for (const folder of folders) {
       if (!(await stat(folder).then(info => info.isDirectory(), () => false))) throw new Error(`백엔드 폴더를 찾을 수 없습니다: ${folder}`);
     }
     const redact = this.aiRedact(scope.projectId);
-    const files = this.aiFiles(scope.projectId);
-    await mkdir(files.dir, { recursive: true });
-    await writeFile(files.catalog, redact(JSON.stringify(aiCatalogDetails(servers), null, 1)), { mode: 0o600 });
-    const prompt = redact(createAuthorPrompt({ servers, catalogFile: files.catalog, stateFile: await this.writeAiState(scope.projectId), backendFolders }));
+    const files = this.aiChatFiles(scope.projectId);
+    await this.refreshAiChatFiles(scope);
+    const prompt = redact(createAuthorPrompt({ servers, catalogFile: files.catalog, stateFile: files.state, backendFolders }));
     if (Buffer.byteLength(prompt) > 1_000_000) throw new Error("API가 너무 많습니다. AI가 쓸 API를 골라 범위를 좁히세요");
-    const [cwd = files.dir, ...rest] = folders;
-    return { prompt, cwd, readDirs: [...rest, ...(cwd === files.dir ? [] : [files.dir])], apiCount: servers.reduce((count, server) => count + server.operations.length, 0), folderCount: folders.length };
+    const [cwd, ...rest] = folders;
+    return { prompt, cwd, readDirs: [...rest, files.dir], apiCount: servers.reduce((count, server) => count + server.operations.length, 0), folderCount: folders.length };
   }
 
-  /** Saved in-app chats of a project (Checkly's record; Claude keeps its own session history). */
-  async readAiChats(projectId: string): Promise<unknown> { return this.read(`ai-chats-${z.string().uuid().parse(projectId)}.json`); }
-  async writeAiChats(projectId: string, chats: unknown): Promise<void> { await this.save(`ai-chats-${z.string().uuid().parse(projectId)}.json`, chats); }
+  /** Refresh the chat's full catalog and saved state in its own environment before each CLI turn. */
+  async refreshAiChatFiles(rawScope: unknown): Promise<void> {
+    const { scope, project } = await this.environment(environmentScopeSchema.parse(rawScope));
+    const servers = await this.aiServers(scope, project);
+    const files = this.aiChatFiles(scope.projectId);
+    await this.writeAiFile(files.catalog, this.aiRedact(scope.projectId)(JSON.stringify(aiCatalogDetails(servers), null, 1)));
+    await this.writeAiProjectState(scope.projectId, files.state);
+  }
+
+  /** One current in-app chat. The earlier branch-only array files are not read. */
+  async readAiChat(projectId: string): Promise<unknown> { return this.read(`ai-chat-${z.string().uuid().parse(projectId)}.json`); }
+  async writeAiChat(projectId: string, chat: unknown): Promise<void> { await this.save(`ai-chat-${z.string().uuid().parse(projectId)}.json`, chat); }
 
   /** What the user's AI last wrote to the result file; null when there is none yet. */
   async readAiResult(rawScope: unknown): Promise<{ path: string; text: string; modifiedAt: string } | null> {

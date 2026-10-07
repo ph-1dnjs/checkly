@@ -7,7 +7,7 @@ import { specSourceSchema } from "../shared/workspace";
 import { z } from "zod";
 import { SpecSync } from "./spec-sync";
 import { AiChatService } from "./ai-chat";
-import { describeClaude } from "./ai-cli";
+import { describeAiTools } from "./ai-cli";
 import { isProvidedScenarioInput, matchesScenarioInputType, type Json, type ScenarioInputRequest } from "../shared/scenario";
 import type { ApiScenarioInputRequest } from "../shared/workspace";
 
@@ -62,21 +62,21 @@ export function registerApiTesting() {
   // A quitting app does not take its child processes along on macOS.
   app.on("before-quit", () => chats.cancelAll());
   ipcMain.handle("api-testing:ai-chat-status", async (_event, refresh) => {
-    const status = await describeClaude(refresh === true);
-    return status.available ? { available: true, version: status.version } : { available: false, error: status.error };
+    const tools = (await describeAiTools(refresh === true)).map(({ tool, version }) => ({ tool, version }));
+    return tools.length ? { tools } : { tools, error: "이 PC에서 Claude Code나 Codex CLI를 찾지 못했습니다" };
   });
-  ipcMain.handle("api-testing:get-backend-folders", (_event, projectId) => workspace.getBackendFolders(projectId));
-  ipcMain.handle("api-testing:save-backend-folders", (_event, projectId, folders) => workspace.saveBackendFolders(projectId, folders));
+  ipcMain.handle("api-testing:get-ai-chat-settings", (_event, projectId) => workspace.getAiChatSettings(projectId));
+  ipcMain.handle("api-testing:save-ai-chat-settings", (_event, projectId, settings) => workspace.saveAiChatSettings(projectId, settings));
   ipcMain.handle("api-testing:choose-directories", async () => {
     const selected = await dialog.showOpenDialog({ title: "백엔드 코드 폴더 선택", properties: ["openDirectory", "multiSelections"] });
     return selected.canceled ? [] : selected.filePaths;
   });
-  ipcMain.handle("api-testing:list-ai-chats", (_event, projectId) => chats.list(projectId));
-  ipcMain.handle("api-testing:get-ai-chat", (_event, projectId, chatId) => chats.get(projectId, chatId));
+  ipcMain.handle("api-testing:get-ai-chat", (_event, projectId) => chats.get(projectId));
   ipcMain.handle("api-testing:start-ai-chat", (_event, request) => chats.start(request));
+  ipcMain.handle("api-testing:reset-ai-chat", (_event, request, chatId) => chats.reset(request, chatId));
   ipcMain.handle("api-testing:send-ai-chat", (_event, projectId, chatId, text) => chats.send(projectId, chatId, text));
   ipcMain.handle("api-testing:cancel-ai-chat", (_event, projectId, chatId) => chats.cancel(projectId, chatId));
-  ipcMain.handle("api-testing:delete-ai-chat", (_event, projectId, chatId) => chats.remove(projectId, chatId));
+  ipcMain.handle("api-testing:mark-ai-chat-result-saved", (_event, projectId, chatId, messageId, firstScenarioId) => chats.markResultSaved(projectId, chatId, messageId, firstScenarioId));
   ipcMain.handle("api-testing:get-ai-prompt", (_event, request) => workspace.buildAiPrompt(request));
   ipcMain.handle("api-testing:read-ai-result", (_event, scope) => workspace.readAiResult(scope));
   ipcMain.handle("api-testing:check-ai-scenarios", (_event, scope, text) => workspace.checkAiScenarios(scope, text));

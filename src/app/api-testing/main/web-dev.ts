@@ -12,7 +12,7 @@ import { SpecSync } from "./spec-sync";
 const methods = [
   "listProjects", "saveProject", "getCatalog", "execute", "cancel", "getDocInputs", "forgetDocInput", "exportProject", "planProjectImport", "importProject",
   "listGlobals", "setGlobal", "deleteGlobal", "listCookies", "clearCookies", "listScenarios", "checkScenarioSpecs", "applyTitleRenames", "keepTitles", "listSuites", "saveSuite", "deleteSuite", "previewScenario",
-  "saveScenario", "saveScenarioDraft", "runScenario", "buildAiPrompt", "checkAiScenarios", "readAiResult", "getBackendFolders", "saveBackendFolders",
+  "saveScenario", "saveScenarioDraft", "runScenario", "buildAiPrompt", "checkAiScenarios", "readAiResult", "getAiChatSettings", "saveAiChatSettings",
   "getRequestAuth", "setRequestAuth",
   "deleteProject", "deleteCatalog", "deleteScenario",
 ] as const;
@@ -100,9 +100,9 @@ export function apiWebDev(): Plugin {
             workspace.cancel(scope); releasePending(scope); result = null;
           } else if (method === "getAiChatStatus") {
             // Running a local AI program from an HTTP endpoint is a desktop-app feature only.
-            result = { available: false, error: "웹 개발 모드에서는 AI 대화를 쓸 수 없습니다. 데스크톱 앱에서 사용하세요" };
-          } else if (method === "listAiChats") {
-            result = [];
+            result = { tools: [], error: "웹 개발 모드에서는 AI 대화를 쓸 수 없습니다. 데스크톱 앱에서 사용하세요" };
+          } else if (method === "getAiChat") {
+            result = null;
           } else if (methods.includes(method as typeof methods[number])) {
             const action = workspace[method as typeof methods[number]] as (...values: unknown[]) => unknown;
             result = await action.apply(workspace, args);
