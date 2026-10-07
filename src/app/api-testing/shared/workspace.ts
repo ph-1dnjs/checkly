@@ -9,9 +9,11 @@ export const httpUrl = z.string().url("http:// 또는 https://로 시작하는 �
   try { url = new URL(value); } catch { return false; }
   return ["http:", "https:"].includes(url.protocol) && !url.username && !url.password && !url.hash;
 }, "인증정보를 제외한 HTTP(S) 주소를 입력하세요");
-export const projectSchema = z.object({
+const projectShape = z.object({
   id: z.string().uuid(),
   name: z.string().trim().min(1).max(100),
+  /** Team project only: the version of its servers·environments·addresses this copy was read from. */
+  revision: z.string().max(200).optional(),
   servers: z.array(z.object({
     id: z.string().uuid(), name: z.string().trim().min(1).max(100),
   }).strict()).min(1),
@@ -19,7 +21,8 @@ export const projectSchema = z.object({
     id: z.string().uuid(), name: z.string().trim().min(1).max(100),
     baseUrls: z.record(z.string().uuid(), httpUrl.refine(v => !new URL(v).search, "기본 주소에 쿼리를 넣을 수 없습니다")),
   }).strict()).min(1),
-}).strict().superRefine((p, ctx) => {
+}).strict();
+const projectRules = (allUrls: boolean) => (p: z.infer<typeof projectShape>, ctx: z.RefinementCtx) => {
   if (new Set(p.servers.map(server => server.name)).size !== p.servers.length)
     ctx.addIssue({ code: "custom", path: ["servers"], message: "프로젝트 내 서버 이름은 중복될 수 없습니다" });
   for (const group of [p.servers, p.environments]) {
@@ -27,9 +30,19 @@ export const projectSchema = z.object({
       ctx.addIssue({ code: "custom", message: "중복 식별자" });
   }
   for (const e of p.environments) {
-    if (p.servers.some(s => !e.baseUrls[s.id]) || Object.keys(e.baseUrls).some(id => !p.servers.some(s => s.id === id)))
+    if ((allUrls && p.servers.some(s => !e.baseUrls[s.id])) || Object.keys(e.baseUrls).some(id => !p.servers.some(s => s.id === id)))
       ctx.addIssue({ code: "custom", message: "모든 환경에 서버별 기본 주소가 필요합니다" });
   }
+};
+export const projectSchema = projectShape.superRefine(projectRules(true));
+/**
+ * The signed-in team project (Supabase): an address may be left unset ("미설정") for some
+ * server·environment pairs, and environment names are unique like in the shared settings.
+ */
+export const teamProjectSchema = projectShape.superRefine((p, ctx) => {
+  projectRules(false)(p, ctx);
+  if (new Set(p.environments.map(environment => environment.name)).size !== p.environments.length)
+    ctx.addIssue({ code: "custom", path: ["environments"], message: "환경 이름은 중복될 수 없습니다" });
 });
 export type ApiProject = z.infer<typeof projectSchema>;
 export const specSourceSchema = z.discriminatedUnion("kind", [
@@ -91,6 +104,12 @@ export type ApiProjectImportPlan = {
   /** Local copies of the same project that the file can update. */
   targets: Array<{ projectId: string; name: string; scenarios: ApiShareDiff; suites: ApiShareDiff; serversAdded: string[]; environmentsAdded: string[] }>;
 };
+/**
+ * Where API testing keeps its data. "file": this computer only (no sign-in). "team": the signed-in
+ * team project, the only project; `importable` lists local projects that can be copied into it once,
+ * offered while the team project has no scenarios or suites yet.
+ */
+export type ApiStorageInfo = { mode: "file" } | { mode: "team"; projectCode: string; importable: Array<{ id: string; name: string; scenarios: number; suites: number }> };
 export type SavedApiSuite = { id: string; name: string; scenarioIds: string[]; onFailure: "stop" | "continue"; updatedAt: string; groupPath?: string[]; tags?: string[] };
 export type ApiSidebarMetadata = { groupPath?: string[]; tags?: string[] };
 export type ApiScenarioPreview = { scenario: Scenario; issues: string[]; executionIssues?: string[] };
@@ -129,6 +148,9 @@ export type ApiTestingBridge = {
   readAiResult(scope: ApiEnvironmentScope): Promise<{ path: string; text: string; modifiedAt: string } | null>;
   /** Checks pasted AI output (scenarios separated by ---, optional suite); nothing is saved. */
   checkAiScenarios(scope: ApiEnvironmentScope, text: string): Promise<ApiAiImportResult>;
+  getStorage(): Promise<ApiStorageInfo>;
+  /** Team mode: copies a local project's servers, environments, scenarios, suites and docs inputs into the team project. */
+  importLocalProject(projectId: string): Promise<ApiProjectImportResult>;
   listProjects(): Promise<ApiProject[]>;
   saveProject(project: ApiProject): Promise<ApiProject>;
   deleteProject(projectId: string): Promise<void>;

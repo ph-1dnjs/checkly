@@ -28,9 +28,11 @@ export class SpecSync {
     await writeFile(temp, JSON.stringify(data), { mode: 0o600 });
     await rename(temp, this.filename(scope));
   }
+  /** In a team project the URL is the team's (the account and sync status stay on this computer). */
   async get(scope: ApiScope): Promise<ApiSpecSync> {
     const { encrypted, ...metadata } = await this.read(scope);
-    return { ...metadata, hasSavedAccount: Boolean(encrypted), secureStorageAvailable: this.secrets.available() };
+    const shared = await this.workspace.sharedSpecUrl(scope);
+    return { ...metadata, ...(shared !== undefined ? { url: shared ?? undefined } : {}), hasSavedAccount: Boolean(encrypted), secureStorageAvailable: this.secrets.available() };
   }
   async deleteAccount(scope: ApiScope) {
     const key = this.filename(scope);
@@ -51,6 +53,7 @@ export class SpecSync {
     if (this.active.has(key)) throw new Error("이 명세를 이미 동기화하고 있습니다");
     const release = this.workspace.beginSpecSync(scope);
     this.active.add(key);
+    let catalog: Awaited<ReturnType<ApiWorkspace["importSpec"]>>;
     try {
       const previous = await this.read(scope);
       const attempt = new Date().toISOString();
@@ -84,13 +87,16 @@ export class SpecSync {
         const text = Buffer.concat(chunks).toString("utf8");
         // A Swagger UI page instead of the document it shows: the usual mistake, said plainly.
         if (/^\s*</.test(text)) throw new Error("명세 대신 웹 페이지(HTML)를 받았습니다. Swagger 화면 주소가 아니라 /v3/api-docs 같은 JSON·YAML 명세 주소를 넣으세요");
-        const catalog = await this.workspace.importSpec(scope, text);
+        catalog = await this.workspace.importSpec(scope, text);
         await this.save(scope, { url: source.url, username: auth?.username, encrypted, lastAttemptAt: attempt, lastSuccessAt: catalog.importedAt, status: "success" });
-        return catalog;
       } catch (e) {
         await this.save(scope, { ...previous, lastAttemptAt: attempt, status: "failed" });
         throw e;
       }
     } finally { this.active.delete(key); release(); }
+    // A URL that worked becomes the team's; the spec itself was imported either way.
+    try { await this.workspace.shareSpecUrl(scope, source.url); }
+    catch (e) { throw new Error(`명세는 가져왔지만 팀 프로젝트에 명세 주소를 저장하지 못했습니다. ${(e as Error).message}`); }
+    return catalog;
   }
 }

@@ -5,8 +5,13 @@ import { WindowSettingsSection } from "./WindowSettingsSection";
 import type { Scenario } from "../../shared/model/scenario";
 import type { UpdateStatus } from "../../shared/model/update";
 import checklyMark from "../../assets/checkly-mark.png";
+import type { AuthAccount } from "../auth/model";
+import { AccountCard } from "./AccountCard";
+import { TeamProjectSettings } from "./TeamProjectSettings";
+import { useProjectInfo } from "./useProjectInfo";
 
-type Props = { scenario: Scenario };
+// account는 팀 프로젝트가 켜져 있고 로그인했을 때만 있다. 없으면 예전 설정 화면 그대로다.
+type Props = { scenario: Scenario; account?: AuthAccount | null };
 
 const RELEASES_URL = "https://github.com/ph-1dnjs/checkly/releases/latest";
 const isMac = navigator.userAgent.includes("Mac");
@@ -30,7 +35,8 @@ const updateStatusLabel = (status: UpdateStatus): string => {
   }
 };
 
-export const SettingsPage = ({ scenario }: Props) => {
+export const SettingsPage = ({ scenario, account }: Props) => {
+  const project = useProjectInfo(account);
   const [keepVideo, setKeepVideo] = useState(true);
   const [notifyFail, setNotifyFail] = useState(true);
   const [notifySlack, setNotifySlack] = useState(false);
@@ -66,6 +72,8 @@ export const SettingsPage = ({ scenario }: Props) => {
     <div className="settings-scroll">
       <div className="settings-page">
         <h1>설정</h1>
+
+        {account && <AccountCard account={account} project={project} />}
 
         <div className="settings-group">
           <div className="settings-group-label">
@@ -132,26 +140,30 @@ export const SettingsPage = ({ scenario }: Props) => {
 
         <WindowSettingsSection />
 
-        <div className="settings-group">
-          <div className="settings-group-label">
-            <span>PROJECT</span>
-            <i />
-          </div>
-          <div className="settings-row">
-            <div>
-              <div className="settings-row-label">기본 URL</div>
-              <div className="settings-row-hint">실행 시 상대 경로의 기준</div>
+        {account ? (
+          <TeamProjectSettings account={account} project={project} />
+        ) : (
+          <div className="settings-group">
+            <div className="settings-group-label">
+              <span>PROJECT</span>
+              <i />
             </div>
-            <div className="settings-row-value">{scenario.url || "—"}</div>
-          </div>
-          <div className="settings-row">
-            <div>
-              <div className="settings-row-label">환경</div>
-              <div className="settings-row-hint">dev / staging / prod</div>
+            <div className="settings-row">
+              <div>
+                <div className="settings-row-label">기본 URL</div>
+                <div className="settings-row-hint">실행 시 상대 경로의 기준</div>
+              </div>
+              <div className="settings-row-value">{scenario.url || "—"}</div>
             </div>
-            <div className="settings-row-value">dev</div>
+            <div className="settings-row">
+              <div>
+                <div className="settings-row-label">환경</div>
+                <div className="settings-row-hint">dev / staging / prod</div>
+              </div>
+              <div className="settings-row-value">dev</div>
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="settings-group">
           <div className="settings-group-label">

@@ -1268,3 +1268,11 @@ body.panel-resizing { cursor:col-resize; user-select:none; }
 .api-testing-page .api-detail-heading h2 { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; overflow-wrap:anywhere; }
 /* Prose (a scenario's description) reads in the UI font; code-like text areas stay monospace. */
 .api-testing-page textarea.api-prose-input:not(.swagger-ui textarea) { font-family:inherit; font-size:inherit; font-variant-numeric:normal; }
+/* Signed in: the team project instead of the project list, and the one-time local project import. */
+.api-team-project { display:inline-flex; align-items:baseline; gap:6px; color:var(--ck-color-text-mute); font-size:12px; white-space:nowrap; }
+.api-team-project strong { color:var(--api-body); font-size:14px; }
+.api-project-import.api-local-import { margin:0 0 12px; }
+.api-local-import > span:first-child { flex:1 1 320px; }
+.api-local-import .api-actions { flex-wrap:wrap; align-items:center; gap:8px; }
+.api-local-import .api-actions small { color:var(--api-muted); }
+.api-local-import .api-warning { flex-basis:100%; margin:0; }

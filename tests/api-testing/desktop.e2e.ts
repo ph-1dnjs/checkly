@@ -41,7 +41,8 @@ async function main() {
     `name: AI 상품 조회\nserver: 기본 API\nsteps:\n  - name: 상품 조회\n    api: '${itemApi}'\n    pathParams: { id: 7 }\n`,
     "suite: { name: AI 상점 흐름, group: AI, scenarios: [AI 로그인, AI 상품 조회] }\n",
   ].join("---\n") + "```\n";
-  const env = { ...process.env };
+  // These flows are the local (no sign-in) mode: an empty value keeps .env's team server switched off.
+  const env = { ...process.env, CHECKLY_SUPABASE_URL: "", CHECKLY_SUPABASE_ANON_KEY: "" };
   delete env.ELECTRON_RUN_AS_NODE;
   let app: Awaited<ReturnType<typeof electron.launch>> | undefined;
   try {

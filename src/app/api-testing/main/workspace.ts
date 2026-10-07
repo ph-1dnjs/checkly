@@ -1,7 +1,7 @@
-import { mkdir, readdir, readFile, rename, rm, stat, writeFile, unlink } from "node:fs/promises";
+import { constants, copyFile, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
-import { httpUrl, projectSchema, type ApiCatalog, type ApiCookie, type ApiProject, type ApiScope, type ApiResponse, type ApiProjectScope, type ApiEnvironmentScope, type ApiGlobal, type SavedApiScenario, type SavedApiSuite, type ApiSidebarMetadata, type ApiScenarioPreview, type ApiScenarioResult, type ApiRequestTrace, type ApiAiImportResult, type ApiAiDraft, type ApiMissingApi, type ApiTitleRename, type ApiSpecImpact, type ApiProjectExport, type ApiProjectImportResult, type ApiProjectImportPlan, type ApiShareDiff } from "../shared/workspace";
+import { httpUrl, projectSchema, teamProjectSchema, type ApiStorageInfo, type ApiCatalog, type ApiCookie, type ApiProject, type ApiScope, type ApiResponse, type ApiProjectScope, type ApiEnvironmentScope, type ApiGlobal, type SavedApiScenario, type SavedApiSuite, type ApiSidebarMetadata, type ApiScenarioPreview, type ApiScenarioResult, type ApiRequestTrace, type ApiAiImportResult, type ApiAiDraft, type ApiMissingApi, type ApiTitleRename, type ApiSpecImpact, type ApiProjectExport, type ApiProjectImportResult, type ApiProjectImportPlan, type ApiShareDiff } from "../shared/workspace";
 import { z } from "zod";
 import { ApiRunner, resolveRequestUrl } from "./execution";
 import { resolve } from "./variables";
@@ -11,6 +11,8 @@ import { readOpenApi } from "./openapi";
 import { CookieJar } from "./cookies";
 import { groupMissingGlobals, stepNumbersText } from "../shared/preflight-issues";
 import { aiCatalogDetails, createAuthorPrompt, splitAiBundle, withGeneratedId, type AiBundle } from "./ai-context";
+import { FileStore, type ApiStore, type ScenarioRename } from "./store";
+import { TeamStore, type ApiTeamContext } from "./team-store";
 
 export const scopeSchema = z.object({ projectId: z.string().uuid(), serverId: z.string().uuid(), environmentId: z.string().uuid() }).strict();
 const projectScopeSchema = z.object({ projectId: z.string().uuid() }).strict();
@@ -71,7 +73,33 @@ export class ApiWorkspace {
   private runner = new ApiRunner();
   private active = new Map<string, AbortController>();
   private requestAuth = new Map<string, { variable: string; baseUrl: string }>();
-  constructor(private directory: string) {}
+  /** This computer's files: every project without sign-in, and the local caches (specs, AI files) in team mode. */
+  private files: FileStore;
+  private team?: { key: string; store: TeamStore };
+  /** `teamContext`: the signed-in team project, or null to keep everything in `directory` (as before sign-in existed). */
+  constructor(private directory: string, private teamContext: () => ApiTeamContext | null = () => null) {
+    this.files = new FileStore(directory);
+  }
+  /** The team project's store while signed in, else null. A different sign-in drops what the last one left in memory. */
+  private teamStore(): TeamStore | null {
+    const context = this.teamContext();
+    const key = context ? `${context.userId}:${context.projectId}` : "";
+    if ((this.team?.key ?? "") !== key) {
+      const previous = this.team?.store.context.projectId;
+      if (previous) { this.runner.globals.clear(previous); this.cookieJars.delete(previous); }
+      this.requestAuth.clear(); this.catalogCache.clear();
+      this.team = context ? { key, store: new TeamStore(context) } : undefined;
+    }
+    return this.team?.store ?? null;
+  }
+  private store(): ApiStore { return this.teamStore() ?? this.files; }
+  /** Call when the sign-in changes, so its in-memory state goes now rather than on the next request. */
+  syncSession() { this.teamStore(); }
+  /** Internal reads may reuse a team project read a moment ago; files are always read again. */
+  private projects() { return this.store().listProjects(3_000); }
+  private async requireProject(projectId: string) {
+    if (!(await this.projects()).some(project => project.id === projectId)) throw new Error("프로젝트를 찾을 수 없습니다");
+  }
   private maintenance = new Set<string>();
   private syncing = new Map<string, number>();
   private catalogCache = new Map<string, ApiCatalog | null>();
@@ -100,20 +128,17 @@ export class ApiWorkspace {
     this.queue = pending.catch(() => undefined);
     return pending;
   }
-  private async removeFile(file: string) {
-    try { await unlink(path.join(this.directory, file)); }
-    catch (e) { if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e; }
-  }
   private async clearScope(scope: ApiScope) {
-    await this.removeFile(this.filename(scope));
-    await this.removeFile(`spec-source-${scope.projectId}-${scope.environmentId}-${scope.serverId}.json`);
+    await this.files.remove(this.filename(scope));
+    await this.files.remove(`spec-source-${scope.projectId}-${scope.environmentId}-${scope.serverId}.json`);
     this.requestAuth.delete(this.authKey(scope));
     this.catalogCache.delete(this.filename(scope));
   }
   async deleteProject(rawId: string): Promise<void> {
     const id = z.string().uuid().parse(rawId);
+    if (this.teamStore()) throw new Error("팀 프로젝트는 API 테스트에서 삭제할 수 없습니다");
     return this.mutate(id, async () => {
-      const projects = await this.listProjects();
+      const projects = await this.files.listProjects();
       const project = projects.find(p => p.id === id);
       if (!project) throw new Error("프로젝트를 찾을 수 없습니다");
       for (const env of project.environments) {
@@ -121,24 +146,24 @@ export class ApiWorkspace {
       }
       this.runner.globals.clear(id);
       this.cookieJars.delete(id);
-      await this.removeFile(`scenarios-${id}.json`);
-      await this.removeFile(`suites-${id}.json`);
-      await this.removeFile(`doc-inputs-${id}.json`);
+      await this.files.remove(`scenarios-${id}.json`);
+      await this.files.remove(`suites-${id}.json`);
+      await this.files.remove(`doc-inputs-${id}.json`);
       const origins = await this.readShareOrigins(), bases = await this.readShareBases();
       delete origins[id]; delete bases[id];
-      await this.save("share-origins.json", origins); await this.save("share-bases.json", bases);
+      await this.files.save("share-origins.json", origins); await this.files.save("share-bases.json", bases);
       await rm(this.aiFiles(id).dir, { recursive: true, force: true });
       // Leftovers the steps above do not name: old format backups (…-<id>.json.bak-…) and specs of
       // server/environment pairs no longer in the project. The id is a UUID, so this matches only it.
       for (const file of await readdir(this.directory).catch(() => [] as string[])) {
-        if (file.includes(`-${id}.`) || file.includes(`-${id}-`)) await this.removeFile(file);
+        if (file.includes(`-${id}.`) || file.includes(`-${id}-`)) await this.files.remove(file);
       }
-      await this.save("projects.json", projects.filter(p => p.id !== id));
+      await this.files.save("projects.json", projects.filter(p => p.id !== id));
     });
   }
   /** Local project id → id of the project it was first shared from (absent for the original). */
   private async readShareOrigins(): Promise<Record<string, string>> {
-    const parsed = z.record(z.string().uuid(), z.string().uuid()).safeParse(await this.read("share-origins.json"));
+    const parsed = z.record(z.string().uuid(), z.string().uuid()).safeParse(await this.files.read("share-origins.json"));
     return parsed.success ? parsed.data : {};
   }
 
@@ -148,13 +173,9 @@ export class ApiWorkspace {
    */
   async exportProject(rawProjectId: string): Promise<string> {
     const projectId = z.string().uuid().parse(rawProjectId);
-    const project = (await this.listProjects()).find(p => p.id === projectId);
+    const project = (await this.projects()).find(p => p.id === projectId);
     if (!project) throw new Error("프로젝트를 찾을 수 없습니다");
-    const specUrls: ApiProjectExport["specUrls"] = [];
-    for (const environment of project.environments) for (const server of project.servers) {
-      const url = await this.specUrl(projectId, environment.id, server.id);
-      if (url) specUrls.push({ serverId: server.id, environmentId: environment.id, url });
-    }
+    const specUrls: ApiProjectExport["specUrls"] = await this.store().specUrls(project);
     const data: ApiProjectExport = {
       format: "checkly-api-project", version: 1, exportedAt: new Date().toISOString(),
       origin: (await this.readShareOrigins())[projectId] ?? projectId,
@@ -166,7 +187,7 @@ export class ApiWorkspace {
   }
 
   private async specUrl(projectId: string, environmentId: string, serverId: string): Promise<string | undefined> {
-    const stored = await this.read(`spec-source-${projectId}-${environmentId}-${serverId}.json`) as { url?: unknown } | null;
+    const stored = await this.files.read(`spec-source-${projectId}-${environmentId}-${serverId}.json`) as { url?: unknown } | null;
     return typeof stored?.url === "string" ? stored.url : undefined;
   }
 
@@ -194,13 +215,13 @@ export class ApiWorkspace {
   }
 
   private async readShareBases(): Promise<Record<string, ShareBase>> {
-    const parsed = z.record(z.string().uuid(), z.object({ scenarios: z.record(z.string(), z.string()), suites: z.record(z.string(), z.string()) })).safeParse(await this.read("share-bases.json"));
+    const parsed = z.record(z.string().uuid(), z.object({ scenarios: z.record(z.string(), z.string()), suites: z.record(z.string(), z.string()) })).safeParse(await this.files.read("share-bases.json"));
     return parsed.success ? parsed.data : {};
   }
 
   /** Remembers the version both sides now have, sent along in this project's next share file (call inside the queue). */
   private async recordShareBase(projectId: string, scenarios: Array<{ id: string } & Parameters<typeof scenarioShareHash>[0]>, suites: Array<{ id: string } & Parameters<typeof suiteShareHash>[0]>) {
-    await this.save("share-bases.json", { ...await this.readShareBases(), [projectId]: {
+    await this.files.save("share-bases.json", { ...await this.readShareBases(), [projectId]: {
       scenarios: Object.fromEntries(scenarios.map(item => [item.id, scenarioShareHash(item)])),
       suites: Object.fromEntries(suites.map(suite => [suite.id, suiteShareHash(suite)])),
     } });
@@ -209,6 +230,8 @@ export class ApiWorkspace {
   /** What importing would do: counts for a new project, and a three-way diff (against the file's base) for each local copy. */
   async planProjectImport(text: string): Promise<ApiProjectImportPlan> {
     const data = this.parseShareFile(text);
+    // The team project takes a file in directly (nothing is replaced), so there is no copy to compare with.
+    if (this.teamStore()) return { name: data.project.name, scenarios: data.scenarios.length, suites: data.suites.length, targets: [] };
     const origins = await this.readShareOrigins(), seen = await this.readShareBases();
     const targets: ApiProjectImportPlan["targets"] = [];
     const diff = <T extends { id: string; name: string }, L>(items: T[], locals: L[], localId: (item: L) => string, hash: (item: T | L) => string, base: Record<string, string>, taken: Record<string, string> = {}) => {
@@ -223,7 +246,7 @@ export class ApiWorkspace {
       }
       return result;
     };
-    for (const project of await this.listProjects()) {
+    for (const project of await this.files.listProjects()) {
       if (project.id !== data.origin && origins[project.id] !== data.origin) continue;
       targets.push({
         projectId: project.id, name: project.name,
@@ -245,9 +268,14 @@ export class ApiWorkspace {
    */
   async importProject(text: string, update?: { projectId: string; scenarioIds: string[]; suiteIds: string[] }): Promise<ApiProjectImportResult> {
     const data = this.parseShareFile(text);
+    const team = this.teamStore();
+    if (team) {
+      if (update) throw new Error("팀 프로젝트에는 공유 파일을 비교해 합칠 수 없습니다. 새 항목만 추가합니다");
+      return this.importToTeam(team, data);
+    }
     if (update) return this.mergeProject(data, z.object({ projectId: z.string().uuid(), scenarioIds: z.array(z.string().min(1).max(1000)).max(5000), suiteIds: z.array(z.string().uuid()).max(1000) }).strict().parse(update));
     const action = this.queue.then(async () => {
-      const projects = await this.listProjects();
+      const projects = await this.files.listProjects();
       const serverIds = new Map(data.project.servers.map(server => [server.id, randomUUID()]));
       const environmentIds = new Map(data.project.environments.map(environment => [environment.id, randomUUID()]));
       const names = new Set(projects.map(p => p.name));
@@ -263,13 +291,13 @@ export class ApiWorkspace {
       const scenarios = data.scenarios.map(item => this.sharedScenario(item, now));
       const suites: SavedApiSuite[] = data.suites.map(suite => ({ ...suite, scenarioIds: suite.scenarioIds.filter(id => scenarios.some(item => item.id === id)), updatedAt: now })).filter(suite => suite.scenarioIds.length);
       const specUrls = data.specUrls.filter(item => serverIds.has(item.serverId) && environmentIds.has(item.environmentId));
-      await this.save(`scenarios-${project.id}.json`, scenarios);
-      await this.save(`suites-${project.id}.json`, suites);
-      for (const item of specUrls) await this.save(`spec-source-${project.id}-${environmentIds.get(item.environmentId)}-${serverIds.get(item.serverId)}.json`, { url: item.url });
-      await this.save("share-origins.json", { ...await this.readShareOrigins(), [project.id]: data.origin });
+      await this.files.save(`scenarios-${project.id}.json`, scenarios);
+      await this.files.save(`suites-${project.id}.json`, suites);
+      for (const item of specUrls) await this.files.save(`spec-source-${project.id}-${environmentIds.get(item.environmentId)}-${serverIds.get(item.serverId)}.json`, { url: item.url });
+      await this.files.save("share-origins.json", { ...await this.readShareOrigins(), [project.id]: data.origin });
       await this.recordShareBase(project.id, data.scenarios, data.suites);
       // Last: the project only appears once everything it points at is written.
-      await this.save("projects.json", [...projects, project]);
+      await this.files.save("projects.json", [...projects, project]);
       return { project, scenarios: scenarios.length, suites: suites.length, specUrls: specUrls.length };
     });
     this.queue = action.catch(() => undefined);
@@ -282,7 +310,7 @@ export class ApiWorkspace {
 
   private mergeProject(data: ReturnType<ApiWorkspace["parseShareFile"]>, update: { projectId: string; scenarioIds: string[]; suiteIds: string[] }): Promise<ApiProjectImportResult> {
     return this.mutate(update.projectId, async () => {
-      const projects = await this.listProjects();
+      const projects = await this.files.listProjects();
       const local = projects.find(project => project.id === update.projectId);
       const origins = await this.readShareOrigins();
       if (!local || (local.id !== data.origin && origins[local.id] !== data.origin)) throw new Error("이 파일과 같은 프로젝트가 아닙니다");
@@ -325,21 +353,114 @@ export class ApiWorkspace {
         const environmentName = data.project.environments.find(environment => environment.id === item.environmentId)?.name;
         const environment = merged.data.environments.find(candidate => candidate.name === environmentName), serverId = serverIds.get(item.serverId);
         if (!environment || !serverId || await this.specUrl(local.id, environment.id, serverId)) continue;
-        await this.save(`spec-source-${local.id}-${environment.id}-${serverId}.json`, { url: item.url }); specUrls++;
+        await this.files.save(`spec-source-${local.id}-${environment.id}-${serverId}.json`, { url: item.url }); specUrls++;
       }
-      await this.save(`scenarios-${local.id}.json`, scenarios);
-      await this.save(`suites-${local.id}.json`, suites);
+      await this.files.save(`scenarios-${local.id}.json`, scenarios);
+      await this.files.save(`suites-${local.id}.json`, suites);
       // Both sides now share the file's version as their common base.
       await this.recordShareBase(local.id, data.scenarios, data.suites);
-      await this.save("projects.json", projects.map(project => project.id === local.id ? merged.data : project));
+      await this.files.save("projects.json", projects.map(project => project.id === local.id ? merged.data : project));
       return { project: merged.data, scenarios: scenarios.length, suites: suites.length, specUrls, merged: { added, updated, kept } };
     });
+  }
+
+  /** Team mode: copies one local project into the team project (see importToTeam), with its docs inputs and specs read. */
+  async importLocalProject(rawProjectId: string): Promise<ApiProjectImportResult> {
+    const projectId = z.string().uuid().parse(rawProjectId);
+    const team = this.teamStore();
+    if (!team) throw new Error("팀 프로젝트에 로그인한 뒤 가져올 수 있습니다");
+    const local = new ApiWorkspace(this.directory);
+    const data = this.parseShareFile(await local.exportProject(projectId));
+    return this.importToTeam(team, data, await this.files.docInputs(projectId), projectId);
+  }
+
+  /**
+   * Adds a share file's project to the signed-in team project without replacing anything: servers
+   * and environments match by name (missing ones are added, team addresses win, the file's fill
+   * unset pairs), spec URLs fill unset pairs, and scenarios, suites and docs inputs are added when
+   * their id is new. From a local project (`localProjectId`) its read specs and saved docs account
+   * are copied too, so they need not be fetched again.
+   */
+  private importToTeam(team: TeamStore, data: ReturnType<ApiWorkspace["parseShareFile"]>, docInputs: Record<string, ApiDocInput> = {}, localProjectId?: string): Promise<ApiProjectImportResult> {
+    return this.mutate(team.context.projectId, async () => {
+      const current = (await team.listProjects())[0];
+      const idByName = (items: Array<{ id: string; name: string }>) => {
+        const ids = new Map(items.map(item => [item.name, item.id]));
+        return (name: string) => ids.get(name) ?? ids.set(name, randomUUID()).get(name)!;
+      };
+      const serverId = idByName(current.servers), environmentId = idByName(current.environments);
+      const serverIds = new Map(data.project.servers.map(server => [server.id, serverId(server.name)]));
+      const environmentIds = new Map(data.project.environments.map(environment => [environment.id, environmentId(environment.name)]));
+      const servers = [...current.servers];
+      for (const server of data.project.servers) if (!servers.some(item => item.id === serverIds.get(server.id))) servers.push({ id: serverIds.get(server.id)!, name: server.name });
+      const environments = [...current.environments];
+      for (const environment of data.project.environments) {
+        const id = environmentIds.get(environment.id)!;
+        const fileUrls = Object.fromEntries(Object.entries(environment.baseUrls).map(([key, url]) => [serverIds.get(key)!, url]));
+        const index = environments.findIndex(item => item.id === id);
+        if (index < 0) environments.push({ id, name: environment.name, baseUrls: fileUrls });
+        else environments[index] = { ...environments[index], baseUrls: { ...fileUrls, ...environments[index].baseUrls } };
+      }
+      await team.saveProject(parseTeamProject({ ...current, servers, environments }), current, []);
+      const project = (await team.listProjects())[0];
+      const known = await team.specUrls(project);
+      let specUrls = 0;
+      for (const item of data.specUrls) {
+        const server = serverIds.get(item.serverId), environment = environmentIds.get(item.environmentId);
+        if (!server || !environment || known.some(url => url.serverId === server && url.environmentId === environment)) continue;
+        if (await team.setSpecUrl(environment, server, item.url)) { known.push({ serverId: server, environmentId: environment, url: item.url }); specUrls++; }
+      }
+      const now = new Date().toISOString();
+      const scenarios = data.scenarios.map(item => this.sharedScenario(item, now));
+      const existing = new Set([...(await team.listScenarios()).map(item => item.id), ...scenarios.map(item => item.id)]);
+      const suites: SavedApiSuite[] = data.suites.map(suite => ({ ...suite, scenarioIds: suite.scenarioIds.filter(id => existing.has(id)), updatedAt: now })).filter(suite => suite.scenarioIds.length);
+      const addedScenarios = await team.addScenarios(scenarios), addedSuites = await team.addSuites(suites);
+      await team.addDocInputs(Object.fromEntries(Object.entries(docInputs).flatMap(([key, input]) => {
+        const server = serverIds.get(key.slice(0, key.indexOf(" ")));
+        return server ? [[`${server}${key.slice(key.indexOf(" "))}`, input]] : [];
+      })));
+      if (localProjectId) for (const environment of data.project.environments) for (const server of data.project.servers) {
+        const [from, to] = [[localProjectId, environment.id, server.id], [project.id, environmentIds.get(environment.id), serverIds.get(server.id)]].map(ids => ids.join("-"));
+        // Local caches only; one already there for the team pair stays.
+        for (const kind of ["catalog", "spec-source"]) await copyFile(path.join(this.directory, `${kind}-${from}.json`), path.join(this.directory, `${kind}-${to}.json`), constants.COPYFILE_EXCL).catch(() => undefined);
+      }
+      const added = addedScenarios + addedSuites;
+      return { project, scenarios: addedScenarios, suites: addedSuites, specUrls, merged: { added, updated: 0, kept: scenarios.length + suites.length - added } };
+    });
+  }
+
+  /** "file": this computer only. "team": the signed-in team project, with local projects it can still take in once. */
+  async getStorage(): Promise<ApiStorageInfo> {
+    const team = this.teamStore();
+    if (!team) return { mode: "file" };
+    const locals = await this.files.listProjects().catch(() => []);
+    const counts = locals.length ? await team.counts() : undefined;
+    const importable = !counts || counts.scenarios || counts.suites ? [] : await Promise.all(locals.map(async project => ({
+      id: project.id, name: project.name,
+      scenarios: (await this.files.listScenarios(project.id)).length, suites: (await this.files.listSuites(project.id)).length,
+    })));
+    return { mode: "team", projectCode: team.context.projectCode, importable };
+  }
+
+  /** The team's spec URL of the scope (null when unset); undefined without sign-in, where SpecSync keeps it locally. */
+  async sharedSpecUrl(input: ApiScope): Promise<string | null | undefined> {
+    const team = this.teamStore();
+    if (!team) return undefined;
+    const { scope } = await this.scope(input);
+    return team.specUrl(scope.environmentId, scope.serverId);
+  }
+  /** Team mode: a spec URL that imported fine becomes the team's for that server·environment. */
+  async shareSpecUrl(input: ApiScope, url: string): Promise<void> {
+    const team = this.teamStore();
+    if (!team) return;
+    const { scope } = await this.scope(input);
+    await team.setSpecUrl(scope.environmentId, scope.serverId, url);
   }
 
   async deleteCatalog(input: ApiScope): Promise<void> {
     const scope = scopeSchema.parse(input);
     return this.mutate(scope.projectId, async () => {
-      const project = (await this.listProjects()).find(p => p.id === scope.projectId);
+      const project = (await this.projects()).find(p => p.id === scope.projectId);
       if (!project?.servers.some(s => s.id === scope.serverId) || !project.environments.some(e => e.id === scope.environmentId)) throw new Error("프로젝트·서버·환경을 선택하세요");
       await this.clearScope(scope);
     });
@@ -348,10 +469,8 @@ export class ApiWorkspace {
     const projectId = z.string().uuid().parse(rawProjectId);
     const id = z.string().min(1).max(1000).parse(rawId);
     return this.mutate(projectId, async () => {
-      const saved = await this.listScenarios(projectId);
-      const item = saved.find(s => s.id === id);
-      if (!item || item.updatedAt !== revision) throw new Error("시나리오가 변경되었습니다. 최신 목록에서 다시 선택하세요");
-      await this.save(`scenarios-${projectId}.json`, saved.filter(s => s.id !== id));
+      await this.requireProject(projectId);
+      if (!await this.store().deleteScenario(projectId, id, revision)) throw new Error("시나리오가 변경되었습니다. 최신 목록에서 다시 선택하세요");
     });
   }
 
@@ -548,63 +667,41 @@ export class ApiWorkspace {
     return { drafts, suite };
   }
 
-  private async save(file: string, value: unknown) {
-    await mkdir(this.directory, { recursive: true });
-    const temp = path.join(this.directory, `${randomUUID()}.tmp`);
-    await writeFile(temp, JSON.stringify(value, null, 2), { mode: 0o600 });
-    await rename(temp, path.join(this.directory, file));
-  }
-  private async read(file: string): Promise<unknown | null> {
-    try { return JSON.parse(await readFile(path.join(this.directory, file), "utf8")); }
-    catch (e) { if ((e as NodeJS.ErrnoException).code === "ENOENT") return null; throw new Error("저장된 API 작업 공간을 읽을 수 없습니다"); }
-  }
-  /** Keyed by "<serverId> <METHOD path>"; project-wide like globals, so every environment shares them. */
-  private async readDocInputs(projectId: string): Promise<Record<string, ApiDocInput>> {
-    const parsed = z.record(z.string(), z.object({
-      pathParams: z.record(z.string(), z.json()).optional(), query: z.record(z.string(), z.json()).optional(),
-      headers: z.record(z.string(), z.string()).optional(), cookies: z.record(z.string(), z.json()).optional(), body: z.json().optional(),
-    })).safeParse(await this.read(`doc-inputs-${projectId}.json`));
-    return parsed.success ? parsed.data as Record<string, ApiDocInput> : {};
-  }
-
   /** Last "Try it out" values per API of the scope's server (secret-looking names are never stored). */
   async getDocInputs(input: ApiScope): Promise<Record<string, ApiDocInput>> {
     const { scope } = await this.scope(input);
     const prefix = `${scope.serverId} `;
-    return Object.fromEntries(Object.entries(await this.readDocInputs(scope.projectId)).filter(([key]) => key.startsWith(prefix)).map(([key, value]) => [key.slice(prefix.length), value]));
+    // Keyed by "<serverId> <METHOD path>"; project-wide like globals, so every environment shares them.
+    return Object.fromEntries(Object.entries(await this.store().docInputs(scope.projectId)).filter(([key]) => key.startsWith(prefix)).map(([key, value]) => [key.slice(prefix.length), value]));
   }
 
   async forgetDocInput(input: ApiScope, rawKey: string): Promise<void> {
     const { scope } = await this.scope(input);
     const key = `${scope.serverId} ${z.string().min(1).max(2000).parse(rawKey)}`;
-    await this.updateDocInputs(scope.projectId, inputs => { delete inputs[key]; });
+    await this.setDocInput(scope.projectId, key, undefined);
   }
 
-  private updateDocInputs(projectId: string, change: (inputs: Record<string, ApiDocInput>) => void): Promise<void> {
-    const action = this.queue.then(async () => {
-      const inputs = await this.readDocInputs(projectId);
-      change(inputs);
-      await this.save(`doc-inputs-${projectId}.json`, inputs);
-    });
+  private setDocInput(projectId: string, key: string, input: ApiDocInput | undefined): Promise<void> {
+    const action = this.queue.then(() => this.store().setDocInput(projectId, key, input));
     this.queue = action.catch(() => undefined);
     return action;
   }
 
+  /** Without sign-in: this computer's projects. Signed in: only the team project (it may lack servers or environments yet). */
   async listProjects(): Promise<ApiProject[]> {
-    return z.array(projectSchema).parse(await this.read("projects.json") ?? []);
+    return this.store().listProjects();
   }
   async saveProject(input: unknown): Promise<ApiProject> {
-    const project = projectSchema.parse(input);
+    const team = this.teamStore();
+    const project = team ? parseTeamProject(input) : projectSchema.parse(input);
+    if (team && project.id !== team.context.projectId) throw new Error("팀 프로젝트에 로그인한 동안에는 API 프로젝트를 새로 만들 수 없습니다");
     return this.mutate(project.id, async () => {
-      const projects = await this.listProjects();
-      const index = projects.findIndex(p => p.id === project.id);
-      let originalScenarios: SavedApiScenario[] | undefined;
-      let renamedScenarios: SavedApiScenario[] | undefined;
-      if (index >= 0) {
-        const previous = projects[index];
+      const store = this.store();
+      const previous = (await store.listProjects()).find(p => p.id === project.id);
+      const renames: ScenarioRename[] = [];
+      if (previous) {
         if (previous.servers.some(old => project.servers.some(next => next.id === old.id && next.name !== old.name))) {
-          originalScenarios = await this.listScenarios(project.id);
-          renamedScenarios = originalScenarios.map(item => {
+          for (const item of await this.listScenarios(project.id)) {
             const scenario = this.parseSource(item.source);
             let changed = false;
             const steps = scenario.steps.map(step => {
@@ -615,8 +712,8 @@ export class ApiWorkspace {
               if (step.server !== next.name) changed = true;
               return { ...step, server: next.name };
             });
-            return changed ? { ...item, source: stringifyScenario({ ...scenario, steps }, true), bindings: {}, updatedAt: new Date(Math.max(Date.now(), Date.parse(item.updatedAt) + 1)).toISOString() } : item;
-          });
+            if (changed) renames.push({ before: item, after: { ...item, source: stringifyScenario({ ...scenario, steps }, true), bindings: {}, updatedAt: new Date(Math.max(Date.now(), Date.parse(item.updatedAt) + 1)).toISOString() } });
+          }
         }
         const removedServers = previous.servers.filter(s => !project.servers.some(n => n.id === s.id));
         const removedEnvironments = previous.environments.filter(e => !project.environments.some(n => n.id === e.id));
@@ -631,35 +728,28 @@ export class ApiWorkspace {
           for (const env of previous.environments) {
             for (const server of previous.servers) if (removedEnvironments.some(e => e.id === env.id) || removedServers.some(s => s.id === server.id)) await this.clearScope({ projectId: project.id, environmentId: env.id, serverId: server.id });
           }
-          if (removedServers.length) {
-            const inputs = await this.readDocInputs(project.id);
-            await this.save(`doc-inputs-${project.id}.json`, Object.fromEntries(Object.entries(inputs).filter(([key]) => !removedServers.some(server => key.startsWith(`${server.id} `)))));
-          }
         }
       }
-      if (index < 0) projects.push(project); else projects[index] = project;
-      if (renamedScenarios) await this.save(`scenarios-${project.id}.json`, renamedScenarios);
-      try { await this.save("projects.json", projects); }
-      catch (error) {
-        if (originalScenarios) await this.save(`scenarios-${project.id}.json`, originalScenarios);
-        throw error;
-      }
-      return project;
+      await store.saveProject(project, previous, renames);
+      // The team project comes back with its new revision.
+      return team ? (await store.listProjects())[0] : project;
     });
   }
   private async scope(input: ApiScope) {
     const s = scopeSchema.parse(input);
-    const project = (await this.listProjects()).find(p => p.id === s.projectId);
+    const project = (await this.projects()).find(p => p.id === s.projectId);
     this.assertAvailable(s.projectId);
     const environment = project?.environments.find(e => e.id === s.environmentId);
-    if (!environment || !project?.servers.some(v => v.id === s.serverId)) throw new Error("프로젝트·서버·환경을 선택하세요");
-    return { scope: s, baseUrl: environment.baseUrls[s.serverId] };
+    const server = project?.servers.find(v => v.id === s.serverId);
+    if (!environment || !server) throw new Error("프로젝트·서버·환경을 선택하세요");
+    // "" only in a team project, whose addresses may be left unset for now.
+    return { scope: s, baseUrl: environment.baseUrls[s.serverId] ?? "", server, environment };
   }
   private filename(s: ApiScope) { return `catalog-${s.projectId}-${s.environmentId}-${s.serverId}.json`; }
   private async readCatalog(scope: ApiScope): Promise<ApiCatalog | null> {
     const filename = this.filename(scope);
     if (this.catalogCache.has(filename)) return this.catalogCache.get(filename)!;
-    const catalog = await this.read(filename) as ApiCatalog | null;
+    const catalog = await this.files.read(filename) as ApiCatalog | null;
     let current = catalog;
     // Catalogs persist the source spec as well as the derived operations. Rebuild
     // derived metadata when an older app version left stale support warnings.
@@ -694,7 +784,7 @@ export class ApiWorkspace {
         if (from.length) titleChanges[operation.key] = { from, to: operation.summary };
       }
       if (Object.keys(titleChanges).length) catalog.titleChanges = titleChanges;
-      await this.save(this.filename(scope), catalog);
+      await this.files.save(this.filename(scope), catalog);
       this.catalogCache.set(this.filename(scope), catalog);
       return catalog;
     } finally { release(); }
@@ -702,7 +792,7 @@ export class ApiWorkspace {
 
   private async environment(input: ApiEnvironmentScope) {
     const scope = environmentScopeSchema.parse(input);
-    const project = (await this.listProjects()).find(p => p.id === scope.projectId);
+    const project = (await this.projects()).find(p => p.id === scope.projectId);
     this.assertAvailable(scope.projectId);
     const environment = project?.environments.find(e => e.id === scope.environmentId);
     if (!project || !environment) throw new Error("프로젝트·환경을 선택하세요");
@@ -711,7 +801,7 @@ export class ApiWorkspace {
 
   private async project(input: ApiProjectScope) {
     const scope = projectScopeSchema.parse(input);
-    const project = (await this.listProjects()).find(p => p.id === scope.projectId);
+    const project = (await this.projects()).find(p => p.id === scope.projectId);
     this.assertAvailable(scope.projectId);
     if (!project) throw new Error("프로젝트를 찾을 수 없습니다");
     return { scope, project };
@@ -757,16 +847,15 @@ export class ApiWorkspace {
 
   async listScenarios(rawProjectId: string): Promise<SavedApiScenario[]> {
     const projectId = z.string().uuid().parse(rawProjectId);
-    if (!(await this.listProjects()).some(p => p.id === projectId)) throw new Error("프로젝트를 찾을 수 없습니다");
-    const saved = await this.read(`scenarios-${projectId}.json`) as Record<string, unknown>[] | undefined;
-    return (saved ?? []).map(item => migrateSidebarMetadata(item) as unknown as SavedApiScenario);
+    await this.requireProject(projectId);
+    return (await this.store().listScenarios(projectId)).map(item => migrateSidebarMetadata(item) as unknown as SavedApiScenario);
   }
 
   async listSuites(rawProjectId: string): Promise<SavedApiSuite[]> {
     const projectId = z.string().uuid().parse(rawProjectId);
-    if (!(await this.listProjects()).some(project => project.id === projectId)) throw new Error("프로젝트를 찾을 수 없습니다");
-    const saved = await this.read(`suites-${projectId}.json`) as Record<string, unknown>[] | undefined;
-    return z.array(suiteSchema.extend({ updatedAt: z.string().datetime() })).parse((saved ?? []).map(migrateSidebarMetadata));
+    await this.requireProject(projectId);
+    // Team rows carry the database time (with offset and microseconds); it goes back as is when saving.
+    return z.array(suiteSchema.extend({ updatedAt: z.string().datetime({ offset: true }) })).parse((await this.store().listSuites(projectId)).map(migrateSidebarMetadata));
   }
 
   async saveSuite(rawProjectId: string, rawSuite: Omit<SavedApiSuite, "updatedAt">, expectedUpdatedAt?: string): Promise<SavedApiSuite> {
@@ -775,13 +864,11 @@ export class ApiWorkspace {
     const action = this.queue.then(async () => {
       const scenarios = await this.listScenarios(projectId);
       if (suite.scenarioIds.some(id => !scenarios.some(item => item.id === id && !item.draft))) throw new Error("저장된 실행 가능 시나리오만 묶음에 추가하세요");
-      const saved = await this.listSuites(projectId);
-      const index = saved.findIndex(item => item.id === suite.id);
-      if (index >= 0 && saved[index].updatedAt !== expectedUpdatedAt) throw new Error("묶음이 변경되었습니다. 최신 목록에서 다시 선택하세요");
-      const item: SavedApiSuite = { ...suite, updatedAt: new Date(Math.max(Date.now(), index >= 0 ? Date.parse(saved[index].updatedAt) + 1 : 0)).toISOString() };
-      if (index >= 0) saved[index] = item; else saved.push(item);
-      await this.save(`suites-${projectId}.json`, saved);
-      return item;
+      const previous = (await this.listSuites(projectId)).find(item => item.id === suite.id);
+      const item: SavedApiSuite = { ...suite, updatedAt: new Date(Math.max(Date.now(), previous ? Date.parse(previous.updatedAt) + 1 : 0)).toISOString() };
+      const stored = await this.store().putSuite(projectId, item, expectedUpdatedAt);
+      if (!stored) throw new Error("묶음이 변경되었습니다. 최신 목록에서 다시 선택하세요");
+      return stored;
     });
     this.queue = action.catch(() => undefined);
     return action;
@@ -791,10 +878,8 @@ export class ApiWorkspace {
     const projectId = z.string().uuid().parse(rawProjectId);
     const id = z.string().uuid().parse(rawId);
     const action = this.queue.then(async () => {
-      const saved = await this.listSuites(projectId);
-      const item = saved.find(suite => suite.id === id);
-      if (!item || item.updatedAt !== expectedUpdatedAt) throw new Error("묶음이 변경되었습니다. 최신 목록에서 다시 선택하세요");
-      await this.save(`suites-${projectId}.json`, saved.filter(suite => suite.id !== id));
+      await this.requireProject(projectId);
+      if (!await this.store().deleteSuite(projectId, id, expectedUpdatedAt)) throw new Error("묶음이 변경되었습니다. 최신 목록에서 다시 선택하세요");
     });
     this.queue = action.catch(() => undefined);
     return action;
@@ -880,12 +965,10 @@ export class ApiWorkspace {
     const pending = (await this.checkScenarioSpecs(input)).renamed.find(item => item.scenarioId === scenarioId)?.steps ?? [];
     if (!pending.length) return;
     const action = this.queue.then(async () => {
-      const saved = await this.listScenarios(input.projectId);
-      const item = saved.find(candidate => candidate.id === scenarioId);
-      if (!item) throw new Error("시나리오를 찾을 수 없습니다");
+      const item = (await this.listScenarios(input.projectId)).find(candidate => candidate.id === scenarioId);
       // Metadata only: updatedAt stays, so an editor open on this scenario can still save.
-      item.keptTitles = [...(item.keptTitles ?? []).filter(kept => !pending.some(step => step.from === kept.from)), ...pending];
-      await this.save(`scenarios-${input.projectId}.json`, saved);
+      const keptTitles = [...(item?.keptTitles ?? []).filter(kept => !pending.some(step => step.from === kept.from)), ...pending];
+      if (!item || !await this.store().keepTitles(input.projectId, scenarioId, keptTitles)) throw new Error("시나리오를 찾을 수 없습니다");
     });
     this.queue = action.catch(() => undefined);
     return action;
@@ -953,7 +1036,7 @@ export class ApiWorkspace {
         if (sourceIndex !== undefined && sourceIndex < index) variables.add(binding.name);
       }
       const serverId = bindings[step.server] ?? step.server;
-      if (!environment.baseUrls[serverId]) executionIssues.push(`${executionLabel}: 서버 기본 URL을 환경 설정에서 지정하세요`);
+      if (!environment.baseUrls[serverId]) executionIssues.push(`${executionLabel}: ${project.servers.some(s => s.id === serverId) ? unsetAddress(project.servers.find(s => s.id === serverId)!.name, environment.name) : "서버 기본 URL을 환경 설정에서 지정하세요"}`);
       if (!project.servers.some(s => s.id === serverId)) issues.push(`${stepName}: 서버 '${step.server}'를 연결하세요`);
       else {
         if (!catalogs.has(serverId)) catalogs.set(serverId, await this.getCatalog({ ...scope, serverId }));
@@ -1014,20 +1097,17 @@ export class ApiWorkspace {
       const preview = await this.previewScenario(input, source, bindings);
       if (!draft && !allowIssues && preview.issues.length) throw new Error(preview.issues.join("\n"));
       const { project } = await this.environment(input);
-      const saved = await this.listScenarios(input.projectId);
-      const index = saved.findIndex(s => s.id === preview.scenario.id);
-      if (index >= 0 && saved[index].updatedAt !== expectedUpdatedAt) throw new Error("같은 ID의 시나리오가 있습니다. 목록에서 최신 시나리오를 열어 수정하세요");
+      const previous = (await this.listScenarios(input.projectId)).find(s => s.id === preview.scenario.id);
       const named = { ...preview.scenario, steps: preview.scenario.steps.map(step => ({ ...step, server: project.servers.find(server => server.id === step.server)?.name ?? step.server })) };
-      const previous = index >= 0 ? saved[index] : undefined;
       const item: SavedApiScenario = {
         id: preview.scenario.id, name: preview.scenario.name, source: stringifyScenario(named, true), bindings: {}, updatedAt: new Date().toISOString(), draft,
         ...(metadata?.groupPath !== undefined ? { groupPath: metadata.groupPath } : metadata === undefined && previous?.groupPath ? { groupPath: previous.groupPath } : {}),
         ...(metadata?.tags !== undefined ? { tags: metadata.tags } : previous?.tags ? { tags: previous.tags } : {}),
         ...(previous?.keptTitles ? { keptTitles: previous.keptTitles } : {}),
       };
-      if (index >= 0) saved[index] = item; else saved.push(item);
-      await this.save(`scenarios-${input.projectId}.json`, saved);
-      return item;
+      const stored = await this.store().putScenario(input.projectId, item, expectedUpdatedAt);
+      if (!stored) throw new Error("같은 ID의 시나리오가 있습니다. 목록에서 최신 시나리오를 열어 수정하세요");
+      return stored;
     });
     this.queue = action.catch(() => undefined);
     return action;
@@ -1089,7 +1169,8 @@ export class ApiWorkspace {
     this.active.get(`${s.projectId}:${s.environmentId}`)?.abort();
   }
   async execute(input: ApiScope, key: string, request: unknown): Promise<ApiResponse> {
-    const { scope, baseUrl } = await this.scope(input);
+    const { scope, baseUrl, server, environment } = await this.scope(input);
+    if (!baseUrl) throw new Error(unsetAddress(server.name, environment.name));
     // Scope is already validated; do not read and validate projects.json twice per request.
     const catalog = await this.readCatalog(scope);
     const operation = catalog?.operations.find(o => o.key === key);
@@ -1099,9 +1180,7 @@ export class ApiWorkspace {
     const req = scenario.steps[0].request;
     // Remember what was typed before any check below can fail; never let storage break the request.
     const remembered = docInputFromRequest(req);
-    await this.updateDocInputs(scope.projectId, inputs => {
-      if (remembered) inputs[`${scope.serverId} ${key}`] = remembered; else delete inputs[`${scope.serverId} ${key}`];
-    }).catch(() => undefined);
+    await this.setDocInput(scope.projectId, `${scope.serverId} ${key}`, remembered).catch(() => undefined);
     const auth = this.requestAuth.get(this.authKey(scope));
     if (auth) {
       if (auth.baseUrl !== baseUrl) throw new Error("서버 주소가 변경되었습니다. API 인증 설정을 다시 연결하거나 해제하세요");
@@ -1140,6 +1219,16 @@ export class ApiWorkspace {
       return { status: step.status, httpStatus: step.httpStatus, durationMs: step.durationMs, error: step.error, ...(detail?.request ? { request: detail.request } : {}), ...(detail?.response ? detail.response : {}) };
     } finally { this.active.delete(runKey); }
   }
+}
+
+/** A team project may leave a server·environment address unset ("미설정"); calls there say so. */
+const unsetAddress = (server: string, environment: string) => `${environment} 환경에 ${server} 서버 주소가 설정되지 않았습니다(미설정). 프로젝트 설정에서 주소를 입력하세요`;
+
+/** Team project as typed in the form; the first problem in words instead of a schema dump. */
+function parseTeamProject(input: unknown): ApiProject {
+  const parsed = teamProjectSchema.safeParse(input);
+  if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? "프로젝트 설정을 확인하세요");
+  return parsed.data;
 }
 
 /** The top-level `name:` of a scenario document, readable even when the rest does not parse. */

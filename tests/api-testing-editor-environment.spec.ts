@@ -99,6 +99,7 @@ async function workspace(page: Page, structured = false, linkedGlobal = false, o
   await page.exposeFunction('__apiTestingCall', async (method: string, args: unknown[]) => {
     switch (method) {
       case 'listProjects': return [project]
+      case 'getStorage': return { mode: 'file' }
       case 'listScenarios': return saved
       case 'listSuites':
       case 'listCookies': return []

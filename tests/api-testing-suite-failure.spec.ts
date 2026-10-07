@@ -66,6 +66,7 @@ async function withFailedLogin(
     await page.exposeFunction('__suiteTestingCall', async (method: string, args: unknown[]) => {
       if (method === 'getSpecSync') return { hasSavedAccount: false, secureStorageAvailable: false }
       if (method === 'getPendingScenarioInput') return null
+      if (method === 'getStorage') return { mode: 'file' }
       if (method === 'saveSuiteReport') {
         await writeFile(reportFile, args[1] as string, 'utf8')
         return reportFile

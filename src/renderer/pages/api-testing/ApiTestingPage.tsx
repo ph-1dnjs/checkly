@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import type { ApiCatalog, ApiSpecImpact, ApiProject, ApiProjectImportPlan, ApiProjectImportResult, ApiSpecSync, ApiTestingBridge, SavedApiScenario } from "../../../app/api-testing/shared/workspace";
-import { ProjectForm, ProjectImportDialog } from "../../features/api-testing/configure-project";
+import type { ApiCatalog, ApiSpecImpact, ApiProject, ApiProjectImportPlan, ApiProjectImportResult, ApiSpecSync, ApiStorageInfo, ApiTestingBridge, SavedApiScenario } from "../../../app/api-testing/shared/workspace";
+import { LocalProjectImport, ProjectForm, ProjectImportDialog } from "../../features/api-testing/configure-project";
 import { ApiDocumentation } from "./ui/ApiDocumentation";
 import { LoadingSpinner } from "../../shared/ui/LoadingSpinner";
 import { Icon } from "../../shared/ui/Icon";
@@ -20,6 +20,10 @@ const newProjectOption = "__new-project__";
 
 export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTesting }: { onRunAction: OnRunAction; bridge?: ApiTestingBridge }) {
   const [projects, setProjects] = useState<ApiProject[]>([]);
+  // Signed in to a team project, API testing has that one project, shared with the team.
+  const [storage, setStorage] = useState<ApiStorageInfo>({ mode: "file" });
+  const team = storage.mode === "team";
+  const [localImportClosed, setLocalImportClosed] = useState(false);
   const [runSaved, setRunSaved] = useState<SavedApiScenario | null>(null);
   // Opened (not run) when the scenarios tab mounts, e.g. the first scenario the AI helper saved.
   const [openSaved, setOpenSaved] = useState<SavedApiScenario | null>(null);
@@ -127,8 +131,8 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
       setScenarioEditorScenarioId(target.scenarioId || null);
       if (selected) {
         setProjectId(selected.id);
-        setServerId(selected.servers.find(s => s.id === target.serverId)?.id ?? selected.servers[0].id);
-        setEnvironmentId(selected.environments.find(e => e.id === target.environmentId)?.id ?? selected.environments[0].id);
+        setServerId(selected.servers.find(s => s.id === target.serverId)?.id ?? selected.servers[0]?.id ?? "");
+        setEnvironmentId(selected.environments.find(e => e.id === target.environmentId)?.id ?? selected.environments[0]?.id ?? "");
       }
     };
     window.addEventListener("popstate", restore);
@@ -150,25 +154,37 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
     // A new project needs its specs first: open where they are imported.
     if (!result.merged) setTab("api");
     setSpecNotice(!result.merged);
-    setNotice(result.merged
+    setNotice(team && result.merged
+      ? `팀 프로젝트 ‘${result.project.name}’에 추가했습니다 · 새 항목 ${result.merged.added} · 이미 있어 그대로 둔 항목 ${result.merged.kept}.${result.specUrls ? " 새로 생긴 명세는 API 문서 탭에서 [이 URL로 가져오기]로 받으세요." : ""}`
+      : result.merged
       ? `‘${result.project.name}’에 합쳤습니다 · 추가 ${result.merged.added} · 반영 ${result.merged.updated} · 내 변경 유지 ${result.merged.kept}.${result.specUrls ? " 새로 생긴 명세는 API 문서 탭에서 [이 URL로 가져오기]로 받으세요." : ""}`
       : `‘${result.project.name}’ 프로젝트를 가져왔습니다 · 시나리오 ${result.scenarios}개, 스위트 ${result.suites}개. ${result.specUrls ? "서버·환경마다 [이 URL로 가져오기]로 명세를 받으세요(문서 인증이 있으면 계정 입력)." : "서버·환경마다 명세를 가져오세요."}`);
   };
-  const selectProject = (p: ApiProject) => { setProjectId(p.id); setServerId(p.servers[0].id); setEnvironmentId(p.environments[0].id); setUrl(""); setScenarioEditorScenarioId(null); };
+  // A team project may have no API server or environment yet.
+  const selectProject = (p: ApiProject) => { setProjectId(p.id); setServerId(p.servers[0]?.id ?? ""); setEnvironmentId(p.environments[0]?.id ?? ""); setUrl(""); setScenarioEditorScenarioId(null); };
+  const loadProjects = (live: () => boolean) => Promise.all([bridge.listProjects(), bridge.getStorage().catch((): ApiStorageInfo => ({ mode: "file" }))]).then(([items, info]) => { if (live()) {
+    setProjects(items); setStorage(info);
+    const target = readWorkspaceUrl(window.location.href);
+    const selected = items.find(p => p.id === target.projectId) ?? items[0];
+    if (selected) {
+      selectProject(selected);
+      setServerId(selected.servers.find(s => s.id === target.serverId)?.id ?? selected.servers[0]?.id ?? "");
+      setEnvironmentId(selected.environments.find(e => e.id === target.environmentId)?.id ?? selected.environments[0]?.id ?? "");
+      setScenarioEditorScenarioId(target.scenarioId || null);
+    } else { setProjectId(""); setServerId(""); setEnvironmentId(""); }
+  } }).catch(error => {
+    // Team storage says why (offline, signed out…); a broken local file only that it could not be read.
+    const reason = (error as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, "");
+    if (live()) setError(`프로젝트 목록을 읽지 못했습니다.${reason && !reason.startsWith("[") ? ` ${reason}` : ""}`);
+    // Still say which mode this is, so a team member is not offered to create a local project.
+    void bridge.getStorage().then(info => { if (live()) setStorage(info); }, () => undefined);
+  });
   useEffect(() => {
     let live = true;
-    if (bridge) void bridge.listProjects().then(items => { if (live) {
-      setProjects(items);
-      const target = readWorkspaceUrl(window.location.href);
-      const selected = items.find(p => p.id === target.projectId) ?? items[0];
-      if (selected) {
-        selectProject(selected);
-        setServerId(selected.servers.find(s => s.id === target.serverId)?.id ?? selected.servers[0].id);
-        setEnvironmentId(selected.environments.find(e => e.id === target.environmentId)?.id ?? selected.environments[0].id);
-        setScenarioEditorScenarioId(target.scenarioId || null);
-      }
-    } }).catch(() => { if (live) setError("프로젝트 목록을 읽지 못했습니다."); });
-    return () => { live = false; };
+    if (bridge) void loadProjects(() => live);
+    // Another sign-in (e.g. a project change) brings another team project: read everything again.
+    const unsubscribe = bridge && window.electronAPI?.auth?.onSessionChange?.(() => { setForm(null); setNotice(""); setError(""); setLocalImportClosed(false); void loadProjects(() => live); });
+    return () => { live = false; unsubscribe?.(); };
   }, []);
   useEffect(() => {
     let live = true;
@@ -213,15 +229,23 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
   const locked = busy || scenarioComposerOpen;
   const environmentPicker = project && <div className="api-environments" role="group" aria-label={tab === "scenario-editor" ? "시나리오 전체 호출 환경" : "API 환경"}>{project.environments.map(e => <button key={e.id} aria-pressed={environmentId === e.id} disabled={busy || loading} title={tab === "scenario-editor" ? "이 시나리오의 전체 API 호출 환경" : undefined} onClick={() => { setEnvironmentId(e.id); setUrl(""); }}>{e.name}</button>)}</div>;
   const valueActions = <div className="api-context-value-actions"><GlobalVariableMenu projectId={projectId} bridge={bridge} disabled={busy} /></div>;
+  const settingsButton = project && <button type="button" className="api-icon-button" aria-label="프로젝트 설정" title="프로젝트 설정" disabled={locked || loading} onClick={() => setForm("edit")}><Icon name="settings" size={16} /></button>;
   // "+ 새 프로젝트" is the list's last entry: it's rare, and the header stays one row.
-  const projectPicker = <div className="api-actions api-project-picker">
+  // Signed in there is only the team project: no list, no new or deleted projects.
+  const projectPicker = team ? <div className="api-actions api-project-picker">
+    <span className="api-team-project" title="로그인한 팀 프로젝트 · 시나리오·스위트·서버 설정을 팀원과 같이 씁니다">팀 프로젝트 <strong>{project?.name}</strong></span>
+    {settingsButton}
+  </div> : <div className="api-actions api-project-picker">
     <select aria-label="API 프로젝트" disabled={locked || loading} value={projectId} onChange={e => { if (e.target.value === newProjectOption) setForm("new"); else { setNotice(""); setSpecNotice(false); } if (e.target.value !== newProjectOption) selectProject(projects.find(p => p.id === e.target.value)!); }}>
       <option value="" disabled>프로젝트 선택</option>
       {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
       <option value={newProjectOption}>+ 새 프로젝트</option>
     </select>
-    {project && <button type="button" className="api-icon-button" aria-label="프로젝트 설정" title="프로젝트 설정" disabled={locked || loading} onClick={() => setForm("edit")}><Icon name="settings" size={16} /></button>}
+    {settingsButton}
   </div>;
+  // A team project can lack an API server or environment until someone sets them up.
+  const ready = Boolean(project?.servers.length && project.environments.length);
+  const server = project?.servers.find(item => item.id === serverId);
   // The project's servers in their tag colours, so a step's "인증"/"주문" tag reads as a server name.
   const environment = project?.environments.find(item => item.id === environmentId);
   const serverNames = Object.fromEntries((project?.servers ?? []).map(server => [server.id, server.name]));
@@ -233,7 +257,12 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
     {error && <p className="api-warning" role="alert">{error}</p>}
     {importPlan && <ProjectImportDialog plan={importPlan.plan} onCancel={() => setImportPlan(null)} onImport={async update => { await finishImport(await bridge.importProject(importPlan.text, update)); }} />}
     {notice && !form && (!specNotice || tab === "api") && <p className="api-page-notice" role="status">{notice}<button type="button" className="api-compose-link" onClick={() => { setNotice(""); setSpecNotice(false); }}>닫기</button></p>}
-    {form ? <ProjectForm key={`${form}:${projectId}`} initial={form === "edit" ? project : undefined} onCancel={() => setForm(null)} onDelete={async () => {
+    {team && storage.importable.length > 0 && !localImportClosed && !form && <LocalProjectImport projects={storage.importable} onClose={() => setLocalImportClosed(true)} onImport={async localId => {
+      const result = await bridge.importLocalProject(localId);
+      await loadProjects(() => true); selectProject(result.project); setSpecNotice(false);
+      setNotice(`로컬 프로젝트를 팀 프로젝트로 가져왔습니다 · 시나리오 ${result.scenarios}개, 스위트 ${result.suites}개${result.merged?.kept ? ` · 같은 ID가 있어 건너뜀 ${result.merged.kept}개` : ""}. 이 컴퓨터에서 받아 둔 명세가 있으면 함께 옮겼습니다.`);
+    }} />}
+    {form ? <ProjectForm key={`${form}:${projectId}`} team={team} initial={form === "edit" ? project : undefined} onCancel={() => setForm(null)} onDelete={team ? undefined : async () => {
       setBusy(true);
       try {
       await bridge.deleteProject(projectId);
@@ -241,10 +270,14 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
       if (remaining[0]) selectProject(remaining[0]);
       else { setProjectId(""); setServerId(""); setEnvironmentId(""); setCatalog(null); setSync(null); setLoading(false); }
       } finally { setBusy(false); }
-    }} onSave={async p => { const isNew = form === "new"; const saved = await bridge.saveProject(p); setProjects(await bridge.listProjects()); selectProject(saved); setForm(null); if (isNew) setTab("api"); }}
+    }} onSave={async p => { const isNew = form === "new" || !ready; const saved = await bridge.saveProject(p); setProjects(await bridge.listProjects()); selectProject(saved); setForm(null); if (isNew) setTab("api"); }}
     onExport={async () => { const saved = await bridge.exportProject(projectId); return saved ? `저장했습니다 · ${saved}` : ""; }}
     onImport={importProject} /> : <>
-      {!project ? <div className="api-empty"><h2>API 테스트를 시작하세요</h2><p>프로젝트를 만든 뒤 API 명세(OpenAPI) 파일이나 URL을 가져오세요.</p><div className="api-actions"><button className="api-primary" onClick={() => setForm("new")}>프로젝트 만들기</button><button type="button" onClick={() => void importProject().catch(error => setError((error as Error).message))}>공유받은 파일 가져오기</button></div></div> : <>
+      {!project && team ? <div className="api-empty"><h2>팀 프로젝트를 불러오지 못했습니다</h2><p>네트워크·로그인 상태를 확인한 뒤 다시 시도하세요.</p><div className="api-actions"><button className="api-primary" onClick={() => { setError(""); void loadProjects(() => true); }}>다시 불러오기</button></div></div> : !project ? <div className="api-empty"><h2>API 테스트를 시작하세요</h2><p>프로젝트를 만든 뒤 API 명세(OpenAPI) 파일이나 URL을 가져오세요.</p><div className="api-actions"><button className="api-primary" onClick={() => setForm("new")}>프로젝트 만들기</button><button type="button" onClick={() => void importProject().catch(error => setError((error as Error).message))}>공유받은 파일 가져오기</button></div></div> : !ready ? <div className="api-empty">
+        <h2>팀 프로젝트에 API 서버·환경을 설정하세요</h2>
+        <p>{project.servers.length ? "환경이 아직 없습니다." : "API 서버(백엔드)가 아직 없습니다."} 서버와 환경별 기본 주소를 정하면 API 명세를 가져와 테스트할 수 있습니다. 설정은 팀원 모두가 같이 씁니다.</p>
+        <div className="api-actions"><button className="api-primary" onClick={() => setForm("edit")}>API 서버·환경 설정</button><button type="button" onClick={() => void importProject().catch(error => setError((error as Error).message))}>공유받은 파일 가져오기</button></div>
+      </div> : <>
         {/* Tabs and the server/environment context share the second row. */}
         <div className="api-workbar">
           <div className="api-tabs" role="tablist" aria-label="API 작업 영역">
@@ -258,13 +291,14 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
           </div>
           {/* The server picks which spec the API docs show. Scenarios choose a server per step (the composer has
               its own picker) and the AI guide covers every server, so the other tabs leave it out. */}
-          <div className="api-context" title={tab === "api" ? `기본 주소 · ${project.environments.find(e => e.id === environmentId)?.baseUrls[serverId] ?? ""}` : undefined}>{tab === "api" && <select aria-label="API 서버" value={serverId} disabled={locked || loading} onChange={e => { setServerId(e.target.value); setUrl(""); }}>{project.servers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select>}{environmentPicker}{valueActions}</div>
+          <div className="api-context" title={tab === "api" ? `기본 주소 · ${environment?.baseUrls[serverId] ?? "미설정"}` : undefined}>{tab === "api" && <select aria-label="API 서버" value={serverId} disabled={locked || loading} onChange={e => { setServerId(e.target.value); setUrl(""); }}>{project.servers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select>}{environmentPicker}{valueActions}</div>
         </div>
         {tab === "ai" && <AiAuthorPanel key={`${projectId}:${environmentId}`} project={project} scope={{ projectId, environmentId }} bridge={bridge} onBusy={setBusy} onSaved={first => { setBusy(false); setOpenSaved(first ?? null); setTab("scenarios"); }} />}
         {tab === "scenarios" && <ScenarioPanel key={`${projectId}:${environmentId}:${serverId}`} project={project} scope={scope} bridge={bridge} onBusy={setBusy} onRunAction={onRunAction} runSaved={runSaved} onRunSavedConsumed={() => setRunSaved(null)} openSaved={openSaved} onOpenSavedConsumed={() => setOpenSaved(null)} onOpenAi={() => changeTab("ai")} onCreateScenario={() => openScenarioEditor()} onEditScenario={item => openScenarioEditor(item.id)} />}
         {tab === "scenario-editor" && <ScenarioEditorPanel key={`${projectId}:${serverId}`} project={project} scope={scope} bridge={bridge} onBusy={setBusy} onRunAction={onRunAction} onBackToScenarios={backToScenarios} onOpenSpecs={openSpecs} onExecuteSaved={executeSaved} startCreateRequest={scenarioCreateRequest} editScenarioId={scenarioEditorScenarioId} onCreateConsumed={() => setScenarioCreateRequest(0)} onComposerOpenChange={setScenarioComposerOpen} onUnsavedChange={setScenarioDirty} onCreateScenario={() => openScenarioEditor()} onEditScenario={item => openScenarioEditor(item.id)} composeContext={<div className="api-compose-context">{environmentPicker}{valueActions}</div>} />}
         {tab === "api" && <>
-        {(catalog || sync || !loading) && <SpecSourcePanel key={`${projectId}:${serverId}:${environmentId}:${catalog ? "loaded" : "empty"}`}
+        {environment && server && !environment.baseUrls[serverId] && <p className="api-warning" role="status">{environment.name} 환경에 {server.name} 서버 주소가 설정되지 않았습니다(미설정). 명세는 볼 수 있지만, API를 호출하려면 프로젝트 설정에서 주소를 입력하세요.</p>}
+        {(catalog || sync || !loading) && <SpecSourcePanel key={`${projectId}:${serverId}:${environmentId}:${catalog ? "loaded" : "empty"}`} shared={team}
           scopeLabel={`${project.servers.find(s => s.id === serverId)?.name ?? ""} · ${project.environments.find(e => e.id === environmentId)?.name ?? ""}`}
           catalog={catalog} sync={sync} disabled={busy || loading} missingApis={specImpact.missing} renamedTitles={specImpact.renamed} checkingMissing={checkingMissing} onRecheckMissing={() => setMissingCheck(count => count + 1)} onOpenScenario={openScenarioEditor}
           onApplyRenames={async () => {
