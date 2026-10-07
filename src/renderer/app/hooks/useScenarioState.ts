@@ -236,20 +236,46 @@ export const useScenarioState = ({
     showToast("시나리오를 불러왔습니다.");
   };
 
-  const saveScenarioFile = async () => {
+  // 폴더 목록에서 고른 파일을 편집기로 연다. 이후 저장은 이 파일에 쓴다.
+  const openScenarioFile = async (filePath: string) => {
+    const opened = await window.electronAPI.openScenarioFile(filePath);
+    if (!opened) {
+      showToast("시나리오 파일을 열지 못했습니다.");
+      return;
+    }
+    updateSource(opened.markdown);
+    setScenarioFilePath(opened.filePath);
+    await window.electronAPI.saveScenarioMarkdown(opened.markdown);
+    setSavedMarkdown(opened.markdown);
+  };
+
+  const writeScenarioFile = async (
+    write: (markdown: string) => Promise<string | null>,
+  ): Promise<boolean> => {
     try {
-      const filePath = scenarioFilePath
-        ? await window.electronAPI.saveImportedScenarioFile(sourceMarkdown)
-        : await window.electronAPI.exportScenarioFile(sourceMarkdown);
-      if (!filePath) return;
+      const filePath = await write(sourceMarkdown);
+      if (!filePath) return false;
       setScenarioFilePath(filePath);
       await window.electronAPI.saveScenarioMarkdown(sourceMarkdown);
       setSavedMarkdown(sourceMarkdown);
       showToast("시나리오를 저장했습니다.");
+      return true;
     } catch {
       showToast("시나리오를 저장하지 못했습니다.");
+      return false;
     }
   };
+
+  const saveScenarioFile = () =>
+    writeScenarioFile(
+      scenarioFilePath
+        ? window.electronAPI.saveImportedScenarioFile
+        : window.electronAPI.exportScenarioFile,
+    );
+
+  // 새로 저장하기: 항상 저장 위치를 다시 고른다.
+  const saveScenarioFileAs = () =>
+    writeScenarioFile(window.electronAPI.exportScenarioFile);
 
   // 실행 화면으로 넘어가기 직전 편집기 상태를 Markdown에 반영하고,
   // 지금 편집 중인 시나리오를 포함한 실행 가능한 시나리오 배열을 만든다.
@@ -425,7 +451,9 @@ export const useScenarioState = ({
     updateSteps,
     updateSource,
     importScenario,
+    openScenarioFile,
     saveScenarioFile,
+    saveScenarioFileAs,
     commitEditorRunSnapshot,
     placeMarker,
     updateMarker,
