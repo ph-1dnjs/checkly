@@ -121,7 +121,6 @@ type Props = {
   onCompleteManualControl: () => void;
   onFailManualControl: (reason: string) => void;
   onSetViewport: (width: number, height: number) => void;
-  onGoToPicker: () => void;
   onCancel: () => void;
   onPopout: (viewportLabel: string) => void;
   onLivePreviewChange: (value: boolean) => void;
@@ -168,7 +167,6 @@ export const RunPage = ({
   onCompleteManualControl,
   onFailManualControl,
   onSetViewport,
-  onGoToPicker,
   onCancel,
   onPopout,
   onLivePreviewChange,
@@ -282,7 +280,6 @@ export const RunPage = ({
             ? PASS
             : IDLE;
   const canStop = running;
-  const canReplay = !running;
 
   const directOn = Boolean(manualControl);
   const selectedPreview = selStep ? stepPreviews[selStep] : undefined;
@@ -540,11 +537,6 @@ export const RunPage = ({
             <Button className="run-stop-btn" onClick={onCancel}>
               <span className="msi">stop</span>
               실행 중단
-            </Button>
-          )}
-          {canReplay && (
-            <Button variant="secondary" onClick={onGoToPicker}>
-              시나리오 다시 선택
             </Button>
           )}
           {reportAvailable && !running && (

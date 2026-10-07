@@ -9,6 +9,9 @@ import { SettingsPage } from "../pages/settings/SettingsPage";
 import { ScenarioPickerPage } from "../pages/picker/ScenarioPickerPage";
 import { FormAutomationPage } from "../pages/form-automation/FormAutomationPage";
 import { BottomNavigation } from "../widgets/BottomNavigation";
+import { ScenarioWorkspaceHeader } from "../widgets/ScenarioWorkspaceHeader";
+import { useScenarioFolder } from "../entities/scenario-folder";
+import { isScenarioWorkspaceRoute } from "../shared/model/scenario";
 import { RunReportDrawer } from "../widgets/RunReportDrawer";
 import { RunReportViewer } from "../widgets/RunReportViewer";
 import "../shared/model/electron-api";
@@ -21,7 +24,16 @@ export const App = (): ReactElement => {
   const [apiRunAction, setApiRunAction] = useState<ApiRunAction | null>(null);
   const [keepSessionPromptChecked, setKeepSessionPromptChecked] =
     useState(false);
-  const { route, setRoute, toast, showToast } = useNavigation();
+  const [pendingOpenPath, setPendingOpenPath] = useState<string | null>(null);
+  const {
+    route,
+    setRoute,
+    lastWorkspaceRoute,
+    lastRunRoute,
+    toast,
+    showToast,
+  } = useNavigation();
+  const folder = useScenarioFolder();
   const scenarioState = useScenarioState({ route, showToast });
   const runOrchestration = useRunOrchestration({ showToast, setRoute });
 
@@ -63,7 +75,9 @@ export const App = (): ReactElement => {
     updateSteps,
     updateSource,
     importScenario,
+    openScenarioFile,
     saveScenarioFile,
+    saveScenarioFileAs,
     commitEditorRunSnapshot,
     placeMarker,
     updateMarker,
@@ -145,12 +159,67 @@ export const App = (): ReactElement => {
   } = runOrchestration;
 
   const runEditorContent = () => beginRuns(commitEditorRunSnapshot());
+  const inWorkspace = isScenarioWorkspaceRoute(route);
+  const awaitingManual = Boolean(manual || manualControl || manualResult);
+
+  // 저장한 파일 내용이 폴더 목록(시나리오 수 · 선택 대상)에도 반영되도록 다시 읽는다.
+  const saveAndRefresh = async (save: () => Promise<boolean>) => {
+    const saved = await save();
+    if (saved) void folder.refreshFolder();
+    return saved;
+  };
+  const requestOpenFile = (filePath: string) => {
+    if (filePath === scenarioFilePath) return;
+    if (isDirty) return setPendingOpenPath(filePath);
+    void openScenarioFile(filePath);
+  };
+
+  // ⇧⌘S: 편집(텍스트) 화면에서 새로 저장하기.
+  useEffect(() => {
+    if (route !== "editor" || editorMode !== "text") return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (
+        !(event.metaKey || event.ctrlKey) ||
+        !event.shiftKey ||
+        event.altKey ||
+        event.code !== "KeyS"
+      )
+        return;
+      event.preventDefault();
+      if (!event.repeat) void saveAndRefresh(saveScenarioFileAs);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  });
 
   return (
     <main
-      className={`workspace${route === "editor" && editorMode === "marker" ? " screen-extract-workspace" : ""}${route === "run" ? " run-workspace" : ""}${route === "form-automation" ? " form-automation-workspace" : ""}`}
+      className={`workspace${inWorkspace ? " scenario-workspace" : ""}${route === "form-automation" ? " form-automation-workspace" : ""}`}
     >
       <section className="content">
+        {inWorkspace && (
+          <ScenarioWorkspaceHeader
+            route={route}
+            editorMode={editorMode}
+            lastRunRoute={lastRunRoute}
+            onNavigate={setRoute}
+            onEditorModeChange={(mode) => {
+              if (mode === editorMode) return;
+              if (mode === "text") setSaveBeforeReturning(true);
+              else setEditorMode(mode);
+            }}
+            running={running}
+            awaiting={awaitingManual}
+            progressPercent={runProgressPercent}
+            progressSteps={`${runProgress.current}/${runProgress.total}`}
+            pickedCount={folder.pickedCount}
+            isDirty={isDirty}
+            onSave={() => saveAndRefresh(saveScenarioFile)}
+            onSaveAs={() => saveAndRefresh(saveScenarioFileAs)}
+            onImport={() => void importScenario()}
+            onReloadFolder={() => void folder.refreshFolder()}
+          />
+        )}
         {route === "api-testing" && <ApiTestingPage onRunAction={setApiRunAction} />}
         {route === "dashboard" && (
           <DashboardPage
@@ -160,13 +229,19 @@ export const App = (): ReactElement => {
             onOpenReport={setOpenRunRecord}
           />
         )}
+        {inWorkspace && (
+          <div className="ws-page">
         {route === "editor" && (
           <ScenarioEditorPage
             mode={editorMode}
             scenario={scenario}
             sourceMarkdown={sourceMarkdown}
-            isDirty={isDirty}
             scenarioFilePath={scenarioFilePath}
+            files={folder.files}
+            fileCache={folder.fileCache}
+            pickedCountByFile={folder.pickedCountByFile}
+            onOpenFile={requestOpenFile}
+            onChooseFolder={() => void folder.chooseFolder()}
             previews={previews}
             markerScenarioId={markerScenarioId || previews[0]?.id || ""}
             selectedId={selectedId}
@@ -174,12 +249,8 @@ export const App = (): ReactElement => {
             markersVisible={markersVisible}
             markerDialog={markerDialog}
             pendingMarker={pendingMarker}
-            onModeChange={setEditorMode}
             onSelectMarkerScenario={selectMarkerScenario}
-            onImport={() => void importScenario()}
-            onExport={() => void saveScenarioFile()}
             onSelectUploadFile={() => window.electronAPI.selectUploadFile()}
-            onRun={runEditorContent}
             onSourceChange={updateSource}
             onScenarioChange={setScenario}
             onBeginMarkerPlacement={() => setIsAddingMarker(true)}
@@ -189,7 +260,6 @@ export const App = (): ReactElement => {
             onPlaceMarker={placeMarker}
             onDeleteLast={() => updateSteps(scenario.steps.slice(0, -1))}
             onClearSteps={() => updateSteps([])}
-            onReturnToText={() => setSaveBeforeReturning(true)}
             onSelectStep={setSelectedId}
             onEditStep={setEditingMarker}
             onDeleteStep={(id) =>
@@ -204,6 +274,7 @@ export const App = (): ReactElement => {
         )}
         {route === "picker" && (
           <ScenarioPickerPage
+            folder={folder}
             onOpenEditor={() => setRoute("editor")}
             onRun={(items) => beginRuns(items)}
           />
@@ -251,7 +322,6 @@ export const App = (): ReactElement => {
             }
             onCompleteManualControl={completeManualControl}
             onFailManualControl={failManualControl}
-            onGoToPicker={() => setRoute("picker")}
             onCancel={cancelRuns}
             onPopout={popoutViewport}
             onLivePreviewChange={setLivePreview}
@@ -262,6 +332,8 @@ export const App = (): ReactElement => {
             reportAvailable={Boolean(lastRunRecord)}
             onOpenReport={() => setReportRecord(lastRunRecord)}
           />
+        )}
+          </div>
         )}
         {route === "settings" && <SettingsPage scenario={scenario} />}
         {route === "form-automation" && <FormAutomationPage />}
@@ -374,6 +446,7 @@ export const App = (): ReactElement => {
       <BottomNavigation
         apiRunAction={apiRunAction}
         route={route}
+        lastWorkspaceRoute={lastWorkspaceRoute}
         running={running}
         onNavigate={setRoute}
         onRun={() => {
@@ -444,6 +517,31 @@ export const App = (): ReactElement => {
             <div className="modal-actions">
               <Button variant="primary" onClick={() => setRunValidationError(null)}>
                 확인
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+      {pendingOpenPath && (
+        <div
+          className="modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="open-scenario-title"
+        >
+          <div className="manual-modal">
+            <h2 id="open-scenario-title">저장하지 않은 변경 사항이 있습니다</h2>
+            <p>다른 파일을 열면 지금 편집 중인 내용이 사라집니다.</p>
+            <div className="modal-actions">
+              <Button onClick={() => setPendingOpenPath(null)}>취소</Button>
+              <Button
+                variant="primary"
+                onClick={() => {
+                  void openScenarioFile(pendingOpenPath);
+                  setPendingOpenPath(null);
+                }}
+              >
+                저장하지 않고 열기
               </Button>
             </div>
           </div>

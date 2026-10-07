@@ -1,0 +1,140 @@
+/* Checkly v18 시나리오 작업공간: 편집(텍스트 · 화면 추출)과 실행(대상 선택 · 실행 현황)을
+   48px 공통 헤더 아래 하나의 작업공간으로 묶는다. 다른 스타일시트 뒤에 import 되어 우선한다. */
+
+@keyframes ckBlink { 0%,100% { opacity:1; } 50% { opacity:.25; } }
+
+.scenario-workspace .content { width:100%; max-width:none; height:100%; padding:0; display:flex; flex-direction:column; }
+.scenario-workspace .content>.ws-page { flex:1 1 auto; min-height:0; display:flex; flex-direction:column; overflow:hidden; }
+
+/* 공통 헤더 */
+.ws-header { flex:none; height:48px; display:flex; align-items:stretch; gap:16px; padding:0 20px; border-bottom:1px solid #e4e7ea; background:#fff; }
+.ws-title { flex:none; display:flex; align-items:center; gap:8px; }
+.ws-title .msi { font-size:18px; color:#1f63ae; }
+.ws-title>span:last-child { font-family:'Nunito',Verdana,'Apple SD Gothic Neo',sans-serif; font-size:17px; font-weight:800; letter-spacing:-.02em; color:#14181c; }
+
+.ws-tabs { flex:none; display:flex; align-items:stretch; gap:2px; }
+.ws-tab { display:flex; align-items:center; gap:7px; padding:0 12px; margin-bottom:-1px; border:0; border-bottom:2px solid transparent; background:transparent; color:#5a646e; font-size:12.5px; font-weight:400; cursor:pointer; transition:background 120ms ease; }
+.ws-tab:hover { background:#f7f9fa; }
+.ws-tab.active { color:#1f63ae; font-weight:600; border-bottom-color:#3d8ce0; }
+.ws-tab .msi { font-size:16px; }
+.ws-tab-live { display:flex; align-items:center; gap:5px; font-family:D2Coding,ui-monospace,monospace; font-size:10.5px; font-weight:700; color:#3d8ce0; font-variant-numeric:tabular-nums; }
+.ws-tab-live i { width:6px; height:6px; background:currentColor; animation:ckBlink 1s infinite; }
+.ws-tab-live.waiting { color:#c08a15; }
+
+.ws-subs { flex:none; display:flex; align-items:center; gap:10px; margin:12px 0; padding-left:16px; border-left:1px solid #edf0f2; }
+.ws-segment { display:flex; gap:2px; padding:2px; border-radius:5px; background:#f0f3f5; }
+.ws-segment button { height:22px; display:flex; align-items:center; gap:6px; padding:0 10px; border:0; border-radius:4px; background:transparent; color:#5a646e; font-size:11.5px; font-weight:400; white-space:nowrap; cursor:pointer; transition:background 120ms ease; }
+.ws-segment button.active { background:#fff; color:#1f63ae; font-weight:600; }
+.ws-segment button span { font-family:D2Coding,ui-monospace,monospace; font-size:10.5px; font-weight:400; color:#8a939c; }
+
+.ws-actions { margin-left:auto; min-width:0; display:flex; align-items:center; gap:8px; }
+.ws-unsaved { flex:none; padding:1px 5px; border:1px solid #e0cfa4; border-radius:4px; background:#fdf7e9; color:#96690c; font-family:D2Coding,ui-monospace,monospace; font-size:9.5px; letter-spacing:.08em; }
+.ws-action { flex:none; height:28px; display:flex; align-items:center; gap:6px; padding:0 12px; border:1px solid #d8dde2; border-radius:4px; background:#fff; color:#14181c; font-size:12px; cursor:pointer; }
+.ws-action:hover { background:#f5f7f8; }
+.ws-action .msi { font-size:16px; color:#5a646e; }
+.ws-save { position:relative; flex:none; display:flex; height:28px; border:1px solid #d8dde2; border-radius:4px; }
+.ws-save-main { display:flex; align-items:center; padding:0 12px; border:0; border-radius:3px 0 0 3px; background:#fff; color:#14181c; font-size:12px; cursor:pointer; }
+.ws-save-toggle { width:24px; display:flex; align-items:center; justify-content:center; padding:0; border:0; border-left:1px solid #d8dde2; border-radius:0 3px 3px 0; background:#fff; color:#5b646c; cursor:pointer; }
+.ws-save-main:hover,.ws-save-toggle:hover { background:#f5f7f8; }
+.ws-save-menu { position:absolute; top:calc(100% + 4px); right:0; z-index:30; min-width:150px; padding:4px; border:1px solid #d8dde2; border-radius:5px; background:#fff; box-shadow:0 6px 18px rgba(20,30,40,.10); }
+.ws-save-menu button { width:100%; height:30px; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:0 10px; border:0; border-radius:3px; background:transparent; color:#14181c; font-size:12px; white-space:nowrap; cursor:pointer; }
+.ws-save-menu button:hover { background:#f5f7f8; }
+.ws-save-menu button span { font-family:D2Coding,ui-monospace,monospace; font-size:10px; color:#8a939c; }
+
+/* 공통 26px 열 머리 */
+.ws-col-label { flex:none; position:sticky; top:0; z-index:1; height:26px; display:flex; align-items:center; gap:10px; padding:0 14px; border-bottom:1px solid #e4e7ea; background:#fafbfc; color:#8a939c; font-size:11px; }
+.ws-col-label>span:last-child:not(:first-child) { margin-left:auto; min-width:0; padding-left:10px; overflow:hidden; font-family:D2Coding,ui-monospace,monospace; font-size:10.5px; text-overflow:ellipsis; white-space:nowrap; }
+
+/* 파일 열 (편집 · 대상 선택 공용) */
+.scenario-files { min-height:0; overflow:auto; padding-bottom:120px; border-right:1px solid #e4e7ea; }
+.scenario-files-label { position:sticky; top:0; z-index:1; height:26px; display:flex; align-items:center; padding:0 12px; border-bottom:1px solid #e4e7ea; background:#fafbfc; color:#8a939c; font-size:11px; }
+.scenario-files-label button { margin-left:auto; padding:0; border:0; background:none; color:#1f63ae; font-size:11px; cursor:pointer; }
+.scenario-files-empty { margin:0; padding:16px 12px; color:#8a939c; font-size:11.5px; line-height:1.6; }
+.scenario-files>button { width:100%; display:flex; align-items:center; gap:10px; padding:12px; border:0; border-bottom:1px solid #edf0f2; border-left:2px solid transparent; background:transparent; text-align:left; cursor:pointer; }
+.scenario-files>button:hover { background:#f7f9fa; }
+.scenario-files>button.active { background:#f5f9fe; border-left-color:#3d8ce0; }
+.scenario-files>button>.msi { flex:none; font-size:18px; color:#a6aeb5; }
+.scenario-files>button.active>.msi { color:#1f63ae; }
+.scenario-files>button>div { min-width:0; flex:1; }
+.scenario-files strong { display:block; overflow:hidden; color:#14181c; font-family:D2Coding,ui-monospace,monospace; font-size:11.5px; font-weight:700; text-overflow:ellipsis; white-space:nowrap; }
+.scenario-files small { display:block; padding-top:3px; color:#8a939c; font-size:10.5px; }
+.scenario-files code { display:block; padding-top:2px; overflow:hidden; color:#a6aeb5; font-family:D2Coding,ui-monospace,monospace; font-size:10px; text-overflow:ellipsis; white-space:nowrap; }
+.scenario-files em { flex:none; padding:1px 5px; border:1px solid #b9d4f1; border-radius:4px; background:#edf4fc; color:#1f63ae; font-family:D2Coding,ui-monospace,monospace; font-size:9.5px; font-style:normal; }
+
+/* 편집 · 텍스트: 파일 | MARKDOWN | PREVIEW */
+.ws-editor { flex:1 1 auto; min-height:0; display:grid; grid-template-columns:260px minmax(0,1fr) minmax(0,1fr); }
+.ws-editor-source { min-height:0; display:flex; flex-direction:column; border-right:1px solid #e4e7ea; }
+.ws-editor-source .markdown-editor-body { flex:1 1 auto; min-height:0; display:flex; overflow:hidden; }
+.ws-editor-source .markdown-line-numbers { width:auto; min-width:38px; flex:none; margin:0; padding:12px 8px 110px; overflow:hidden; list-style:none; border-right:1px solid #edf0f2; background:#fafbfc; color:#bfc6cc; font:10.5px/1.85 D2Coding,ui-monospace,monospace; text-align:right; user-select:none; }
+.ws-editor-source .markdown-line-numbers li { height:calc(11.5px * 1.85); line-height:calc(11.5px * 1.85); }
+.ws-editor-source .scenario-source { flex:1 1 auto; min-width:0; height:100%; min-height:0; padding:12px 14px 110px; border:0; outline:0; resize:none; overflow:auto; background:#fff; color:#3d4650; font:11.5px/1.85 D2Coding,ui-monospace,monospace; white-space:pre; }
+
+.ws-editor-preview { min-height:0; display:flex; flex-direction:column; }
+.ws-preview-body { flex:1 1 auto; min-height:0; overflow:auto; padding-bottom:110px; }
+.ws-preview-item { border-bottom:1px solid #edf0f2; }
+.ws-preview-row { display:flex; align-items:center; gap:10px; min-height:46px; padding:8px 14px; border-radius:4px; cursor:pointer; }
+.ws-preview-row:hover { background:#f7f9fa; }
+.ws-preview-row>b { flex:none; color:#bfc6cc; font-family:D2Coding,ui-monospace,monospace; font-size:10.5px; font-weight:400; }
+.ws-preview-row>div { min-width:0; flex:1; }
+.ws-preview-row h2 { margin:0; overflow:hidden; color:#14181c; font-size:13px; font-weight:600; letter-spacing:-.01em; text-overflow:ellipsis; white-space:nowrap; }
+.ws-preview-row p { margin:0; padding-top:3px; overflow:hidden; color:#8a939c; font-family:D2Coding,ui-monospace,monospace; font-size:10.5px; text-overflow:ellipsis; white-space:nowrap; }
+.ws-preview-count { flex:none; color:#8a939c; font-size:11px; }
+.ws-preview-dup { flex:none; height:24px; display:flex; align-items:center; padding:0 8px; border:1px solid #d8dde2; border-radius:4px; background:#fff; color:#1f63ae; font-size:11px; cursor:pointer; }
+.ws-preview-dup:hover { background:#edf4fc; }
+.ws-preview-caret { flex:none; color:#a6aeb5; font-size:11px; }
+.ws-steps { margin:0; padding:0; list-style:none; border-top:1px solid #f3f5f7; background:#fcfdfe; }
+.ws-steps li { display:flex; align-items:center; gap:10px; height:30px; padding:0 14px; border-bottom:1px solid #f3f5f7; }
+.ws-steps b { flex:none; color:#bfc6cc; font-family:D2Coding,ui-monospace,monospace; font-size:10.5px; font-weight:400; }
+.ws-steps .action-tag { flex:0 0 86px; width:86px; height:19px; display:flex; align-items:center; justify-content:center; border-radius:4px; font-size:10.5px; font-weight:600; overflow:hidden; white-space:nowrap; }
+.ws-steps span.ws-step-target { flex:1; min-width:0; overflow:hidden; color:#3d4650; font-family:D2Coding,ui-monospace,monospace; font-size:11.5px; text-overflow:ellipsis; white-space:nowrap; }
+.ws-steps em { flex:none; color:#8a939c; font-family:D2Coding,ui-monospace,monospace; font-size:9.5px; font-style:normal; }
+.ws-steps em.unlinked { color:#96690c; }
+.ws-parse-rule { margin:14px; padding:14px 16px; border:1px solid #e4e7ea; border-left:3px solid #3d8ce0; background:#f5f9fe; }
+.ws-parse-rule strong { display:block; padding-bottom:6px; color:#1f63ae; font-size:11px; font-weight:600; }
+.ws-parse-rule p { margin:0; color:#3d4650; font-size:12px; line-height:1.7; }
+.ws-parse-rule code { font-family:D2Coding,ui-monospace,monospace; }
+.ws-editor-preview .preview-empty { padding:16px 14px; color:#5a646e; font-size:12px; line-height:1.6; }
+
+/* 대상 선택 */
+.scenario-workspace .picker { flex:1 1 auto; height:auto; min-height:0; padding-bottom:0; }
+.scenario-workspace .picker-layout { grid-template-columns:260px minmax(0,1fr) 320px; border-top:0; }
+.scenario-workspace .picker-scenarios,.scenario-workspace .picker-cart-body { padding-bottom:120px; }
+.scenario-workspace .picker-cart footer { padding-bottom:84px; }
+.scenario-workspace .picker-col-label { height:26px; padding:0 12px; border-bottom:1px solid #e4e7ea; font-family:inherit; font-size:11px; letter-spacing:0; }
+.scenario-workspace .picker-col-label button { font-size:11px; letter-spacing:0; }
+@media(max-width:1240px) { .scenario-workspace .picker-layout { grid-template-columns:230px minmax(0,1fr); } }
+@media(max-width:900px) { .scenario-workspace .picker-layout { grid-template-columns:1fr; } .scenario-workspace .picker-layout>.scenario-files { display:none; } }
+
+/* 실행 현황 */
+.scenario-workspace .run { flex:1 1 auto; height:auto; min-height:0; }
+.scenario-workspace .run-top { height:52px; flex-wrap:nowrap; gap:16px; padding:0 20px; }
+.scenario-workspace .run-now-scenario { font-size:13px; white-space:nowrap; }
+
+/* 화면 추출: 헤더 아래 흐름 안에 둔다 */
+.scenario-workspace .extract-shell { position:static; inset:auto; z-index:auto; flex:1 1 auto; min-height:0; }
+.scenario-workspace .extract-body { grid-template-columns:320px minmax(0,1fr); }
+.scenario-workspace .extract-markers-list { padding-bottom:110px; }
+.scenario-workspace .extract-fallback { bottom:92px; }
+.extract-marker-row { gap:10px; min-height:46px; padding:8px 12px; border-bottom:1px solid #edf0f2; }
+.extract-marker-row:hover { background:#f7f9fa; }
+.extract-marker-row.selected { background:#f5f9fe; border-left-color:#3d8ce0; }
+.extract-marker-drag { display:flex; margin-right:-4px; padding:0; color:#c3c9cf; }
+.extract-marker-drag .msi { font-size:16px; }
+.extract-marker-main { gap:10px; padding:0; }
+.extract-marker-main>b { width:16px; color:#8a939c; font-size:12px; text-align:center; }
+.extract-marker-meta { flex:1; display:flex; flex-direction:column; gap:4px; }
+.extract-marker-meta .action-tag { flex:none; width:100px; min-width:0; max-width:none; height:20px; display:flex; align-items:center; justify-content:center; border-radius:4px; font-size:10.5px; font-weight:600; }
+.extract-marker-target { margin:0; font-size:12.5px; }
+.extract-marker-link { font-family:inherit; font-size:11px; font-weight:500; color:#2e7d4f; white-space:nowrap; }
+.extract-marker-link.unlinked { color:#b7791f; }
+.extract-marker-edit,.extract-marker-delete { display:flex; padding:0; color:#a6aeb5; }
+.extract-marker-edit:hover,.extract-marker-delete:hover { color:#14181c; }
+.extract-marker-edit .msi,.extract-marker-delete .msi { font-size:16px; }
+
+@media(max-width:1100px) { .ws-editor { grid-template-columns:220px minmax(0,1fr) minmax(0,1fr); } }
+@media(max-width:900px) {
+  .ws-header { gap:10px; padding:0 12px; }
+  .ws-subs { padding-left:10px; }
+  .ws-editor { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
+  .ws-editor>.scenario-files { display:none; }
+}

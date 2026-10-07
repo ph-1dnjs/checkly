@@ -1,9 +1,15 @@
 import { Button } from "../shared/ui/Button";
-import type { Route } from "../shared/model/scenario";
+import {
+  isScenarioWorkspaceRoute,
+  type Route,
+  type ScenarioWorkspaceRoute,
+} from "../shared/model/scenario";
 import checklyMark from "../assets/checkly-mark.png";
 
 type Props = {
   route: Route;
+  /** 시나리오 메뉴는 편집·실행을 묶은 작업공간으로, 마지막으로 본 화면으로 돌아간다. */
+  lastWorkspaceRoute: ScenarioWorkspaceRoute;
   running: boolean;
   onNavigate: (route: Route) => void;
   onRun: () => void;
@@ -11,16 +17,17 @@ type Props = {
   apiRunAction?: { run: () => void; disabled: boolean } | null;
 };
 
-const NAVS: Array<{ route: Route; label: string; icon: string }> = [
-  { route: "editor", label: "편집기", icon: "edit" },
-  { route: "picker", label: "시나리오 선택 · 실행", icon: "play_circle" },
-  { route: "form-automation", label: "폼 자동 완성", icon: "auto_fix_high" },
-  { route: "api-testing", label: "API 테스트", icon: "data_object" },
-  { route: "settings", label: "설정", icon: "settings" },
-];
+const NAVS: Array<{ route: Route | "workspace"; label: string; icon: string }> =
+  [
+    { route: "workspace", label: "시나리오 · 편집과 실행", icon: "fact_check" },
+    { route: "form-automation", label: "폼 자동 완성", icon: "auto_fix_high" },
+    { route: "api-testing", label: "API 테스트", icon: "data_object" },
+    { route: "settings", label: "설정", icon: "settings" },
+  ];
 
 export const BottomNavigation = ({
   route,
+  lastWorkspaceRoute,
   running,
   onNavigate,
   onRun,
@@ -41,17 +48,30 @@ export const BottomNavigation = ({
       </strong>
     </Button>
     <div className="bottom-nav-controls">
-      {NAVS.map((item) => (
-        <Button
-          key={item.label}
-          className={route === item.route ? "bottom-nav-item active" : "bottom-nav-item"}
-          onClick={() => onNavigate(item.route)}
-          aria-label={item.label}
-          title={item.label}
-        >
-          <span className="msi" aria-hidden="true">{item.icon}</span>
-        </Button>
-      ))}
+      {NAVS.map((item) => {
+        const workspace = item.route === "workspace";
+        const active = workspace
+          ? isScenarioWorkspaceRoute(route)
+          : route === item.route;
+        return (
+          <Button
+            key={item.label}
+            className={active ? "bottom-nav-item active" : "bottom-nav-item"}
+            aria-current={active ? "page" : undefined}
+            onClick={() =>
+              onNavigate(
+                item.route === "workspace" ? lastWorkspaceRoute : item.route,
+              )
+            }
+            aria-label={item.label}
+            title={item.label}
+          >
+            <span className="msi" aria-hidden="true">
+              {item.icon}
+            </span>
+          </Button>
+        );
+      })}
     </div>
     {route === "api-testing" ? (
       <Button
@@ -60,7 +80,9 @@ export const BottomNavigation = ({
         onClick={() => apiRunAction?.run()}
         aria-label="선택한 API 테스트 실행"
       >
-        <span className="msi" aria-hidden="true">play_arrow</span>
+        <span className="msi" aria-hidden="true">
+          play_arrow
+        </span>
         API 실행
       </Button>
     ) : (

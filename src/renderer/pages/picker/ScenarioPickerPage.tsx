@@ -1,74 +1,39 @@
-import { useEffect, useMemo, useState } from "react";
-import { actionText, parseMarkdown, type Scenario } from "../../shared/model/scenario";
+import { useMemo, useState } from "react";
+import { actionText, type Scenario } from "../../shared/model/scenario";
 import { ActionTag } from "../../shared/ui/ActionTag";
 import { Button } from "../../shared/ui/Button";
+import {
+  pickKeyOf as keyOf,
+  ScenarioFileList,
+  type ScenarioFolderState,
+} from "../../entities/scenario-folder";
 
-type FileEntry = { name: string; path: string; updatedAt: string };
 type Picked = { fileName: string; filePath: string; scenario: Scenario };
 
 type Props = {
+  folder: ScenarioFolderState;
   onOpenEditor: () => void;
   onRun: (scenarios: Scenario[]) => void;
 };
 
-const keyOf = (filePath: string, scenario: Scenario) => `${filePath}::${scenario.id}`;
-
-export const ScenarioPickerPage = ({ onOpenEditor, onRun }: Props) => {
-  const [folderPath, setFolderPath] = useState<string | null>(null);
-  const [files, setFiles] = useState<FileEntry[]>([]);
-  const [activeFilePath, setActiveFilePath] = useState<string | null>(null);
-  const [fileCache, setFileCache] = useState<Record<string, Scenario[]>>({});
-  const [loadingFolder, setLoadingFolder] = useState(true);
-  const [pickedKeys, setPickedKeys] = useState<Set<string>>(new Set());
+export const ScenarioPickerPage = ({ folder, onOpenEditor, onRun }: Props) => {
+  const {
+    folderPath,
+    files,
+    fileCache,
+    loadingFolder,
+    refreshFolder,
+    chooseFolder,
+    pickedKeys,
+    setPickedKeys,
+    pickedCountByFile,
+  } = folder;
+  const [selectedFilePath, setActiveFilePath] = useState<string | null>(null);
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
-
-  const applyFolderResult = async (result: {
-    folderPath: string | null;
-    files: FileEntry[];
-  }) => {
-    setFolderPath(result.folderPath);
-    const entries = await Promise.all(
-      result.files.map(async (file) => {
-        const markdown = await window.electronAPI.readScenarioFile(file.path);
-        return { file, scenarios: markdown ? parseMarkdown(markdown, file.path) : [] };
-      }),
-    );
-    // 시나리오 단계가 하나도 없는 파일은 FILES 목록에서 제외한다.
-    const withSteps = entries.filter(({ scenarios }) =>
-      scenarios.some((scenario) => scenario.steps.length > 0),
-    );
-    setFiles(withSteps.map(({ file }) => file));
-    setFileCache(
-      Object.fromEntries(withSteps.map(({ file, scenarios }) => [file.path, scenarios])),
-    );
-    setActiveFilePath((current) =>
-      current && withSteps.some(({ file }) => file.path === current)
-        ? current
-        : (withSteps[0]?.file.path ?? null),
-    );
-  };
-
-  const refreshFolder = async () => {
-    setLoadingFolder(true);
-    try {
-      await applyFolderResult(await window.electronAPI.listScenarioFolder());
-    } finally {
-      setLoadingFolder(false);
-    }
-  };
-
-  useEffect(() => {
-    void refreshFolder();
-  }, []);
-
-  const chooseFolder = async () => {
-    setLoadingFolder(true);
-    try {
-      await applyFolderResult(await window.electronAPI.chooseScenarioFolder());
-    } finally {
-      setLoadingFolder(false);
-    }
-  };
+  const activeFilePath =
+    selectedFilePath && files.some((file) => file.path === selectedFilePath)
+      ? selectedFilePath
+      : (files[0]?.path ?? null);
 
   const activeFile = files.find((file) => file.path === activeFilePath) ?? null;
   const activeScenarios = activeFilePath ? (fileCache[activeFilePath] ?? []) : [];
@@ -137,10 +102,6 @@ export const ScenarioPickerPage = ({ onOpenEditor, onRun }: Props) => {
 
   const totalSteps = picked.reduce((total, item) => total + item.scenario.steps.length, 0);
   const hasFiles = files.length > 0;
-  const flowDone1 = hasFiles;
-  const flowDone2 = hasFiles;
-  const flowDone3 = picked.length > 0;
-  const flowDone4 = picked.length > 0;
 
   const runOnly = (filePath: string, scenario: Scenario) => onRun([scenario]);
   const runPicked = () => onRun(picked.map((item) => item.scenario));
@@ -179,69 +140,16 @@ export const ScenarioPickerPage = ({ onOpenEditor, onRun }: Props) => {
 
   return (
     <div className="picker">
-      <header className="picker-header">
-        <div className="picker-title">시나리오 선택</div>
-        <div className="picker-flow" aria-label="실행 단계">
-          <span className={flowDone1 ? "done" : ""}>
-            <i>1</i>파일 불러오기
-          </span>
-          <i className="picker-flow-line" />
-          <span className={flowDone2 ? "done" : ""}>
-            <i>2</i>시나리오 확인
-          </span>
-          <i className="picker-flow-line" />
-          <span className={flowDone3 ? "done" : ""}>
-            <i>3</i>실행할 시나리오 선택
-          </span>
-          <i className="picker-flow-line" />
-          <span className={flowDone4 ? "done" : ""}>
-            <i>4</i>실행
-          </span>
-        </div>
-        <div className="picker-actions">
-          <Button
-            variant="secondary"
-            onClick={() => void refreshFolder()}
-          >
-            파일 다시 불러오기
-          </Button>
-          <Button variant="secondary" onClick={onOpenEditor}>
-            편집기 열기
-          </Button>
-        </div>
-      </header>
 
       <div className="picker-layout">
-        <aside className="picker-files">
-          <div className="picker-col-label">
-            <span>FILES</span>
-            <Button onClick={() => void chooseFolder()}>폴더 변경</Button>
-          </div>
-          {files.map((file) => {
-            const n = (fileCache[file.path] ?? []).filter((scenario) =>
-              pickedKeys.has(keyOf(file.path, scenario)),
-            ).length;
-            return (
-              <Button
-                key={file.path}
-                className={file.path === activeFilePath ? "active" : ""}
-                onClick={() => setActiveFilePath(file.path)}
-              >
-                <span className="msi">description</span>
-                <div>
-                  <strong>{file.name}</strong>
-                  <small>
-                    {fileCache[file.path]
-                      ? `${fileCache[file.path].length}개 시나리오`
-                      : "…"}{" "}
-                    · {new Date(file.updatedAt).toLocaleDateString("ko-KR")}
-                  </small>
-                </div>
-                {n > 0 && <em>{n} 선택</em>}
-              </Button>
-            );
-          })}
-        </aside>
+        <ScenarioFileList
+          files={files}
+          fileCache={fileCache}
+          activePath={activeFilePath}
+          pickedCountByFile={pickedCountByFile}
+          onSelect={setActiveFilePath}
+          onChooseFolder={() => void chooseFolder()}
+        />
 
         <section className="picker-scenarios">
           {activeFile ? (
@@ -331,7 +239,7 @@ export const ScenarioPickerPage = ({ onOpenEditor, onRun }: Props) => {
 
         <aside className="picker-cart">
           <div className="picker-col-label">
-            <span>SELECTED · 실행 대상</span>
+            <span>실행 대상</span>
             {picked.length > 0 && (
               <Button onClick={() => setPickedKeys(new Set())}>비우기</Button>
             )}

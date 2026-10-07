@@ -10,6 +10,10 @@ import {
 } from "../../shared/model/scenario";
 import { ActionTag } from "../../shared/ui/ActionTag";
 import { Button } from "../../shared/ui/Button";
+import {
+  ScenarioFileList,
+  type ScenarioFileEntry,
+} from "../../entities/scenario-folder";
 import { DuplicateScenarioModal } from "./DuplicateScenarioModal";
 
 type Device = "mobile" | "tablet" | "desktop";
@@ -24,8 +28,12 @@ type Props = {
   mode: "text" | "marker";
   scenario: Scenario;
   sourceMarkdown: string;
-  isDirty: boolean;
   scenarioFilePath: string | null;
+  files: ScenarioFileEntry[];
+  fileCache: Record<string, Scenario[]>;
+  pickedCountByFile: Record<string, number>;
+  onOpenFile: (filePath: string) => void;
+  onChooseFolder: () => void;
   previews: Scenario[];
   markerScenarioId: string;
   selectedId: string;
@@ -33,12 +41,8 @@ type Props = {
   markersVisible: boolean;
   markerDialog: Step | null;
   pendingMarker: Step | null;
-  onModeChange: (mode: "text" | "marker") => void;
   onSelectMarkerScenario: (id: string) => void;
-  onImport: () => void;
-  onExport: () => void;
   onSelectUploadFile: () => Promise<string | null>;
-  onRun: () => void;
   onSourceChange: (markdown: string) => void;
   onScenarioChange: (scenario: Scenario) => void;
   onBeginMarkerPlacement: () => void;
@@ -46,7 +50,6 @@ type Props = {
   onPlaceMarker: (position: { x: number; y: number; target: string; action: Action }) => void;
   onDeleteLast: () => void;
   onClearSteps: () => void;
-  onReturnToText: () => void;
   onSelectStep: (id: string) => void;
   onEditStep: (step: Step) => void;
   onDeleteStep: (id: string) => void;
@@ -65,8 +68,12 @@ export const ScenarioEditorPage = ({
   mode,
   scenario,
   sourceMarkdown,
-  isDirty,
   scenarioFilePath,
+  files,
+  fileCache,
+  pickedCountByFile,
+  onOpenFile,
+  onChooseFolder,
   previews,
   markerScenarioId,
   selectedId,
@@ -74,12 +81,8 @@ export const ScenarioEditorPage = ({
   markersVisible,
   markerDialog,
   pendingMarker,
-  onModeChange,
   onSelectMarkerScenario,
-  onImport,
-  onExport,
   onSelectUploadFile,
-  onRun,
   onSourceChange,
   onScenarioChange,
   onBeginMarkerPlacement,
@@ -87,7 +90,6 @@ export const ScenarioEditorPage = ({
   onPlaceMarker,
   onDeleteLast,
   onClearSteps,
-  onReturnToText,
   onSelectStep,
   onEditStep,
   onDeleteStep,
@@ -178,135 +180,52 @@ export const ScenarioEditorPage = ({
     onPlaceMarker({ x, y, ...marker });
   };
 
+  const lineCount = sourceMarkdown.split("\n").length;
+
   return (
     <>
-    <div className="page-title editor-page-title">
-      <div className="editor-title-row">
-        <h1>{mode === "text" ? "시나리오 편집" : "화면에서 추출"}</h1>
-        {isDirty && <span className="editor-unsaved-badge">UNSAVED</span>}
-      </div>
-      <div className="editor-mode-switch">
-        <Button
-          className={mode === "text" ? "active" : ""}
-          onClick={() => onModeChange("text")}
-        >
-          텍스트 편집
-        </Button>
-        <Button
-          className={mode === "marker" ? "active" : ""}
-          onClick={() => onModeChange("marker")}
-        >
-          화면에서 추출
-        </Button>
-      </div>
-    </div>
     {mode === "text" ? (
-      <>
-        <div className="editor-actions">
-          <Button variant="secondary" onClick={() => onModeChange("marker")}>
-            화면에서 추출
-          </Button>
-          <Button variant="secondary" onClick={onExport}>
-            저장
-          </Button>
-          <Button className="button button-run" onClick={onRun}>
-            ▶ 바로 실행
-          </Button>
-          <Button variant="text" onClick={onImport}>불러오기</Button>
-        </div>
-        <div className="scenario-writing-grid">
-          <section className="writing-card markdown-card">
-            <div className="writing-card-header">
-              <strong>시나리오 Markdown</strong>
-              <span>{previews[0]?.title ?? "미리보기"}.md</span>
-            </div>
-            <div className="markdown-editor-body">
-              <ol className="markdown-line-numbers" aria-hidden="true" ref={lineNumbersRef}>
-                {sourceMarkdown.split("\n").map((_, index) => <li key={index}>{index + 1}</li>)}
-              </ol>
-              <textarea
-                className="scenario-source"
-                value={sourceMarkdown}
-                onChange={(event) => onSourceChange(event.target.value)}
-                onScroll={(event) => {
-                  if (lineNumbersRef.current)
-                    lineNumbersRef.current.scrollTop = event.currentTarget.scrollTop;
-                }}
-                aria-label="시나리오 Markdown 원본"
-              />
-            </div>
-          </section>
-          <aside className="scenario-preview">
-            <div className="writing-card-header">
-              <strong>실행 미리보기</strong>
-              <span>
-                {previews.length}개 시나리오 · {previews.reduce((total, item) => total + item.steps.length, 0)}개 단계 인식
-              </span>
-            </div>
-            {previews.length > 0 ? (
-              <>
-                <div className="preview-scenario-list">
-                  {previews.map((preview, index) => {
-                    const isOpen = openPreviewIds.has(preview.id);
-                    return (
-                      <article className="preview-scenario" key={preview.id}>
-                        <div
-                          className="preview-scenario-heading"
-                          role="button"
-                          tabIndex={0}
-                          onClick={() => togglePreview(preview.id)}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter" || event.key === " ") {
-                              event.preventDefault();
-                              togglePreview(preview.id);
-                            }
-                          }}
-                        >
-                          <span className="preview-index">{String(index + 1).padStart(2, "0")}</span>
-                          <h2>{preview.title}</h2>
-                          <span className="tag">{preview.steps.length}개 단계</span>
-                          <Button
-                            className="preview-template-btn"
-                            title="값을 변경해 새 템플릿으로 복제합니다"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              setDupTarget(preview);
-                            }}
-                          >
-                            복제
-                          </Button>
-                          <span className={`preview-caret${isOpen ? " open" : ""}`}>▾</span>
-                        </div>
-                        {isOpen && (
-                          <>
-                            <div className="preview-before">
-                              <b>URL</b>
-                              <span>{preview.url}</span>
-                            </div>
-                            <ol>
-                              {preview.steps.map((step) => (
-                                <li key={step.id}>
-                                  <ActionTag action={step.action} />
-                                  <span>{actionText(step)}</span>
-                                  <i
-                                    className={step.connected ? "linked" : ""}
-                                    title={step.connected ? "연결됨" : "미연결"}
-                                  />
-                                </li>
-                              ))}
-                            </ol>
-                          </>
-                        )}
-                      </article>
-                    );
-                  })}
-                </div>
-                <p className="preview-note">
-                  Given / When / Then / And 문장을 자동으로 인식합니다. 불러온
-                  시나리오는 화면 편집기에 반영됩니다.
-                </p>
-              </>
-            ) : (
+      <div className="ws-editor">
+        <ScenarioFileList
+          files={files}
+          fileCache={fileCache}
+          activePath={scenarioFilePath}
+          pickedCountByFile={pickedCountByFile}
+          onSelect={onOpenFile}
+          onChooseFolder={onChooseFolder}
+        />
+        <section className="ws-editor-source">
+          <div className="ws-col-label">
+            <span>MARKDOWN</span>
+            <span>
+              {lineCount} lines · {previews.length} scenarios
+            </span>
+          </div>
+          <div className="markdown-editor-body">
+            <ol className="markdown-line-numbers" aria-hidden="true" ref={lineNumbersRef}>
+              {sourceMarkdown.split("\n").map((_, index) => <li key={index}>{index + 1}</li>)}
+            </ol>
+            <textarea
+              className="scenario-source"
+              data-ck-scroll="light"
+              value={sourceMarkdown}
+              spellCheck={false}
+              onChange={(event) => onSourceChange(event.target.value)}
+              onScroll={(event) => {
+                if (lineNumbersRef.current)
+                  lineNumbersRef.current.scrollTop = event.currentTarget.scrollTop;
+              }}
+              aria-label="시나리오 Markdown 원본"
+            />
+          </div>
+        </section>
+        <aside className="ws-editor-preview">
+          <div className="ws-col-label">
+            <span>PREVIEW</span>
+            <span>파싱 결과</span>
+          </div>
+          <div className="ws-preview-body" data-ck-scroll="light">
+            {previews.length === 0 && (
               <div className="preview-empty">
                 <strong>시나리오 형식을 인식하지 못했습니다.</strong>
                 <p>
@@ -316,9 +235,74 @@ export const ScenarioEditorPage = ({
                 </p>
               </div>
             )}
-          </aside>
-        </div>
-      </>
+            {previews.map((preview, index) => {
+              const isOpen = openPreviewIds.has(preview.id);
+              return (
+                <div className="ws-preview-item" key={preview.id}>
+                  <div
+                    className="ws-preview-row"
+                    role="button"
+                    tabIndex={0}
+                    aria-expanded={isOpen}
+                    onClick={() => togglePreview(preview.id)}
+                    onKeyDown={(event) => {
+                      if (event.target !== event.currentTarget) return;
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        togglePreview(preview.id);
+                      }
+                    }}
+                  >
+                    <b>{String(index + 1).padStart(2, "0")}</b>
+                    <div>
+                      <h2>{preview.title}</h2>
+                      <p>{preview.url}</p>
+                    </div>
+                    <span className="ws-preview-count">{preview.steps.length}개 단계</span>
+                    <Button
+                      className="ws-preview-dup"
+                      title="값을 변경해 새 템플릿으로 복제합니다"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setDupTarget(preview);
+                      }}
+                    >
+                      템플릿 복제
+                    </Button>
+                    <span className="ws-preview-caret" aria-hidden="true">
+                      {isOpen ? "▾" : "▸"}
+                    </span>
+                  </div>
+                  {isOpen && (
+                    <ol className="ws-steps">
+                      {preview.steps.map((step, stepIndex) => (
+                        <li key={step.id}>
+                          <b>{String(stepIndex + 1).padStart(2, "0")}</b>
+                          <ActionTag action={step.action} />
+                          <span className="ws-step-target" title={actionText(step)}>
+                            {actionText(step)}
+                          </span>
+                          <em className={step.connected ? "" : "unlinked"}>
+                            {step.connected ? "linked" : "unlinked"}
+                          </em>
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                </div>
+              );
+            })}
+            <div className="ws-parse-rule">
+              <strong>파싱 규칙</strong>
+              <p>
+                Given · When · Then · And 로 시작하는 줄만 단계로 읽습니다.
+                백틱으로 감싼 값은 선택자·입력값이 되고,{" "}
+                <code>[대기 3초]</code>는 대기 시간으로 분리됩니다.
+              </p>
+            </div>
+          </div>
+        </aside>
+      </div>
     ) : (
       <div className="extract-shell">
         <div className="extract-topbar">
@@ -362,7 +346,7 @@ export const ScenarioEditorPage = ({
           </div>
           {previews.length > 1 && (
             <label className="extract-marker-scenario">
-              편집 시나리오
+              마커 대상
               <select
                 value={markerScenarioId}
                 onChange={(event) => onSelectMarkerScenario(event.target.value)}
@@ -375,12 +359,6 @@ export const ScenarioEditorPage = ({
               </select>
             </label>
           )}
-          <Button className="button button-run" onClick={onRun}>
-            ▶ 바로 실행
-          </Button>
-          <Button variant="secondary" onClick={onReturnToText}>
-            편집기로 돌아가기
-          </Button>
         </div>
 
         <div className="extract-body">
@@ -439,7 +417,7 @@ export const ScenarioEditorPage = ({
                     }}
                     onPointerCancel={clearStepDrag}
                   >
-                    ⠿
+                    <span className="msi" aria-hidden="true">drag_indicator</span>
                   </Button>
                   <Button
                     className="extract-marker-main"
@@ -459,14 +437,14 @@ export const ScenarioEditorPage = ({
                     onClick={() => onEditStep(step)}
                     aria-label="단계 편집"
                   >
-                    ✎
+                    <span className="msi" aria-hidden="true">edit</span>
                   </Button>
                   <Button
                     className="extract-marker-delete"
                     onClick={() => onDeleteStep(step.id)}
                     aria-label="단계 삭제"
                   >
-                    ×
+                    <span className="msi" aria-hidden="true">delete</span>
                   </Button>
                 </div>
               ))}
