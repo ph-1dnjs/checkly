@@ -560,6 +560,7 @@ export class ApiWorkspace {
   /** One current in-app chat. The earlier branch-only array files are not read. */
   async readAiChat(projectId: string): Promise<unknown> { return this.read(`ai-chat-${z.string().uuid().parse(projectId)}.json`); }
   async writeAiChat(projectId: string, chat: unknown): Promise<void> { await this.save(`ai-chat-${z.string().uuid().parse(projectId)}.json`, chat); }
+  async removeAiChat(projectId: string): Promise<void> { await this.removeFile(`ai-chat-${z.string().uuid().parse(projectId)}.json`); }
 
   /** What the user's AI last wrote to the result file; null when there is none yet. */
   async readAiResult(rawScope: unknown): Promise<{ path: string; text: string; modifiedAt: string } | null> {

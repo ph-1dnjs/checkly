@@ -34,7 +34,7 @@ const messageSchema = z.string().trim().min(1, "메시지를 입력하세요").m
 const busyMessage = "AI 대화를 처리하는 중입니다. 끝난 뒤 다시 시도하거나 응답을 중단하세요";
 const openingPrompt = "이제 사용자와 대화를 시작합니다. 위 진행 순서 1번대로 먼저 질문하세요.";
 
-/** One chat per project; resetting it opens a new Claude Code or Codex session. */
+/** One chat per project; clearing it lets the next start open a new Claude Code or Codex session. */
 export class AiChatService {
   private chats = new Map<string, Promise<StoredChat | null>>();
   /** Reserved before the first await and held through the final disk write. */
@@ -60,10 +60,11 @@ export class AiChatService {
         const saved = value && typeof value === "object" && !Array.isArray(value) ? value as Partial<StoredChat> : null;
         if (!saved?.id || !saved.started || !saved.cliSessionId || !saved.cwd || !saved.environmentId) return null;
         const at = saved.updatedAt ?? new Date().toISOString();
+        const tool = saved.tool ?? "claude";
         return {
           id: saved.id, title: saved.title ?? "AI 대화", environmentId: saved.environmentId, createdAt: saved.createdAt ?? at, updatedAt: at,
-          tool: saved.tool ?? "claude", cliSessionId: saved.cliSessionId, started: true, cwd: saved.cwd, readDirs: saved.readDirs ?? [],
-          messages: [{ id: randomUUID(), role: "checkly", at, text: "이전 대화를 이어갑니다. 지난 내용은 화면에 남지 않지만 AI 세션에는 남아 있어 그대로 이어서 요청할 수 있습니다." }],
+          tool, cliSessionId: saved.cliSessionId, started: true, cwd: saved.cwd, readDirs: saved.readDirs ?? [],
+          messages: [{ id: randomUUID(), role: "checkly", at, text: `${toolNames[tool]}와의 이전 대화에 이어서 요청할 수 있습니다. 지난 메시지는 표시되지 않습니다.` }],
         };
       });
       loading.catch(() => { if (this.chats.get(projectId) === loading) this.chats.delete(projectId); });
@@ -148,22 +149,20 @@ export class AiChatService {
     } finally { if (!began) this.release(projectId, operation); }
   }
 
-  /** Replaces the old conversation only after the new guide and its saved chat are ready. */
-  async reset(raw: unknown, rawChatId: unknown): Promise<ApiAiChat> {
-    const request = startSchema.parse(raw);
-    const projectId = request.scope.projectId;
+  /**
+   * Ends the current conversation and goes back to before 대화 시작, so the AI can be chosen again.
+   * Saved scenarios and suites stay; the old CLI session is simply no longer used.
+   */
+  async clear(rawProjectId: unknown, rawChatId: unknown): Promise<void> {
+    const projectId = z.string().uuid().parse(rawProjectId);
     const chatId = z.string().parse(rawChatId);
     const operation = this.reserve(projectId, chatId);
-    let began = false;
     try {
       await this.find(projectId, chatId);
-      const chat = await this.prepare(request);
-      await this.persist(projectId, chat);
-      this.chats.set(projectId, Promise.resolve(chat));
-      this.begin(projectId, chat, openingPrompt, operation);
-      began = true;
-      return this.view(projectId, chat);
-    } finally { if (!began) this.release(projectId, operation); }
+      await this.writes.get(projectId);
+      await this.workspace.removeAiChat(projectId);
+      this.chats.set(projectId, Promise.resolve(null));
+    } finally { this.release(projectId, operation); }
   }
 
   async send(rawProjectId: unknown, rawChatId: unknown, rawText: unknown): Promise<void> {

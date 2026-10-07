@@ -73,7 +73,7 @@ export function registerApiTesting() {
   });
   ipcMain.handle("api-testing:get-ai-chat", (_event, projectId) => chats.get(projectId));
   ipcMain.handle("api-testing:start-ai-chat", (_event, request) => chats.start(request));
-  ipcMain.handle("api-testing:reset-ai-chat", (_event, request, chatId) => chats.reset(request, chatId));
+  ipcMain.handle("api-testing:clear-ai-chat", (_event, projectId, chatId) => chats.clear(projectId, chatId));
   ipcMain.handle("api-testing:send-ai-chat", (_event, projectId, chatId, text) => chats.send(projectId, chatId, text));
   ipcMain.handle("api-testing:cancel-ai-chat", (_event, projectId, chatId) => chats.cancel(projectId, chatId));
   ipcMain.handle("api-testing:mark-ai-chat-result-saved", (_event, projectId, chatId, messageId, firstScenarioId) => chats.markResultSaved(projectId, chatId, messageId, firstScenarioId));

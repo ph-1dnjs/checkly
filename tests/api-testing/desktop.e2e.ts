@@ -276,9 +276,12 @@ let input = ""; process.stdin.on("data", c => input += c); process.stdin.on("end
     await expect.poll(() => chatResetConfirmations.length).toBe(1);
     await expect(chatPane).toContainText("로그인만 확인해 주세요");
     expect((await readAiCliCalls()).length).toBe(2);
-    // Accepting resets the current chat in the selected environment and opens a fresh CLI session.
+    // Accepting ends the chat and goes back to 대화 시작; starting opens a fresh CLI session in the selected environment.
     acceptChatReset = true;
     await chatPane.getByRole("button", { name: "대화 초기화", exact: true }).click();
+    await expect(chatPane).not.toContainText("로그인만 확인해 주세요");
+    expect((await readAiCliCalls()).length).toBe(2);
+    await chatPane.getByRole("button", { name: "대화 시작", exact: true }).click();
     await expect(chatPane).toContainText("대화 환경 · stage");
     await expect(chatPane).toContainText("무엇을 테스트할까요?");
     await expect(chatPane).not.toContainText("로그인만 확인해 주세요");
@@ -311,6 +314,7 @@ let input = ""; process.stdin.on("data", c => input += c); process.stdin.on("end
     await page.getByRole("group", { name: "API 환경", exact: true }).getByRole("button", { name: "dev", exact: true }).click();
     await expect(chatPane).toContainText("기존 기록은 읽기 전용입니다");
     await chatPane.getByRole("button", { name: "대화 초기화", exact: true }).click();
+    await chatPane.getByRole("button", { name: "대화 시작", exact: true }).click();
     await expect(chatPane).toContainText("대화 환경 · dev");
     await expect(chatPane).toContainText("무엇을 테스트할까요?");
     await expect(chatPane).not.toContainText("초기화 후 로그인 확인");
@@ -326,7 +330,7 @@ let input = ""; process.stdin.on("data", c => input += c); process.stdin.on("end
     }, aiProject.id);
     expect(preserved.scenarios).toContain("대화 로그인");
     expect(preserved.settings.folders[aiProject.serverId]).toEqual([backend]);
-    // Streaming work also blocks reset; releasing the fake response lets the same chat continue.
+    // Streaming work also blocks clearing; releasing the fake response lets the same chat continue.
     await page.getByLabel("AI에게 보낼 메시지", { exact: true }).fill("응답 대기 확인");
     await page.getByLabel("AI에게 보낼 메시지", { exact: true }).press("Enter");
     await expect(chatPane).toContainText("응답을 기다리고 있습니다");

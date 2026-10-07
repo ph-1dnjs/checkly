@@ -144,8 +144,8 @@ export type ApiTestingBridge = {
   getAiChat(projectId: string): Promise<ApiAiChat | null>;
   /** Returns the existing chat, or creates it and sends the guide in the background. */
   startAiChat(request: ApiAiChatStartRequest): Promise<ApiAiChat>;
-  /** Replaces the current chat with a fresh CLI session in the requested environment. */
-  resetAiChat(request: ApiAiChatStartRequest, chatId: string): Promise<ApiAiChat>;
+  /** Ends the current chat (back to before 대화 시작); the next start opens a fresh CLI session. */
+  clearAiChat(projectId: string, chatId: string): Promise<void>;
   sendAiChatMessage(projectId: string, chatId: string, text: string): Promise<void>;
   cancelAiChat(projectId: string, chatId: string): Promise<void>;
   markAiChatResultSaved(projectId: string, chatId: string, messageId: string, firstScenarioId?: string): Promise<ApiAiChat>;

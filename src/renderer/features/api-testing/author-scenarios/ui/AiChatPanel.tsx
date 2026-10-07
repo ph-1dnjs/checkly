@@ -1,7 +1,7 @@
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import { YamlCode } from "../../../../entities/api-testing";
 import { AiResultReview } from "./AiResultReview";
-import type { ApiAiChat, ApiAiChatMessage, ApiEnvironmentScope, ApiProject, ApiTestingBridge, SavedApiScenario } from "../../../../../app/api-testing/shared/workspace";
+import type { ApiAiChat, ApiAiChatMessage, ApiAiTool, ApiEnvironmentScope, ApiProject, ApiTestingBridge, SavedApiScenario } from "../../../../../app/api-testing/shared/workspace";
 
 const errorText = (error: unknown) => (error as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, "");
 type ChatAction = "starting" | "resetting" | "sending" | "stopping" | "marking";
@@ -14,11 +14,13 @@ function MessageText({ text }: { text: string }) {
     : part.trim() && <p key={index} className="api-ai-chat-text">{part.trim()}</p>)}</>;
 }
 
-/** One persistent conversation per project. Reset prepares a new session before replacing it. */
-export function AiChatPanel({ project, scope, bridge, onBusy, onSaved, toolName, noSpec, specNote }: {
+/** One conversation per project. 대화 초기화 ends it and returns to 대화 시작, where the AI can be chosen again. */
+export function AiChatPanel({ project, scope, bridge, onBusy, onSaved, toolName, toolChoice, noSpec, specNote }: {
   project: ApiProject; scope: ApiEnvironmentScope; bridge: ApiTestingBridge; onBusy: (busy: boolean) => void; onSaved: (first?: SavedApiScenario) => void;
   /** The AI a new session uses, e.g. "Claude Code". */
   toolName: string; noSpec: boolean; specNote: string;
+  /** Which AI the next start uses, shown right before the button; locked to the chat's AI while a chat exists. */
+  toolChoice?: (lockedTool?: ApiAiTool) => ReactNode;
 }) {
   const [chat, setChat] = useState<ApiAiChat | null>(null);
   const [text, setText] = useState("");
@@ -86,15 +88,28 @@ export function AiChatPanel({ project, scope, bridge, onBusy, onSaved, toolName,
     setPending(null);
     setRevision(value => value + 1);
   };
-  const start = async (reset: boolean) => {
+  const start = async () => {
     if (noSpec || action.current || savingNow.current || loading || running) return;
-    if (reset && latestResult && !savedStatus(latestResult) && !window.confirm("저장하지 않은 결과가 사라집니다. 초기화할까요?")) return;
-    const current = begin(reset ? "resetting" : "starting");
+    const current = begin("starting");
     if (current === null) return;
     try {
-      const next = reset && chat ? await bridge.resetAiChat({ scope }, chat.id) : await bridge.startAiChat({ scope });
+      const next = await bridge.startAiChat({ scope });
       if (!currentRequest(current)) return;
       setChat(next);
+      setText("");
+      setSavedLocally(null);
+    } catch (e) { if (currentRequest(current)) setError(errorText(e)); }
+    finally { finish(current); }
+  };
+  const clear = async () => {
+    if (!chat || action.current || savingNow.current || loading || running) return;
+    if (latestResult && !savedStatus(latestResult) && !window.confirm("저장하지 않은 결과가 사라집니다. 초기화할까요?")) return;
+    const current = begin("resetting");
+    if (current === null) return;
+    try {
+      await bridge.clearAiChat(scope.projectId, chat.id);
+      if (!currentRequest(current)) return;
+      setChat(null);
       setText("");
       setSavedLocally(null);
     } catch (e) { if (currentRequest(current)) setError(errorText(e)); }
@@ -168,12 +183,15 @@ export function AiChatPanel({ project, scope, bridge, onBusy, onSaved, toolName,
     <section className="api-ai-chat-main" aria-label="AI 대화">
       <header className="api-ai-chat-heading">
         <div><strong>{chat?.title ?? "AI 대화"}</strong>{chat && <small className="api-field-help">대화 환경 · {environmentName(chat.environmentId)}</small>}</div>
+        <div className="api-ai-chat-heading-actions">
+        {toolChoice?.(chat?.tool)}
         {chat
-          ? <button type="button" disabled={busy || noSpec} title={noSpec ? "명세를 먼저 가져오세요" : undefined} onClick={() => void start(true)}>{pending === "resetting" ? "초기화하는 중…" : "대화 초기화"}</button>
-          : <button type="button" className="api-primary" disabled={busy || noSpec} title={noSpec ? "명세를 먼저 가져오세요" : undefined} onClick={() => void start(false)}>{loading ? "불러오는 중…" : pending === "starting" ? "시작하는 중…" : "대화 시작"}</button>}
+          ? <button type="button" disabled={busy} onClick={() => void clear()}>{pending === "resetting" ? "초기화하는 중…" : "대화 초기화"}</button>
+          : <button type="button" className="api-primary" disabled={busy || noSpec} title={noSpec ? "명세를 먼저 가져오세요" : undefined} onClick={() => void start()}>{loading ? "불러오는 중…" : pending === "starting" ? "시작하는 중…" : "대화 시작"}</button>}
+        </div>
       </header>
       {loading ? <p className="api-field-help" role="status">대화를 불러오는 중…</p> : !chat ? <div className="api-ai-chat-empty">
-        <p><strong>대화 시작</strong>을 누르면 {toolName}에 작성 가이드를 넘기고 바로 시작합니다. AI가 무엇을 테스트할지 먼저 묻고, 계획을 함께 정한 뒤 작성합니다. Checkly가 결과를 검사하고, 문제가 있으면 AI에 다시 보내 고치게 합니다.</p>
+        <p><strong>대화 시작</strong>을 누르면 {toolName}에 작성 가이드를 넘깁니다. AI가 테스트할 내용을 묻고 계획을 정한 뒤 시나리오를 쓰면, Checkly가 검사해 문제가 있을 때 다시 고치게 합니다.</p>
         {specNote && <div className="api-warning" role="note">{specNote}</div>}
       </div> : <>
         {differentEnvironment && <p className="api-warning" role="note">이 대화는 {environmentName(chat.environmentId)}에서 시작했습니다. 현재 환경({environmentName(scope.environmentId)})에서 이어가려면 대화를 초기화하세요. 기존 기록은 읽기 전용입니다.</p>}

@@ -1284,8 +1284,8 @@ body.panel-resizing { cursor:col-resize; user-select:none; }
 .api-ai-chat-folder-server .api-actions input { flex:1; min-width:0; }
 .api-ai-chat-model { max-width:240px; }
 .api-ai-chat-heading { display:flex; justify-content:space-between; align-items:center; gap:12px; padding-bottom:8px; border-bottom:var(--ck-fx-hairline); }
-.api-ai-chat-heading > div { display:grid; gap:4px; min-width:0; }
-.api-ai-chat-heading > button { flex:none; }
+.api-ai-chat-heading > div:first-child { display:grid; gap:4px; min-width:0; }
+.api-ai-chat-heading-actions { display:flex; align-items:center; gap:16px; flex:none; }
 .api-ai-chat-messages { display:grid; gap:10px; margin:0; padding:0; list-style:none; }
 .api-ai-chat-message { display:grid; gap:6px; max-width:100%; padding:10px 12px; border-radius:var(--ck-dim-radius-base); background:var(--ck-color-surface-subtle); }
 .api-ai-chat-message.is-user { justify-self:end; max-width:80%; background:var(--ck-color-blue-tint-soft); }
@@ -1300,7 +1300,7 @@ body.panel-resizing { cursor:col-resize; user-select:none; }
 .api-ai-chat-input textarea { width:100%; resize:vertical; }
 .api-ai-chat-input .api-actions { display:flex; justify-content:flex-end; margin:0; }
 .api-ai-author-heading { display:flex; align-items:center; gap:12px; margin:0 0 12px; }
-.api-ai-author-heading > .api-ai-tool-row { display:flex; align-items:center; gap:8px; margin-left:auto; }
+.api-ai-tool-row { display:flex; align-items:center; gap:4px; }
 .api-testing-page button.api-ai-refresh { padding:3px; border-color:transparent; background:transparent; color:var(--ck-color-text-mute); }
 .api-testing-page button.api-ai-refresh:hover { color:var(--ck-color-blue-action); }
 /* A segmented switch, unlike the underlined page tabs above: one gray track, the chosen way raised in white. */
@@ -1326,7 +1326,7 @@ body.panel-resizing { cursor:col-resize; user-select:none; }
 .content:has(.api-project-form) { overflow-y:auto; scrollbar-gutter:stable; }
 .api-ai-tool-settings { margin:0; }
 .api-ai-tool-settings [role=radiogroup] { display:flex; align-items:center; gap:16px; }
-.api-ai-tool-settings [role=radiogroup] > span { color:var(--ck-color-text-mute); font-size:12px; }
+.api-ai-tool-settings [role=radiogroup] > :is(span, small) { color:var(--ck-color-text-mute); font-size:12px; }
 .api-ai-way-checks { display:grid; gap:6px; align-self:start; margin:4px 0 0; padding:0; list-style:none; }
 .api-ai-way-checks li { display:grid; grid-template-columns:16px 104px minmax(0,auto) auto; justify-content:start; align-items:center; gap:4px 8px; min-height:30px; font-size:12.5px; }
 .api-ai-way-checks li::before { color:var(--ck-color-pass); font-weight:700; content:"✓"; }

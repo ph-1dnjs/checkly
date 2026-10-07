@@ -32,6 +32,12 @@ async function setup() {
   return { dir, workspace, project, serverId, adminId, backend, scope: { projectId: project.id, environmentId } };
 }
 
+/** 대화 초기화 then 대화 시작: what the screen does to begin again, possibly in another environment or with another AI. */
+async function restart(chats: AiChatService, scope: { projectId: string; environmentId: string }, chatId: string) {
+  await chats.clear(scope.projectId, chatId);
+  return chats.start({ scope });
+}
+
 /** A chat service with fixed installed CLIs instead of looking at this PC. */
 const service = (workspace: ApiWorkspace, run: (turn: AiTurn) => Promise<string>, tools: ApiAiTool[] = ["claude"]) => new AiChatService(workspace, run, async () => tools);
 
@@ -118,7 +124,7 @@ test("a chat keeps one Claude session: the guide opens it, later turns resume it
     const restarted = service(workspace, ai.run);
     const saved = await restarted.get(scope.projectId);
     assert.deepEqual(saved?.messages.map(message => message.role), ["checkly"]);
-    assert.match(saved!.messages[0].text, /이전 대화를 이어갑니다/);
+    assert.equal(saved!.messages[0].text, "Claude와의 이전 대화에 이어서 요청할 수 있습니다. 지난 메시지는 표시되지 않습니다.");
     assert.equal(saved?.title, "로그인 후 상품 조회");
     assert.equal(JSON.stringify(saved).includes(ai.turns[0].sessionId), false);
     assert.equal((await restarted.start({ scope })).id, chat.id);
@@ -169,7 +175,7 @@ test(`automatic fixes stop after ${maxAutoFixes} tries; failures and a failed fi
     assert.match(messages.at(-1)!.text, new RegExp(`자동 수정 ${maxAutoFixes}번 뒤에도 문제가 남았습니다`));
     assert.ok(messages.at(-1)!.result?.drafts[0].issues.length);
     await assert.rejects(chats.send(scope.projectId, chat.id, " "), /메시지를 입력하세요/);
-    const reset = await chats.reset({ scope }, chat.id);
+    const reset = await restart(chats, scope, chat.id);
     await chats.idle(scope.projectId, reset.id);
     assert.notEqual(reset.id, chat.id);
     assert.deepEqual((await chats.get(scope.projectId))!.messages.map(message => message.role), ["checkly", "assistant"]);
@@ -357,10 +363,10 @@ test("a Codex chat keeps the thread id the CLI gave; the chosen AI is used only 
     assert.deepEqual([turns[1].sessionId, turns[1].resume], ["thread-1", true]);
     // Codex chosen but no longer installed: resetting uses the installed CLI.
     const fallback = service(workspace, run, ["claude"]);
-    const other = await fallback.reset({ scope }, chat.id);
+    const other = await restart(fallback, scope, chat.id);
     await fallback.idle(scope.projectId, other.id);
     assert.equal(other.tool, "claude");
-    await assert.rejects(service(workspace, run, []).reset({ scope }, other.id), /Claude Code나 Codex CLI를 찾지 못했습니다/);
+    await assert.rejects(restart(service(workspace, run, []), scope, other.id), /Claude Code나 Codex CLI를 찾지 못했습니다/);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
@@ -380,7 +386,7 @@ for (const [chosen, fallback] of [["codex", "claude"], ["claude", "codex"]] as c
       const chats = service(workspace, ai.run, [fallback]);
       const original = await chats.start({ scope });
       await chats.idle(scope.projectId, original.id);
-      const reset = await chats.reset({ scope }, original.id);
+      const reset = await restart(chats, scope, original.id);
       await chats.idle(scope.projectId, reset.id);
       assert.deepEqual([original.tool, reset.tool], [fallback, fallback]);
       assert.deepEqual(ai.turns.map(turn => turn.tool), [fallback, fallback]);
@@ -389,7 +395,7 @@ for (const [chosen, fallback] of [["codex", "claude"], ["claude", "codex"]] as c
   });
 }
 
-test("reset starts a fresh Claude session with the current environment and settings while keeping saved scenarios", async () => {
+test("clearing and starting again opens a fresh Claude session in the current environment while keeping saved scenarios", async () => {
   const { dir, workspace, project, scope, serverId } = await setup();
   try {
     const ai = fakeAi(["처음 질문", good, "새 질문"]);
@@ -403,7 +409,7 @@ test("reset starts a fresh Claude session with the current environment and setti
     await workspace.saveProject({ ...project, environments: [...project.environments, { ...project.environments[0], id: environmentId, name: "qa" }] });
     const nextScope = { projectId: scope.projectId, environmentId };
     await workspace.importSpec({ ...nextScope, serverId }, spec);
-    const reset = await chats.reset({ scope: nextScope }, original.id);
+    const reset = await restart(chats, nextScope, original.id);
     await chats.idle(scope.projectId, reset.id);
     assert.notEqual(reset.id, original.id);
     assert.equal(reset.environmentId, environmentId);
@@ -435,7 +441,7 @@ test("reset opens a fresh Codex thread and following messages resume the new thr
     const chats = service(workspace, run, ["codex"]);
     const original = await chats.start({ scope });
     await chats.idle(scope.projectId, original.id);
-    const reset = await chats.reset({ scope }, original.id);
+    const reset = await restart(chats, scope, original.id);
     await chats.idle(scope.projectId, reset.id);
     await chats.send(scope.projectId, reset.id, "새 대화로 진행");
     await chats.idle(scope.projectId, reset.id);
@@ -493,10 +499,10 @@ test("failed preparation and failed initial storage release the project so start
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
-test("reset preparation or storage failures keep the previous chat and CLI session", async () => {
+test("clearing ends the chat for good; a failed clear keeps the previous chat and CLI session", async () => {
   const { dir, workspace, scope } = await setup();
   try {
-    const ai = fakeAi(["질문", good, "계속 진행"]);
+    const ai = fakeAi(["질문", good, "계속 진행", "새 질문"]);
     const chats = service(workspace, ai.run);
     const chat = await chats.start({ scope });
     await chats.idle(scope.projectId, chat.id);
@@ -504,22 +510,25 @@ test("reset preparation or storage failures keep the previous chat and CLI sessi
     await chats.idle(scope.projectId, chat.id);
     const previous = (await chats.get(scope.projectId))!;
     const file = path.join(dir, `ai-chat-${scope.projectId}.json`);
-    const previousFile = await readFile(file, "utf8");
-    const prepare = workspace.aiChatSetup.bind(workspace);
-    workspace.aiChatSetup = async () => { throw new Error("준비 실패"); };
-    await assert.rejects(chats.reset({ scope }, chat.id), /준비 실패/);
+    const remove = workspace.removeAiChat.bind(workspace);
+    workspace.removeAiChat = async () => { throw new Error("삭제 실패"); };
+    await assert.rejects(chats.clear(scope.projectId, chat.id), /삭제 실패/);
     assert.deepEqual(await chats.get(scope.projectId), previous);
-    workspace.aiChatSetup = prepare;
-    const write = workspace.writeAiChat.bind(workspace);
-    workspace.writeAiChat = async () => { throw new Error("저장 실패"); };
-    await assert.rejects(chats.reset({ scope }, chat.id), /저장 실패/);
-    assert.deepEqual(await chats.get(scope.projectId), previous);
-    assert.equal(await readFile(file, "utf8"), previousFile);
-    workspace.writeAiChat = write;
+    workspace.removeAiChat = remove;
     await chats.send(scope.projectId, chat.id, "이전 세션 계속");
     await chats.idle(scope.projectId, chat.id);
-    assert.equal(ai.turns[2].resume, true);
-    assert.equal(ai.turns[2].sessionId, ai.turns[0].sessionId);
+    assert.deepEqual([ai.turns[2].resume, ai.turns[2].sessionId], [true, ai.turns[0].sessionId]);
+    // Cleared: back to before 대화 시작, also after a restart; the next start opens a new session with the guide.
+    await chats.clear(scope.projectId, chat.id);
+    assert.equal(await chats.get(scope.projectId), null);
+    await assert.rejects(readFile(file, "utf8"), { code: "ENOENT" });
+    assert.equal(await service(workspace, ai.run).get(scope.projectId), null);
+    await assert.rejects(chats.send(scope.projectId, chat.id, "예전 대화"), /대화를 찾을 수 없습니다/);
+    const next = await chats.start({ scope });
+    await chats.idle(scope.projectId, next.id);
+    assert.notEqual(next.id, chat.id);
+    assert.deepEqual([ai.turns[3].resume, ai.turns[3].sessionId === ai.turns[0].sessionId], [false, false]);
+    assert.match(ai.turns[3].prompt, /Checkly API 시나리오 작성 가이드/);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
@@ -539,7 +548,7 @@ test("sending reserves the project before saving: duplicate messages, reset and 
     const sending = chats.send(scope.projectId, chat.id, "한 번만 전송");
     await entered.promise;
     await assert.rejects(chats.send(scope.projectId, chat.id, "중복 전송"), /대화를 처리하는 중/);
-    await assert.rejects(chats.reset({ scope }, chat.id), /대화를 처리하는 중/);
+    await assert.rejects(chats.clear(scope.projectId, chat.id), /대화를 처리하는 중/);
     await assert.rejects(chats.deleteProject(scope.projectId, id => workspace.deleteProject(id)), /프로젝트를 삭제할 수 없습니다/);
     assert.equal((await chats.get(scope.projectId))!.running?.phase, "answering");
     release.resolve();
@@ -593,7 +602,7 @@ test("idle and cancellation keep the project locked until the final write is on 
     const idle = chats.idle(scope.projectId, chat.id).then(() => { finished = true; });
     await Promise.resolve();
     assert.equal(finished, false);
-    await assert.rejects(chats.reset({ scope }, chat.id), /대화를 처리하는 중/);
+    await assert.rejects(chats.clear(scope.projectId, chat.id), /대화를 처리하는 중/);
     await assert.rejects(chats.send(scope.projectId, chat.id, "아직 저장 중"), /대화를 처리하는 중/);
     release.resolve();
     await idle;
@@ -615,7 +624,7 @@ test("project deletion reserves the project and releases it on a failed deletion
     await entered.promise;
     await assert.rejects(chats.start({ scope }), /대화를 처리하는 중/);
     await assert.rejects(chats.send(scope.projectId, chat.id, "삭제 중"), /대화를 처리하는 중/);
-    await assert.rejects(chats.reset({ scope }, chat.id), /대화를 처리하는 중/);
+    await assert.rejects(chats.clear(scope.projectId, chat.id), /대화를 처리하는 중/);
     release.resolve();
     await assert.rejects(deleting, /삭제 실패/);
     assert.equal((await chats.start({ scope })).id, chat.id);

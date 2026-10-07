@@ -347,6 +347,22 @@ test('the AI tab has two ways as tabs: chat needs an installed AI and a backend 
   expect(state.unexpected).toEqual([])
 })
 
+test('while a chat exists its AI is locked; changing it needs 대화 초기화 first', async ({ page }) => {
+  const state = await workspace(page, false, false, { chat: { current: checkedAiChat(),
+    settings: { folders: { [serverId]: ['/backend'] }, tool: 'codex' },
+    tools: [{ tool: 'claude', version: 'claude-test' }, { tool: 'codex', version: 'codex-test' }],
+  } })
+  await openAi(page, 'chat')
+  const choice = page.getByRole('radiogroup', { name: '사용할 AI', exact: true })
+  // The chat runs on Claude even though Codex is chosen for the next start; a session cannot move between CLIs.
+  await expect(choice.getByRole('radio', { name: 'Claude', exact: true })).toBeChecked()
+  await expect(choice.getByRole('radio', { name: 'Codex', exact: true })).toBeDisabled()
+  await expect(choice).toContainText('바꾸려면 대화 초기화')
+  await expect(page.getByRole('button', { name: 'AI 다시 확인', exact: true })).toHaveCount(0)
+  expect(state.chatSettingsSaves).toEqual([])
+  expect(state.unexpected).toEqual([])
+})
+
 test('AI project settings discard picked folders when leaving without saving', async ({ page }) => {
   const state = await workspace(page, false, false, { chat: { current: null, settings: { folders: {} } } })
   await openAi(page, 'chat')
