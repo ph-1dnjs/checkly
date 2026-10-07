@@ -204,11 +204,12 @@ let input = ""; process.stdin.on("data", c => input += c); process.stdin.on("end
     // AI authoring: copy the prompt for the user's own AI, check what it wrote, save scenarios and suite.
     await page.getByRole("tab", { name: "AI 작성 도우미", exact: true }).click();
     await expect(page.getByText("명세를 다시 가져오세요")).toHaveCount(0);
-    // First step: only the checks (AI installed, backend folder) and the choice of way.
-    const chatWay = page.getByRole("region", { name: "앱에서 AI와 대화", exact: true });
-    await expect(chatWay).toContainText("AIClaude Code");
-    await expect(page.getByRole("button", { name: "AI와 대화하기", exact: true })).toBeDisabled();
-    await expect(page.getByRole("button", { name: "AI 가이드 복사", exact: true })).toHaveCount(0);
+    // Two ways as tabs; without a backend folder the guide opens and the chat tab lists what it needs.
+    await expect(page.getByRole("button", { name: "AI 가이드 복사", exact: true })).toBeVisible();
+    await page.getByRole("tab", { name: "앱에서 AI와 대화", exact: true }).click();
+    const chatWay = page.getByRole("region", { name: "앱에서 AI와 대화 준비", exact: true });
+    await expect(chatWay).toContainText("AIClaude");
+    await expect(chatWay).toContainText("백엔드 코드 폴더없음");
     await shot("ai-invite");
     await chatWay.getByRole("button", { name: "설정하기", exact: true }).click();
     const settings = page.locator(".api-project-form");
@@ -238,24 +239,15 @@ let input = ""; process.stdin.on("data", c => input += c); process.stdin.on("end
     const readAiCliCalls = async () => (await readFile(aiCliCallsFile, "utf8")).trim().split("\n").filter(Boolean)
       .map(line => JSON.parse(line) as { args: string[]; input: string });
     const firstSession = (call: { args: string[] }) => call.args[call.args.indexOf("--session-id") + 1];
-    await expect(chatWay).toContainText("백엔드 코드 폴더1개");
-    await page.getByRole("button", { name: "AI와 대화하기", exact: true }).click();
-    await page.locator(".api-ai-tool-settings-fold > summary").click();
-    const aiSettings = page.getByRole("region", { name: "AI 실행 설정", exact: true });
-    await aiSettings.getByLabel("사용할 AI", { exact: true }).selectOption("claude");
-    await aiSettings.getByLabel("추론 수준", { exact: true }).selectOption("low");
-    await aiSettings.getByRole("button", { name: "AI 설정 저장", exact: true }).click();
-    await expect(aiSettings).toContainText("AI 설정을 저장했습니다");
-    await expect.poll(() => page.evaluate(async projectId => {
-      const api = (window as unknown as { electronAPI: { apiTesting: ApiTestingBridge } }).electronAPI.apiTesting;
-      const settings = await api.getAiChatSettings(projectId);
-      return { tool: settings.tool, effort: settings.effort };
-    }, aiProject.id)).toEqual({ tool: "claude", effort: "low" });
+    // With the folder set the chat tab shows the chat itself.
+    await expect(chatWay).toHaveCount(0);
+    // One AI installed: no choice is shown.
+    await expect(page.getByRole("region", { name: "AI 실행 설정", exact: true })).toHaveCount(0);
     await shot("ai-chat-empty");
     // One current chat: starting sends the guide; later turns resume the same CLI session.
     await page.getByRole("button", { name: "대화 시작", exact: true }).click();
     const chatPane = page.getByRole("region", { name: "AI 대화", exact: true });
-    await expect(chatPane).toContainText("가이드를 Claude Code에 전달했습니다");
+    await expect(chatPane).toContainText("가이드를 Claude에 전달했습니다");
     await expect(chatPane).toContainText("무엇을 테스트할까요?");
     await expect(chatPane).toContainText("대화 환경 · dev");
     await expect(page.getByRole("complementary", { name: "AI 대화 목록" })).toHaveCount(0);
@@ -348,15 +340,13 @@ let input = ""; process.stdin.on("data", c => input += c); process.stdin.on("end
     // A restored running chat can also be cancelled from a different environment.
     await rm(aiResponseRelease);
     // The user's own AI app stays available next to the in-app chat, remembered for the project.
-    await page.getByRole("button", { name: "작성 방식 바꾸기", exact: true }).click();
-    await page.getByRole("button", { name: "가이드 복사로 쓰기", exact: true }).click();
+    await page.getByRole("tab", { name: "내 AI 앱에서 쓰기", exact: true }).click();
     await expect(page.getByRole("button", { name: "AI 가이드 복사", exact: true })).toBeVisible();
     await expect(chatPane).toHaveCount(0);
     await page.getByRole("tab", { name: "시나리오", exact: true }).click();
     await page.getByRole("tab", { name: "AI 작성 도우미", exact: true }).click();
     await expect(page.getByRole("button", { name: "AI 가이드 복사", exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "작성 방식 바꾸기", exact: true }).click();
-    await page.getByRole("button", { name: "AI와 대화하기", exact: true }).click();
+    await page.getByRole("tab", { name: "앱에서 AI와 대화", exact: true }).click();
     await expect(chatPane).toContainText("응답 대기를 마쳤습니다");
     await page.getByRole("tab", { name: "시나리오", exact: true }).click();
     await page.evaluate(async projectId => {
@@ -381,9 +371,9 @@ let input = ""; process.stdin.on("data", c => input += c); process.stdin.on("end
     await page.getByRole("button", { name: "프로젝트 설정", exact: true }).click();
     await page.getByRole("button", { name: `기본 API 폴더 ${backend} 제거`, exact: true }).click();
     await page.getByRole("button", { name: "프로젝트 저장", exact: true }).click();
-    // Without a backend folder the remembered chat asks for the way again.
-    await expect(page.getByRole("button", { name: "AI와 대화하기", exact: true })).toBeDisabled();
-    await page.getByRole("button", { name: "가이드 복사로 쓰기", exact: true }).click();
+    // Without a backend folder the chat tab lists what it needs; the guide is the other tab.
+    await expect(page.getByRole("region", { name: "앱에서 AI와 대화 준비", exact: true })).toContainText("백엔드 코드 폴더없음");
+    await page.getByRole("tab", { name: "내 AI 앱에서 쓰기", exact: true }).click();
     await page.getByRole("button", { name: "가이드 보기", exact: true }).click();
     await expect(page.getByLabel("AI 가이드 내용", { exact: true })).toContainText("먼저 사용자에게 무엇을 테스트할지 물어보세요");
     await page.getByRole("button", { name: "가이드 닫기", exact: true }).click();

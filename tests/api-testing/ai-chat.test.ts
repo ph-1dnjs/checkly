@@ -47,13 +47,12 @@ function fakeAi(answers: Array<string | Error>) {
   } };
 }
 
-test("chat settings: several backend folders per server (absolute only), the AI and effort; kept out of the project and removed with it", async () => {
+test("chat settings: several backend folders per server (absolute only), the AI; kept out of the project and removed with it", async () => {
   const { dir, workspace, project, serverId, adminId } = await setup();
   try {
     const member = path.join(dir, "member-api"), common = path.join(dir, "common-lib");
-    const saved = await workspace.saveAiChatSettings(project.id, { folders: { [serverId]: [member, common, member], [adminId]: [], [randomUUID()]: [common] }, tool: "codex", effort: "low" });
-    assert.deepEqual(saved, { folders: { [serverId]: [member, common] }, tool: "codex", effort: "low" });
-    await assert.rejects(workspace.saveAiChatSettings(project.id, { folders: {}, effort: "turbo" }));
+    const saved = await workspace.saveAiChatSettings(project.id, { folders: { [serverId]: [member, common, member], [adminId]: [], [randomUUID()]: [common] }, tool: "codex" });
+    assert.deepEqual(saved, { folders: { [serverId]: [member, common] }, tool: "codex" });
     assert.deepEqual(await new ApiWorkspace(dir).getAiChatSettings(project.id), saved);
     await assert.rejects(workspace.saveAiChatSettings(project.id, { folders: { [serverId]: ["relative/path"] } }), /절대 경로/);
     await assert.rejects(workspace.saveAiChatSettings(project.id, { folders: {}, tool: "gemini" }));
@@ -91,12 +90,10 @@ test("a chat keeps one Claude session: the guide opens it, later turns resume it
   try {
     const ai = fakeAi(["무엇을 테스트할까요?", "시나리오 2개로 나눌게요. 괜찮을까요?"]);
     const chats = service(workspace, ai.run);
-    await workspace.saveAiChatSettings(scope.projectId, { folders: (await workspace.getAiChatSettings(scope.projectId)).folders, effort: "high" });
     const chat = await chats.start({ scope });
     assert.equal(chat.tool, "claude");
     await chats.idle(scope.projectId, chat.id);
     assert.equal(ai.turns[0].resume, false);
-    assert.equal(ai.turns[0].effort, "high");
     assert.ok(ai.turns[0].prompt.includes("# Checkly API 시나리오 작성 가이드") && ai.turns[0].prompt.includes("먼저 질문하세요"));
     await chats.send(scope.projectId, chat.id, "로그인 후 상품 조회");
     await chats.idle(scope.projectId, chat.id);
@@ -111,13 +108,23 @@ test("a chat keeps one Claude session: the guide opens it, later turns resume it
     await chats.idle(scope.projectId, chat.id);
     assert.deepEqual(JSON.parse(await readFile(stateFile, "utf8")).scenarios.map((item: { name: string }) => item.name), ["로그인"]);
     assert.equal(ai.turns[2].prompt, "방금 저장한 것도 봐 주세요");
-    const saved = await service(workspace, ai.run).get(scope.projectId);
-    assert.deepEqual(saved?.messages.map(message => message.role), ["checkly", "assistant", "user", "assistant", "user", "assistant"]);
+    assert.deepEqual((await chats.get(scope.projectId))?.messages.map(message => message.role), ["checkly", "assistant", "user", "assistant", "user", "assistant"]);
+    assert.deepEqual((await chats.get(scope.projectId))?.messages[1].tools, ["Read UserController.java"]);
+    // Only the session pointer is on disk: no messages, guide or results.
+    const file = JSON.parse(await readFile(path.join(dir, `ai-chat-${scope.projectId}.json`), "utf8"));
+    assert.deepEqual(Object.keys(file).sort(), ["cliSessionId", "createdAt", "cwd", "environmentId", "id", "readDirs", "started", "title", "tool", "updatedAt"]);
+    assert.equal(JSON.stringify(file).includes("로그인 후 상품 조회") && JSON.stringify(file).includes("무엇을 테스트할까요"), false);
+    // After a restart the chat resumes the same CLI session with a note instead of the old messages.
+    const restarted = service(workspace, ai.run);
+    const saved = await restarted.get(scope.projectId);
+    assert.deepEqual(saved?.messages.map(message => message.role), ["checkly"]);
+    assert.match(saved!.messages[0].text, /이전 대화를 이어갑니다/);
     assert.equal(saved?.title, "로그인 후 상품 조회");
-    assert.deepEqual(saved?.messages[1].tools, ["Read UserController.java"]);
     assert.equal(JSON.stringify(saved).includes(ai.turns[0].sessionId), false);
-    assert.equal((await chats.start({ scope })).id, chat.id);
-    assert.equal(ai.turns.length, 3);
+    assert.equal((await restarted.start({ scope })).id, chat.id);
+    await restarted.send(scope.projectId, chat.id, "이어서");
+    await restarted.idle(scope.projectId, chat.id);
+    assert.deepEqual([ai.turns[3].resume, ai.turns[3].sessionId, ai.turns[3].prompt], [true, ai.turns[0].sessionId, "이어서"]);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
@@ -173,11 +180,11 @@ test("Claude runs read-only and isolated, streams text and tool calls, and expla
   const dir = await mkdtemp(path.join(tmpdir(), "checkly-fake-claude-"));
   const previous = process.env.CHECKLY_AI_CLI_PATH;
   try {
-    const args = claudeArgs({ sessionId: "s1", resume: true, readDirs: ["/a", "/b"], effort: "low" });
+    const args = claudeArgs({ sessionId: "s1", resume: true, readDirs: ["/a", "/b"] });
     assert.deepEqual(args.slice(args.indexOf("--resume"), args.indexOf("--resume") + 2), ["--resume", "s1"]);
     for (const flag of ["--restricted", "--strict-mcp-config", "--include-partial-messages"]) assert.ok(args.includes(flag), flag);
     assert.deepEqual(args.slice(args.indexOf("--tools") + 1, args.indexOf("--tools") + 4), ["Read", "Grep", "Glob"]);
-    assert.ok(args.join(" ").includes("--add-dir /a --add-dir /b") && args.join(" ").includes("--effort low") && !args.includes("--model"));
+    assert.ok(args.join(" ").includes("--add-dir /a --add-dir /b") && !args.includes("--model") && !args.includes("--effort"));
     assert.ok(claudeArgs({ sessionId: "s2", resume: false, readDirs: [] }).includes("--session-id"));
     const fake = path.join(dir, "claude.mjs");
     await writeFile(fake, `#!/usr/bin/env node
@@ -300,10 +307,10 @@ test("Codex runs read-only without the user's config, reports its thread id and 
   const dir = await mkdtemp(path.join(tmpdir(), "checkly-fake-codex-"));
   const previous = process.env.CHECKLY_CODEX_CLI_PATH;
   try {
-    const first = codexArgs({ sessionId: "", resume: false, effort: "high" });
+    const first = codexArgs({ sessionId: "", resume: false });
     assert.deepEqual(first.slice(0, 3), ["exec", "--sandbox", "read-only"]);
     for (const flag of ["--json", "--ignore-user-config", "--ignore-rules", 'sandbox_mode="read-only"']) assert.ok(first.includes(flag), flag);
-    assert.ok(first.join(" ").includes('-c model_reasoning_effort="high"') && !first.includes("-m") && first.at(-1) === "-");
+    assert.ok(!first.join(" ").includes("model_reasoning_effort") && !first.includes("-m") && first.at(-1) === "-");
     assert.deepEqual(codexArgs({ sessionId: "t1", resume: true }).slice(0, 3), ["exec", "resume", "t1"]);
     const fake = path.join(dir, "codex.mjs");
     await writeFile(fake, `#!/usr/bin/env node
@@ -367,7 +374,7 @@ for (const [chosen, fallback] of [["codex", "claude"], ["claude", "codex"]] as c
   test(`starting and resetting with ${fallback} instead of missing ${chosen} keep the saved choice`, async () => {
     const { dir, workspace, scope } = await setup();
     try {
-      const settings = { ...(await workspace.getAiChatSettings(scope.projectId)), tool: chosen, effort: "medium" as const };
+      const settings = { ...(await workspace.getAiChatSettings(scope.projectId)), tool: chosen };
       await workspace.saveAiChatSettings(scope.projectId, settings);
       const ai = fakeAi(["첫 질문", "새 질문"]);
       const chats = service(workspace, ai.run, [fallback]);
@@ -376,7 +383,7 @@ for (const [chosen, fallback] of [["codex", "claude"], ["claude", "codex"]] as c
       const reset = await chats.reset({ scope }, original.id);
       await chats.idle(scope.projectId, reset.id);
       assert.deepEqual([original.tool, reset.tool], [fallback, fallback]);
-      assert.deepEqual(ai.turns.map(turn => [turn.tool, turn.effort]), [[fallback, "medium"], [fallback, "medium"]]);
+      assert.deepEqual(ai.turns.map(turn => turn.tool), [fallback, fallback]);
       assert.deepEqual(await workspace.getAiChatSettings(scope.projectId), settings);
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
@@ -396,22 +403,21 @@ test("reset starts a fresh Claude session with the current environment and setti
     await workspace.saveProject({ ...project, environments: [...project.environments, { ...project.environments[0], id: environmentId, name: "qa" }] });
     const nextScope = { projectId: scope.projectId, environmentId };
     await workspace.importSpec({ ...nextScope, serverId }, spec);
-    await workspace.saveAiChatSettings(scope.projectId, { ...(await workspace.getAiChatSettings(scope.projectId)), effort: "low" });
     const reset = await chats.reset({ scope: nextScope }, original.id);
     await chats.idle(scope.projectId, reset.id);
     assert.notEqual(reset.id, original.id);
     assert.equal(reset.environmentId, environmentId);
-    assert.equal(reset.effort, "low");
     assert.equal(ai.turns[2].resume, false);
     assert.notEqual(ai.turns[2].sessionId, ai.turns[0].sessionId);
     assert.match(ai.turns[2].prompt, /Checkly API 시나리오 작성 가이드/);
-    const current = (await service(workspace, ai.run).get(scope.projectId))!;
+    const current = (await chats.get(scope.projectId))!;
     assert.deepEqual(current.messages.map(message => message.role), ["checkly", "assistant"]);
     assert.equal(current.messages.some(message => message.result), false);
     assert.equal((await workspace.listScenarios(scope.projectId)).some(item => item.id === scenario.id), true);
     const file = JSON.parse(await readFile(path.join(dir, `ai-chat-${scope.projectId}.json`), "utf8"));
     assert.equal(Array.isArray(file), false);
     assert.equal(file.id, reset.id);
+    assert.equal("messages" in file, false);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
@@ -564,13 +570,13 @@ test("failed message storage leaves the previous conversation unchanged and can 
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
-test("idle and cancellation keep the project locked until the final message is on disk", async () => {
+test("idle and cancellation keep the project locked until the final write is on disk", async () => {
   const { dir, workspace, scope } = await setup();
   const started = deferred(), finalWrite = deferred(), release = deferred();
   const write = workspace.writeAiChat.bind(workspace);
+  let blockNext = false;
   workspace.writeAiChat = async (projectId, value) => {
-    const messages = (value as { messages: Array<{ error?: true }> }).messages;
-    if (messages.at(-1)?.error) { finalWrite.resolve(); await release.promise; }
+    if (blockNext) { blockNext = false; finalWrite.resolve(); await release.promise; }
     return write(projectId, value);
   };
   const chats = service(workspace, turn => new Promise((_resolve, reject) => {
@@ -580,6 +586,7 @@ test("idle and cancellation keep the project locked until the final message is o
   const chat = await chats.start({ scope });
   try {
     await started.promise;
+    blockNext = true;
     await chats.cancel(scope.projectId, chat.id);
     await finalWrite.promise;
     let finished = false;
@@ -590,8 +597,9 @@ test("idle and cancellation keep the project locked until the final message is o
     await assert.rejects(chats.send(scope.projectId, chat.id, "아직 저장 중"), /대화를 처리하는 중/);
     release.resolve();
     await idle;
-    const restored = (await service(workspace, async () => "").get(scope.projectId))!;
-    assert.match(restored.messages.at(-1)!.text, /중단/);
+    assert.match((await chats.get(scope.projectId))!.messages.at(-1)!.text, /중단/);
+    // The session never started, so there is nothing to resume after a restart.
+    assert.equal(await service(workspace, async () => "").get(scope.projectId), null);
     assert.equal((await chats.get(scope.projectId))!.running, undefined);
   } finally { release.resolve(); chats.cancelAll(); await chats.idle(scope.projectId, chat.id); await rm(dir, { recursive: true, force: true }); }
 });
@@ -616,7 +624,7 @@ test("project deletion reserves the project and releases it on a failed deletion
   } finally { release.resolve(); await rm(dir, { recursive: true, force: true }); }
 });
 
-test("a saved result marker survives restart; failed marking keeps it unsaved", async () => {
+test("a saved result marker is kept in memory; a restart keeps only the session", async () => {
   const { dir, workspace, scope } = await setup();
   try {
     const chats = service(workspace, fakeAi(["질문", good, good]).run);
@@ -629,16 +637,12 @@ test("a saved result marker survives restart; failed marking keeps it unsaved", 
     const savedScenario = await workspace.saveScenario(scope, result.result!.drafts[0].yaml, {});
     const scenarioId = savedScenario.id;
     await chats.markResultSaved(scope.projectId, chat.id, result.id, scenarioId);
+    assert.deepEqual((await chats.get(scope.projectId))!.messages.at(-1)!.saved, { scenarioId });
     const restored = (await service(workspace, async () => "").get(scope.projectId))!;
-    assert.deepEqual(restored.messages.at(-1)!.saved, { scenarioId });
+    assert.equal(restored.messages.some(message => message.result), false);
     await chats.send(scope.projectId, chat.id, "추가 작성");
     await chats.idle(scope.projectId, chat.id);
     const next = (await chats.get(scope.projectId))!.messages.at(-1)!;
-    const write = workspace.writeAiChat.bind(workspace);
-    workspace.writeAiChat = async () => { throw new Error("저장 표시 실패"); };
-    await assert.rejects(chats.markResultSaved(scope.projectId, chat.id, next.id), /저장 표시 실패/);
-    assert.equal((await chats.get(scope.projectId))!.messages.at(-1)!.saved, undefined);
-    workspace.writeAiChat = write;
     await chats.markResultSaved(scope.projectId, chat.id, next.id);
     assert.deepEqual((await chats.get(scope.projectId))!.messages.at(-1)!.saved, {});
     await assert.rejects(chats.markResultSaved(scope.projectId, chat.id, chat.messages[0].id), /검사 결과를 찾을 수 없습니다/);

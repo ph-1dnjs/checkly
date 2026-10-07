@@ -28,7 +28,7 @@ type ProjectOperation = {
 const startSchema = z.object({
   scope: z.object({ projectId: z.string().uuid(), environmentId: z.string().uuid() }).strict(),
 }).strict();
-const toolNames: Record<ApiAiTool, string> = { claude: "Claude Code", codex: "Codex" };
+const toolNames: Record<ApiAiTool, string> = { claude: "Claude", codex: "Codex" };
 const newSessionId = (tool: ApiAiTool) => tool === "claude" ? randomUUID() : "";
 const messageSchema = z.string().trim().min(1, "메시지를 입력하세요").max(20_000);
 const busyMessage = "AI 대화를 처리하는 중입니다. 끝난 뒤 다시 시도하거나 응답을 중단하세요";
@@ -48,19 +48,35 @@ export class AiChatService {
     private installedTools: () => Promise<ApiAiTool[]> = async () => (await describeAiTools()).map(item => item.tool),
   ) {}
 
+  /**
+   * The conversation itself lives in memory (and in the CLI's own session); only what is needed
+   * to continue that session is on disk. After a restart the chat resumes with a note instead of
+   * the old messages. A session that never started has nothing to resume and is dropped.
+   */
   private load(projectId: string): Promise<StoredChat | null> {
     let pending = this.chats.get(projectId);
     if (!pending) {
-      const loading = this.workspace.readAiChat(projectId).then(value => value && typeof value === "object" && !Array.isArray(value) ? value as StoredChat : null);
+      const loading = this.workspace.readAiChat(projectId).then((value): StoredChat | null => {
+        const saved = value && typeof value === "object" && !Array.isArray(value) ? value as Partial<StoredChat> : null;
+        if (!saved?.id || !saved.started || !saved.cliSessionId || !saved.cwd || !saved.environmentId) return null;
+        const at = saved.updatedAt ?? new Date().toISOString();
+        return {
+          id: saved.id, title: saved.title ?? "AI 대화", environmentId: saved.environmentId, createdAt: saved.createdAt ?? at, updatedAt: at,
+          tool: saved.tool ?? "claude", cliSessionId: saved.cliSessionId, started: true, cwd: saved.cwd, readDirs: saved.readDirs ?? [],
+          messages: [{ id: randomUUID(), role: "checkly", at, text: "이전 대화를 이어갑니다. 지난 내용은 화면에 남지 않지만 AI 세션에는 남아 있어 그대로 이어서 요청할 수 있습니다." }],
+        };
+      });
       loading.catch(() => { if (this.chats.get(projectId) === loading) this.chats.delete(projectId); });
       this.chats.set(projectId, pending = loading);
     }
     return pending;
   }
 
+  /** Saves only the session pointer (no messages, results or guide). */
   private persist(projectId: string, chat: StoredChat): Promise<void> {
-    // Freeze the content now rather than letting a later queued write observe future messages.
-    const snapshot = structuredClone(chat);
+    const { messages: _messages, guide: _guide, ...pointer } = chat;
+    // Freeze it now rather than letting a later queued write observe a newer state.
+    const snapshot = structuredClone(pointer);
     const next = (this.writes.get(projectId) ?? Promise.resolve()).then(() => this.workspace.writeAiChat(projectId, snapshot));
     this.writes.set(projectId, next.catch(() => undefined));
     return next;
@@ -109,7 +125,6 @@ export class AiChatService {
     const now = new Date().toISOString();
     return {
       id: randomUUID(), title: "새 대화", environmentId, createdAt: now, updatedAt: now, tool,
-      ...(settings.effort ? { effort: settings.effort } : {}),
       messages: [{ id: randomUUID(), role: "checkly", at: now, text: `가이드를 ${toolNames[tool]}에 전달했습니다 · API ${setup.apiCount}개 · 백엔드 폴더 ${setup.folderCount}개` }],
       cliSessionId: newSessionId(tool), started: false, cwd: setup.cwd, readDirs: setup.readDirs, guide: setup.prompt,
     };
@@ -179,8 +194,8 @@ export class AiChatService {
       const chat = structuredClone(await this.find(projectId, chatId));
       const message = chat.messages.find(item => item.id === messageId);
       if (!message?.result) throw new Error("검사 결과를 찾을 수 없습니다");
+      // Messages live in memory only, so the marker needs no write.
       message.saved = scenarioId ? { scenarioId } : {};
-      await this.persist(projectId, chat);
       this.chats.set(projectId, Promise.resolve(chat));
       return this.view(projectId, chat);
     } finally { this.release(projectId, operation); }
@@ -249,7 +264,7 @@ export class AiChatService {
         answer = await this.runTurn({
           tool: chat.tool, sessionId: chat.cliSessionId, resume: chat.started, cwd: chat.cwd, readDirs: chat.readDirs,
           prompt: chat.started || !chat.guide ? prompt : `${chat.guide}\n\n---\n${prompt}`,
-          ...(chat.effort ? { effort: chat.effort } : {}), signal: operation.controller.signal,
+          signal: operation.controller.signal,
           onEvent: event => {
             if (event.type === "session") chat.cliSessionId = event.sessionId;
             else if (event.type === "text") state.text += event.text;

@@ -54,7 +54,6 @@ function migrateSidebarMetadata<T extends Record<string, unknown>>(item: T): T &
 const aiChatSettingsSchema = z.object({
   folders: z.record(z.string().uuid(), z.array(z.string().trim().min(1).max(4096).refine(value => path.isAbsolute(value), "폴더는 절대 경로로 입력하세요")).max(20)),
   tool: z.enum(["claude", "codex"]).optional(),
-  effort: z.enum(["low", "medium", "high"]).optional(),
 });
 const aiGuideRequestSchema = z.object({
   scope: environmentScopeSchema, tags: z.array(z.string().max(200)).max(100).optional(),
@@ -501,7 +500,7 @@ export class ApiWorkspace {
     return parsed.success ? parsed.data : {};
   }
 
-  /** In-app chat settings on this PC (backend folders per server, AI CLI, effort); kept out of the shareable project. */
+  /** In-app chat settings on this PC (backend folders per server, AI CLI); kept out of the shareable project. */
   async getAiChatSettings(rawProjectId: unknown): Promise<ApiAiChatSettings> {
     const projectId = z.string().uuid().parse(rawProjectId);
     return (await this.readAiChatSettingsFile())[projectId] ?? { folders: {} };
@@ -516,10 +515,10 @@ export class ApiWorkspace {
       folders: Object.fromEntries(Object.entries(parsed.folders)
         .filter(([serverId, paths]) => project.servers.some(server => server.id === serverId) && paths.length)
         .map(([serverId, paths]) => [serverId, [...new Set(paths.map(item => path.resolve(item)))]])),
-      ...(parsed.tool ? { tool: parsed.tool } : {}), ...(parsed.effort ? { effort: parsed.effort } : {}),
+      ...(parsed.tool ? { tool: parsed.tool } : {})
     };
     const all = await this.readAiChatSettingsFile();
-    if (Object.keys(settings.folders).length || settings.tool || settings.effort) all[projectId] = settings; else delete all[projectId];
+    if (Object.keys(settings.folders).length || settings.tool) all[projectId] = settings; else delete all[projectId];
     await this.save("ai-chat-settings.json", all);
     return settings;
   }

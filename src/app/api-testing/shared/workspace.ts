@@ -120,15 +120,14 @@ export type ApiAiImportResult = { drafts: ApiAiDraft[]; suite: { name: string; s
 export type ApiBackendFolders = Record<string, string[]>;
 export type ApiAiTool = "claude" | "codex";
 /** How hard the AI thinks: lower answers faster. Both CLIs accept these; unset uses the CLI default. */
-export type ApiAiEffort = "low" | "medium" | "high";
-/** In-app chat settings of a project on this PC: backend folders per server, which AI CLI and effort (the model is the CLI default). */
-export type ApiAiChatSettings = { folders: ApiBackendFolders; tool?: ApiAiTool; effort?: ApiAiEffort };
+/** In-app chat settings of a project on this PC: backend folders per server and which AI CLI (model and effort are the CLI defaults). */
+export type ApiAiChatSettings = { folders: ApiBackendFolders; tool?: ApiAiTool };
 /** AI CLIs installed on this PC; empty (with why) when there is none or in the web dev mode. */
 export type ApiAiChatStatus = { tools: Array<{ tool: ApiAiTool; version: string }>; error?: string };
 /** checkly: messages Checkly adds (guide sent, check results); `result` is a checked AI answer to review and save. */
 export type ApiAiChatMessage = { id: string; role: "user" | "assistant" | "checkly"; text: string; at: string; result?: ApiAiImportResult; /** The user finished saving their selection from this result. */ saved?: { scenarioId?: string }; tools?: string[]; error?: true };
 export type ApiAiChat = {
-  id: string; title: string; environmentId: string; createdAt: string; updatedAt: string; tool: ApiAiTool; effort?: ApiAiEffort;
+  id: string; title: string; environmentId: string; createdAt: string; updatedAt: string; tool: ApiAiTool;
   messages: ApiAiChatMessage[];
   /** While the AI answers or Checkly checks: the text so far and the files it looked at. */
   running?: { phase: "answering" | "checking"; text: string; tools: string[] };

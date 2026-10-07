@@ -63,7 +63,7 @@ export function registerApiTesting() {
   app.on("before-quit", () => chats.cancelAll());
   ipcMain.handle("api-testing:ai-chat-status", async (_event, refresh) => {
     const tools = (await describeAiTools(refresh === true)).map(({ tool, version }) => ({ tool, version }));
-    return tools.length ? { tools } : { tools, error: "이 PC에서 Claude Code나 Codex CLI를 찾지 못했습니다" };
+    return tools.length ? { tools } : { tools, error: "Claude Code나 Codex CLI를 찾지 못했습니다. 설치한 뒤 다시 확인하세요" };
   });
   ipcMain.handle("api-testing:get-ai-chat-settings", (_event, projectId) => workspace.getAiChatSettings(projectId));
   ipcMain.handle("api-testing:save-ai-chat-settings", (_event, projectId, settings) => workspace.saveAiChatSettings(projectId, settings));

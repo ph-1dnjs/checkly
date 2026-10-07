@@ -3,7 +3,7 @@ import { access } from "node:fs/promises";
 import { constants } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
-import type { ApiAiEffort, ApiAiTool } from "../shared/workspace";
+import type { ApiAiTool } from "../shared/workspace";
 
 /**
  * Runs the user's AI CLI headless for the in-app chat, one turn per call:
@@ -27,7 +27,6 @@ export type AiTurn = {
   cwd: string;
   /** Other folders the AI may read (backend folders, the API file folder). */
   readDirs: string[];
-  effort?: ApiAiEffort;
   signal?: AbortSignal;
   timeoutMs?: number;
   onEvent?: (event: AiTurnEvent) => void;
@@ -97,20 +96,19 @@ export function explainCliFailure(message: string, tool: ApiAiTool = "claude"): 
   return message;
 }
 
-export function claudeArgs(turn: Pick<AiTurn, "sessionId" | "resume" | "readDirs" | "effort">): string[] {
+export function claudeArgs(turn: Pick<AiTurn, "sessionId" | "resume" | "readDirs">): string[] {
   return [
     "-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages",
     ...(turn.resume ? ["--resume", turn.sessionId] : ["--session-id", turn.sessionId]),
     // No command-running tools, user/project settings, hooks or MCP servers; file tools stay inside the folders.
     "--restricted", "--strict-mcp-config", "--tools", "Read", "Grep", "Glob",
     ...turn.readDirs.flatMap(dir => ["--add-dir", dir]),
-    ...(turn.effort ? ["--effort", turn.effort] : []),
   ];
 }
 
-export function codexArgs(turn: Pick<AiTurn, "sessionId" | "resume" | "effort">): string[] {
+export function codexArgs(turn: Pick<AiTurn, "sessionId" | "resume">): string[] {
   // `exec resume` has no --sandbox flag; the config override applies to both.
-  const common = ["--json", "--skip-git-repo-check", "--ignore-user-config", "--ignore-rules", "-c", 'sandbox_mode="read-only"', ...(turn.effort ? ["-c", `model_reasoning_effort="${turn.effort}"`] : [])];
+  const common = ["--json", "--skip-git-repo-check", "--ignore-user-config", "--ignore-rules", "-c", 'sandbox_mode="read-only"'];
   return turn.resume ? ["exec", "resume", turn.sessionId, ...common, "-"] : ["exec", "--sandbox", "read-only", ...common, "-"];
 }
 
