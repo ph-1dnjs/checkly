@@ -1,5 +1,5 @@
 import { ipcRenderer } from 'electron'
-import type { ApiTestingBridge } from './shared/workspace'
+import type { ApiAiTerminalEvent, ApiTestingBridge } from './shared/workspace'
 
 export const apiTestingBridge: ApiTestingBridge = {
   getSpecSync: (scope) => ipcRenderer.invoke('api-testing:spec-sync', scope),
@@ -10,12 +10,21 @@ export const apiTestingBridge: ApiTestingBridge = {
   getAiChatSettings: (projectId) => ipcRenderer.invoke('api-testing:get-ai-chat-settings', projectId),
   saveAiChatSettings: (projectId, settings) => ipcRenderer.invoke('api-testing:save-ai-chat-settings', projectId, settings),
   chooseDirectories: () => ipcRenderer.invoke('api-testing:choose-directories'),
-  getAiChat: (projectId) => ipcRenderer.invoke('api-testing:get-ai-chat', projectId),
-  startAiChat: (request) => ipcRenderer.invoke('api-testing:start-ai-chat', request),
-  clearAiChat: (projectId, chatId) => ipcRenderer.invoke('api-testing:clear-ai-chat', projectId, chatId),
-  sendAiChatMessage: (projectId, chatId, text) => ipcRenderer.invoke('api-testing:send-ai-chat', projectId, chatId, text),
-  cancelAiChat: (projectId, chatId) => ipcRenderer.invoke('api-testing:cancel-ai-chat', projectId, chatId),
-  markAiChatResultSaved: (projectId, chatId, messageId, firstScenarioId) => ipcRenderer.invoke('api-testing:mark-ai-chat-result-saved', projectId, chatId, messageId, firstScenarioId),
+  getAiTerminal: (projectId) => ipcRenderer.invoke('api-testing:get-ai-terminal', projectId),
+  startAiTerminal: (request) => ipcRenderer.invoke('api-testing:start-ai-terminal', request),
+  resumeAiTerminal: (request) => ipcRenderer.invoke('api-testing:resume-ai-terminal', request),
+  // Keystrokes and resizes are frequent and need no answer.
+  writeAiTerminal: (projectId, data) => ipcRenderer.send('api-testing:write-ai-terminal', projectId, data),
+  resizeAiTerminal: (projectId, size) => ipcRenderer.send('api-testing:resize-ai-terminal', projectId, size),
+  clearAiTerminal: (projectId) => ipcRenderer.invoke('api-testing:clear-ai-terminal', projectId),
+  checkAiTerminalResult: (scope) => ipcRenderer.invoke('api-testing:check-ai-terminal-result', scope),
+  markAiTerminalResultSaved: (projectId, saved) => ipcRenderer.invoke('api-testing:mark-ai-terminal-result-saved', projectId, saved),
+  refreshAiTerminalFiles: (scope) => ipcRenderer.invoke('api-testing:refresh-ai-terminal-files', scope),
+  onAiTerminalEvent: (listener) => {
+    const handler = (_event: Electron.IpcRendererEvent, value: ApiAiTerminalEvent) => listener(value)
+    ipcRenderer.on('api-testing:ai-terminal-event', handler)
+    return () => { ipcRenderer.removeListener('api-testing:ai-terminal-event', handler) }
+  },
   copyAiPrompt: (request) => ipcRenderer.invoke('api-testing:copy-ai-prompt', request),
   getAiPrompt: (request) => ipcRenderer.invoke('api-testing:get-ai-prompt', request),
   readAiResult: (scope) => ipcRenderer.invoke('api-testing:read-ai-result', scope),

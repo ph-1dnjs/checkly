@@ -79,10 +79,12 @@ export type AiAuthorPromptInput = {
   catalogFile: string;
   /** Saved scenarios, suites, groups and globals as of now (see aiProjectState); the AI reads it, Checkly keeps it current. */
   stateFile: string;
-  /** Where the AI writes its result; Checkly reads it back. Absent in the in-app chat, where the answer carries it. */
-  resultFile?: string;
-  /** Backend source folders per Checkly server (the in-app chat reads them). */
+  /** Where the AI writes its result; Checkly reads it back. */
+  resultFile: string;
+  /** Backend source folders per Checkly server (the in-app terminal reads them). */
   backendFolders?: Array<{ server: string; folders: string[] }>;
+  /** The in-app terminal: the AI writes the result file and Checkly checks it on its own (no 'AI 결과 불러오기'). */
+  terminal?: boolean;
 };
 
 export function aiCatalogDetails(servers: AiAuthorServer[]) {
@@ -115,10 +117,10 @@ const authorRules = [
   "- API 파일에 있는 API만 씁니다. 코드에만 있고 API 파일에 없는 API는 Checkly에서 실행할 수 없으니, 필요하면 사용자에게 Checkly에서 API 명세(Swagger)를 다시 가져와 달라고 요청하세요.",
 ];
 
-const outputRules = (resultFile?: string) => [
-  resultFile
-    ? `- 결과를 파일 ${resultFile} 에 저장합니다(있으면 덮어씁니다). 이 파일 말고는 만들거나 수정하지 않습니다. 파일에 쓸 수 없으면 \`\`\`yaml 코드 블록 하나로 출력합니다.`
-    : "- 결과는 답변 안의 ```yaml 코드 블록 하나로 출력합니다. 파일은 만들거나 수정하지 않습니다. 계획이나 질문만 하는 답변에는 yaml 코드 블록을 넣지 않습니다.",
+const outputRules = (resultFile: string, terminal = false) => [
+  terminal
+    ? `- 결과를 파일 ${resultFile} 에 저장합니다(있으면 덮어씁니다). 이 파일 말고는 만들거나 수정하지 않습니다. 저장할 때마다 Checkly가 바로 검사하므로, 계획이나 질문만 할 때는 저장하지 않습니다.`
+    : `- 결과를 파일 ${resultFile} 에 저장합니다(있으면 덮어씁니다). 이 파일 말고는 만들거나 수정하지 않습니다. 파일에 쓸 수 없으면 \`\`\`yaml 코드 블록 하나로 출력합니다.`,
   "- 시나리오마다 YAML 문서 하나이고 문서 사이는 --- 줄로 구분합니다.",
   "- 시나리오가 2개 이상이면 마지막 문서로 스위트를 씁니다: suite: {name: 한국어 이름, group: 그룹, scenarios: [실행 순서대로 시나리오 name]}. 기존 시나리오(예: 토큰을 만드는 로그인)도 이름으로 넣을 수 있습니다. 하나면 스위트는 쓰지 않습니다.",
 ];
@@ -137,15 +139,15 @@ const fileSteps = (catalogFile: string) => [
   "6. 사용자가 Checkly 검사 결과(문제 목록)를 붙여넣으면 문제를 고친 전체 결과(모든 시나리오와 스위트)를 같은 파일에 다시 저장하세요.",
 ];
 
-/** In-app chat: agree on a plan first, answer with one YAML block, Checkly checks it and replies with problems. */
-const chatSteps = (catalogFile: string) => [
+/** In-app terminal: agree on a plan, write the result file; Checkly checks every save and sends problems back. */
+const terminalSteps = (catalogFile: string) => [
   "1. 먼저 사용자에게 무엇을 테스트할지 물어보세요: 업무 흐름, 확인할 성공·실패 경우, 실행 중 직접 넣을 값(계정·인증번호 등). 첫 답변은 질문만 합니다.",
-  "2. 아래 백엔드 코드 위치가 있으면 컨트롤러·DTO·검증 규칙·에러 코드를 읽어 요청값과 기대 결과를 정하세요.",
+  "2. 아래 백엔드 코드 위치의 컨트롤러·DTO·검증 규칙·에러 코드를 읽어 요청값과 기대 결과를 정하세요. 백엔드 코드는 읽기만 합니다.",
   ...sharedSteps(catalogFile),
-  "4. 작성하기 전에 계획을 제안하고 사용자의 확인을 기다리세요: 시나리오 목록(이름·한 줄 흐름·그룹), 스위트로 묶을 실행 순서, 재사용할 전역변수. 흐름이 서로 독립적으로 실행·재사용될 수 있으면(예: 로그인과 회원 조회) 시나리오를 나누고, 앞 시나리오가 extract로 전역변수에 저장한 값을 뒤 시나리오가 {{globals.x}}로 씁니다. 사용자가 확인하기 전에는 YAML을 쓰지 않습니다.",
-  "5. 확인을 받으면 전체 결과(모든 시나리오와 스위트)를 yaml 코드 블록 하나로 출력하고, 가정하거나 확인이 필요한 점을 짧게 덧붙이세요.",
-  "6. Checkly가 결과를 자동으로 검사합니다. 'Checkly 검사' 메시지로 문제가 오면 문제를 고친 전체 결과를 다시 yaml 코드 블록 하나로 출력하세요. 문제가 없으면 Checkly가 저장할지 사용자에게 묻습니다.",
-  "7. 그 뒤 사용자가 수정을 요청하면 바뀐 부분만이 아니라 전체 결과를 다시 yaml 코드 블록 하나로 출력하세요.",
+  "4. 작성하기 전에 계획을 제안하고 사용자의 확인을 기다리세요: 시나리오 목록(이름·한 줄 흐름·그룹), 스위트로 묶을 실행 순서, 재사용할 전역변수. 흐름이 서로 독립적으로 실행·재사용될 수 있으면(예: 로그인과 회원 조회) 시나리오를 나누고, 앞 시나리오가 extract로 전역변수에 저장한 값을 뒤 시나리오가 {{globals.x}}로 씁니다.",
+  "5. 확인을 받으면 전체 결과(모든 시나리오와 스위트)를 결과 파일에 저장하고, 가정하거나 확인이 필요한 점을 짧게 알려 주세요. Checkly가 저장을 감지해 바로 검사하고 저장 화면을 보여 줍니다.",
+  "6. 'Checkly 검사' 문제 목록을 받으면 문제를 고친 전체 결과를 같은 파일에 다시 저장하세요.",
+  "7. 그 뒤 사용자가 수정을 요청하면 바뀐 부분만이 아니라 전체 결과를 같은 파일에 다시 저장하세요.",
 ];
 
 /**
@@ -156,16 +158,16 @@ export function createAuthorPrompt(input: AiAuthorPromptInput): string {
   return [
     "# Checkly API 시나리오 작성 가이드",
     "Checkly는 YAML 시나리오로 API를 순서대로 호출하는 QA 도구입니다. 당신은 사용자와 대화하며 Checkly 시나리오를 작성합니다. API를 실제로 호출하지 말고, 백엔드 코드는 수정하지 마세요.",
-    "## 진행 순서", (input.resultFile ? fileSteps : chatSteps)(input.catalogFile).join("\n"),
+    "## 진행 순서", (input.terminal ? terminalSteps : fileSteps)(input.catalogFile).join("\n"),
     ...(input.backendFolders?.length ? ["## 백엔드 코드 위치 (읽기만)", input.backendFolders.map(({ server, folders }) => `- ${server}: ${folders.join(", ")}`).join("\n")] : []),
-    input.resultFile ? "## 결과 파일" : "## 결과 형식", ...outputRules(input.resultFile),
+    "## 결과 파일", ...outputRules(input.resultFile, input.terminal),
     "## 작성 규칙", ...authorRules,
     "## 현재 프로젝트 상태",
     [
       `JSON 파일 ${input.stateFile} 에 Checkly에 저장된 시나리오(이름·그룹·YAML 전체), 스위트(실행 순서), 그룹, 전역변수(값 제외, 만드는 시나리오·쓰는 시나리오)가 있습니다.`,
-      input.resultFile
-        ? "계획을 세우기 전에 이 파일을 읽으세요."
-        : "Checkly가 메시지를 보낼 때마다 이 파일을 최신으로 갱신합니다. 계획을 세우기 전과, 결과를 작성하거나 고치기 전마다 다시 읽으세요(사용자가 그사이 저장·수정했을 수 있습니다).",
+      input.terminal
+        ? "Checkly가 시나리오를 저장할 때마다 이 파일을 최신으로 갱신합니다. 계획을 세우기 전과, 결과를 작성하거나 고치기 전마다 다시 읽으세요."
+        : "계획을 세우기 전에 이 파일을 읽으세요.",
       "- 같은 시나리오를 또 만들지 말고 이름이 겹치지 않게 합니다. 기존 시나리오를 고쳐 달라는 요청이면 그 YAML을 바탕으로 같은 name으로 씁니다(저장하면 그 시나리오가 업데이트됩니다).",
       "- 전역변수를 이미 만드는 시나리오가 있으면 다시 만들지 말고 {{globals.이름}}으로 재사용하고, 스위트에서는 만드는 시나리오를 앞에 둡니다.",
       "- 각 시나리오와 스위트에 group: 회원/인증 처럼 그룹을 씁니다(/로 하위 그룹, 최대 10단계). 기존 그룹 중 맞는 것을 고르고, 맞는 게 없을 때만 새 그룹을 만드세요. group 줄은 Checkly가 저장 위치로 쓰고 시나리오 본문에서는 뺍니다.",

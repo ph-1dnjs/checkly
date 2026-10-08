@@ -115,7 +115,7 @@ export type ApiAiGuideRequest = { scope: ApiEnvironmentScope; tags?: string[]; o
  * this name (often the same result loaded again), so it starts unchosen.
  */
 export type ApiAiDraft = { id: string; name: string; yaml: string; stepCount: number; issues: string[]; notices: string[]; executionIssues: string[]; groupPath?: string[]; sameName?: true; /** The saved scenario (same name, the only one) this draft updates when saved as is. */ replaces?: string };
-export type ApiAiImportResult = { drafts: ApiAiDraft[]; suite: { name: string; scenarioIds: string[]; problems: string[]; groupPath?: string[]; /** Already-saved scenarios the suite reuses, by id. */ saved?: Record<string, string>; /** Same-name draft id → the saved scenario used when that draft is not saved. */ fallbacks?: Record<string, string> } | null };
+export type ApiAiImportResult = { drafts: ApiAiDraft[]; suite: { name: string; scenarioIds: string[]; problems: string[]; groupPath?: string[]; /** Already-saved scenarios the suite reuses, by id. */ saved?: Record<string, string>; /** Same-name draft id → the saved scenario used when that draft is not saved. */ fallbacks?: Record<string, string>; /** The one saved suite with the same name: saving updates it instead of adding a copy. */ replaces?: { id: string; updatedAt: string; onFailure: "stop" | "continue" } } | null };
 /** Backend source folders on this PC per server id (absolute paths). Kept out of the shareable project. */
 export type ApiBackendFolders = Record<string, string[]>;
 export type ApiAiTool = "claude" | "codex";
@@ -124,31 +124,43 @@ export type ApiAiTool = "claude" | "codex";
 export type ApiAiChatSettings = { folders: ApiBackendFolders; tool?: ApiAiTool };
 /** AI CLIs installed on this PC; empty (with why) when there is none or in the web dev mode. */
 export type ApiAiChatStatus = { tools: Array<{ tool: ApiAiTool; version: string }>; error?: string };
-/** checkly: messages Checkly adds (guide sent, check results); `result` is a checked AI answer to review and save. */
-export type ApiAiChatMessage = { id: string; role: "user" | "assistant" | "checkly"; text: string; at: string; result?: ApiAiImportResult; /** The user finished saving their selection from this result. */ saved?: { scenarioId?: string }; tools?: string[]; error?: true };
-export type ApiAiChat = {
-  id: string; title: string; environmentId: string; createdAt: string; updatedAt: string; tool: ApiAiTool;
-  messages: ApiAiChatMessage[];
-  /** While the AI answers or Checkly checks: the text so far and the files it looked at. */
-  running?: { phase: "answering" | "checking"; text: string; tools: string[] };
+/** The project's in-app AI terminal: which CLI, in which environment, whether it runs, and recent output to replay. */
+export type ApiAiTerminal = {
+  tool: ApiAiTool; environmentId: string; running: boolean; buffer: string;
+  /** The result (by its save time) the user already saved from, with the first saved scenario; kept while the app runs. */
+  saved?: { modifiedAt: string; scenarioId?: string };
 };
-export type ApiAiChatStartRequest = { scope: ApiEnvironmentScope };
+export type ApiAiTerminalEvent =
+  | { type: "data"; projectId: string; data: string }
+  | { type: "exit"; projectId: string; exitCode: number }
+  /** The AI saved its result file; the screen checks it. */
+  | { type: "result"; projectId: string };
+export type ApiAiTerminalStartRequest = { scope: ApiEnvironmentScope; size: { cols: number; rows: number } };
+/** checkly: messages Checkly adds (guide sent, check results); `result` is a checked AI answer to review and save. */
 export type ApiTestingBridge = {
-  /** In-app AI chat (Claude Code or Codex on this PC). Desktop app only. */
+  /** Which AI CLIs are installed and the project's chat settings (desktop app only). */
   getAiChatStatus(refresh?: boolean): Promise<ApiAiChatStatus>;
   getAiChatSettings(projectId: string): Promise<ApiAiChatSettings>;
   saveAiChatSettings(projectId: string, settings: ApiAiChatSettings): Promise<ApiAiChatSettings>;
   /** Native picker allowing several folders; empty when cancelled. */
   chooseDirectories(): Promise<string[]>;
-  /** The one current chat of the project, restored when the panel is opened. */
-  getAiChat(projectId: string): Promise<ApiAiChat | null>;
-  /** Returns the existing chat, or creates it and sends the guide in the background. */
-  startAiChat(request: ApiAiChatStartRequest): Promise<ApiAiChat>;
-  /** Ends the current chat (back to before 대화 시작); the next start opens a fresh CLI session. */
-  clearAiChat(projectId: string, chatId: string): Promise<void>;
-  sendAiChatMessage(projectId: string, chatId: string, text: string): Promise<void>;
-  cancelAiChat(projectId: string, chatId: string): Promise<void>;
-  markAiChatResultSaved(projectId: string, chatId: string, messageId: string, firstScenarioId?: string): Promise<ApiAiChat>;
+  /** In-app AI terminal (desktop app only). */
+  getAiTerminal(projectId: string): Promise<ApiAiTerminal | null>;
+  startAiTerminal(request: ApiAiTerminalStartRequest): Promise<ApiAiTerminal>;
+  /** Reopens the saved session (after a restart or after the CLI exited). */
+  resumeAiTerminal(request: ApiAiTerminalStartRequest): Promise<ApiAiTerminal>;
+  writeAiTerminal(projectId: string, data: string): void;
+  resizeAiTerminal(projectId: string, size: { cols: number; rows: number }): void;
+  /** Ends the session (stops the CLI, forgets the session and the last result). */
+  clearAiTerminal(projectId: string): Promise<void>;
+  /** Checks the terminal session's result file; null until the AI writes it. */
+  checkAiTerminalResult(scope: ApiEnvironmentScope): Promise<{ modifiedAt: string; result: ApiAiImportResult } | null>;
+  /** Remembers that the user saved from this result, so reopening the panel shows it as saved. */
+  markAiTerminalResultSaved(projectId: string, saved: { modifiedAt: string; scenarioId?: string }): Promise<void>;
+  /** Rewrites the project state the AI reads (after saving scenarios). */
+  refreshAiTerminalFiles(scope: ApiEnvironmentScope): Promise<void>;
+  /** Terminal output, exits and result saves of every project; returns the unsubscribe. */
+  onAiTerminalEvent(listener: (event: ApiAiTerminalEvent) => void): () => void;
   getSpecSync(scope: ApiScope): Promise<ApiSpecSync>;
   deleteSpecAccount(scope: ApiScope): Promise<void>;
   getRequestAuth(scope: ApiScope): Promise<string | null>;

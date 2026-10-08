@@ -2,7 +2,7 @@ import { problemReport } from "../model/problem-report";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiPicker, type PickableOperation } from "./ApiPicker";
 import { AiResultReview } from "./AiResultReview";
-import { AiChatPanel } from "./AiChatPanel";
+import { AiTerminalPanel } from "./AiTerminalPanel";
 import { AiToolSettings } from "./AiToolSettings";
 import { Icon } from "../../../../shared/ui/Icon";
 import { aiToolNames, backendFolderCount, chatTool } from "../../../../entities/api-testing";
@@ -134,7 +134,7 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved, onConfi
           </li>
         </ul>
         {!tools.length && <p className="api-field-help">{chatStatus?.error ?? "Claude Code나 Codex CLI를 설치한 뒤 다시 확인하세요"}</p>}
-      </section> : <AiChatPanel project={project} scope={scope} bridge={bridge} onBusy={chatActivity} onSaved={onSaved} toolName={aiToolNames[tool!]}
+      </section> : <AiTerminalPanel project={project} scope={scope} bridge={bridge} onBusy={chatActivity} onSaved={onSaved} toolName={aiToolNames[tool!]}
         toolChoice={lockedTool => chatStatus && chatSettings && tools.length > 1 && <div className="api-ai-tool-row">
           <AiToolSettings projectId={project.id} bridge={bridge} status={chatStatus} settings={chatSettings} lockedTool={lockedTool} disabled={busy} onBusy={setSettingsBusy} onSaved={setChatSettings} />
           {!lockedTool && <button type="button" className="api-icon-button api-ai-refresh" aria-label="AI 다시 확인" title="AI 다시 확인" disabled={busy} onClick={() => setStatusRevision(value => value + 1)}><Icon name="refresh" size={16} /></button>}

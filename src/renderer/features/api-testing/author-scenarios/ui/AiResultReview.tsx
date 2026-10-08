@@ -63,8 +63,10 @@ export function AiResultReview({ result, scope, bridge, onBusy, onSaved, notes, 
         const skipped = result.suite.scenarioIds.length - ids.length;
         if (ids.length) {
           try {
-            await bridge.saveSuite(scope.projectId, { id: crypto.randomUUID(), name: result.suite.name, scenarioIds: ids, onFailure: "stop", ...(result.suite.groupPath ? { groupPath: result.suite.groupPath } : {}) });
-            suiteNote = ` 스위트 '${result.suite.name}'를 저장했습니다${skipped ? ` (저장하지 않았거나 수정이 필요한 ${skipped}개 제외)` : ""}.`;
+            // A same-name saved suite is updated (its run setting kept) instead of saved again as a copy.
+            const replaces = result.suite.replaces;
+            await bridge.saveSuite(scope.projectId, { id: replaces?.id ?? crypto.randomUUID(), name: result.suite.name, scenarioIds: ids, onFailure: replaces?.onFailure ?? "stop", ...(result.suite.groupPath ? { groupPath: result.suite.groupPath } : {}) }, replaces?.updatedAt);
+            suiteNote = ` 스위트 '${result.suite.name}'를 ${replaces ? "업데이트" : "저장"}했습니다${skipped ? ` (저장하지 않았거나 수정이 필요한 ${skipped}개 제외)` : ""}.`;
           } catch (e) { failures.push(`스위트: ${errorText(e)}`); }
         } else suiteNote = " 바로 실행할 수 있는 시나리오가 없어 스위트는 저장하지 않았습니다.";
       }
@@ -88,7 +90,7 @@ export function AiResultReview({ result, scope, bridge, onBusy, onSaved, notes, 
       <details><summary>내용 보기</summary><YamlCode source={draft.yaml} /></details>
     </li>)}</ul>
     {result.suite && <div className="api-ai-author-suite">
-      <label className="api-check-row"><input type="checkbox" checked={saveSuite} disabled={saving || readOnly} onChange={e => setSaveSuite(e.target.checked)} />스위트 ‘{result.suite.name}’{result.suite.groupPath ? ` (${result.suite.groupPath.join(" › ")})` : ""}도 저장</label>
+      <label className="api-check-row"><input type="checkbox" checked={saveSuite} disabled={saving || readOnly} onChange={e => setSaveSuite(e.target.checked)} />스위트 ‘{result.suite.name}’{result.suite.groupPath ? ` (${result.suite.groupPath.join(" › ")})` : ""}{result.suite.replaces ? "도 업데이트 (같은 이름의 기존 스위트)" : "도 저장"}</label>
       <ol>{result.suite.scenarioIds.map(id => <li key={id}>{nameOf(id)}{result.drafts.find(draft => draft.id === id)?.replaces && chosen.includes(id) && !asNew.includes(id) ? " · 기존 시나리오 업데이트" : result.suite!.fallbacks?.[id] && !chosen.includes(id) ? " · 기존 시나리오 사용" : result.drafts.find(draft => draft.id === id)?.issues.length ? " · 수정 필요라 제외" : result.suite!.saved?.[id] !== undefined ? " · 기존 시나리오" : ""}</li>)}</ol>
       {result.suite.problems.map(problem => <p key={problem} className="api-field-help">{problem}</p>)}
     </div>}

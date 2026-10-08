@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { parseScenario, stringifyScenario } from '../src/app/api-testing/shared/scenario'
-import type { ApiAiChat, ApiAiChatSettings, ApiAiChatStatus, ApiCatalog, ApiEnvironmentScope, ApiGlobal, ApiProject, ApiScenarioPreview, ApiScope, ApiTestingBridge, SavedApiScenario } from '../src/app/api-testing/shared/workspace'
+import type { ApiAiImportResult, ApiAiTerminal, ApiAiChatSettings, ApiAiChatStatus, ApiCatalog, ApiEnvironmentScope, ApiGlobal, ApiProject, ApiScenarioPreview, ApiScope, ApiTestingBridge, SavedApiScenario } from '../src/app/api-testing/shared/workspace'
 
 const projectId = '00000000-0000-4000-8000-000000000001'
 const serverId = '00000000-0000-4000-8000-000000000002'
@@ -61,7 +61,7 @@ function structuredCatalog(summary: string): ApiCatalog {
 // twoServers: the project has a second server. missingGlobals: previewScenario reports globals with no value, per step.
 async function workspace(page: Page, structured = false, linkedGlobal = false, options: {
   twoServers?: boolean; missingGlobals?: boolean; extra?: SavedApiScenario[]; failSecondStep?: boolean; cancelRun?: boolean;
-  chat?: { current: ApiAiChat | null; settings?: ApiAiChatSettings; tools?: ApiAiChatStatus['tools'] };
+  chat?: { current: ApiAiTerminal | null; settings?: ApiAiChatSettings; tools?: ApiAiChatStatus['tools']; result?: { modifiedAt: string; result: ApiAiImportResult } | null };
 } = {}) {
   const catalogs: Record<string, ApiCatalog | null> = {
     [environments.dev]: structured ? structuredCatalog('개발 구조 입력') : catalog('/dev-items', '개발 환경 조회'),
@@ -84,8 +84,9 @@ async function workspace(page: Page, structured = false, linkedGlobal = false, o
     bindings: {}, updatedAt: importedAt, groupPath: ['기존 그룹'],
   }, ...(options.extra ?? [])]
   const saves: Array<{ scope: ApiEnvironmentScope; item: SavedApiScenario }> = []
-  const chatMarks: Parameters<ApiTestingBridge['markAiChatResultSaved']>[] = []
-  const chatCancels: Parameters<ApiTestingBridge['cancelAiChat']>[] = []
+  const chatMarks: Parameters<ApiTestingBridge['markAiTerminalResultSaved']>[] = []
+  const terminalWrites: string[] = []
+  const terminalStarts: unknown[] = []
   const chatSettingsSaves: ApiAiChatSettings[] = []
   let saveAttempts = 0
   const requests: string[] = []
@@ -177,18 +178,25 @@ async function workspace(page: Page, structured = false, linkedGlobal = false, o
         if (options.chat) options.chat.settings = next
         return next
       }
-      case 'getAiChat': return options.chat?.current ?? null
-      case 'markAiChatResultSaved': {
-        const input = args as Parameters<ApiTestingBridge['markAiChatResultSaved']>
-        const message = options.chat!.current!.messages.find(item => item.id === input[2])!
-        message.saved = input[3] ? { scenarioId: input[3] } : {}
-        chatMarks.push(input)
+      case 'getAiTerminal': return options.chat?.current ?? null
+      case 'startAiTerminal': {
+        const request = args[0] as Parameters<ApiTestingBridge['startAiTerminal']>[0]
+        terminalStarts.push(request)
+        options.chat!.current = { tool: options.chat!.settings?.tool ?? 'claude', environmentId: request.scope.environmentId, running: true, buffer: '' }
         return options.chat!.current
       }
-      case 'cancelAiChat':
-        chatCancels.push(args as Parameters<ApiTestingBridge['cancelAiChat']>)
-        delete options.chat!.current!.running
+      case 'resumeAiTerminal': options.chat!.current!.running = true; return options.chat!.current
+      case 'clearAiTerminal': options.chat!.current = null; options.chat!.result = null; return undefined
+      case 'writeAiTerminal': terminalWrites.push(args[1] as string); return undefined
+      case 'resizeAiTerminal': return undefined
+      case 'checkAiTerminalResult': return options.chat?.result ?? null
+      case 'refreshAiTerminalFiles': return undefined
+      case 'markAiTerminalResultSaved': {
+        const input = args as Parameters<ApiTestingBridge['markAiTerminalResultSaved']>
+        options.chat!.current!.saved = input[1]
+        chatMarks.push(input)
         return undefined
+      }
       default:
         unexpected.push(method)
         throw new Error(`Unexpected bridge call: ${method}`)
@@ -209,14 +217,15 @@ async function workspace(page: Page, structured = false, linkedGlobal = false, o
       onQaPreview: () => () => undefined,
       onQaStepPreview: () => () => undefined,
       onRunVideo: () => () => undefined,
-      apiTesting: new Proxy({}, { get: (_target, method: string) => (...args: unknown[]) => call(method, args) }),
+      // Terminal events cannot cross into the test; the subscription is a no-op.
+      apiTesting: new Proxy({}, { get: (_target, method: string) => method === 'onAiTerminalEvent' ? () => () => undefined : (...args: unknown[]) => call(method, args) }),
     } })
   })
   await page.goto(`/?tab=scenarios&project=${projectId}&server=${serverId}&environment=${environments.dev}`)
   await page.getByRole('button', { name: 'API 테스트', exact: true }).click()
   await expect(page.getByRole('button', { name: '+ 새 시나리오', exact: true })).toBeEnabled()
   return {
-    saves, requests, unexpected, globalSaves, chatMarks, chatCancels, chatSettingsSaves,
+    saves, requests, unexpected, globalSaves, chatMarks, terminalWrites, terminalStarts, chatSettingsSaves,
     get runs() { return runs }, get saveAttempts() { return saveAttempts },
     pause(environment: string) {
       gates.set(environment, new Promise<void>(resolve => releases.set(environment, resolve)))
@@ -231,65 +240,71 @@ async function workspace(page: Page, structured = false, linkedGlobal = false, o
   }
 }
 
-function checkedAiChat(): ApiAiChat {
+/** A Claude terminal session started in dev. */
+const terminalSession = (): ApiAiTerminal => ({ tool: 'claude', environmentId: environments.dev, running: true, buffer: 'Claude 대화 중' })
+/** A checked result file with one draft; `issues` makes it need fixing. */
+function checkedResult(issues: string[] = []) {
   const yaml = `id: ai-chat-draft\nname: 대화 조회\nserver: ${serverId}\nsteps:\n  - api: GET /dev-items\n`
-  return {
-    id: '00000000-0000-4000-8000-000000000008', title: '대화 회귀', tool: 'claude', environmentId: environments.dev,
-    createdAt: importedAt, updatedAt: importedAt,
-    messages: [{ id: 'checked-message', role: 'checkly', at: importedAt, text: '검사를 통과했습니다', result: {
-      drafts: [{ id: 'ai-chat-draft', name: '대화 조회', yaml, stepCount: 1, issues: [], executionIssues: [], notices: [] }], suite: null,
-    } }],
-  }
+  return { modifiedAt: importedAt, result: { drafts: [{ id: 'ai-chat-draft', name: '대화 조회', yaml, stepCount: 1, issues, executionIssues: [], notices: [] }], suite: null } }
 }
 
-test('AI chat saves and restores its result, and the chosen way is remembered', async ({ page }) => {
-  const state = await workspace(page, false, false, { chat: { current: checkedAiChat() } })
+test('the AI terminal checks the result file below the terminal; saving it is remembered for the session', async ({ page }) => {
+  const state = await workspace(page, false, false, { chat: { current: terminalSession(), result: checkedResult() } })
   state.pauseSaving()
   await openAi(page, 'chat')
-  const chat = page.getByRole('region', { name: 'AI 대화', exact: true })
-  await chat.getByRole('button', { name: '선택한 것 저장', exact: true }).click()
+  const terminal = page.getByRole('region', { name: 'AI 터미널', exact: true })
+  const check = terminal.getByRole('region', { name: 'AI 결과 검사', exact: true })
+  await expect(terminal).toContainText('Claude 대화')
+  await expect(terminal.locator('.xterm')).toBeVisible()
+  await check.getByRole('button', { name: '선택한 것 저장', exact: true }).click()
   await expect.poll(() => state.saveAttempts).toBe(1)
   await expect(page.getByRole('tab', { name: '시나리오', exact: true })).toBeDisabled()
   state.resumeSaving()
   await expect.poll(() => state.chatMarks.length).toBe(1)
-  expect(state.chatMarks[0]).toEqual([projectId, checkedAiChat().id, 'checked-message', 'ai-chat-draft'])
+  expect(state.chatMarks[0]).toEqual([projectId, { modifiedAt: importedAt, scenarioId: 'ai-chat-draft' }])
   expect(state.saves[0].scope).toEqual({ projectId, environmentId: environments.dev })
   await expect(page.getByRole('tab', { name: '시나리오', exact: true })).toBeEnabled()
   await page.getByRole('tab', { name: '시나리오', exact: true }).click()
   await page.getByRole('tab', { name: 'AI 작성 도우미', exact: true }).click()
-  await expect(chat.getByRole('status').filter({ hasText: '저장했습니다' })).toBeVisible()
-  await expect(chat.getByRole('button', { name: '선택한 것 저장', exact: true })).toHaveCount(0)
+  // Already saved: the results panel stays closed, without a "저장 전" mark, until opened.
+  await expect(check).toHaveCount(0)
+  await terminal.getByRole('button', { name: '결과 열기', exact: true }).click()
+  await expect(check.getByRole('status').filter({ hasText: '저장했습니다' })).toBeVisible()
+  await expect(check.getByRole('button', { name: '선택한 것 저장', exact: true })).toHaveCount(0)
   expect(state.saves).toHaveLength(1)
   expect(state.unexpected).toEqual([])
 })
 
-test('AI chat can stop a running conversation from another environment', async ({ page }) => {
-  const current = checkedAiChat()
-  current.running = { phase: 'answering', text: '응답 대기 중', tools: [] }
-  const state = await workspace(page, false, false, { chat: { current } })
+test('problems in the result go back to the terminal as one pasted block; another environment keeps the session environment', async ({ page }) => {
+  const state = await workspace(page, false, false, { chat: { current: terminalSession(), result: checkedResult(['API를 찾을 수 없습니다']) } })
   await page.getByRole('group', { name: 'API 환경', exact: true }).getByRole('button', { name: 'stage', exact: true }).click()
   await openAi(page, 'chat')
-  const chat = page.getByRole('region', { name: 'AI 대화', exact: true })
-  await expect(chat).toContainText('기존 기록은 읽기 전용입니다')
-  await expect(chat.getByRole('button', { name: '대화 초기화', exact: true })).toBeDisabled()
-  await expect(page.getByLabel('AI에게 보낼 메시지', { exact: true })).toBeDisabled()
-  const stop = chat.getByRole('button', { name: '중단', exact: true })
-  await expect(stop).toBeEnabled()
-  await stop.click()
-  await expect.poll(() => state.chatCancels.length).toBe(1)
-  expect(state.chatCancels[0]).toEqual([projectId, current.id])
-  await expect(chat.getByRole('button', { name: '대화 초기화', exact: true })).toBeEnabled()
-  await expect(chat.getByRole('button', { name: '선택한 것 저장', exact: true })).toBeDisabled()
+  const terminal = page.getByRole('region', { name: 'AI 터미널', exact: true })
+  await expect(terminal).toContainText('이 대화는 dev에서 시작했습니다')
+  await terminal.getByRole('button', { name: '문제를 AI에 보내기', exact: true }).click()
+  await expect(terminal.getByRole('button', { name: 'AI에 보냈습니다', exact: true })).toBeDisabled()
+  await expect.poll(() => state.terminalWrites.length).toBe(2)
+  expect(state.terminalWrites[0]).toMatch(/^\x1b\[200~Checkly 검사에서 아래 문제가 나왔습니다[\s\S]*API를 찾을 수 없습니다[\s\S]*\x1b\[201~$/)
+  expect(state.terminalWrites[1]).toBe('\r')
+  // 대화 초기화 asks first (the result was not saved), then goes back to 대화 시작 in the current environment.
+  const asked: string[] = []
+  page.once('dialog', dialog => { asked.push(dialog.message()); void dialog.accept() })
+  await terminal.getByRole('button', { name: '대화 초기화', exact: true }).click()
+  await expect.poll(() => asked).toEqual(['저장하지 않은 결과가 사라집니다. 초기화할까요?'])
+  await terminal.getByRole('button', { name: '대화 시작', exact: true }).click()
+  await expect.poll(() => state.terminalStarts.length).toBe(1)
+  expect((state.terminalStarts[0] as { scope: unknown }).scope).toEqual({ projectId, environmentId: environments.stage })
+  await expect(terminal).not.toContainText('이 대화는 dev에서 시작했습니다')
   expect(state.unexpected).toEqual([])
 })
 
 test('AI chat settings fall back to an installed tool when the chosen one is missing', async ({ page }) => {
-  const state = await workspace(page, false, false, { chat: { current: checkedAiChat(),
+  const state = await workspace(page, false, false, { chat: { current: terminalSession(),
     settings: { folders: { [serverId]: ['/backend'] }, tool: 'codex' },
   } })
   await openAi(page, 'chat')
   // Only one AI is installed: nothing to choose, and nothing is saved.
-  await expect(page.getByRole('region', { name: 'AI 대화', exact: true })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'AI 터미널', exact: true })).toBeVisible()
   await expect(page.getByRole('region', { name: 'AI 실행 설정', exact: true })).toHaveCount(0)
   expect(state.chatSettingsSaves).toEqual([])
   await page.getByRole('button', { name: '프로젝트 설정', exact: true }).click()
@@ -348,7 +363,7 @@ test('the AI tab has two ways as tabs: chat needs an installed AI and a backend 
 })
 
 test('while a chat exists its AI is locked; changing it needs 대화 초기화 first', async ({ page }) => {
-  const state = await workspace(page, false, false, { chat: { current: checkedAiChat(),
+  const state = await workspace(page, false, false, { chat: { current: terminalSession(),
     settings: { folders: { [serverId]: ['/backend'] }, tool: 'codex' },
     tools: [{ tool: 'claude', version: 'claude-test' }, { tool: 'codex', version: 'codex-test' }],
   } })

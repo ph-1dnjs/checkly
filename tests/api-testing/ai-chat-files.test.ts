@@ -30,14 +30,15 @@ async function setup() {
   return { dir, workspace, scope, serverId, otherEnvironmentId, aiDir, apis };
 }
 
-test("a filtered copy guide in another environment does not change the in-app chat's catalog or state", async () => {
+test("a filtered copy guide in another environment does not change the in-app terminal's catalog or state", async () => {
   const { dir, workspace, scope, serverId, otherEnvironmentId, aiDir, apis } = await setup();
   try {
-    const chat = await workspace.aiChatSetup({ scope });
+    const terminal = await workspace.aiTerminalSetup(scope);
+    const chatGuide = await readFile(terminal.guideFile, "utf8");
     const catalog = path.join(aiDir, "chat", "api-catalog.json"), state = path.join(aiDir, "chat", "project-state.json");
     const originalState = await readFile(state, "utf8");
     const guide = await workspace.buildAiPrompt({ scope: { ...scope, environmentId: otherEnvironmentId }, operations: [`${serverId} GET /other`] });
-    assert.ok(chat.prompt.includes(catalog) && chat.prompt.includes(state));
+    assert.ok(chatGuide.includes(catalog) && chatGuide.includes(state));
     assert.ok(guide.includes(path.join(aiDir, "api-catalog.json")) && guide.includes(path.join(aiDir, "scenarios.yaml")));
     assert.deepEqual(await apis(catalog), ["GET /a", "GET /b"]);
     assert.deepEqual(await apis(path.join(aiDir, "api-catalog.json")), ["GET /other"]);
@@ -45,10 +46,10 @@ test("a filtered copy guide in another environment does not change the in-app ch
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
-test("refreshing the chat uses its own environment and includes spec and saved scenario changes", async () => {
+test("refreshing the terminal files uses the session environment and includes spec and saved scenario changes", async () => {
   const { dir, workspace, scope, serverId, aiDir, apis } = await setup();
   try {
-    await workspace.aiChatSetup({ scope });
+    await workspace.aiTerminalSetup(scope);
     await workspace.importSpec({ ...scope, serverId }, spec(["/a", "/new"]));
     await workspace.saveScenario(scope, "name: 새 API 조회\nserver: 상점\nsteps:\n  - name: 조회\n    api: GET /new\n", {});
     await workspace.refreshAiChatFiles(scope);

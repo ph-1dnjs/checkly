@@ -1,4 +1,4 @@
-import { app, clipboard, dialog, ipcMain, safeStorage } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, safeStorage } from "electron";
 import { readFile, stat, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
@@ -6,7 +6,7 @@ import { ApiWorkspace, scopeSchema } from "./workspace";
 import { specSourceSchema } from "../shared/workspace";
 import { z } from "zod";
 import { SpecSync } from "./spec-sync";
-import { AiChatService } from "./ai-chat";
+import { AiTerminalService } from "./ai-terminal";
 import { describeAiTools } from "./ai-cli";
 import { isProvidedScenarioInput, matchesScenarioInputType, type Json, type ScenarioInputRequest } from "../shared/scenario";
 import type { ApiScenarioInputRequest } from "../shared/workspace";
@@ -58,9 +58,20 @@ export function registerApiTesting() {
   ipcMain.handle("api-testing:copy-ai-prompt", async (_event, request) => {
     clipboard.writeText(await workspace.buildAiPrompt(request));
   });
-  const chats = new AiChatService(workspace);
   // A quitting app does not take its child processes along on macOS.
-  app.on("before-quit", () => chats.cancelAll());
+  const terminals = new AiTerminalService(workspace, event => {
+    for (const window of BrowserWindow.getAllWindows()) if (!window.isDestroyed()) window.webContents.send("api-testing:ai-terminal-event", event);
+  });
+  app.on("before-quit", () => terminals.stopAll());
+  ipcMain.handle("api-testing:get-ai-terminal", (_event, projectId) => terminals.get(projectId));
+  ipcMain.handle("api-testing:start-ai-terminal", (_event, request) => terminals.start(request));
+  ipcMain.handle("api-testing:resume-ai-terminal", (_event, request) => terminals.resume(request));
+  ipcMain.on("api-testing:write-ai-terminal", (_event, projectId, data) => { try { terminals.write(projectId, data); } catch { /* Ignored: bad input from the screen. */ } });
+  ipcMain.on("api-testing:resize-ai-terminal", (_event, projectId, size) => { try { terminals.resize(projectId, size); } catch { /* Ignored. */ } });
+  ipcMain.handle("api-testing:clear-ai-terminal", (_event, projectId) => terminals.clear(projectId));
+  ipcMain.handle("api-testing:check-ai-terminal-result", (_event, scope) => workspace.checkAiTerminalResult(scope));
+  ipcMain.handle("api-testing:mark-ai-terminal-result-saved", (_event, projectId, saved) => terminals.markSaved(projectId, saved));
+  ipcMain.handle("api-testing:refresh-ai-terminal-files", (_event, scope) => workspace.refreshAiChatFiles(scope));
   ipcMain.handle("api-testing:ai-chat-status", async (_event, refresh) => {
     const tools = (await describeAiTools(refresh === true)).map(({ tool, version }) => ({ tool, version }));
     return tools.length ? { tools } : { tools, error: "Claude Code나 Codex CLI를 찾지 못했습니다. 설치한 뒤 다시 확인하세요" };
@@ -71,18 +82,12 @@ export function registerApiTesting() {
     const selected = await dialog.showOpenDialog({ title: "백엔드 코드 폴더 선택", properties: ["openDirectory", "multiSelections"] });
     return selected.canceled ? [] : selected.filePaths;
   });
-  ipcMain.handle("api-testing:get-ai-chat", (_event, projectId) => chats.get(projectId));
-  ipcMain.handle("api-testing:start-ai-chat", (_event, request) => chats.start(request));
-  ipcMain.handle("api-testing:clear-ai-chat", (_event, projectId, chatId) => chats.clear(projectId, chatId));
-  ipcMain.handle("api-testing:send-ai-chat", (_event, projectId, chatId, text) => chats.send(projectId, chatId, text));
-  ipcMain.handle("api-testing:cancel-ai-chat", (_event, projectId, chatId) => chats.cancel(projectId, chatId));
-  ipcMain.handle("api-testing:mark-ai-chat-result-saved", (_event, projectId, chatId, messageId, firstScenarioId) => chats.markResultSaved(projectId, chatId, messageId, firstScenarioId));
   ipcMain.handle("api-testing:get-ai-prompt", (_event, request) => workspace.buildAiPrompt(request));
   ipcMain.handle("api-testing:read-ai-result", (_event, scope) => workspace.readAiResult(scope));
   ipcMain.handle("api-testing:check-ai-scenarios", (_event, scope, text) => workspace.checkAiScenarios(scope, text));
   ipcMain.handle("api-testing:list-projects", () => workspace.listProjects());
   ipcMain.handle("api-testing:save-project", (_event, project) => workspace.saveProject(project));
-  ipcMain.handle("api-testing:delete-project", (_event, id) => chats.deleteProject(id, projectId => workspace.deleteProject(projectId)));
+  ipcMain.handle("api-testing:delete-project", async (_event, id) => { await terminals.forget(id); await workspace.deleteProject(id); });
   ipcMain.handle("api-testing:delete-catalog", (_event, scope) => workspace.deleteCatalog(scope));
   ipcMain.handle("api-testing:delete-scenario", (_event, projectId, id, revision) => workspace.deleteScenario(projectId, id, revision));
   ipcMain.handle("api-testing:catalog", (_event, scope) => workspace.getCatalog(scope));

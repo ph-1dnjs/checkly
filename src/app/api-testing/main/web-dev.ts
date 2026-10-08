@@ -101,8 +101,6 @@ export function apiWebDev(): Plugin {
           } else if (method === "getAiChatStatus") {
             // Running a local AI program from an HTTP endpoint is a desktop-app feature only.
             result = { tools: [], error: "웹 개발 모드에서는 AI 대화를 쓸 수 없습니다. 데스크톱 앱에서 사용하세요" };
-          } else if (method === "getAiChat") {
-            result = null;
           } else if (methods.includes(method as typeof methods[number])) {
             const action = workspace[method as typeof methods[number]] as (...values: unknown[]) => unknown;
             result = await action.apply(workspace, args);

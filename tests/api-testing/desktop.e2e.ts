@@ -1,6 +1,6 @@
 import { _electron as electron, expect } from "@playwright/test";
 import { createServer } from "node:http";
-import { chmod, mkdir, mkdtemp, rm, readdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, realpath, rm, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { tmpdir } from "node:os";
 import type { ApiTestingBridge } from "../../src/app/api-testing/shared/workspace";
@@ -41,26 +41,26 @@ async function main() {
     `name: AI 상품 조회\nserver: 기본 API\nsteps:\n  - name: 상품 조회\n    api: '${itemApi}'\n    pathParams: { id: 7 }\n`,
     "suite: { name: AI 상점 흐름, group: AI, scenarios: [AI 로그인, AI 상품 조회] }\n",
   ].join("---\n") + "```\n";
-  // A fake Claude Code for the in-app chat: asks first, then answers with one scenario.
+  // A fake interactive Claude Code for the in-app terminal: asks first; a request writes a result with a
+  // missing API, Checkly's pasted problem list makes it write the fixed result (both into its working folder).
   const fakeClaude = path.join(dir, "fake-claude.mjs");
   const aiCliCallsFile = path.join(dir, "ai-cli-calls.jsonl");
-  const aiResponseRelease = path.join(dir, "ai-response-release");
   await writeFile(fakeClaude, `#!/usr/bin/env node
-import { appendFileSync, existsSync } from "node:fs";
+import { appendFileSync, writeFileSync } from "node:fs";
 if (process.argv.includes("--version")) { process.stdout.write("Claude Code 1.0.0\\n"); process.exit(0); }
-let input = ""; process.stdin.on("data", c => input += c); process.stdin.on("end", () => {
-  appendFileSync(${JSON.stringify(aiCliCallsFile)}, JSON.stringify({ args: process.argv.slice(2), input }) + "\\n");
-  const answer = input.includes("먼저 질문하세요") ? "무엇을 테스트할까요?" : "작성했습니다.\\n\\\`\\\`\\\`yaml\\nname: 대화 로그인\\nserver: 기본 API\\nsteps:\\n  - { name: 로그인, api: POST /login, body: { loginId: tester } }\\n\\\`\\\`\\\`\\n";
-  if (input === "응답 대기 확인") {
-    process.stdout.write(JSON.stringify({ type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text: "응답을 기다리고 있습니다" } } }) + "\\n");
-    const waiting = setInterval(() => {
-      if (!existsSync(${JSON.stringify(aiResponseRelease)})) return;
-      clearInterval(waiting);
-      process.stdout.write(JSON.stringify({ type: "result", is_error: false, result: "응답 대기를 마쳤습니다" }) + "\\n");
-    }, 20);
-    return;
-  }
-  process.stdout.write(JSON.stringify({ type: "result", is_error: false, result: answer }) + "\\n");
+appendFileSync(${JSON.stringify(aiCliCallsFile)}, JSON.stringify({ args: process.argv.slice(2), cwd: process.cwd() }) + "\\n");
+const result = api => "name: 대화 로그인\\nserver: 기본 API\\nsteps:\\n  - { name: 로그인, api: " + api + ", body: { loginId: tester } }\\n";
+process.stdout.write(process.argv.includes("--resume") ? "이전 대화를 이어갑니다\\r\\n" : "무엇을 테스트할까요?\\r\\n");
+let line = "";
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", chunk => {
+  line += chunk;
+  // A pasted block (bracketed paste) arrives line by line; act once it is complete.
+  if (line.includes("\\u001b[200~") && !line.includes("\\u001b[201~")) return;
+  if (!/[\\r\\n]$/.test(line)) return;
+  const said = line; line = "";
+  if (said.includes("Checkly 검사")) { writeFileSync("scenarios.yaml", result("POST /login")); process.stdout.write("고쳐서 다시 저장했습니다\\r\\n"); }
+  else if (said.includes("로그인")) { writeFileSync("scenarios.yaml", result("GET /missing")); process.stdout.write("작성했습니다\\r\\n"); }
 });
 `);
   await chmod(fakeClaude, 0o755);
@@ -94,14 +94,7 @@ let input = ""; process.stdin.on("data", c => input += c); process.stdin.on("end
       throw new Error("Drag did not start");
     };
     const shot = async (name: string) => { if (process.env.CHECKLY_E2E_SHOTS) await page.screenshot({ path: path.join(process.env.CHECKLY_E2E_SHOTS, `${name}.png`) }); };
-    let acceptChatReset = false;
-    const chatResetConfirmations: string[] = [];
-    page.on("dialog", dialog => {
-      if (dialog.type() === "confirm" && dialog.message() === "저장하지 않은 결과가 사라집니다. 초기화할까요?") {
-        chatResetConfirmations.push(dialog.message());
-        void (acceptChatReset ? dialog.accept() : dialog.dismiss()).catch(() => undefined);
-      } else void (dialog.type() === "beforeunload" ? dialog.accept() : dialog.dismiss()).catch(() => undefined);
-    });
+    page.on("dialog", dialog => { void (dialog.type() === "beforeunload" ? dialog.accept() : dialog.dismiss()).catch(() => undefined); });
     await page.getByRole("button", { name: "API 테스트", exact: true }).click();
     // First run offers both making a project and importing a shared one.
     await expect(page.getByRole("button", { name: "공유받은 파일 가져오기", exact: true })).toBeVisible();
@@ -237,141 +230,80 @@ let input = ""; process.stdin.on("data", c => input += c); process.stdin.on("end
       return { id: project.id, serverId: project.servers[0].id, devId: project.environments.find(item => item.name === "dev")!.id, stageId: stage.id };
     }, { url });
     const readAiCliCalls = async () => (await readFile(aiCliCallsFile, "utf8")).trim().split("\n").filter(Boolean)
-      .map(line => JSON.parse(line) as { args: string[]; input: string });
-    const firstSession = (call: { args: string[] }) => call.args[call.args.indexOf("--session-id") + 1];
-    // With the folder set the chat tab shows the chat itself.
+      .map(line => JSON.parse(line) as { args: string[]; cwd: string });
+    const sessionOf = (call: { args: string[] }) => call.args[call.args.indexOf("--session-id") + 1];
+    // With the folder set the chat tab shows the terminal panel.
     await expect(chatWay).toHaveCount(0);
     // One AI installed: no choice is shown.
     await expect(page.getByRole("region", { name: "AI 실행 설정", exact: true })).toHaveCount(0);
     await shot("ai-chat-empty");
-    // One current chat: starting sends the guide; later turns resume the same CLI session.
+    // 대화 시작 runs the CLI in a terminal inside the app; it reads the guide file and asks first.
     await page.getByRole("button", { name: "대화 시작", exact: true }).click();
-    const chatPane = page.getByRole("region", { name: "AI 대화", exact: true });
-    await expect(chatPane).toContainText("가이드를 Claude에 전달했습니다");
-    await expect(chatPane).toContainText("무엇을 테스트할까요?");
-    await expect(chatPane).toContainText("대화 환경 · dev");
-    await expect(page.getByRole("complementary", { name: "AI 대화 목록" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "대화 삭제", exact: true })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "+ 새 대화", exact: true })).toHaveCount(0);
-    await expect(page.getByLabel("AI에게 보낼 메시지", { exact: true })).toBeEnabled();
+    const terminalPane = page.getByRole("region", { name: "AI 터미널", exact: true });
+    const screen = terminalPane.locator(".xterm-rows");
+    await expect(screen).toContainText("무엇을 테스트할까요?");
+    await expect(terminalPane).toContainText("대화 환경 · dev");
+    await expect(terminalPane.getByRole("complementary", { name: "AI 결과", exact: true })).toHaveCount(0);
+    await expect(terminalPane.getByRole("button", { name: "결과 칸 열기", exact: true })).toBeVisible();
     const firstCall = (await readAiCliCalls())[0];
-    expect(firstCall.args).toContain("--session-id");
-    expect(firstCall.input).toContain("# Checkly API 시나리오 작성 가이드");
-    const firstSessionId = firstSession(firstCall);
-    await page.getByLabel("AI에게 보낼 메시지", { exact: true }).fill("로그인만 확인해 주세요");
-    await page.getByLabel("AI에게 보낼 메시지", { exact: true }).press("Enter");
-    await expect(chatPane).toContainText("검사를 통과했습니다");
-    await expect(chatPane.getByLabel("대화 로그인 저장", { exact: true })).toBeChecked();
-    const resumed = (await readAiCliCalls())[1];
-    expect(resumed.args.slice(resumed.args.indexOf("--resume"), resumed.args.indexOf("--resume") + 2)).toEqual(["--resume", firstSessionId]);
-    await shot("ai-chat");
-    // Switching environments keeps the previous conversation visible, with send/save disabled.
-    await page.getByRole("group", { name: "API 환경", exact: true }).getByRole("button", { name: "stage", exact: true }).click();
-    await expect(chatPane).toContainText("기존 기록은 읽기 전용입니다");
-    await expect(chatPane).toContainText("로그인만 확인해 주세요");
-    await expect(page.getByLabel("AI에게 보낼 메시지", { exact: true })).toBeDisabled();
-    await expect(chatPane.getByRole("button", { name: "선택한 것 저장", exact: true })).toBeDisabled();
-    // An unsaved checked result asks once; cancelling preserves the chat and its session.
-    await chatPane.getByRole("button", { name: "대화 초기화", exact: true }).click();
-    await expect.poll(() => chatResetConfirmations.length).toBe(1);
-    await expect(chatPane).toContainText("로그인만 확인해 주세요");
-    expect((await readAiCliCalls()).length).toBe(2);
-    // Accepting ends the chat and goes back to 대화 시작; starting opens a fresh CLI session in the selected environment.
-    acceptChatReset = true;
-    await chatPane.getByRole("button", { name: "대화 초기화", exact: true }).click();
-    await expect(chatPane).not.toContainText("로그인만 확인해 주세요");
-    expect((await readAiCliCalls()).length).toBe(2);
-    await chatPane.getByRole("button", { name: "대화 시작", exact: true }).click();
-    await expect(chatPane).toContainText("대화 환경 · stage");
-    await expect(chatPane).toContainText("무엇을 테스트할까요?");
-    await expect(chatPane).not.toContainText("로그인만 확인해 주세요");
-    await expect(page.getByLabel("AI에게 보낼 메시지", { exact: true })).toBeEnabled();
-    expect(chatResetConfirmations.length).toBe(2);
-    const resetCall = (await readAiCliCalls())[2];
-    expect(resetCall.args).toContain("--session-id");
-    expect(firstSession(resetCall)).not.toBe(firstSessionId);
-    expect(resetCall.input).toContain("# Checkly API 시나리오 작성 가이드");
-    await page.getByLabel("AI에게 보낼 메시지", { exact: true }).fill("초기화 후 로그인 확인");
-    await page.getByLabel("AI에게 보낼 메시지", { exact: true }).press("Enter");
-    await expect(chatPane).toContainText("검사를 통과했습니다");
-    // Saving from the chat stays in the chat, so the user can keep asking; the link opens the scenario.
-    await chatPane.getByRole("button", { name: "선택한 것 저장", exact: true }).click();
-    await expect(chatPane.getByRole("status").filter({ hasText: "저장했습니다" })).toBeVisible();
-    await expect(page.getByLabel("AI에게 보낼 메시지", { exact: true })).toBeEnabled();
+    for (const flag of ["--session-id", "--restricted", "--strict-mcp-config", "--permission-mode", "acceptEdits"]) expect(firstCall.args).toContain(flag);
+    expect(firstCall.args).toContain(backend);
+    expect(firstCall.args).toContain(`Edit(/${backend}/**)`);
+    const chatDir = path.join(dir, "api-testing", "ai", aiProject.id, "chat");
+    expect(await realpath(firstCall.cwd)).toBe(await realpath(chatDir));
+    expect(firstCall.args.at(-1)).toContain(path.join(chatDir, "guide.md"));
+    await expect.poll(() => readFile(path.join(chatDir, "guide.md"), "utf8").then(text => text.includes("Checkly가 저장을 감지해 바로 검사"))).toBe(true);
+    // The terminal has the keyboard as soon as it opens (no click needed); its saved result is checked
+    // right away and problems go back with one click.
+    await expect(terminalPane.locator(".xterm-helper-textarea")).toBeFocused();
+    await page.keyboard.type("로그인 확인");
+    await page.keyboard.press("Enter");
+    // The results column is closed until the AI saves a result, then opens on its own.
+    const check = terminalPane.getByRole("region", { name: "AI 결과 검사", exact: true });
+    await expect(check).toContainText("수정 필요");
+    await expect(terminalPane.getByRole("button", { name: "결과 닫기", exact: true })).toBeVisible();
+    await shot("ai-terminal");
+    await check.getByRole("button", { name: "문제를 AI에 보내기", exact: true }).click();
+    // Closed meanwhile: its button says a result waits to be saved, and the fixed result opens it again.
+    await terminalPane.getByRole("button", { name: "결과 닫기", exact: true }).click();
+    await expect(check).toHaveCount(0);
+    await expect(terminalPane.getByRole("button", { name: "결과 열기저장 전", exact: true })).toBeVisible();
+    await expect(screen).toContainText("고쳐서 다시 저장했습니다");
+    await expect(check).toContainText("바로 실행 가능");
+    await check.getByRole("button", { name: "선택한 것 저장", exact: true }).click();
+    await expect(check.getByRole("status").filter({ hasText: "저장했습니다" })).toBeVisible();
+    // Saved: closing leaves no "저장 전" mark.
+    await terminalPane.getByRole("button", { name: "결과 닫기", exact: true }).click();
+    await expect(terminalPane.getByRole("button", { name: "결과 열기", exact: true })).toBeVisible();
+    await terminalPane.getByRole("button", { name: "결과 열기", exact: true }).click();
     await expect.poll(() => page.evaluate(async projectId => {
       const api = (window as unknown as { electronAPI: { apiTesting: ApiTestingBridge } }).electronAPI.apiTesting;
-      return (await api.getAiChat(projectId))?.messages.some(message => message.saved !== undefined) ?? false;
+      return (await api.listScenarios(projectId)).some(item => item.name === "대화 로그인");
     }, aiProject.id)).toBe(true);
-    await chatPane.getByRole("button", { name: "시나리오 보기", exact: true }).click();
-    await expect(page.getByRole("region", { name: "AI 대화", exact: true })).toHaveCount(0);
-    await expect(page.getByRole("heading", { name: "대화 로그인", exact: true })).toBeVisible();
+    // The terminal keeps running across tabs and environments; checks and saves stay in the session's environment.
+    await page.getByRole("tab", { name: "내 AI 앱에서 쓰기", exact: true }).click();
+    await expect(page.getByRole("button", { name: "AI 가이드 복사", exact: true })).toBeVisible();
+    await page.getByRole("tab", { name: "시나리오", exact: true }).click();
     await page.getByRole("tab", { name: "AI 작성 도우미", exact: true }).click();
-    await expect(chatPane.getByRole("status").filter({ hasText: "저장했습니다" })).toBeVisible();
-    await expect(chatPane).toContainText("초기화 후 로그인 확인");
-    expect((await readAiCliCalls()).length).toBe(4);
-    // A saved result needs no discard confirmation; resetting keeps saved scenarios and settings.
-    acceptChatReset = false;
+    await page.getByRole("tab", { name: "앱에서 AI와 대화", exact: true }).click();
+    await expect(screen).toContainText("고쳐서 다시 저장했습니다");
+    await page.getByRole("group", { name: "API 환경", exact: true }).getByRole("button", { name: "stage", exact: true }).click();
+    await expect(terminalPane).toContainText("이 대화는 dev에서 시작했습니다");
     await page.getByRole("group", { name: "API 환경", exact: true }).getByRole("button", { name: "dev", exact: true }).click();
-    await expect(chatPane).toContainText("기존 기록은 읽기 전용입니다");
-    await chatPane.getByRole("button", { name: "대화 초기화", exact: true }).click();
-    await chatPane.getByRole("button", { name: "대화 시작", exact: true }).click();
-    await expect(chatPane).toContainText("대화 환경 · dev");
-    await expect(chatPane).toContainText("무엇을 테스트할까요?");
-    await expect(chatPane).not.toContainText("초기화 후 로그인 확인");
-    await expect(page.getByLabel("AI에게 보낼 메시지", { exact: true })).toBeEnabled();
-    expect(chatResetConfirmations.length).toBe(2);
-    const resetAgain = (await readAiCliCalls())[4];
-    expect(resetAgain.args).toContain("--session-id");
-    expect(resetAgain.args).not.toContain("--resume");
-    expect(firstSession(resetAgain)).not.toBe(firstSession(resetCall));
+    // 대화 초기화 stops the CLI and goes back to 대화 시작; the next start is a new session. Saved scenarios stay.
+    await terminalPane.getByRole("button", { name: "대화 초기화", exact: true }).click();
+    await expect(terminalPane.getByRole("button", { name: "대화 시작", exact: true })).toBeVisible();
+    await expect(check).toHaveCount(0);
+    await terminalPane.getByRole("button", { name: "대화 시작", exact: true }).click();
+    await expect(screen).toContainText("무엇을 테스트할까요?");
+    const secondCall = (await readAiCliCalls())[1];
+    expect(sessionOf(secondCall)).not.toBe(sessionOf(firstCall));
     const preserved = await page.evaluate(async projectId => {
       const api = (window as unknown as { electronAPI: { apiTesting: ApiTestingBridge } }).electronAPI.apiTesting;
       return { scenarios: (await api.listScenarios(projectId)).map(item => item.name), settings: await api.getAiChatSettings(projectId) };
     }, aiProject.id);
     expect(preserved.scenarios).toContain("대화 로그인");
     expect(preserved.settings.folders[aiProject.serverId]).toEqual([backend]);
-    // Streaming work also blocks clearing; releasing the fake response lets the same chat continue.
-    await page.getByLabel("AI에게 보낼 메시지", { exact: true }).fill("응답 대기 확인");
-    await page.getByLabel("AI에게 보낼 메시지", { exact: true }).press("Enter");
-    await expect(chatPane).toContainText("응답을 기다리고 있습니다");
-    await expect(chatPane.getByRole("button", { name: "대화 초기화", exact: true })).toBeDisabled();
-    // The answer runs in the main process: the rest of the page stays usable meanwhile.
-    await expect(page.getByRole("tab", { name: "시나리오", exact: true })).toBeEnabled();
-    await expect(page.getByRole("group", { name: "API 환경", exact: true }).getByRole("button", { name: "stage", exact: true })).toBeEnabled();
-    await writeFile(aiResponseRelease, "continue");
-    await expect(chatPane).toContainText("응답 대기를 마쳤습니다");
-    await expect(page.getByLabel("AI에게 보낼 메시지", { exact: true })).toBeEnabled();
-    // A restored running chat can also be cancelled from a different environment.
-    await rm(aiResponseRelease);
-    // The user's own AI app stays available next to the in-app chat, remembered for the project.
-    await page.getByRole("tab", { name: "내 AI 앱에서 쓰기", exact: true }).click();
-    await expect(page.getByRole("button", { name: "AI 가이드 복사", exact: true })).toBeVisible();
-    await expect(chatPane).toHaveCount(0);
-    await page.getByRole("tab", { name: "시나리오", exact: true }).click();
-    await page.getByRole("tab", { name: "AI 작성 도우미", exact: true }).click();
-    await expect(page.getByRole("button", { name: "AI 가이드 복사", exact: true })).toBeVisible();
-    await page.getByRole("tab", { name: "앱에서 AI와 대화", exact: true }).click();
-    await expect(chatPane).toContainText("응답 대기를 마쳤습니다");
-    await page.getByRole("tab", { name: "시나리오", exact: true }).click();
-    await page.evaluate(async projectId => {
-      const api = (window as unknown as { electronAPI: { apiTesting: ApiTestingBridge } }).electronAPI.apiTesting;
-      const chat = (await api.getAiChat(projectId))!;
-      await api.sendAiChatMessage(projectId, chat.id, "응답 대기 확인");
-    }, aiProject.id);
-    await expect(chatPane).toHaveCount(0);
-    await page.getByRole("group", { name: "API 환경", exact: true }).getByRole("button", { name: "stage", exact: true }).click();
-    await page.getByRole("tab", { name: "AI 작성 도우미", exact: true }).click();
-    await expect(chatPane).toContainText("기존 기록은 읽기 전용입니다");
-    await expect(chatPane.getByRole("button", { name: "대화 초기화", exact: true })).toBeDisabled();
-    await expect(chatPane.getByRole("button", { name: "중단", exact: true })).toBeEnabled();
-    await chatPane.getByRole("button", { name: "중단", exact: true }).click();
-    await expect(chatPane.getByRole("button", { name: "대화 초기화", exact: true })).toBeEnabled();
-    await expect.poll(() => page.evaluate(async projectId => {
-      const api = (window as unknown as { electronAPI: { apiTesting: ApiTestingBridge } }).electronAPI.apiTesting;
-      return Boolean((await api.getAiChat(projectId))?.running);
-    }, aiProject.id)).toBe(false);
-    await page.getByRole("group", { name: "API 환경", exact: true }).getByRole("button", { name: "dev", exact: true }).click();
-    await expect(chatPane).not.toContainText("기존 기록은 읽기 전용입니다");
     await page.getByRole("button", { name: "프로젝트 설정", exact: true }).click();
     await page.getByRole("button", { name: `기본 API 폴더 ${backend} 제거`, exact: true }).click();
     await page.getByRole("button", { name: "프로젝트 저장", exact: true }).click();

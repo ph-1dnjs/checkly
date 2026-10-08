@@ -1359,3 +1359,29 @@ body.panel-resizing { cursor:col-resize; user-select:none; }
 .api-page-body:has(.api-compose-layout) { display:flex; flex-direction:column; overflow:hidden; padding-bottom:0; }
 /* The body already ends above the bottom navigation, so the chat input needs no extra room for it. */
 .api-page-body .api-ai-chat-input { padding-bottom:12px; }
+/* In-app AI terminal. With a session it fills the page body (no page scroll): the CLI's own screen on
+   the left at full height, the checks of its result file on the right in their own scroll. */
+.api-ai-terminal { display:grid; gap:12px; min-width:0; }
+.api-ai-terminal-screen { height:min(520px, 60vh); min-height:260px; padding:8px; border-radius:var(--ck-dim-radius-base); background:#14181c; overflow:hidden; }
+.api-ai-terminal-screen.is-idle { display:none; }
+.api-ai-terminal-screen .xterm { height:100%; }
+.api-page-body:has(.api-ai-terminal.is-active) { display:flex; flex-direction:column; overflow:hidden; padding-bottom:12px; }
+.api-page-body:has(.api-ai-terminal.is-active) > .api-ai-author { display:flex; flex-direction:column; flex:1 1 auto; min-height:0; max-width:none; padding-bottom:0; }
+.api-page-body:has(.api-ai-terminal.is-active) > .api-ai-author > * { flex:none; }
+.api-page-body:has(.api-ai-terminal.is-active) > .api-ai-author > .api-ai-terminal { display:flex; flex-direction:column; flex:1 1 auto; min-height:0; }
+.api-ai-terminal.is-active > * { flex:none; }
+.api-ai-terminal.is-active > .api-ai-terminal-body { flex:1 1 auto; min-height:0; }
+.api-ai-terminal-body { display:grid; grid-template-columns:minmax(0,1fr); gap:16px; min-height:0; }
+/* The results panel slides over the terminal's right side instead of narrowing it: resizing the terminal
+   makes the CLI redraw (and break) its screen. */
+.api-ai-terminal.is-active .api-ai-terminal-body { position:relative; grid-template-rows:minmax(0,1fr); }
+.api-ai-terminal.is-active .api-ai-terminal-screen { height:auto; min-height:0; }
+.api-ai-terminal-side { position:absolute; top:0; right:0; bottom:0; z-index:5; display:grid; align-content:start; gap:8px; width:min(520px, 46%); min-height:0; overflow-y:auto; scrollbar-gutter:stable; overscroll-behavior:contain; padding:14px 16px; border-left:1px solid var(--api-border); border-radius:0 var(--ck-dim-radius-base) var(--ck-dim-radius-base) 0; background:var(--ck-color-canvas); box-shadow:-8px 0 24px rgb(20 24 28 / 18%); }
+.api-ai-terminal-waiting { display:grid; gap:8px; padding:16px; border:1px dashed var(--api-border); border-radius:var(--ck-dim-radius-base); }
+.api-ai-terminal-waiting p { margin:0; color:var(--ck-color-text-secondary); font-size:12.5px; line-height:1.6; }
+.api-ai-terminal-result { display:grid; gap:8px; }
+.api-ai-terminal-result > .api-ai-author-result { margin-top:0; padding-top:0; border-top:0; }
+@media (max-width:900px) { .api-ai-terminal-side { width:min(520px, 88%); } }
+/* A closed results panel with a result still to save says so on its button. */
+.api-testing-page button.api-ai-result-toggle.has-pending { border-color:var(--ck-color-wait); }
+.api-ai-result-badge { margin-left:6px; padding:1px 6px; border-radius:99px; background:var(--ck-color-wait-tint); color:var(--ck-color-wait-ink); font-size:11px; font-weight:700; }
