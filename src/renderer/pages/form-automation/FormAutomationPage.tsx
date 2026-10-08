@@ -886,9 +886,10 @@ const FormAutomationContent = (): ReactElement => {
     );
   };
 
-  const deleteCase = () => {
+  const deleteCase = async () => {
     if (!selectedCase?.userSaved) return;
-    setSavedCases((items) => items.filter((item) => item.id !== selectedCase.id));
+    const saved = await setSavedCases((items) => items.filter((item) => item.id !== selectedCase.id));
+    if (!saved) { showToast("자동 입력 케이스 삭제를 저장하지 못했습니다."); return; }
     setSelectedCaseId(autoCases[0]?.id ?? "");
     showToast("저장한 케이스를 삭제했습니다.");
   };
