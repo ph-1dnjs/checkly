@@ -494,7 +494,7 @@ const FormAutomationContent = (): ReactElement => {
       };
       const ready = () => {
         const url = currentWebviewUrl(webview, sessionForTab().url);
-        updateBrowserTab(tabId, { state: "ready", url, currentPageUrl: url });
+        updateBrowserTab(tabId, { state: "ready", currentPageUrl: url });
         try { webview.setZoomFactor(Math.min(1.25, Math.max(0.5, Number(zoomPercent) / 100))); } catch { /* 웹뷰 준비 전 */ }
         sendGuestConfig();
         updateHistory();
@@ -513,7 +513,9 @@ const FormAutomationContent = (): ReactElement => {
       const failed = () => updateBrowserTab(tabId, { state: "error" });
       const navigated = (event: Event & { url?: string }) => {
         const url = event.url || currentWebviewUrl(webview, sessionForTab().url);
-        updateBrowserTab(tabId, { url, currentPageUrl: url });
+        // The webview owns in-page navigation. Updating its src here reloads SPA routes
+        // and discards React Router state passed to screens such as 2FA.
+        updateBrowserTab(tabId, { currentPageUrl: url });
         updateHistory();
         if (isActive()) {
           setDraftUrl(url);
