@@ -321,7 +321,7 @@ const FormAutomationContent = (): ReactElement => {
 
   useEffect(() => {
     void window.electronAPI?.readFormAutomationSessionEvents?.(1000)
-      .then((items) => setNetworkEvents((current) => current.length ? current : items as NetworkEvent[]))
+      .then((items) => setNetworkEvents((current) => mergeNetworkEvents(current, items as NetworkEvent[])))
       .catch(() => undefined);
   }, []);
 
@@ -368,6 +368,7 @@ const FormAutomationContent = (): ReactElement => {
     const tab = browserTabsRef.current.find((item) => item.id === tabId);
     if (!tab) return;
     setActiveTabId(tabId);
+    setSelectedEvent(null);
     const url = currentWebviewUrl(webviewRefs.current.get(tabId) ?? null, tab.currentPageUrl || tab.url);
     setDraftUrl(url);
     setTargetUrl(url);
@@ -572,6 +573,7 @@ const FormAutomationContent = (): ReactElement => {
   const currentPageScope = pageScopeFromUrl(currentPageUrl);
   const activeNetworkEvents = networkEvents.filter((event) =>
     event.browserSessionId ? event.browserSessionId === activeTab?.id : activeTab?.id === "default");
+  const activeSelectedEvent = selectedEvent && activeNetworkEvents.some(event => event.id === selectedEvent.id) ? selectedEvent : null;
   const activeErrorCount = activeNetworkEvents.filter(isSessionError).length;
   const storageIsCurrent = storageSnapshot.browserSessionId === activeTab?.id;
   const storageTotal = storageIsCurrent
@@ -1193,7 +1195,7 @@ const FormAutomationContent = (): ReactElement => {
           {drawerTab === "network" ? (
             <NetworkPanel
               events={activeNetworkEvents}
-              selectedEvent={selectedEvent}
+              selectedEvent={activeSelectedEvent}
               filter={networkFilter}
               activeSessionName={activeTab.name}
               onSelect={setSelectedEvent}
