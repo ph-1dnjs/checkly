@@ -914,6 +914,7 @@ const FormAutomationContent = (): ReactElement => {
     }
     setSelectedCaseId(item.id);
     try {
+      webview.focus();
       const result = await webview.executeJavaScript(fillFieldsScript(item.fields)) as FillResult;
       const webContentsId = webview.getWebContentsId();
       for (const entry of result.richText) {

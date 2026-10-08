@@ -1,6 +1,17 @@
 import type { FieldValue } from "./model";
 import { controlAdapters } from "./controlAdapters";
 
+const visibleRuntime = `
+  const visible = (element) => {
+    if (element.closest('[aria-hidden="true"], [inert]') || !element.getClientRects().length) return false;
+    for (let current = element; current; current = current.parentElement) {
+      const style = getComputedStyle(current);
+      if (style.visibility === 'hidden' || style.display === 'none' || Number(style.opacity) === 0) return false;
+    }
+    return true;
+  };
+`;
+
 // Share discovery and activation rules so a custom control and its hidden input
 // are treated as one checkbox, including when replaying previously saved names.
 const checkboxRuntime = `
@@ -35,7 +46,8 @@ const checkboxRuntime = `
     })
     .flatMap((element) => element.matches('input, textarea, select, button, [contenteditable="true"], [role="checkbox"], [role="switch"], [role="radio"], [role="combobox"]') || isCheckbox(element) || element.getAttribute('data-qa-autofill-type') === 'date-trigger'
       ? [canonicalControl(element)] : Array.from(element.querySelectorAll('input, textarea, select, [role="checkbox"], [role="switch"], [role="radio"], [role="combobox"]')).map(canonicalControl))) ]
-    .filter((element) => isCheckbox(element) ? !checkboxDisabled(element) : choiceControlFor(element) ? !choiceDisabled(element) : !controlDisabled(element));
+    .filter((element) => ((element.type === 'file' && !element.closest('[aria-hidden="true"], [inert]')) || visible(element) || (isCheckbox(element) && Array.from(checkboxInputFor(element)?.labels || []).some(visible)))
+      && (isCheckbox(element) ? !checkboxDisabled(element) : choiceControlFor(element) ? !choiceDisabled(element) : !controlDisabled(element, !activatableReadOnly(element))));
   const setCheckbox = async (element, checked) => {
     if (checkboxDisabled(element)) return false;
     if (checkboxState(element) === checked) return true;
@@ -50,7 +62,7 @@ const checkboxRuntime = `
 `;
 
 export const discoverFieldsScript = `(async () => {
-  const visible = (element) => element.getClientRects().length > 0 && getComputedStyle(element).visibility !== 'hidden';
+  ${visibleRuntime}
   ${checkboxRuntime}
   ${controlAdapters}
   const dialogs = Array.from(document.querySelectorAll('[role="dialog"], dialog[open], [aria-modal="true"]')).filter(visible);
@@ -132,7 +144,7 @@ export const discoverFieldsScript = `(async () => {
     const searchField = belongsToSearchArea(element, fieldName, label);
     const plainInput = (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement || element instanceof HTMLSelectElement) && !element.closest('[role="grid"], table');
     const hasFormContext = Boolean(element.name || element.closest('form, [data-slot="form-item"]') || element.isContentEditable || isRadio(element) || checkbox || choice || meaningfulFile || searchField || plainInput || dateTrigger);
-    const disabled = checkbox ? checkboxDisabled(element) : choice ? choiceDisabled(element) : controlDisabled(element);
+    const disabled = checkbox ? checkboxDisabled(element) : choice ? choiceDisabled(element) : controlDisabled(element, !activatableReadOnly(element));
     if (!fieldName || !hasFormContext || ignored.has(type) || disabled || (!visible(element) && !meaningfulFile && !visibleCheckbox)) continue;
     if (groups.has(fieldName) && type !== 'radio' && !checkbox) fieldName = fieldName + '__' + (candidateIndex + 1);
     element.setAttribute('data-qa-autofill-name', fieldName);
@@ -173,7 +185,7 @@ export const discoverFieldsScript = `(async () => {
 export const fillFieldsScript = (fields: Record<string, FieldValue>): string => `(async () => {
   const fields = ${JSON.stringify(fields)};
   const filled = []; const missing = []; const richText = []; const fileInputs = []; const dateTriggers = [];
-  const visible = (element) => element.getClientRects().length > 0 && getComputedStyle(element).visibility !== 'hidden';
+  ${visibleRuntime}
   ${checkboxRuntime}
   ${controlAdapters}
   const dialogs = Array.from(document.querySelectorAll('[role="dialog"], dialog[open], [aria-modal="true"]')).filter(visible);
@@ -224,7 +236,7 @@ export const fillFieldsScript = (fields: Record<string, FieldValue>): string => 
 export const clearFieldsScript = (keys: string[]): string => `(async () => {
   const keys = ${JSON.stringify(keys)};
   const cleared = []; const missing = [];
-  const visible = (element) => element.getClientRects().length > 0 && getComputedStyle(element).visibility !== 'hidden';
+  ${visibleRuntime}
   ${checkboxRuntime}
   ${controlAdapters}
   const dialogs = Array.from(document.querySelectorAll('[role="dialog"], dialog[open], [aria-modal="true"]')).filter(visible);

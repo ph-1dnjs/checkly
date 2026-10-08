@@ -25,7 +25,9 @@ export const controlAdapters = `
   const radioInputFor = (element) => element.matches('input[type="radio"]') ? element : element.closest('label, [data-scope="radio-group"][data-part="item"]')?.querySelector('input[type="radio"]');
   const radioValue = (element) => radioInputFor(element)?.value ?? element.getAttribute('data-value') ?? element.getAttribute('value') ?? '';
   const isRadio = (element) => element.matches('input[type="radio"], [role="radio"]');
-  const controlDisabled = (element) => Boolean(element.disabled || element.readOnly || element.getAttribute('aria-disabled') === 'true' || element.getAttribute('aria-readonly') === 'true'
+  const activatableReadOnly = (element) => element instanceof HTMLTextAreaElement
+    || (element instanceof HTMLInputElement && ['text', 'password', 'email', 'search', 'tel', 'url', 'number'].includes(element.type));
+  const controlDisabled = (element, includeReadOnly = true) => Boolean(element.disabled || (includeReadOnly && element.readOnly) || element.getAttribute('aria-disabled') === 'true' || element.getAttribute('aria-readonly') === 'true'
     || element.closest('[data-disabled], [data-readonly], fieldset[disabled]')
     || classes(choiceRootFor(element)).some((name) => name.endsWith('-select-disabled')));
   const choiceDisabled = (element) => Boolean(element.disabled || element.getAttribute('aria-disabled') === 'true' || element.getAttribute('aria-readonly') === 'true'
@@ -159,6 +161,9 @@ export const controlAdapters = `
     return checked();
   };
   const setTextControl = async (element, value) => {
+    element.focus({ preventScroll: true });
+    if (element.readOnly) await waitForControl(() => !element.readOnly);
+    if (controlDisabled(element)) return false;
     const picker = classRoot(element, 'picker') || element.closest('[data-scope="date-picker"][data-part="root"]');
     if (picker && value === '' && element.value) {
       const clear = picker.querySelector('[data-part="clear-trigger"]') || Array.from(picker.querySelectorAll('[class]')).find((node) => classes(node).some((name) => name.endsWith('-picker-clear')));

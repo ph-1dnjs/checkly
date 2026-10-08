@@ -3,6 +3,7 @@
 - 마지막으로 열린 dialog가 있으면 페이지 전체보다 dialog 내부 필드를 우선합니다.
 - 같은 name의 radio·checkbox는 하나의 필드 그룹으로 처리합니다.
 - label이 없으면 aria-label, placeholder, name, 주변 구조 텍스트 순으로 이름을 추론합니다.
+- `aria-hidden`·`inert` 또는 투명한 영역의 자동완성 차단용 입력은 감지·입력에서 제외합니다. 화면에 표시된 `readonly` 텍스트 입력은 후보로 포함하고, 실제 입력 시 포커스 후 해제되는지 확인합니다. 해제되지 않으면 미입력으로 보고합니다.
 - React 제어 텍스트 입력은 native setter 뒤 input·change·blur·focusout 이벤트를 발생시킵니다. 체크박스는 실제 클릭으로 변경하고 렌더링 후 상태를 검증하며, 이미 원하는 상태면 클릭하지 않습니다. `role="checkbox"`·`data-scope="checkbox"` 컨트롤과 숨겨진 input은 한 항목으로 처리합니다.
 - Ark UI의 `data-scope`·`data-part`와 ARIA 관계를 사용해 체크박스·스위치·라디오·Select·Combobox·NumberInput·단일 DatePicker를 감지합니다. 숨겨진 backing input과 표시 컨트롤을 중복 감지하지 않으며, RHF 제어 상태에 실제 변경 이벤트가 전달되도록 입력합니다.
 - Ant Design 5·6의 Input·Password·InputNumber·Checkbox·Switch·Radio·Select·Checkbox.Group·단일 DatePicker를 실제 Form fixture로 검증합니다. Form의 `id_name` 식별자를 복원하고 사용자 지정 클래스 접두사도 처리합니다. 색상·테마 토큰 값에는 의존하지 않습니다.
