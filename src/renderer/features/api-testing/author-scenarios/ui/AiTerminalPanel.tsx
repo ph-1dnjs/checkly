@@ -4,7 +4,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import { AiResultReview } from "./AiResultReview";
 import { problemReport } from "../model/problem-report";
-import type { ApiAiImportResult, ApiAiTerminal, ApiAiTool, ApiEnvironmentScope, ApiProject, ApiTestingBridge, SavedApiScenario } from "../../../../../app/api-testing/shared/workspace";
+import type { ApiAiImportResult, ApiAiTerminal, ApiEnvironmentScope, ApiProject, ApiTestingBridge, SavedApiScenario } from "../../../../../app/api-testing/shared/workspace";
 
 const errorText = (error: unknown) => (error as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, "");
 /** Pasted as one block so a multi-line problem list is not sent line by line. */
@@ -18,8 +18,8 @@ export function AiTerminalPanel({ project, scope, bridge, onBusy, onSaved, toolN
   project: ApiProject; scope: ApiEnvironmentScope; bridge: ApiTestingBridge; onBusy: (busy: boolean) => void; onSaved: (first?: SavedApiScenario) => void;
   /** The AI a new session uses, e.g. "Claude". */
   toolName: string; noSpec: boolean; specNote: string;
-  /** Which AI the next start uses, shown before the button; locked to the session's AI while one exists. */
-  toolChoice?: (lockedTool?: ApiAiTool) => ReactNode;
+  /** Which AI the next start uses, shown before 대화 시작 (not during a session: it cannot change then). */
+  toolChoice?: ReactNode;
 }) {
   const [session, setSession] = useState<Omit<ApiAiTerminal, "buffer"> | null>(null);
   const [loading, setLoading] = useState(true);
@@ -146,22 +146,20 @@ export function AiTerminalPanel({ project, scope, bridge, onBusy, onSaved, toolN
   // With a session the panel fills the page: the terminal on the left at full height, its result checks
   // on the right in their own scroll, so the page itself never scrolls.
   return <section className={`api-ai-terminal${session ? " is-active" : ""}`} aria-label="AI 터미널">
-    <header className="api-ai-chat-heading">
-      <div>
-        <strong>{session ? `${session.tool === "claude" ? "Claude" : "Codex"} 대화` : "AI 대화"}</strong>
-        {session && <small className="api-field-help">대화 환경 · {environmentName(session.environmentId)}{session.running ? "" : " · 종료됨"}</small>}
-      </div>
-      <div className="api-ai-chat-heading-actions">
-        {toolChoice?.(session?.tool)}
-        {session && <button type="button" className={`api-ai-result-toggle${!sideOpen && unsaved ? " has-pending" : ""}`} aria-expanded={sideOpen}
-          title={!sideOpen && unsaved ? "저장하지 않은 결과가 있습니다" : undefined} onClick={() => setSideOpen(!sideOpen)}>
-          {sideOpen ? "결과 닫기" : check ? "결과 열기" : "결과 칸 열기"}{!sideOpen && unsaved && <span className="api-ai-result-badge">저장 전</span>}
-        </button>}
-        {session && !session.running && <button type="button" className="api-primary" disabled={pending !== null || differentEnvironment} title={differentEnvironment ? "대화를 시작한 환경으로 바꾸거나 대화를 초기화하세요" : undefined} onClick={() => void start(true)}>{pending === "starting" ? "여는 중…" : "이어서 열기"}</button>}
-        {session
-          ? <button type="button" disabled={pending !== null} onClick={() => void clear()}>{pending === "clearing" ? "초기화하는 중…" : "대화 초기화"}</button>
-          : <button type="button" className="api-primary" disabled={loading || pending !== null || noSpec} title={noSpec ? "명세를 먼저 가져오세요" : undefined} onClick={() => void start(false)}>{loading ? "불러오는 중…" : pending === "starting" ? "시작하는 중…" : "대화 시작"}</button>}
-      </div>
+    {/* One row, left-aligned: before a session the AI choice and 대화 시작; with one, its state and its two actions.
+        The AI cannot change during a session, so its choice is only offered before starting. */}
+    <header className="api-ai-terminal-heading">
+      {session ? <>
+        <div className="api-ai-terminal-title">
+          <strong>{session.tool === "claude" ? "Claude" : "Codex"} 대화</strong>
+          <small className="api-field-help">{environmentName(session.environmentId)} · {session.running ? "실행 중" : "종료됨"}</small>
+        </div>
+        {!session.running && <button type="button" className="api-primary" disabled={pending !== null || differentEnvironment} title={differentEnvironment ? "대화를 시작한 환경으로 바꾸거나 대화를 초기화하세요" : undefined} onClick={() => void start(true)}>{pending === "starting" ? "여는 중…" : "이어서 열기"}</button>}
+        <button type="button" disabled={pending !== null} onClick={() => void clear()}>{pending === "clearing" ? "초기화하는 중…" : "대화 초기화"}</button>
+      </> : <>
+        {toolChoice}
+        <button type="button" className="api-primary" disabled={loading || pending !== null || noSpec} title={noSpec ? "명세를 먼저 가져오세요" : undefined} onClick={() => void start(false)}>{loading ? "불러오는 중…" : pending === "starting" ? "시작하는 중…" : "대화 시작"}</button>
+      </>}
     </header>
     {!loading && !session && <div className="api-ai-chat-empty">
       <p><strong>대화 시작</strong>을 누르면 아래 터미널에서 {toolName}가 작성 가이드를 읽고 무엇을 테스트할지 묻습니다. AI가 결과를 저장하면 Checkly가 바로 검사해 아래에 저장 화면을 보여 줍니다.</p>
@@ -171,7 +169,11 @@ export function AiTerminalPanel({ project, scope, bridge, onBusy, onSaved, toolN
     {error && <p className="api-warning" role="alert">{error}</p>}
     <div className="api-ai-terminal-body">
     <div className={`api-ai-terminal-screen${session ? "" : " is-idle"}`} ref={host} aria-label="AI 터미널 화면" onMouseDown={() => terminal.current?.focus()} />
+    {/* The results panel opens from a handle on the terminal's right edge, which marks a result not saved yet. */}
+    {session && !sideOpen && <button type="button" className={`api-ai-result-handle${unsaved ? " has-pending" : ""}`} aria-label={unsaved ? "결과 열기 (저장 전)" : "결과 열기"}
+      title={unsaved ? "저장하지 않은 결과가 있습니다" : "결과 열기"} onClick={() => setSideOpen(true)}>결과{unsaved && <span className="api-ai-result-dot" aria-hidden="true" />}</button>}
     {session && sideOpen && <aside className="api-ai-terminal-side" aria-label="AI 결과">
+    <header className="api-ai-terminal-side-head"><strong>결과</strong><button type="button" className="api-icon-button" aria-label="결과 닫기" title="결과 닫기" onClick={() => setSideOpen(false)}>×</button></header>
     {!check && !checkError && <div className="api-ai-terminal-waiting">
       <p>AI가 결과 파일을 저장하면 여기서 바로 검사하고 저장할 항목을 고를 수 있습니다.</p>
       {session.running && <p className="api-field-help">처음 열 때 폴더 신뢰 질문이 나오면 Checkly 전용 폴더이니 &lsquo;Yes, I trust this folder&rsquo;를 고르세요.</p>}

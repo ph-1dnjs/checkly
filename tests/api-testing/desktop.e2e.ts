@@ -242,9 +242,9 @@ process.stdin.on("data", chunk => {
     const terminalPane = page.getByRole("region", { name: "AI 터미널", exact: true });
     const screen = terminalPane.locator(".xterm-rows");
     await expect(screen).toContainText("무엇을 테스트할까요?");
-    await expect(terminalPane).toContainText("대화 환경 · dev");
+    await expect(terminalPane).toContainText("Claude 대화dev · 실행 중");
     await expect(terminalPane.getByRole("complementary", { name: "AI 결과", exact: true })).toHaveCount(0);
-    await expect(terminalPane.getByRole("button", { name: "결과 칸 열기", exact: true })).toBeVisible();
+    await expect(terminalPane.getByRole("button", { name: "결과 열기", exact: true })).toBeVisible();
     const firstCall = (await readAiCliCalls())[0];
     for (const flag of ["--session-id", "--restricted", "--strict-mcp-config", "--permission-mode", "acceptEdits"]) expect(firstCall.args).toContain(flag);
     expect(firstCall.args).toContain(backend);
@@ -267,7 +267,7 @@ process.stdin.on("data", chunk => {
     // Closed meanwhile: its button says a result waits to be saved, and the fixed result opens it again.
     await terminalPane.getByRole("button", { name: "결과 닫기", exact: true }).click();
     await expect(check).toHaveCount(0);
-    await expect(terminalPane.getByRole("button", { name: "결과 열기저장 전", exact: true })).toBeVisible();
+    await expect(terminalPane.getByRole("button", { name: "결과 열기 (저장 전)", exact: true })).toBeVisible();
     await expect(screen).toContainText("고쳐서 다시 저장했습니다");
     await expect(check).toContainText("바로 실행 가능");
     await check.getByRole("button", { name: "선택한 것 저장", exact: true }).click();

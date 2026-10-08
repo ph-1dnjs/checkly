@@ -135,9 +135,9 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved, onConfi
         </ul>
         {!tools.length && <p className="api-field-help">{chatStatus?.error ?? "Claude Code나 Codex CLI를 설치한 뒤 다시 확인하세요"}</p>}
       </section> : <AiTerminalPanel project={project} scope={scope} bridge={bridge} onBusy={chatActivity} onSaved={onSaved} toolName={aiToolNames[tool!]}
-        toolChoice={lockedTool => chatStatus && chatSettings && tools.length > 1 && <div className="api-ai-tool-row">
-          <AiToolSettings projectId={project.id} bridge={bridge} status={chatStatus} settings={chatSettings} lockedTool={lockedTool} disabled={busy} onBusy={setSettingsBusy} onSaved={setChatSettings} />
-          {!lockedTool && <button type="button" className="api-icon-button api-ai-refresh" aria-label="AI 다시 확인" title="AI 다시 확인" disabled={busy} onClick={() => setStatusRevision(value => value + 1)}><Icon name="refresh" size={16} /></button>}
+        toolChoice={chatStatus && chatSettings && tools.length > 1 && <div className="api-ai-tool-row">
+          <AiToolSettings projectId={project.id} bridge={bridge} status={chatStatus} settings={chatSettings} disabled={busy} onBusy={setSettingsBusy} onSaved={setChatSettings} />
+          <button type="button" className="api-icon-button api-ai-refresh" aria-label="AI 다시 확인" title="AI 다시 확인" disabled={busy} onClick={() => setStatusRevision(value => value + 1)}><Icon name="refresh" size={16} /></button>
         </div>}
         noSpec={noSpec} specNote={noSpec ? "가져온 명세가 없어 AI에게 줄 API가 없습니다. API 문서 탭에서 명세를 가져오세요." : specWarnings.join(" · ")} />}
     </> : <ol className="api-ai-steps" aria-label="AI 작성 순서">

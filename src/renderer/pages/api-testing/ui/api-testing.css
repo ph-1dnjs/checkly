@@ -1382,6 +1382,14 @@ body.panel-resizing { cursor:col-resize; user-select:none; }
 .api-ai-terminal-result { display:grid; gap:8px; }
 .api-ai-terminal-result > .api-ai-author-result { margin-top:0; padding-top:0; border-top:0; }
 @media (max-width:900px) { .api-ai-terminal-side { width:min(520px, 88%); } }
-/* A closed results panel with a result still to save says so on its button. */
-.api-testing-page button.api-ai-result-toggle.has-pending { border-color:var(--ck-color-wait); }
-.api-ai-result-badge { margin-left:6px; padding:1px 6px; border-radius:99px; background:var(--ck-color-wait-tint); color:var(--ck-color-wait-ink); font-size:11px; font-weight:700; }
+/* Session row: left-aligned state and actions. */
+.api-ai-terminal-heading { display:flex; align-items:center; flex-wrap:wrap; gap:12px; padding-bottom:10px; border-bottom:var(--ck-fx-hairline); }
+.api-ai-terminal-title { display:grid; gap:2px; margin-right:8px; }
+.api-ai-terminal-title strong { color:var(--api-ink); }
+/* The handle on the terminal's right edge opens the results panel; a dot marks a result not saved yet. */
+.api-testing-page button.api-ai-result-handle { position:absolute; top:16px; right:0; z-index:4; display:flex; align-items:center; gap:6px; min-height:0; padding:12px 6px; border:1px solid var(--api-border); border-right:0; border-radius:var(--ck-dim-radius-base) 0 0 var(--ck-dim-radius-base); background:var(--ck-color-canvas); color:var(--api-ink); font-size:12px; font-weight:700; writing-mode:vertical-rl; box-shadow:-2px 0 8px rgb(20 24 28 / 15%); }
+.api-testing-page button.api-ai-result-handle.has-pending { border-color:var(--ck-color-wait); }
+.api-ai-result-dot { width:8px; height:8px; border-radius:99px; background:var(--ck-color-wait); }
+.api-ai-terminal-side-head { display:flex; align-items:center; justify-content:space-between; }
+.api-ai-terminal-side-head strong { color:var(--api-ink); font-size:13px; }
+.api-testing-page .api-ai-terminal-side-head button.api-icon-button { padding:2px 8px; border-color:transparent; background:transparent; font-size:18px; line-height:1; }
