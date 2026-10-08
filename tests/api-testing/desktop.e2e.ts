@@ -243,6 +243,13 @@ process.stdin.on("data", chunk => {
     const screen = terminalPane.locator(".xterm-rows");
     await expect(screen).toContainText("무엇을 테스트할까요?");
     await expect(terminalPane).toContainText("Claude 대화dev · 실행 중");
+    // Every terminal row fits inside its frame: the last line (the CLI's status bar) is not cut off.
+    const fits = await terminalPane.evaluate(pane => {
+      const frame = pane.querySelector(".api-ai-terminal-screen")!.getBoundingClientRect();
+      const rows = pane.querySelector(".xterm-screen")!.getBoundingClientRect();
+      return rows.bottom <= frame.bottom + 0.5 && rows.right <= frame.right + 0.5;
+    });
+    if (!fits) throw new Error("Terminal rows overflow their frame");
     await expect(terminalPane.getByRole("complementary", { name: "AI 결과", exact: true })).toHaveCount(0);
     await expect(terminalPane.getByRole("button", { name: "결과 열기", exact: true })).toBeVisible();
     const firstCall = (await readAiCliCalls())[0];

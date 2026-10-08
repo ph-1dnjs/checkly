@@ -1362,9 +1362,11 @@ body.panel-resizing { cursor:col-resize; user-select:none; }
 /* In-app AI terminal. With a session it fills the page body (no page scroll): the CLI's own screen on
    the left at full height, the checks of its result file on the right in their own scroll. */
 .api-ai-terminal { display:grid; gap:12px; min-width:0; }
-.api-ai-terminal-screen { height:min(520px, 60vh); min-height:260px; padding:8px; border-radius:var(--ck-dim-radius-base); background:#14181c; overflow:hidden; }
+.api-ai-terminal-screen { height:min(520px, 60vh); min-height:260px; border-radius:var(--ck-dim-radius-base); background:#14181c; overflow:hidden; }
 .api-ai-terminal-screen.is-idle { display:none; }
-.api-ai-terminal-screen .xterm { height:100%; }
+/* The padding sits on .xterm, which xterm's fit subtracts; on the host (border-box) it would be counted as rows
+   and the last lines would be cut off. */
+.api-ai-terminal-screen .xterm { box-sizing:border-box; height:100%; padding:8px; }
 .api-page-body:has(.api-ai-terminal.is-active) { display:flex; flex-direction:column; overflow:hidden; padding-bottom:12px; }
 .api-page-body:has(.api-ai-terminal.is-active) > .api-ai-author { display:flex; flex-direction:column; flex:1 1 auto; min-height:0; max-width:none; padding-bottom:0; }
 .api-page-body:has(.api-ai-terminal.is-active) > .api-ai-author > * { flex:none; }
