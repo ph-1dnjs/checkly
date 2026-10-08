@@ -178,7 +178,7 @@ const CaseValueInput = ({
       </select>
     );
   }
-  if (field.type === "select-multiple" || Array.isArray(value)) {
+  if (field.type === "select-multiple" || field.type === "checkbox-group" || Array.isArray(value)) {
     return (
       <input
         aria-label={`${field.label || field.name} 값`}

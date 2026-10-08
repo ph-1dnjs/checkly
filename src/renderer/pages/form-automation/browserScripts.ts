@@ -1,10 +1,61 @@
 import type { FieldValue } from "./model";
+import { controlAdapters } from "./controlAdapters";
 
-export const discoverFieldsScript = `(() => {
+// Share discovery and activation rules so a custom control and its hidden input
+// are treated as one checkbox, including when replaying previously saved names.
+const checkboxRuntime = `
+  const checkboxSelector = 'input[type="checkbox"], [role="checkbox"], [role="switch"], [data-scope="checkbox"], [data-scope="switch"]';
+  const checkboxRootFor = (element) => element.closest('[data-scope="checkbox"][data-part="root"], [data-scope="switch"][data-part="root"]') || element.closest('[data-scope="checkbox"], [data-scope="switch"]');
+  const checkboxControlFor = (element) => {
+    const root = checkboxRootFor(element);
+    if (!root) return element;
+    return (root.matches('[role="checkbox"], [role="switch"]') ? root : root.querySelector('[role="checkbox"], [role="switch"]'))
+      || Array.from(root.querySelectorAll('input[type="checkbox"]')).find(visible)
+      || root;
+  };
+  const isCheckbox = (element) => element.matches(checkboxSelector);
+  const checkboxInputFor = (element) => element.matches('input[type="checkbox"]') ? element : (checkboxRootFor(element) || element).querySelector('input[type="checkbox"]');
+  const checkboxDisabled = (element) => Boolean(controlDisabled(element) || checkboxInputFor(element)?.disabled || element.closest('[aria-disabled="true"]'));
+  const checkboxState = (element) => {
+    if (element instanceof HTMLInputElement) return element.indeterminate ? null : element.checked;
+    const root = checkboxRootFor(element);
+    const aria = element.getAttribute('aria-checked') ?? root?.getAttribute('aria-checked');
+    if (aria != null) return aria === 'mixed' ? null : aria === 'true';
+    const state = element.getAttribute('data-state') || root?.getAttribute('data-state') || root?.querySelector('[data-part="control"]')?.getAttribute('data-state');
+    if (state) return state === 'indeterminate' ? null : state === 'checked';
+    if (element.hasAttribute('data-checked') || root?.hasAttribute('data-checked')) return true;
+    return checkboxInputFor(element)?.checked ?? false;
+  };
+  const checkboxValue = (element) => checkboxInputFor(element)?.value ?? element.getAttribute('value') ?? element.getAttribute('data-value') ?? 'on';
+  const fieldElementsFor = (scope, key) => [...new Set(Array.from(scope.querySelectorAll('[data-qa-autofill-name], [name], [data-name], [data-field-name], input[id], textarea[id], select[id], button[id], [role="combobox"][id], [role="group"][id]'))
+    .filter((element) => {
+      if (['data-qa-autofill-name', 'name', 'data-name', 'data-field-name'].some((attribute) => element.getAttribute(attribute) === key)) return true;
+      const formId = element.closest('form')?.id;
+      return element.id === key || Boolean(formId && (element.id === formId + '-' + key || element.id === formId + '_' + key));
+    })
+    .flatMap((element) => element.matches('input, textarea, select, button, [contenteditable="true"], [role="checkbox"], [role="switch"], [role="radio"], [role="combobox"]') || isCheckbox(element) || element.getAttribute('data-qa-autofill-type') === 'date-trigger'
+      ? [canonicalControl(element)] : Array.from(element.querySelectorAll('input, textarea, select, [role="checkbox"], [role="switch"], [role="radio"], [role="combobox"]')).map(canonicalControl))) ]
+    .filter((element) => isCheckbox(element) ? !checkboxDisabled(element) : choiceControlFor(element) ? !choiceDisabled(element) : !controlDisabled(element));
+  const setCheckbox = async (element, checked) => {
+    if (checkboxDisabled(element)) return false;
+    if (checkboxState(element) === checked) return true;
+    // React's checkbox onChange runs through click activation. Setting checked
+    // then dispatching change leaves controlled form state out of sync.
+    element.click();
+    element.dispatchEvent(new FocusEvent('blur', { bubbles: true, composed: true }));
+    element.dispatchEvent(new FocusEvent('focusout', { bubbles: true, composed: true }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    return checkboxState(element) === checked;
+  };
+`;
+
+export const discoverFieldsScript = `(async () => {
   const visible = (element) => element.getClientRects().length > 0 && getComputedStyle(element).visibility !== 'hidden';
+  ${checkboxRuntime}
+  ${controlAdapters}
   const dialogs = Array.from(document.querySelectorAll('[role="dialog"], dialog[open], [aria-modal="true"]')).filter(visible);
   const root = dialogs.at(-1) || document;
-  const candidates = Array.from(root.querySelectorAll('input, textarea, select, [contenteditable="true"], [role="radio"][id], button, [role="button"]'));
+  const candidates = [...new Set(Array.from(root.querySelectorAll('input, textarea, select, [contenteditable="true"], [role="radio"], button, [role="button"], [role="checkbox"], [role="switch"], [role="combobox"], [data-scope="checkbox"], [data-scope="switch"], [data-scope="radio-group"][data-part="item"]')).map(canonicalControl))];
   const ignored = new Set(['hidden', 'submit', 'button', 'reset', 'image']);
   const groups = new Map();
   const clean = (value) => String(value || '').replace(/\\s+/g, ' ').trim();
@@ -30,6 +81,12 @@ export const discoverFieldsScript = `(() => {
     return '';
   };
   const labelFor = (element) => {
+    const checkboxInput = isCheckbox(element) ? checkboxInputFor(element) : null;
+    const checkboxLabel = isCheckbox(element) ? (checkboxRootFor(element) || element).querySelector('[data-part="label"]')?.textContent : '';
+    const choiceRoot = choiceRootFor(element);
+    const arkLabel = choiceRoot?.querySelector('[data-part="label"]')?.textContent || '';
+    const group = isRadio(element) ? element.closest('[role="radiogroup"]') : null;
+    const groupLabel = group?.querySelector('[data-part="label"]')?.textContent || '';
     const formLabel = element.closest('[data-slot="form-item"]')?.querySelector('[data-slot="form-label"]')?.textContent || '';
     const labelledBy = element.getAttribute('aria-labelledby');
     const ariaLabelled = labelledBy ? labelledBy.split(/\\s+/).map((id) => document.getElementById(id)?.textContent || '').join(' ') : '';
@@ -37,7 +94,7 @@ export const discoverFieldsScript = `(() => {
     const previousLabel = element.parentElement?.querySelector(':scope > label')?.textContent || '';
     const isButton = element instanceof HTMLButtonElement || element.getAttribute('role') === 'button';
     const buttonText = isButton ? element.textContent : '';
-    return clean(formLabel || element.labels?.[0]?.textContent || element.getAttribute('aria-label') || ariaLabelled || wrappingLabel || previousLabel || buttonText || nearbyStructuralLabel(element) || element.getAttribute('placeholder') || element.name || element.textContent).replace(/\\s*\\*$/, '');
+    return clean(formLabel || groupLabel || arkLabel || element.labels?.[0]?.textContent || element.getAttribute('aria-label') || ariaLabelled || checkboxLabel || checkboxInput?.labels?.[0]?.textContent || wrappingLabel || previousLabel || buttonText || nearbyStructuralLabel(element) || element.getAttribute('placeholder') || element.name || element.textContent).replace(/\\s*\\*$/, '');
   };
   const searchHeadings = Array.from(root.querySelectorAll('h1, h2, h3, h4, legend, [role="heading"]')).filter((element) => /검색|필터|search|filter/i.test(clean(element.textContent)));
   const belongsToSearchArea = (element, fieldName, label) => {
@@ -53,62 +110,75 @@ export const discoverFieldsScript = `(() => {
       return Boolean(container && container !== document.body);
     });
   };
-  candidates.forEach((element, candidateIndex) => {
+  for (const [candidateIndex, element] of candidates.entries()) {
+    const checkbox = isCheckbox(element);
+    const checkboxInput = checkbox ? checkboxInputFor(element) : null;
     const role = element.getAttribute('role');
+    const choice = choiceControlFor(element);
+    const choiceRoot = choiceRootFor(element);
+    const hiddenSelect = choiceSelectFor(element);
     const candidateText = clean(element.getAttribute('aria-label') || element.getAttribute('placeholder') || element.textContent);
     const structuralLabel = nearbyStructuralLabel(element);
     const opensDialog = element.getAttribute('aria-haspopup') === 'dialog' || element.getAttribute('data-state') != null;
-    const dateTrigger = element.getAttribute('data-qa-autofill-type') === 'date-trigger' || ((element instanceof HTMLButtonElement || role === 'button') && (/날짜|기간|시작일|종료일|date|calendar/i.test(candidateText) || (opensDialog && /일자|일|기간|date/i.test(structuralLabel))));
-    const type = dateTrigger ? 'date-trigger' : element.isContentEditable ? 'contenteditable' : role === 'radio' ? 'radio' : (element.type || element.tagName.toLowerCase());
+    const dateTrigger = !checkbox && !choice && !isRadio(element) && (element.getAttribute('data-qa-autofill-type') === 'date-trigger' || ((element instanceof HTMLButtonElement || role === 'button') && (/날짜|기간|시작일|종료일|date|calendar/i.test(candidateText) || (opensDialog && /일자|일|기간|date/i.test(structuralLabel)))));
+    const type = checkbox ? (checkboxGroupFor(element) ? 'checkbox-group' : 'checkbox') : choice ? (choiceMultiple(element) ? 'select-multiple' : 'select-one') : dateTrigger ? 'date-trigger' : element.isContentEditable ? 'contenteditable' : isRadio(element) ? 'radio' : role === 'spinbutton' ? 'number' : element instanceof HTMLInputElement && (classRoot(element, 'picker') || element.closest('[data-scope="date-picker"]')) ? 'date' : (element.type || element.tagName.toLowerCase());
     const formId = element.closest('form')?.id || '';
     const label = dateTrigger ? clean(structuralLabel || labelFor(element)) : labelFor(element);
-    const rawId = element.id && formId && element.id.startsWith(formId + '-') ? element.id.slice(formId.length + 1).replace(/-\\d+$/, '') : '';
+    const rawId = element.id && formId && (element.id.startsWith(formId + '-') || element.id.startsWith(formId + '_')) ? element.id.slice(formId.length + 1).replace(/-\\d+$/, '') : '';
     const labelKey = label.replace(/\\s*\\*$/, '');
-    let fieldName = element.name || element.getAttribute('data-name') || element.getAttribute('data-field-name') || (dateTrigger ? '' : element.getAttribute('data-qa-autofill-name')) || rawId || labelNameMap.get(labelKey) || labelKey || ('qaField' + (candidateIndex + 1));
+    let fieldName = element.name || element.getAttribute('name') || element.getAttribute('data-name') || element.getAttribute('data-field-name') || checkboxInput?.name || hiddenSelect?.name || choiceRoot?.getAttribute('data-name') || (dateTrigger ? '' : element.getAttribute('data-qa-autofill-name')) || rawId || labelNameMap.get(labelKey) || labelKey || ('qaField' + (candidateIndex + 1));
     const meaningfulFile = type === 'file' && Boolean(element.name || rawId || element.id) && !element.classList.contains('ck-hidden') && !element.closest('.ck-editor');
+    const visibleCheckbox = (checkbox || isRadio(element)) && (visible(element) || Array.from((checkboxInput || radioInputFor(element))?.labels || []).some(visible));
     const searchField = belongsToSearchArea(element, fieldName, label);
     const plainInput = (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement || element instanceof HTMLSelectElement) && !element.closest('[role="grid"], table');
-    const hasFormContext = Boolean(element.name || element.closest('form, [data-slot="form-item"]') || element.isContentEditable || role === 'radio' || meaningfulFile || searchField || plainInput || dateTrigger);
-    if (!fieldName || !hasFormContext || ignored.has(type) || element.disabled || element.readOnly || (!visible(element) && !meaningfulFile)) return;
-    if (groups.has(fieldName) && type !== 'radio' && type !== 'checkbox') fieldName = fieldName + '__' + (candidateIndex + 1);
+    const hasFormContext = Boolean(element.name || element.closest('form, [data-slot="form-item"]') || element.isContentEditable || isRadio(element) || checkbox || choice || meaningfulFile || searchField || plainInput || dateTrigger);
+    const disabled = checkbox ? checkboxDisabled(element) : choice ? choiceDisabled(element) : controlDisabled(element);
+    if (!fieldName || !hasFormContext || ignored.has(type) || disabled || (!visible(element) && !meaningfulFile && !visibleCheckbox)) continue;
+    if (groups.has(fieldName) && type !== 'radio' && !checkbox) fieldName = fieldName + '__' + (candidateIndex + 1);
     element.setAttribute('data-qa-autofill-name', fieldName);
     element.setAttribute('data-qa-autofill-type', type);
     const existing = groups.get(fieldName);
-    const options = type === 'radio'
-      ? [{ value: element.value, label: clean(element.parentElement?.querySelector('label')?.textContent || element.value), disabled: element.disabled }]
+    const choiceOptions = choice ? await collectChoiceOptions(element) : [];
+    if (choice) await closeChoice(element);
+    const options = type === 'radio' || checkbox
+      ? [{ value: type === 'radio' ? radioValue(element) : checkboxValue(element), label: clean(element.closest('label')?.textContent || element.getAttribute('aria-label') || element.value), disabled: element.disabled }]
+      : choice ? choiceOptions.map(({ value, label, disabled }) => ({ value, label, disabled }))
       : element instanceof HTMLSelectElement
         ? Array.from(element.options).map((option) => ({ value: option.value, label: clean(option.textContent), disabled: option.disabled }))
         : [];
     if (existing) {
-      if (type === 'radio') existing.options.push(...options);
+      if (type === 'radio' || checkbox) existing.options.push(...options);
+      if (checkbox) existing.type = 'checkbox-group';
       existing.required = existing.required || element.required || element.getAttribute('aria-required') === 'true' || label.includes('*');
-      return;
+      continue;
     }
     groups.set(fieldName, {
       name: fieldName,
       label,
       type,
-      required: Boolean(element.required || element.getAttribute('aria-required') === 'true' || element.closest('[data-slot="form-item"]')?.querySelector('[data-slot="form-label"]')?.textContent?.includes('*')),
+      required: Boolean(element.required || checkboxInput?.required || element.getAttribute('aria-required') === 'true' || element.closest('[data-slot="form-item"]')?.querySelector('[data-slot="form-label"]')?.textContent?.includes('*')),
       placeholder: clean(element.getAttribute('placeholder') || element.querySelector?.('[data-placeholder]')?.getAttribute('data-placeholder')),
       minLength: Number(element.minLength) > 0 ? Number(element.minLength) : 0,
       maxLength: Number(element.maxLength) > 0 ? Number(element.maxLength) : 0,
-      min: element.getAttribute('min') || '', max: element.getAttribute('max') || '', pattern: element.getAttribute('pattern') || '',
+      min: element.getAttribute('min') || element.getAttribute('aria-valuemin') || '', max: element.getAttribute('max') || element.getAttribute('aria-valuemax') || '', pattern: element.getAttribute('pattern') || '',
       accept: type === 'file' ? element.getAttribute('accept') || '' : '',
       multiple: type === 'file' && Boolean(element.multiple),
       context: searchField ? 'search' : 'form',
       options,
     });
-  });
+  }
   return Array.from(groups.values());
 })()`;
 
-export const fillFieldsScript = (fields: Record<string, FieldValue>): string => `(() => {
+export const fillFieldsScript = (fields: Record<string, FieldValue>): string => `(async () => {
   const fields = ${JSON.stringify(fields)};
   const filled = []; const missing = []; const richText = []; const fileInputs = []; const dateTriggers = [];
   const visible = (element) => element.getClientRects().length > 0 && getComputedStyle(element).visibility !== 'hidden';
+  ${checkboxRuntime}
+  ${controlAdapters}
   const dialogs = Array.from(document.querySelectorAll('[role="dialog"], dialog[open], [aria-modal="true"]')).filter(visible);
   const scope = dialogs.at(-1) || document;
-  const elementsFor = (key) => Array.from(scope.querySelectorAll('[data-qa-autofill-name], [name], [data-name], [data-field-name]')).filter((element) => !element.disabled && (element.getAttribute('data-qa-autofill-name') === key || element.getAttribute('name') === key || element.getAttribute('data-name') === key || element.getAttribute('data-field-name') === key));
+  const elementsFor = (key) => fieldElementsFor(scope, key);
   const nativeSet = (element, property, value) => {
     const prototype = element instanceof HTMLInputElement ? HTMLInputElement.prototype : element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : element instanceof HTMLSelectElement ? HTMLSelectElement.prototype : Object.getPrototypeOf(element);
     const setter = Object.getOwnPropertyDescriptor(prototype, property)?.set;
@@ -120,38 +190,46 @@ export const fillFieldsScript = (fields: Record<string, FieldValue>): string => 
     element.dispatchEvent(new FocusEvent('blur', { bubbles: true, composed: true }));
     element.dispatchEvent(new FocusEvent('focusout', { bubbles: true, composed: true }));
   };
-  Object.entries(fields).forEach(([key, value]) => {
+  for (const [key, value] of Object.entries(fields)) {
     const elements = elementsFor(key);
-    if (!elements.length) { missing.push(key); return; }
+    if (!elements.length) { missing.push(key); continue; }
     const first = elements[0];
-    if (first.getAttribute('data-qa-autofill-type') === 'date-trigger') dateTriggers.push({ key, value });
+    if (choiceControlFor(first)) { if (!await setChoice(first, value)) { missing.push(key); continue; } }
+    else if (first.getAttribute('data-qa-autofill-type') === 'date-trigger') dateTriggers.push({ key, value });
     else if (first.type === 'file') {
       const token = 'qa-file-' + Date.now() + '-' + Math.random().toString(36).slice(2);
       first.setAttribute('data-qa-file-token', token);
       const config = value && typeof value === 'object' ? value : { valid: true, accept: first.accept || '', multiple: first.multiple };
       fileInputs.push({ key, token, valid: config.valid !== false, accept: config.accept || first.accept || '', multiple: Boolean(config.multiple || first.multiple) });
     } else if (first.type === 'radio' || first.getAttribute('role') === 'radio') {
-      if (value !== null && value !== undefined) elements.forEach((element) => {
-        const checked = String(element.value) === String(value);
-        if (element.getAttribute('role') === 'radio') { if (checked && element.getAttribute('aria-checked') !== 'true') element.click(); }
-        else { nativeSet(element, 'checked', checked); notify(element); }
-      });
-    } else if (first.type === 'checkbox') elements.forEach((element) => { nativeSet(element, 'checked', Array.isArray(value) ? value.map(String).includes(String(element.value)) : Boolean(value)); notify(element); });
+      if (value !== null && value !== undefined && !await setRadio(elements, value)) { missing.push(key); continue; }
+      if (value == null && elements.some((element) => element.checked || element.getAttribute('aria-checked') === 'true')) { missing.push(key); continue; }
+    } else if (isCheckbox(first)) {
+      if (Array.isArray(value) && value.some((entry) => !elements.some((element) => String(checkboxValue(element)) === String(entry)))) { missing.push(key); continue; }
+      let applied = true;
+      for (const element of elements) {
+        const checked = Array.isArray(value) ? value.map(String).includes(String(checkboxValue(element))) : Boolean(value);
+        if (!await setCheckbox(element, checked)) applied = false;
+      }
+      if (!applied) { missing.push(key); continue; }
+    }
     else if (first instanceof HTMLSelectElement && first.multiple) { const selected = Array.isArray(value) ? value.map(String) : [String(value ?? '')]; Array.from(first.options).forEach((option) => { option.selected = selected.includes(String(option.value)); }); notify(first); }
     else if (first.isContentEditable) richText.push({ key, value: String(value ?? '') });
-    else { nativeSet(first, 'value', String(value ?? '')); notify(first); }
+    else { if (!await setTextControl(first, value)) { missing.push(key); continue; } }
     filled.push(key);
-  });
+  }
   return { filled, missing, richText, fileInputs, dateTriggers };
 })()`;
 
-export const clearFieldsScript = (keys: string[]): string => `(() => {
+export const clearFieldsScript = (keys: string[]): string => `(async () => {
   const keys = ${JSON.stringify(keys)};
   const cleared = []; const missing = [];
   const visible = (element) => element.getClientRects().length > 0 && getComputedStyle(element).visibility !== 'hidden';
+  ${checkboxRuntime}
+  ${controlAdapters}
   const dialogs = Array.from(document.querySelectorAll('[role="dialog"], dialog[open], [aria-modal="true"]')).filter(visible);
   const scope = dialogs.at(-1) || document;
-  const elementsFor = (key) => Array.from(scope.querySelectorAll('[data-qa-autofill-name], [name], [data-name], [data-field-name]')).filter((element) => !element.disabled && (element.getAttribute('data-qa-autofill-name') === key || element.getAttribute('name') === key || element.getAttribute('data-name') === key || element.getAttribute('data-field-name') === key));
+  const elementsFor = (key) => fieldElementsFor(scope, key);
   const hasDateTrigger = keys.some((key) => elementsFor(key).some((element) => element.getAttribute('data-qa-autofill-type') === 'date-trigger'));
   const pageResetButton = hasDateTrigger ? Array.from(scope.querySelectorAll('button, [role="button"]')).filter(visible).find((element) => /^(초기화|reset)$/i.test(String(element.textContent || '').trim())) : null;
   if (pageResetButton) pageResetButton.click();
@@ -162,20 +240,26 @@ export const clearFieldsScript = (keys: string[]): string => `(() => {
   };
   const notify = (element) => { element.dispatchEvent(new Event('input', { bubbles: true, composed: true })); element.dispatchEvent(new Event('change', { bubbles: true, composed: true })); element.dispatchEvent(new FocusEvent('blur', { bubbles: true, composed: true })); element.dispatchEvent(new FocusEvent('focusout', { bubbles: true, composed: true })); };
   const radioText = (element) => String(element.closest('label')?.textContent || element.parentElement?.textContent || '').replace(/\\s+/g, ' ').trim();
-  keys.forEach((key) => {
+  for (const key of keys) {
     const elements = elementsFor(key);
-    if (!elements.length) { missing.push(key); return; }
+    if (!elements.length) { missing.push(key); continue; }
     const first = elements[0];
-    if (first.getAttribute('data-qa-autofill-type') === 'date-trigger') { if (!pageResetButton) missing.push(key + '(초기화 버튼 없음)'); else cleared.push(key); return; }
+    if (choiceControlFor(first)) { if (await setChoice(first, [])) cleared.push(key); else missing.push(key); continue; }
+    if (first.getAttribute('data-qa-autofill-type') === 'date-trigger') { if (!pageResetButton) missing.push(key + '(초기화 버튼 없음)'); else cleared.push(key); continue; }
     if (first.type === 'radio' || first.getAttribute('role') === 'radio') {
-      const preferred = elements.find((element) => /^(all|전체)?$/i.test(String(element.value || '')) || /전체/.test(radioText(element)));
-      elements.forEach((element) => { const checked = element === preferred; if (element.getAttribute('role') === 'radio') { if (checked && element.getAttribute('aria-checked') !== 'true') element.click(); } else { nativeSet(element, 'checked', checked); notify(element); } });
-    } else if (first.type === 'checkbox') elements.forEach((element) => { nativeSet(element, 'checked', false); notify(element); });
+      const preferred = elements.find((element) => /^(all|전체)?$/i.test(String(radioValue(element))) || /전체/.test(radioText(element)));
+      if (preferred) { if (!await setRadio(elements, radioValue(preferred))) { missing.push(key); continue; } }
+      else if (elements.some((element) => element.checked || element.getAttribute('aria-checked') === 'true')) { missing.push(key); continue; }
+    } else if (isCheckbox(first)) {
+      let applied = true;
+      for (const element of elements) if (!await setCheckbox(element, false)) applied = false;
+      if (!applied) { missing.push(key); continue; }
+    }
     else if (first instanceof HTMLSelectElement) { if (first.multiple) Array.from(first.options).forEach((option) => { option.selected = false; }); else nativeSet(first, 'value', Array.from(first.options).find((option) => !option.disabled)?.value || ''); notify(first); }
     else if (first.isContentEditable) { first.focus(); first.textContent = ''; notify(first); }
-    else { nativeSet(first, 'value', ''); notify(first); }
+    else { if (!await setTextControl(first, '')) { missing.push(key); continue; } }
     cleared.push(key);
-  });
+  }
   return { cleared, missing };
 })()`;
 
