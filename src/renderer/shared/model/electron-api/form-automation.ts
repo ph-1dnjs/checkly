@@ -1,5 +1,9 @@
 // src/app/ipc/form-automation/bridge.ts 가 preload에서 노출하는 API.
+import type { FormAutomationStorageKey, FormAutomationStoredState, FormAutomationStoredValues } from "../../../../app/ipc/form-automation/storageTypes";
+
 export type FormAutomationApi = {
+  loadFormAutomationState: (legacy: FormAutomationStoredValues) => Promise<FormAutomationStoredState>;
+  setFormAutomationState: (key: FormAutomationStorageKey, value: unknown) => Promise<void>;
   insertFormAutomationText: (input: {
     webContentsId: number;
     text: string;

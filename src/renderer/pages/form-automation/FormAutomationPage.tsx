@@ -36,12 +36,14 @@ import {
 import { NetworkPanel, OverridePanel, StoragePanel } from "./InspectorPanels";
 import { OpenApiDialog } from "./OpenApiDialog";
 import { ScreenshotEditor, type ScreenshotCapture } from "./ScreenshotEditor";
+import { FormAutomationStorageProvider, useStoredState } from "./StoredState";
 import {
   EMPTY_STORAGE_SNAPSHOT,
   apiEventClipboardText,
   browserStorageScript,
   contractForEvent,
   isSessionError,
+  mergeNetworkEvents,
   normalizedEndpointPath,
   overrideResponseSchema,
   safeJson,
@@ -85,23 +87,6 @@ const DEFAULT_URL = "https://example.com";
 const MaterialIcon = ({ name }: { name: string }): ReactElement => (
   <span className="msi" aria-hidden="true">{name}</span>
 );
-
-const readStored = <T,>(key: string, fallback: T): T => {
-  try {
-    const value = window.localStorage.getItem(key);
-    return value ? (JSON.parse(value) as T) : fallback;
-  } catch {
-    return fallback;
-  }
-};
-
-const useStoredState = <T,>(key: string, fallback: T) => {
-  const [value, setValue] = useState<T>(() => readStored(key, fallback));
-  useEffect(() => {
-    window.localStorage.setItem(key, JSON.stringify(value));
-  }, [key, value]);
-  return [value, setValue] as const;
-};
 
 const currentWebviewUrl = (webview: WebviewElement | null, fallback: string) => {
   try {
@@ -226,7 +211,11 @@ const CaseValueInput = ({
   );
 };
 
-export const FormAutomationPage = (): ReactElement => {
+export const FormAutomationPage = (): ReactElement => (
+  <FormAutomationStorageProvider><FormAutomationContent /></FormAutomationStorageProvider>
+);
+
+const FormAutomationContent = (): ReactElement => {
   const [targetUrl, setTargetUrl] = useStoredState("checkly-form-target-url", DEFAULT_URL);
   const [browserTabs, setBrowserTabs] = useStoredState<BrowserSession[]>(
     "checkly-form-browser-sessions",
@@ -364,7 +353,10 @@ export const FormAutomationPage = (): ReactElement => {
           ? `${fields.length}개 필드를 감지했습니다.${searchCount ? ` 검색 조건 ${searchCount}개가 포함됩니다.` : ""} 케이스를 누르면 즉시 입력됩니다.`
           : "현재 화면에서 입력 가능한 폼 또는 검색 필드를 찾지 못했습니다.",
       );
-      if (selectDefault && fields.length) setSelectedCaseId(detectedCases(fields)[0]?.id ?? "");
+      if (selectDefault && fields.length) {
+        // Delayed page discovery must not replace a case the user just selected.
+        setSelectedCaseId(current => current || detectedCases(fields)[0]?.id || "");
+      }
       return fields;
     } catch (error) {
       setDiscoveryStatus(`필드 감지 실패: ${error instanceof Error ? error.message : String(error)}`);
@@ -857,7 +849,7 @@ export const FormAutomationPage = (): ReactElement => {
     setCaseDraftFields(cloneFields(selectedCase?.fields));
   }, [selectedCase?.id, JSON.stringify(selectedCase?.fields)]);
 
-  const saveCase = () => {
+  const saveCase = async () => {
     if (!selectedCase?.fieldMeta.length || !caseDraftName.trim()) {
       showToast(!selectedCase?.fieldMeta.length ? "저장할 자동 생성 필드가 없습니다." : "케이스 제목을 입력해 주세요.");
       return;
@@ -875,9 +867,10 @@ export const FormAutomationPage = (): ReactElement => {
       savedAt: new Date().toISOString(),
       fields: cloneFields(caseDraftFields),
     };
-    setSavedCases((items) => items.some((item) => item.id === id)
+    const saved = await setSavedCases((items) => items.some((item) => item.id === id)
       ? items.map((item) => item.id === id ? next : item)
       : [next, ...items]);
+    if (!saved) { showToast("자동 입력 케이스를 저장하지 못했습니다. 다시 저장해 주세요."); return; }
     setSelectedCaseId(id);
     showToast(selectedCase.userSaved ? "수정한 자동 입력 값을 저장했습니다." : "새 자동 입력 케이스를 저장했습니다.");
   };

@@ -1,4 +1,5 @@
-import { ipcMain } from "electron";
+import { app, ipcMain } from "electron";
+import path from "node:path";
 import type { MainDomain } from "../domain";
 import {
   appendFormAutomationSessionEvent,
@@ -16,9 +17,14 @@ import {
   type FormAutomationTextInput,
 } from "./formAutomation";
 import { attachFormAutomationWebviews } from "./webview";
+import { FormAutomationStorage } from "./storage";
+import type { FormAutomationStorageKey } from "./storageTypes";
 
 export const formAutomationDomain: MainDomain = {
   register: () => {
+    const storage = new FormAutomationStorage(path.join(app.getPath("userData"), "form-automation-state.json"));
+    ipcMain.handle("form-automation:load-state", (_event, legacy: unknown) => storage.load(legacy));
+    ipcMain.handle("form-automation:set-state", (_event, key: FormAutomationStorageKey, value: unknown) => storage.set(key, value));
     ipcMain.handle(
       "form-automation:insert-text",
       (_event, input: FormAutomationTextInput) => insertFormAutomationText(input),
