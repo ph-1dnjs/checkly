@@ -104,6 +104,7 @@ main 프로세스는 Electron `app.getPath('userData')` 아래에 앱 데이터�
 | 기본 시나리오 원문 | `userData/scenarios.md` | Markdown | 앱 시작 시 첫 시나리오 복원 |
 | 마커 좌표·표시 정보 | `userData/marker-positions.json` | JSON | 제목+URL과 단계 속성으로 재결합 |
 | 최근 선택 폴더 | `userData/scenario-folder.json` | JSON | 선택 화면 진입 시 목록 재조회 |
+| 폼 자동 입력 케이스·세션·설정 | `userData/form-automation-state.json` | 버전 지정 JSON + `.bak` | 화면 진입 시 복원, 기존 localStorage 최초 이전 |
 | 실행 리포트 | `userData/reports/run-{timestamp}/` | JSON + HTML | 생성만 하며 앱 내 목록 복원은 없음 |
 | 임시 녹화 | `userData/videos/temporary/` | WebM | 실행 후 runs로 이동 |
 | 실행 영상 | `userData/videos/runs/` | WebM | 다운로드·병합 원본, 앱 내 과거 목록 복원은 없음 |
