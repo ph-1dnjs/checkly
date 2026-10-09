@@ -198,7 +198,7 @@ process.stdin.on("data", chunk => {
     await page.keyboard.press("Escape");
     await expect(page.getByRole("dialog", { name: "{ } 전역변수", exact: true })).not.toBeVisible();
     await expect(page.getByRole("button", { name: "{ } 전역변수", exact: true })).toBeFocused();
-    // Globals: "+ 변수 추가" opens the form in place.
+    // Globals: "+ 변수 추가" opens the form in a modal over the list.
     const globals = page.getByRole("dialog", { name: "{ } 전역변수", exact: true });
     await page.getByRole("button", { name: "{ } 전역변수", exact: true }).click();
     await globals.getByRole("button", { name: "+ 변수 추가", exact: true }).click();
@@ -605,6 +605,11 @@ process.stdin.on("data", chunk => {
     // The extracted token and the session cookie are shared by the project.
     await page.getByRole("button", { name: "{ } 전역변수", exact: true }).click();
     await shot("globals");
+    await globals.getByRole("button", { name: "수정", exact: true }).first().click();
+    await shot("globals-edit");
+    await page.keyboard.press("Escape");
+    await expect(globals.getByRole("dialog", { name: /수정$/ })).toHaveCount(0);
+    await expect(globals).toBeVisible();
     const tokenRow = globals.locator(".api-global-row").filter({ hasText: "accessToken" });
     await expect(tokenRow).toBeVisible();
     // Values in the globals panel start hidden; [값 보기] shows them.

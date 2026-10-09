@@ -1466,3 +1466,25 @@ body.panel-resizing { cursor:col-resize; user-select:none; }
 .api-testing-page fieldset.api-ai-ask-target { display:grid; gap:6px; min-width:0; margin:0; padding:0; border:0; background:none; }
 .api-testing-page .api-ai-ask-target legend { float:left; width:100%; margin:0 0 6px; padding:0; color:var(--api-ink); font-size:12.5px; font-weight:700; }
 .api-ai-ask-target small { margin-left:4px; color:var(--ck-color-text-mute); font-size:11.5px; }
+/* 전역변수 · 쿠키: only what is saved. The panel fits above the bottom bar; the variable list is its one scroll
+   (any number of variables), the header and the cookies stay. Adding and editing open a modal. */
+.shared-popover-panel:has(.api-globals-panel) { display:flex; flex-direction:column; width:min(520px, calc(100vw - 64px)); max-height:min(640px, calc(100dvh - 260px)); padding:14px 16px; overflow:hidden; }
+.api-testing-page .shared-popover-panel:has(.api-globals-panel) > .shared-popover-close { top:10px; right:8px; min-height:0; padding:2px 8px; border:0; background:transparent; color:var(--api-muted); font-size:20px; line-height:1; }
+.api-testing-page .shared-popover-panel:has(.api-globals-panel) > .shared-popover-close:hover { color:var(--api-ink); }
+.shared-popover-panel .api-globals-panel { flex:1 1 auto; min-height:0; }
+.shared-popover-panel .api-globals-panel > * { flex:none; }
+.shared-popover-panel .api-globals-panel > h2 { margin:0 32px 2px 0; font-size:15px; line-height:24px; }
+.shared-popover-panel .api-globals-panel .api-globals-note { margin:0 0 6px; }
+.shared-popover-panel .api-globals-panel .api-globals-section-heading { margin:10px 0 6px; }
+.api-testing-page .api-globals-panel input.api-global-search { width:100%; box-sizing:border-box; margin:0 0 6px; }
+.shared-popover-panel .api-globals-panel > .api-global-list { flex:0 1 auto; min-height:64px; max-height:none; overflow-y:auto; gap:0; padding:0; border:0; border-top:var(--ck-fx-hairline); border-bottom:var(--ck-fx-hairline); border-radius:0; background:none; }
+.shared-popover-panel .api-global-row { padding:8px 2px; border:0; border-bottom:var(--ck-fx-hairline-row); border-radius:0; background:none; }
+.shared-popover-panel .api-global-row:last-child { border-bottom:0; }
+.shared-popover-panel .api-global-row:hover { background:var(--ck-color-surface-hover); }
+.shared-popover-panel .api-global-row:focus-within { box-shadow:none; background:var(--ck-color-surface-hover); }
+.shared-popover-panel .api-global-actions { padding-left:0; border-left:0; }
+.shared-popover-panel .api-cookie-list { border-top:0; }
+.api-global-modal { display:grid; gap:12px; }
+.api-global-modal > header { margin-bottom:0; }
+.api-testing-page .api-global-modal fieldset { margin:0; padding:0; border:0; }
+.api-global-modal footer { margin-top:4px; }
