@@ -27,7 +27,12 @@ test("AI guide lists every API, writes schemas to a file, and leaks no values, U
     for (const secret of ["session-secret", "example-secret", "default-secret", "body-secret", "response-secret", "private-server.example.com", "admin-private.example.com"]) assert.equal(text.includes(secret), false, secret);
     // The API list lives only in the catalog file; the guide names the servers.
     assert.ok(text.includes("- 회원 (API 2개)") && text.includes("- 관리자 (API 2개)") && !text.includes("POST /login"));
-    assert.ok(text.includes("- accessToken (string) ← 만듦: 없음(직접 입력)"));
+    // Saved state lives in its own file (no values); the guide points at it.
+    const stateFile = path.join(dir, "ai", projectId, "project-state.json");
+    assert.ok(text.includes(stateFile));
+    const state = await readFile(stateFile, "utf8");
+    assert.deepEqual(JSON.parse(state).globals, [{ name: "accessToken", type: "string", producers: [], consumers: [] }]);
+    assert.equal(state.includes("session-secret"), false);
     // Schemas go to the catalog file, also without secrets.
     const catalog = await readFile(path.join(dir, "ai", projectId, "api-catalog.json"), "utf8");
     assert.ok(catalog.includes('"api": "POST /login"') && catalog.includes('"api": "POST /admin-login"') && catalog.includes('"api": "GET /not-selected"'));

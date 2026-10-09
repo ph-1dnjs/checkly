@@ -14,6 +14,9 @@
 | spec-sync / delete-spec-account | scope → 동기화·계정 저장 여부/완료 |
 | get-request-auth / set-request-auth | scope, 변수 이름 또는 null → 연결 이름/완료 |
 | list-globals / set-global / delete-global | 프로젝트, 이름·JSON 값 → 원문 값 목록/완료 |
+| ai-chat-status / get-ai-chat-settings / save-ai-chat-settings / choose-directories | 설치된 AI CLI(`{ tools: [{ tool: claude\|codex, version }] }`) / 프로젝트의 대화 설정(`{ folders: { [serverId]: 절대경로[] }, tool? }`, 이 PC 전용 `ai-chat-settings.json`) 조회·저장 / 폴더 다중 선택 |
+| get-ai-terminal / start-ai-terminal / resume-ai-terminal / write-ai-terminal / resize-ai-terminal / clear-ai-terminal | 프로젝트의 터미널 세션(`{ tool, environmentId, running, buffer, saved? }`) / `{ scope, size }`로 새 세션(이미 있으면 거부) / 저장된 세션 다시 열기 / 키 입력(응답 없음) / 크기 변경(응답 없음) / 세션 종료(CLI 종료, 세션 정보·마지막 결과 삭제). 이벤트 `api-testing:ai-terminal-event`로 `data`(출력)·`exit`·`result`(결과 파일 저장)를 보냄. 세션 정보만 `ai-terminal-<projectId>.json`에 저장, 출력은 메모리(최근 400KB). 웹 개발 모드는 미지원 |
+| check-ai-terminal-result / mark-ai-terminal-result-saved / refresh-ai-terminal-files | 세션의 결과 파일(`ai/<projectId>/chat/scenarios.yaml`) 검사(없으면 null) / 그 결과에서 저장했음을 기억(메모리) / AI가 읽는 API 파일·프로젝트 상태 파일 다시 쓰기 |
 | copy-ai-prompt / get-ai-prompt | `{ scope: 프로젝트·환경, tags?, operations? }` → 스키마 파일을 쓰고 가이드를 클립보드로 / 같은 가이드 텍스트. operations는 `["<serverId> <METHOD path>"]` 형식 |
 | read-ai-result | 프로젝트·환경 → 결과 파일의 경로·내용·수정 시각, 없으면 null(2MB 이하) |
 | check-ai-scenarios | 프로젝트·환경, AI 결과 텍스트 → 검사된 초안·스위트(저장하지 않음) |

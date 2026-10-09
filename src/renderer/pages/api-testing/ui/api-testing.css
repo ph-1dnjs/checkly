@@ -70,7 +70,7 @@ html:has(.api-diagram-dialog[open]) { overflow:hidden; }
 .api-compose-server-empty { padding:24px 8px; }
 .api-compose-editor { min-width:0; min-height:0; overflow:auto; border-left:1px solid var(--ck-color-line-strong); padding:0 20px 96px; overscroll-behavior:contain; scrollbar-gutter:stable; }
 .api-compose-editor .api-builder { margin-top:12px; }
-.api-compose-editor .api-builder > footer { bottom:0; border:0; border-top:1px solid var(--ck-color-line-strong); border-radius:0; z-index:3; }
+.api-compose-editor .api-builder > footer { border:0; border-top:1px solid var(--ck-color-line-strong); border-radius:0; z-index:3; }
 .api-compose-editor .api-builder-step > details > summary { color:var(--ck-color-blue-action); }
 .api-compose-layout .swagger-ui .info { margin:16px 0; }
 .api-compose-layout .swagger-ui :is(.information-container,.scheme-container) { display:none; }
@@ -475,7 +475,7 @@ html:has(.api-diagram-dialog[open]) { overflow:hidden; }
 .api-response-action-options { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
 .api-response-action-modal .api-action-editor,.api-response-action-modal .api-verification-form { margin:0; }
 @media(max-width:600px) { .api-response-action-options { grid-template-columns:1fr; } }
-.api-builder > footer { position:sticky; bottom:80px; background:var(--api-surface); padding:12px; border:1px solid var(--api-border); border-radius:var(--ck-dim-radius-base); }
+.api-builder > footer { background:var(--api-surface); padding:12px; border:1px solid var(--api-border); border-radius:var(--ck-dim-radius-base); }
 .api-response-running { padding:20px; border:1px solid var(--api-border); border-top:1px solid var(--api-border); background:var(--api-surface); }
 .api-response-running h2 { margin-bottom:16px; }
 .api-response-running .loading-progress { max-width:720px; }
@@ -592,7 +592,7 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 .api-step-description table { width:100%; border-collapse:collapse; }
 .api-step-description :is(td,th) { border:1px solid var(--ck-color-line-strong); padding:6px; }
 .api-step-description pre { overflow:auto; }
-.api-compose-editor .api-builder > footer { position:sticky; bottom:0; margin:12px -20px 0; padding:12px 20px max(12px,env(safe-area-inset-bottom,0px)); background:rgb(255 255 255 / 96%); box-shadow:none; border-top:var(--ck-fx-hairline); }
+.api-compose-editor .api-builder > footer { margin:12px -20px 0; padding:12px 20px max(12px,env(safe-area-inset-bottom,0px)); background:rgb(255 255 255 / 96%); box-shadow:none; border-top:var(--ck-fx-hairline); }
 @media(max-width:900px) { .api-compose-editor .api-builder > footer { margin-left:-12px; margin-right:-12px; padding-left:12px; padding-right:12px; } }
 @media(max-width:900px) { .api-testing-page:has(.api-compose-layout) .api-compose-layout { grid-template-columns:1fr; grid-template-rows:minmax(0,38%) minmax(0,62%); overflow:hidden; } }
 .api-testing-page:has(.api-compose-layout) .api-compose-layout.api-edit-layout { grid-template-columns:clamp(240px, var(--api-summary-width, 33%), 60%) minmax(0,1fr); grid-template-rows:minmax(0,1fr); }
@@ -894,7 +894,7 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 .api-env-head { color:var(--api-muted); font-size:11px; font-weight:600; }
 .api-project-removal { display:flex!important; flex-direction:row!important; align-items:flex-start; gap:8px; margin:0; padding:12px; border-left:3px solid var(--ck-color-wait); background:var(--ck-color-line-faint); color:var(--ck-color-wait-ink); font-size:12px; line-height:1.6; }
 .api-project-removal input { flex:none; margin-top:3px; }
-.api-project-form-footer { position:sticky; bottom:96px; display:flex; align-items:center; gap:12px; padding:12px 0; border-top:1px solid var(--api-border); background:var(--api-surface); }
+.api-project-form-footer { position:static; display:flex; flex-wrap:wrap; align-items:center; gap:12px; padding:12px 0; border-top:1px solid var(--api-border); background:var(--api-surface); }
 .api-project-form-footer .shared-popover { margin-left:0; }
 .api-project-form-footer .shared-popover > button { color:var(--ck-color-fail-ink); }
 .api-project-form-actions { display:flex; gap:8px; margin-left:auto; }
@@ -1024,7 +1024,7 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 .api-run-flow-tools { margin-bottom:8px!important; }
 /* AI authoring: the three steps as a numbered row */
 /* AI author: three steps top to bottom, each with its own actions. */
-.api-ai-steps { display:grid; gap:10px; margin:8px 0 0; padding:0; list-style:none; counter-reset:ai-step; }
+.api-ai-steps { display:grid; gap:10px; margin:0; padding:0; list-style:none; counter-reset:ai-step; }
 .api-ai-steps > li { min-width:0; padding:14px 16px; border:1px solid var(--api-border); border-radius:var(--ck-dim-radius-base); background:var(--api-surface); counter-increment:ai-step; }
 .api-ai-steps > li > header { display:grid; gap:2px; font-size:12.5px; word-break:keep-all; }
 .api-ai-steps > li > header strong { color:var(--api-ink); font-size:13.5px; }
@@ -1085,9 +1085,8 @@ body.panel-resizing { cursor:col-resize; user-select:none; }
 .api-doc-info { position:relative; }
 .api-doc-info:not(.is-open) .swagger-ui .info .description, .api-doc-info:not(.is-open) .info > .description, .api-doc-info:not(.is-open) .info .renderedMarkdown { display:none; }
 .api-doc-info-toggle { margin:0 0 8px; }
-.api-swagger-renderer .api-doc-search-tools { position:sticky; top:0; z-index:20; margin:0 0 12px; padding:10px 20px; background:var(--ck-color-canvas); border-bottom:1px solid var(--api-border); }
-/* Scrolled-to results land below the sticky tools row, not under it. */
-.api-swagger-renderer .swagger-ui :is(.live-responses-table, .responses-inner > div > div, .opblock) { scroll-margin-top:120px; }
+.api-swagger-renderer .api-doc-search-tools { margin:0 0 12px; padding:10px 20px; background:var(--ck-color-canvas); border-bottom:1px solid var(--api-border); }
+.api-swagger-renderer .swagger-ui :is(.live-responses-table, .responses-inner > div > div, .opblock) { scroll-margin-top:16px; }
 .api-secret-field { display:flex; gap:6px; }
 .api-secret-field > input { flex:1; min-width:0; }
 .api-secret-field > button { flex:none; }
@@ -1268,3 +1267,224 @@ body.panel-resizing { cursor:col-resize; user-select:none; }
 .api-testing-page .api-detail-heading h2 { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; overflow-wrap:anywhere; }
 /* Prose (a scenario's description) reads in the UI font; code-like text areas stay monospace. */
 .api-testing-page textarea.api-prose-input:not(.swagger-ui textarea) { font-family:inherit; font-size:inherit; font-variant-numeric:normal; }
+
+/* AI 작성 도우미: 작성 방식 전환과 앱 안 AI 대화 */
+.api-ai-mode { display:inline-flex; gap:2px; margin:4px 0 12px; padding:2px; border:1px solid var(--api-border); border-radius:var(--ck-dim-radius-base); }
+.api-ai-mode button { border:0; padding:5px 12px; background:transparent; color:var(--ck-color-text-secondary); }
+.api-ai-mode button[aria-selected="true"] { background:var(--ck-color-blue-tint-soft); color:var(--ck-color-blue-action); font-weight:700; }
+.api-ai-author:has(.api-ai-chat) { max-width:none; padding-bottom:0; }
+.api-ai-chat { display:grid; gap:20px; align-items:start; }
+.api-ai-chat-main { display:grid; gap:12px; min-width:0; max-width:900px; }
+.api-ai-chat-folder-server { display:grid; gap:4px; }
+.api-ai-chat-folder-server > span { font-weight:700; color:var(--ck-color-text-ink); }
+.api-ai-chat-folder-server ul { display:grid; gap:2px; margin:0; padding:0; list-style:none; }
+.api-ai-chat-folder-server li { display:flex; gap:8px; align-items:center; min-width:0; }
+.api-ai-chat-folder-server li code { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.api-ai-chat-folder-server .api-actions { display:flex; gap:6px; margin:0; }
+.api-ai-chat-folder-server .api-actions input { flex:1; min-width:0; }
+.api-ai-chat-model { max-width:240px; }
+.api-ai-chat-heading { display:flex; justify-content:space-between; align-items:center; gap:12px; padding-bottom:8px; border-bottom:var(--ck-fx-hairline); }
+.api-ai-chat-heading > div:first-child { display:grid; gap:4px; min-width:0; }
+.api-ai-chat-heading-actions { display:flex; align-items:center; gap:16px; flex:none; }
+.api-ai-chat-messages { display:grid; gap:10px; margin:0; padding:0; list-style:none; }
+.api-ai-chat-message { display:grid; gap:6px; max-width:100%; padding:10px 12px; border-radius:var(--ck-dim-radius-base); background:var(--ck-color-surface-subtle); }
+.api-ai-chat-message.is-user { justify-self:end; max-width:80%; background:var(--ck-color-blue-tint-soft); }
+.api-ai-chat-message.is-checkly { border-left:3px solid var(--ck-color-blue-action); background:transparent; }
+.api-ai-chat-message.is-running { opacity:.85; }
+.api-ai-chat-from { color:var(--ck-color-blue-action); font-size:11px; font-weight:700; }
+.api-ai-chat-text { margin:0; white-space:pre-wrap; overflow-wrap:anywhere; }
+.api-ai-chat-tools summary { color:var(--ck-color-text-mute); font-size:11px; cursor:pointer; }
+.api-ai-chat-tools ul { margin:4px 0 0; padding-left:16px; font-size:11px; }
+.api-ai-chat-message .api-ai-author-result { margin-top:4px; }
+.api-ai-chat-input { display:grid; gap:6px; position:sticky; bottom:0; z-index:1; padding:10px 0 104px; border-top:var(--ck-fx-hairline); background:var(--ck-color-canvas); }
+.api-ai-chat-input textarea { width:100%; resize:vertical; }
+.api-ai-chat-input .api-actions { display:flex; justify-content:flex-end; margin:0; }
+.api-ai-author-heading { display:flex; align-items:center; gap:12px; margin:0 0 12px; }
+.api-ai-tool-row { display:flex; align-items:center; gap:4px; }
+.api-testing-page button.api-ai-refresh { padding:3px; border-color:transparent; background:transparent; color:var(--ck-color-text-mute); }
+.api-testing-page button.api-ai-refresh:hover { color:var(--ck-color-blue-action); }
+/* A segmented switch, unlike the underlined page tabs above: one gray track, the chosen way raised in white. */
+.api-ai-author-heading .api-ai-mode { gap:2px; margin:0; padding:3px; border:0; border-radius:8px; background:var(--ck-color-surface-subtle); }
+.api-testing-page .api-ai-author-heading .api-ai-mode button { min-height:0; padding:5px 12px; border:0; border-radius:6px; background:transparent; color:var(--ck-color-text-secondary); font-weight:500; box-shadow:none; }
+.api-testing-page .api-ai-author-heading .api-ai-mode button:hover:not([aria-selected="true"]) { color:var(--api-ink); }
+.api-testing-page .api-ai-author-heading .api-ai-mode button[aria-selected="true"] { background:var(--ck-color-canvas); color:var(--api-ink); font-weight:700; box-shadow:0 1px 2px rgb(20 24 28 / 12%), 0 0 0 1px rgb(20 24 28 / 4%); }
+.api-ai-chat-requirements { display:grid; gap:10px; max-width:640px; padding:16px 20px; border:1px solid var(--api-border); border-radius:var(--ck-dim-radius-base); }
+.api-ai-chat-requirements > p { margin:0; color:var(--ck-color-text-secondary); font-size:12.5px; line-height:1.6; }
+.api-ai-author-heading h2 { margin:0; color:var(--ck-color-text-ink); font-family:var(--ck-font-display); font-size:18px; font-weight:800; }
+.api-ai-author-heading .api-actions { display:flex; gap:6px; margin:0 0 0 auto; }
+.api-ai-chat-empty { display:grid; gap:12px; padding:24px; border:1px dashed var(--api-border); border-radius:var(--ck-dim-radius-base); }
+.api-ai-chat-empty p { margin:0; color:var(--ck-color-text-secondary); line-height:1.6; }
+.api-ai-chat-settings { display:grid; gap:12px; width:100%; }
+.api-ai-chat-settings-group { display:grid; gap:8px; }
+.api-ai-chat-settings-group h3 { margin:0; color:var(--api-ink); font-size:14px; }
+.api-ai-chat-settings .api-ai-chat-folder-server { padding:8px 10px; border:1px solid var(--api-border); border-radius:var(--ck-dim-radius-base); }
+.api-ai-chat-tools-choice { display:flex; gap:16px; flex-wrap:wrap; }
+.api-ai-chat-tools-choice small { margin-left:4px; color:var(--ck-color-text-mute); }
+.api-ai-chat-settings > footer { display:flex; justify-content:flex-end; gap:8px; margin:0; padding-top:12px; border-top:1px solid var(--api-border); }
+
+/* Project settings own their scroll area; focusing a field must not trap wheel scrolling. */
+.content:has(.api-project-form) { overflow-y:auto; scrollbar-gutter:stable; }
+.api-ai-tool-settings { margin:0; }
+.api-ai-tool-settings [role=radiogroup] { display:flex; align-items:center; gap:16px; }
+.api-ai-tool-settings [role=radiogroup] > :is(span, small) { color:var(--ck-color-text-mute); font-size:12px; }
+.api-ai-way-checks { display:grid; gap:6px; align-self:start; margin:4px 0 0; padding:0; list-style:none; }
+.api-ai-way-checks li { display:grid; grid-template-columns:16px 104px minmax(0,auto) auto; justify-content:start; align-items:center; gap:4px 8px; min-height:30px; font-size:12.5px; }
+.api-ai-way-checks li::before { color:var(--ck-color-pass); font-weight:700; content:"✓"; }
+.api-ai-way-checks li.is-missing::before { color:var(--ck-color-text-mute); content:"–"; }
+.api-ai-way-checks li > span { color:var(--ck-color-text-mute); }
+.api-testing-page .api-ai-way-checks button.api-icon-button { padding:3px; border-color:transparent; background:transparent; color:var(--ck-color-text-mute); }
+.api-testing-page .api-ai-way-checks button.api-icon-button:hover { color:var(--ck-color-blue-action); }
+.api-ai-way-checks li > strong { min-width:0; overflow:hidden; color:var(--api-ink); font-weight:600; text-overflow:ellipsis; white-space:nowrap; }
+.api-ai-way-checks li.is-missing > strong { color:var(--ck-color-text-mute); font-weight:400; }
+/* The app keeps .content from scrolling (each screen scrolls itself). The API testing page fills it:
+   the title, project and tabs rows stay and only .api-page-body below the tabs scrolls.
+   The composer keeps its own inner scroll panes; the project form still scrolls .content. */
+/* clip, not hidden: a hidden overflow can still be scrolled by focus or scrollIntoView, which pushed the title rows off screen. */
+.content:has(> .api-testing-page > .api-page-body) { box-sizing:border-box; display:flex; flex-direction:column; height:100%; overflow:clip; }
+.content:has(> .api-testing-page > .api-page-body) > * { flex:none; }
+.content > .api-testing-page:has(> .api-page-body) { box-sizing:border-box; display:flex; flex-direction:column; flex:1 1 auto; width:100%; min-height:0; padding-bottom:0; overflow:clip; }
+/* One rule under the tabs: the tabs row keeps its underline; the list below starts right at it. */
+.api-testing-page:has(> .api-page-body) > .api-workbar { margin-bottom:0; }
+.api-page-body { padding-top:16px; }
+/* The body already starts below the tabs with its own top space. */
+.api-page-body > .api-ai-author { padding-top:0; }
+.api-page-body:has(> .api-columns:first-child), .api-page-body:has(.api-compose-layout) { padding-top:0; padding-bottom:0; }
+.api-page-body > .api-columns { border-top:0; min-height:100%; }
+/* List and detail scroll on their own, so the list stays put while reading a long scenario. */
+.api-page-body:has(> .api-columns:first-child) { overflow:hidden; }
+.api-page-body > .api-columns:first-child { height:100%; min-height:0; grid-template-rows:minmax(0,1fr); }
+.api-page-body > .api-columns:first-child > :is(aside, article) { min-height:0; overflow-y:auto; scrollbar-gutter:stable; overscroll-behavior:contain; }
+.api-testing-page:has(> .api-page-body) > :not(.api-page-body) { flex:none; }
+.api-page-body { flex:1 1 auto; min-height:0; overflow-y:auto; scrollbar-gutter:stable; padding-bottom:24px; }
+.api-page-body:has(.api-compose-layout) { display:flex; flex-direction:column; overflow:hidden; padding-bottom:0; }
+/* The body already ends above the bottom navigation, so the chat input needs no extra room for it. */
+.api-page-body .api-ai-chat-input { padding-bottom:12px; }
+/* In-app AI terminal. With a session it fills the page body (no page scroll): the CLI's own screen on
+   the left at full height, the checks of its result file on the right in their own scroll. */
+.api-ai-terminal { display:grid; gap:12px; min-width:0; }
+.api-ai-terminal-screen { height:min(520px, 60vh); min-height:260px; border-radius:var(--ck-dim-radius-base); background:#14181c; overflow:hidden; }
+.api-ai-terminal-screen.is-idle { display:none; }
+/* The padding sits on .xterm, which xterm's fit subtracts; on the host (border-box) it would be counted as rows
+   and the last lines would be cut off. */
+.api-ai-terminal-screen .xterm { box-sizing:border-box; height:100%; padding:8px; }
+.api-page-body:has(.api-ai-terminal.is-active) { display:flex; flex-direction:column; overflow:hidden; padding-bottom:12px; }
+.api-page-body:has(.api-ai-terminal.is-active) > .api-ai-author { display:flex; flex-direction:column; flex:1 1 auto; min-height:0; max-width:none; padding-bottom:0; }
+.api-page-body:has(.api-ai-terminal.is-active) > .api-ai-author > * { flex:none; }
+.api-page-body:has(.api-ai-terminal.is-active) > .api-ai-author > .api-ai-terminal { display:flex; flex-direction:column; flex:1 1 auto; min-height:0; }
+.api-ai-terminal.is-active > * { flex:none; }
+.api-ai-terminal.is-active > .api-ai-terminal-body { flex:1 1 auto; min-height:0; }
+.api-ai-terminal-body { display:grid; grid-template-columns:minmax(0,1fr); gap:16px; min-height:0; }
+/* The results panel slides over the terminal's right side instead of narrowing it: resizing the terminal
+   makes the CLI redraw (and break) its screen. */
+.api-ai-terminal.is-active .api-ai-terminal-body { position:relative; grid-template-rows:minmax(0,1fr); }
+.api-ai-terminal.is-active .api-ai-terminal-screen { height:auto; min-height:0; }
+.api-ai-terminal-side { position:absolute; top:0; right:0; bottom:0; z-index:5; display:grid; align-content:start; gap:8px; width:min(520px, 46%); min-height:0; overflow-y:auto; scrollbar-gutter:stable; overscroll-behavior:contain; padding:14px 16px; border-left:1px solid var(--api-border); border-radius:0 var(--ck-dim-radius-base) var(--ck-dim-radius-base) 0; background:var(--ck-color-canvas); box-shadow:-8px 0 24px rgb(20 24 28 / 18%); }
+.api-ai-terminal-waiting { display:grid; gap:8px; padding:16px; border:1px dashed var(--api-border); border-radius:var(--ck-dim-radius-base); }
+.api-ai-terminal-waiting p { margin:0; color:var(--ck-color-text-secondary); font-size:12.5px; line-height:1.6; }
+.api-ai-terminal-result { display:grid; gap:8px; }
+.api-ai-terminal-result > .api-ai-author-result { margin-top:0; padding-top:0; border-top:0; }
+@media (max-width:900px) { .api-ai-terminal-side { width:min(520px, 88%); } }
+/* Session row: left-aligned state and actions. */
+.api-ai-terminal-heading { display:flex; align-items:center; flex-wrap:wrap; gap:12px; padding-bottom:10px; border-bottom:var(--ck-fx-hairline); }
+.api-ai-terminal-title { display:grid; gap:2px; margin-right:8px; }
+.api-ai-terminal-title strong { color:var(--api-ink); }
+/* The handle on the terminal's right edge opens the results panel; a dot marks a result not saved yet. */
+.api-testing-page button.api-ai-result-handle { position:absolute; top:16px; right:0; z-index:4; display:flex; align-items:center; gap:6px; min-height:0; padding:12px 6px; border:1px solid var(--api-border); border-right:0; border-radius:var(--ck-dim-radius-base) 0 0 var(--ck-dim-radius-base); background:var(--ck-color-canvas); color:var(--api-ink); font-size:12px; font-weight:700; writing-mode:vertical-rl; box-shadow:-2px 0 8px rgb(20 24 28 / 15%); }
+.api-testing-page button.api-ai-result-handle.has-pending { border-color:var(--ck-color-wait); }
+.api-ai-result-dot { width:8px; height:8px; border-radius:99px; background:var(--ck-color-wait); }
+.api-ai-terminal-side-head { display:flex; align-items:center; justify-content:space-between; }
+.api-ai-terminal-side-head strong { color:var(--api-ink); font-size:13px; }
+.api-testing-page .api-ai-terminal-side-head button.api-icon-button { padding:2px 8px; border-color:transparent; background:transparent; font-size:18px; line-height:1; }
+
+/* 바로 만들기: one request in, progress, the AI's memo and the checked result out. */
+.api-testing-page .api-ai-author-heading .api-ai-style-toggle { min-height:0; margin-left:auto; padding:4px 8px; border:0; background:transparent; color:var(--ck-color-text-secondary); font-size:12.5px; box-shadow:none; }
+.api-testing-page .api-ai-author-heading .api-ai-style-toggle:hover:not(:disabled) { color:var(--api-ink); text-decoration:underline; }
+.api-ai-quick { display:grid; gap:12px; }
+.api-ai-quick-progress { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:var(--ck-dim-radius-base); background:var(--ck-color-surface-subtle); color:var(--ck-color-text-body); }
+.api-ai-quick-progress > span:nth-child(2) { flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.api-ai-quick-spinner { flex:none; width:14px; height:14px; border:2px solid var(--api-border); border-top-color:var(--ck-color-blue-action); border-radius:50%; animation:api-ai-quick-spin .8s linear infinite; }
+@keyframes api-ai-quick-spin { to { transform:rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .api-ai-quick-spinner { animation:none; } }
+.api-ai-quick-saved { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+.api-ai-quick-saved p { flex:1 1 280px; margin:0; color:var(--ck-color-text-body); }
+/* AI로 고치기 under a failed run: only where it failed goes to the AI. */
+.api-testing-page button.api-ai-ask-open:not(.swagger-ui *) { display:inline-flex; align-items:center; gap:5px; white-space:nowrap; }
+.api-testing-page button.api-ai-ask-open.is-primary:not(.swagger-ui *) { display:inline-flex; align-items:center; gap:5px; align-self:center; min-height:0; margin-left:auto; padding:5px 12px; border:1px solid transparent; border-radius:999px; background:var(--ck-color-blue-action); color:#fff; font-size:12.5px; font-weight:700; white-space:nowrap; }
+.api-testing-page button.api-ai-ask-open.is-primary:not(.swagger-ui *):hover:not(:disabled) { filter:brightness(1.08); }
+.api-ai-ask.api-input-modal { display:grid; gap:12px; }
+.api-ai-ask.api-input-modal > header { margin-bottom:0; }
+.api-ai-ask ul { margin:0; padding-left:18px; color:var(--ck-color-text-body); font-size:13px; }
+.api-ai-ask .api-input-note { margin:0; }
+.api-ai-ask.api-input-modal footer { margin-top:4px; }
+.api-testing-page .api-ai-ask .api-check-row { flex-direction:row; align-items:center; gap:8px; margin:0; }
+.api-ai-ask .api-check-row input { flex:none; width:16px; height:16px; margin:0; }
+/* 바로 만들기 uses the page width like the terminal. */
+.api-page-body > .api-ai-author:has(.api-ai-quick) { max-width:none; }
+.api-ai-quick-title { margin:4px 0 0; color:var(--api-ink); font-size:15px; font-weight:700; }
+/* Chat-style input: one rounded box, the textarea borderless inside, actions on its bottom bar. */
+.api-ai-composer { display:grid; gap:4px; padding:12px 12px 10px 14px; border:1px solid var(--api-border); border-radius:14px; background:var(--ck-color-canvas); box-shadow:0 1px 2px rgb(20 24 28 / 6%); transition:border-color .15s, box-shadow .15s; }
+.api-ai-composer:focus-within { border-color:var(--ck-color-blue-action); box-shadow:0 0 0 3px var(--ck-color-blue-tint-soft); }
+.api-testing-page .api-ai-composer textarea:not(.swagger-ui *) { width:100%; min-height:0; margin:0; padding:0; border:0; outline:none; background:transparent; box-shadow:none; resize:none; color:var(--api-ink); font-family:var(--ck-font-ui); font-size:14px; line-height:1.6; }
+.api-ai-composer textarea::placeholder { color:var(--ck-color-text-mute); }
+.api-ai-composer-bar { display:flex; align-items:center; gap:10px; }
+.api-ai-composer-hint { margin-left:auto; color:var(--ck-color-text-mute); font-size:11.5px; }
+.api-ai-composer-bar > .api-primary { white-space:nowrap; }
+.api-ai-composer-bar .api-ai-tool-row label { margin:0; }
+/* The save button sits apart from the suite list above it. */
+.api-testing-page .api-ai-ask textarea:not(.swagger-ui *) { font-family:var(--ck-font-ui); font-size:13px; }
+.api-ai-author .api-ai-quick > h3.api-ai-quick-title { margin:4px 0 -2px; }
+/* With a session 바로 만들기 fills the page like the terminal: the conversation on the left, the result over its right side. */
+.api-page-body:has(.api-ai-quick.is-active) { display:flex; flex-direction:column; overflow:hidden; padding-bottom:12px; }
+.api-page-body:has(.api-ai-quick.is-active) > .api-ai-author { display:flex; flex-direction:column; flex:1 1 auto; min-height:0; padding-bottom:0; }
+.api-page-body:has(.api-ai-quick.is-active) > .api-ai-author > * { flex:none; }
+.api-page-body:has(.api-ai-quick.is-active) > .api-ai-author > .api-ai-quick { display:flex; flex-direction:column; flex:1 1 auto; min-height:0; }
+.api-ai-quick.is-active > * { flex:none; }
+.api-ai-quick.is-active > .api-ai-terminal-body { position:relative; flex:1 1 auto; min-height:0; grid-template-rows:minmax(0,1fr); }
+.api-ai-quick-chat { display:flex; flex-direction:column; gap:10px; width:100%; min-height:0; }
+.api-ai-quick-log { display:flex; flex-direction:column; gap:12px; flex:1 1 auto; min-height:0; overflow-y:auto; overscroll-behavior:contain; padding:4px 4px 8px 0; }
+.api-ai-quick-turn { display:flex; flex-direction:column; gap:10px; }
+.api-ai-bubble { max-width:min(82%, 760px); margin:0; padding:10px 14px; line-height:1.6; white-space:pre-wrap; overflow-wrap:anywhere; }
+.api-ai-bubble.is-user { align-self:flex-end; border-radius:16px 16px 4px 16px; background:var(--ck-color-blue-action); color:#fff; }
+.api-ai-bubble.is-ai { align-self:flex-start; border:1px solid var(--api-border); border-radius:16px 16px 16px 4px; background:var(--ck-color-surface-subtle); color:var(--ck-color-text-body); }
+.api-ai-bubble.is-ai strong { display:block; margin-bottom:2px; color:var(--api-muted); font-size:11.5px; }
+.api-ai-bubble.is-ai p { margin:0; }
+.api-ai-quick-log > .api-ai-quick-progress { align-self:flex-start; }
+.api-ai-quick-ready { align-self:flex-start; margin:0; color:var(--ck-color-text-body); font-size:13px; }
+.api-ai-quick-after { margin:0; padding:10px 14px; border-radius:12px; background:var(--ck-color-surface-subtle); color:var(--ck-color-text-body); font-size:13px; }
+.api-ai-terminal-side .api-ai-quick-saved { padding-top:4px; }
+.api-ai-terminal-side .api-ai-author-result { margin-top:0; padding-top:0; border-top:0; }
+.api-ai-terminal-side .api-ai-author-result > .api-actions { margin:16px 0 0; }
+.api-ai-quick-log > .api-ai-quick-progress { max-width:100%; box-sizing:border-box; }
+.api-ai-quick-next { display:grid; gap:6px; padding:12px 14px; border-left:3px solid var(--ck-color-wait); border-radius:0 12px 12px 0; background:var(--ck-color-wait-tint); color:var(--ck-color-text-body); font-size:13px; line-height:1.6; }
+.api-ai-quick-next p, .api-ai-quick-next ul { margin:0; }
+.api-ai-quick-next ul { padding-left:18px; }
+.api-ai-quick-next > strong { color:var(--ck-color-wait-ink); }
+.api-testing-page label.api-ai-author-replace { flex-direction:row; justify-content:flex-start; margin-bottom:0; }
+/* In the result panel the YAML grows with its content: the panel is the one scroll. */
+.api-ai-terminal-side .api-ai-author-result pre { max-height:none; overflow:visible; }
+.api-ai-ask-failure { display:grid; gap:6px; padding:10px 12px; border-radius:var(--ck-dim-radius-base); background:var(--ck-color-wait-tint); }
+.api-testing-page fieldset.api-ai-ask-target { display:grid; gap:6px; min-width:0; margin:0; padding:0; border:0; background:none; }
+.api-testing-page .api-ai-ask-target legend { float:left; width:100%; margin:0 0 6px; padding:0; color:var(--api-ink); font-size:12.5px; font-weight:700; }
+.api-ai-ask-target small { margin-left:4px; color:var(--ck-color-text-mute); font-size:11.5px; }
+/* 전역변수 · 쿠키: only what is saved. The panel fits above the bottom bar; the variable list is its one scroll
+   (any number of variables), the header and the cookies stay. Adding and editing open a modal. */
+.shared-popover-panel:has(.api-globals-panel) { display:flex; flex-direction:column; width:min(520px, calc(100vw - 64px)); max-height:min(640px, calc(100dvh - 260px)); padding:14px 16px; overflow:hidden; }
+.api-testing-page .shared-popover-panel:has(.api-globals-panel) > .shared-popover-close { top:10px; right:8px; min-height:0; padding:2px 8px; border:0; background:transparent; color:var(--api-muted); font-size:20px; line-height:1; }
+.api-testing-page .shared-popover-panel:has(.api-globals-panel) > .shared-popover-close:hover { color:var(--api-ink); }
+.shared-popover-panel .api-globals-panel { flex:1 1 auto; min-height:0; }
+.shared-popover-panel .api-globals-panel > * { flex:none; }
+.shared-popover-panel .api-globals-panel > h2 { margin:0 32px 2px 0; font-size:15px; line-height:24px; }
+.shared-popover-panel .api-globals-panel .api-globals-note { margin:0 0 6px; }
+.shared-popover-panel .api-globals-panel .api-globals-section-heading { margin:10px 0 6px; }
+.api-testing-page .api-globals-panel input.api-global-search { width:100%; box-sizing:border-box; margin:0 0 6px; }
+.shared-popover-panel .api-globals-panel > .api-global-list { flex:0 1 auto; min-height:64px; max-height:none; overflow-y:auto; gap:0; padding:0; border:0; border-top:var(--ck-fx-hairline); border-bottom:var(--ck-fx-hairline); border-radius:0; background:none; }
+.shared-popover-panel .api-global-row { padding:8px 2px; border:0; border-bottom:var(--ck-fx-hairline-row); border-radius:0; background:none; }
+.shared-popover-panel .api-global-row:last-child { border-bottom:0; }
+.shared-popover-panel .api-global-row:hover { background:var(--ck-color-surface-hover); }
+.shared-popover-panel .api-global-row:focus-within { box-shadow:none; background:var(--ck-color-surface-hover); }
+.shared-popover-panel .api-global-actions { padding-left:0; border-left:0; }
+.shared-popover-panel .api-cookie-list { border-top:0; }
+.api-global-modal { display:grid; gap:12px; }
+.api-global-modal > header { margin-bottom:0; }
+.api-testing-page .api-global-modal fieldset { margin:0; padding:0; border:0; }
+.api-global-modal footer { margin-top:4px; }

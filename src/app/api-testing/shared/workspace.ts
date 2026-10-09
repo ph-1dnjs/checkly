@@ -115,8 +115,85 @@ export type ApiAiGuideRequest = { scope: ApiEnvironmentScope; tags?: string[]; o
  * this name (often the same result loaded again), so it starts unchosen.
  */
 export type ApiAiDraft = { id: string; name: string; yaml: string; stepCount: number; issues: string[]; notices: string[]; executionIssues: string[]; groupPath?: string[]; sameName?: true; /** The saved scenario (same name, the only one) this draft updates when saved as is. */ replaces?: string };
-export type ApiAiImportResult = { drafts: ApiAiDraft[]; suite: { name: string; scenarioIds: string[]; problems: string[]; groupPath?: string[]; /** Already-saved scenarios the suite reuses, by id. */ saved?: Record<string, string>; /** Same-name draft id → the saved scenario used when that draft is not saved. */ fallbacks?: Record<string, string> } | null };
+export type ApiAiImportResult = { drafts: ApiAiDraft[]; suite: { name: string; scenarioIds: string[]; problems: string[]; groupPath?: string[]; /** Already-saved scenarios the suite reuses, by id. */ saved?: Record<string, string>; /** Same-name draft id → the saved scenario used when that draft is not saved. */ fallbacks?: Record<string, string>; /** The one saved suite with the same name: saving updates it instead of adding a copy. */ replaces?: { id: string; updatedAt: string; onFailure: "stop" | "continue" } } | null };
+/** Backend source folders on this PC per server id (absolute paths). Kept out of the shareable project. */
+export type ApiBackendFolders = Record<string, string[]>;
+export type ApiAiTool = "claude" | "codex";
+/** How hard the AI thinks: lower answers faster. Both CLIs accept these; unset uses the CLI default. */
+/** In-app chat settings of a project on this PC: backend folders per server and which AI CLI (model and effort are the CLI defaults). */
+export type ApiAiChatSettings = { folders: ApiBackendFolders; tool?: ApiAiTool };
+/** AI CLIs installed on this PC; empty (with why) when there is none or in the web dev mode. */
+export type ApiAiChatStatus = { tools: Array<{ tool: ApiAiTool; version: string }>; error?: string };
+/** The project's in-app AI terminal: which CLI, in which environment, whether it runs, and recent output to replay. */
+export type ApiAiTerminal = {
+  tool: ApiAiTool; environmentId: string; running: boolean; buffer: string;
+  /** The result (by its save time) the user already saved from, with the first saved scenario; kept while the app runs. */
+  saved?: { modifiedAt: string; scenarioId?: string };
+};
+export type ApiAiTerminalEvent =
+  | { type: "data"; projectId: string; data: string }
+  | { type: "exit"; projectId: string; exitCode: number }
+  /** The AI saved its result file; the screen checks it. */
+  | { type: "result"; projectId: string };
+/** 바로 만들기: the AI writes from a request without asking; shown as requests and the AI's answers, with the result beside. */
+export type ApiAiQuick = {
+  tool: ApiAiTool; environmentId: string;
+  status: "running" | "done" | "failed" | "stopped";
+  /** Each request (the first one, then each 내용 바꾸기) and the AI's last answer to it: what it made and decided on its own. */
+  turns: Array<{ request: string; note: string }>;
+  /** What the AI is doing now, e.g. "읽는 중: UserController.java". */
+  progress: string;
+  /** Automatic fixes of Checkly's problems used for the latest request. */
+  fixes: number;
+  error?: string;
+  /** The checked result file (absent until the AI saves it). */
+  check?: { modifiedAt: string; result: ApiAiImportResult };
+  saved?: { modifiedAt: string; scenarioId?: string };
+};
+export type ApiAiQuickEvent = { projectId: string; quick: ApiAiQuick | null };
+/**
+ * about: AI에게 요청 from a saved scenario. Only its YAML, the user's words and, when chosen, where its last run
+ * failed (step, HTTP status) and the start of that step's response go to the AI.
+ */
+export type ApiAiQuickRequest = { scope: ApiEnvironmentScope; request: string; about?: { scenarioId: string; failures?: string[]; response?: string } };
+export type ApiAiTerminalStartRequest = { scope: ApiEnvironmentScope; size: { cols: number; rows: number } };
+/** checkly: messages Checkly adds (guide sent, check results); `result` is a checked AI answer to review and save. */
 export type ApiTestingBridge = {
+  /** Which AI CLIs are installed and the project's chat settings (desktop app only). */
+  getAiChatStatus(refresh?: boolean): Promise<ApiAiChatStatus>;
+  getAiChatSettings(projectId: string): Promise<ApiAiChatSettings>;
+  saveAiChatSettings(projectId: string, settings: ApiAiChatSettings): Promise<ApiAiChatSettings>;
+  /** Native picker allowing several folders; empty when cancelled. */
+  chooseDirectories(): Promise<string[]>;
+  /** In-app AI terminal (desktop app only). */
+  getAiTerminal(projectId: string): Promise<ApiAiTerminal | null>;
+  startAiTerminal(request: ApiAiTerminalStartRequest): Promise<ApiAiTerminal>;
+  /** Reopens the saved session (after a restart or after the CLI exited). */
+  resumeAiTerminal(request: ApiAiTerminalStartRequest): Promise<ApiAiTerminal>;
+  writeAiTerminal(projectId: string, data: string): void;
+  resizeAiTerminal(projectId: string, size: { cols: number; rows: number }): void;
+  /** Ends the session (stops the CLI, forgets the session and the last result). */
+  clearAiTerminal(projectId: string): Promise<void>;
+  /** Checks the terminal session's result file; null until the AI writes it. */
+  checkAiTerminalResult(scope: ApiEnvironmentScope): Promise<{ modifiedAt: string; result: ApiAiImportResult } | null>;
+  /** Remembers that the user saved from this result, so reopening the panel shows it as saved. */
+  markAiTerminalResultSaved(projectId: string, saved: { modifiedAt: string; scenarioId?: string }): Promise<void>;
+  /** Rewrites the project state the AI reads (after saving scenarios). */
+  refreshAiTerminalFiles(scope: ApiEnvironmentScope): Promise<void>;
+  /** Terminal output, exits and result saves of every project; returns the unsubscribe. */
+  onAiTerminalEvent(listener: (event: ApiAiTerminalEvent) => void): () => void;
+  /** AI에게 요청 into the running terminal conversation (pasted and sent). */
+  askAiTerminal(request: ApiAiQuickRequest & { about: NonNullable<ApiAiQuickRequest["about"]> }): Promise<void>;
+  /** 바로 만들기 of the project (in memory only; gone after a restart). */
+  getAiQuick(projectId: string): Promise<ApiAiQuick | null>;
+  /** Starts a new 바로 만들기 from a request (replaces the previous one). */
+  startAiQuick(request: ApiAiQuickRequest): Promise<ApiAiQuick>;
+  /** 수정 요청 in the same AI session. */
+  reviseAiQuick(projectId: string, request: string): Promise<ApiAiQuick>;
+  stopAiQuick(projectId: string): Promise<void>;
+  clearAiQuick(projectId: string): Promise<void>;
+  markAiQuickResultSaved(projectId: string, saved: { modifiedAt: string; scenarioId?: string }): Promise<void>;
+  onAiQuickEvent(listener: (event: ApiAiQuickEvent) => void): () => void;
   getSpecSync(scope: ApiScope): Promise<ApiSpecSync>;
   deleteSpecAccount(scope: ApiScope): Promise<void>;
   getRequestAuth(scope: ApiScope): Promise<string | null>;

@@ -59,13 +59,15 @@ function structuredCatalog(summary: string): ApiCatalog {
 }
 
 // twoServers: the project has a second server. missingGlobals: previewScenario reports globals with no value, per step.
-async function workspace(page: Page, structured = false, linkedGlobal = false, options: { twoServers?: boolean; missingGlobals?: boolean; extra?: SavedApiScenario[]; failSecondStep?: boolean; cancelRun?: boolean } = {}) {
+async function workspace(page: Page, structured = false, linkedGlobal = false, options: {
+  twoServers?: boolean; missingGlobals?: boolean; extra?: SavedApiScenario[]; failSecondStep?: boolean; cancelRun?: boolean;
+} = {}) {
   const catalogs: Record<string, ApiCatalog | null> = {
     [environments.dev]: structured ? structuredCatalog('개발 구조 입력') : catalog('/dev-items', '개발 환경 조회'),
     [environments.empty]: null,
     [environments.stage]: structured ? structuredCatalog('스테이징 구조 입력') : catalog('/stage-items', '스테이징 환경 조회'),
   }
-  const project: ApiProject = {
+  let project: ApiProject = {
     id: projectId, name: '환경 전환 회귀', servers: [{ id: serverId, name: 'API' }, ...(options.twoServers ? [{ id: authServerId, name: '인증' }] : [])],
     environments: Object.entries(environments).map(([name, id]) => ({
       id, name, baseUrls: { [serverId]: `https://${name}.example.invalid`, ...(options.twoServers ? { [authServerId]: `https://auth-${name}.example.invalid` } : {}) },
@@ -81,6 +83,7 @@ async function workspace(page: Page, structured = false, linkedGlobal = false, o
     bindings: {}, updatedAt: importedAt, groupPath: ['기존 그룹'],
   }, ...(options.extra ?? [])]
   const saves: Array<{ scope: ApiEnvironmentScope; item: SavedApiScenario }> = []
+  let saveAttempts = 0
   const requests: string[] = []
   const unexpected: string[] = []
   const gates = new Map<string, Promise<void>>()
@@ -99,6 +102,8 @@ async function workspace(page: Page, structured = false, linkedGlobal = false, o
   await page.exposeFunction('__apiTestingCall', async (method: string, args: unknown[]) => {
     switch (method) {
       case 'listProjects': return [project]
+      case 'saveProject': project = args[0] as ApiProject; return project
+      case 'chooseDirectories': return ['/backend/a', '/backend/b']
       case 'listScenarios': return saved
       case 'listSuites':
       case 'listCookies': return []
@@ -138,6 +143,8 @@ async function workspace(page: Page, structured = false, linkedGlobal = false, o
       case 'previewScenario': return preview(args[0] as ApiEnvironmentScope, args[1] as string)
       case 'saveScenario':
       case 'saveScenarioDraft': {
+        saveAttempts++
+        await gates.get('scenario-save')
         const [scope, source, bindings, expectedUpdatedAt, metadata] = args as Parameters<ApiTestingBridge['saveScenario']>
         const checked = preview(scope, source)
         const previous = saved.find(item => item.id === checked.scenario.id)
@@ -153,6 +160,10 @@ async function workspace(page: Page, structured = false, linkedGlobal = false, o
         saves.push({ scope, item })
         return item
       }
+      // The in-app AI runs only in the desktop app (its own E2E); here no AI is installed.
+      case 'getAiChatStatus': return { tools: [], error: 'Claude Code나 Codex CLI가 설치되어 있지 않습니다' }
+      case 'getAiChatSettings': return { folders: {} }
+      case 'saveAiChatSettings': return args[1]
       default:
         unexpected.push(method)
         throw new Error(`Unexpected bridge call: ${method}`)
@@ -180,7 +191,8 @@ async function workspace(page: Page, structured = false, linkedGlobal = false, o
   await page.getByRole('button', { name: 'API 테스트', exact: true }).click()
   await expect(page.getByRole('button', { name: '+ 새 시나리오', exact: true })).toBeEnabled()
   return {
-    saves, requests, unexpected, globalSaves, get runs() { return runs },
+    saves, requests, unexpected, globalSaves,
+    get runs() { return runs }, get saveAttempts() { return saveAttempts },
     pause(environment: string) {
       gates.set(environment, new Promise<void>(resolve => releases.set(environment, resolve)))
     },
@@ -189,7 +201,15 @@ async function workspace(page: Page, structured = false, linkedGlobal = false, o
       gates.delete(environment)
       releases.delete(environment)
     },
+    pauseSaving() { gates.set('scenario-save', new Promise<void>(resolve => releases.set('scenario-save', resolve))) },
+    resumeSaving() { releases.get('scenario-save')?.(); gates.delete('scenario-save'); releases.delete('scenario-save') },
   }
+}
+
+/** Opens the AI tab and, when given, picks the way on its first step. */
+async function openAi(page: Page, way?: 'copy') {
+  await page.getByRole('tab', { name: 'AI 작성 도우미', exact: true }).click()
+  if (way) await page.getByRole('tab', { name: '내 AI 앱에서 쓰기', exact: true }).click()
 }
 
 const editStep = (page: Page) => page.getByRole('navigation', { name: '시나리오 작성 단계' }).getByRole('button', { name: /값 설정/ })
@@ -381,6 +401,9 @@ test('global setup callbacks refresh the editor, summary and authentication choi
   await editorLink.click()
   const menu = page.getByRole('dialog', { name: '{ } 전역변수', exact: true })
   await expect(menu.getByLabel('전역변수 이름', { exact: true })).toHaveValue('accessToken')
+  // The setup link opens the edit modal over the panel; closing it leaves the panel, which then closes.
+  await menu.getByRole('button', { name: '취소', exact: true }).click()
+  await expect(menu.getByLabel('전역변수 이름', { exact: true })).toHaveCount(0)
   await menu.getByRole('button', { name: '{ } 전역변수 닫기', exact: true }).click()
   await summaryLink.click()
   await expect(menu.getByLabel('전역변수 이름', { exact: true })).toHaveValue('accessToken')
@@ -429,7 +452,7 @@ test('a global missing in several steps is one line with links to those steps', 
 test('the AI API picker puts servers first, so the same tag and path on two servers stay apart', async ({ page }) => {
   // Both servers get the same catalog here: one tag and one path on each.
   const fixture = await workspace(page, false, false, { twoServers: true })
-  await page.getByRole('tab', { name: 'AI 작성 도우미', exact: true }).click()
+  await openAi(page, 'copy')
   await page.getByText(/^AI가 쓸 API/).click()
   const servers = page.locator('.api-picker-server')
   await expect(servers.locator('> summary')).toHaveText(['API1', '인증1'])
@@ -484,16 +507,19 @@ test('narrow windows fold the settings summary so the step editor keeps the heig
   expect(fixture.unexpected).toEqual([])
 })
 
-test('with no spec, the composer links to API 문서 and the AI guide cannot be copied', async ({ page }) => {
+test('with no spec, the composer links to API 문서 and the AI tab cannot be opened', async ({ page }) => {
   const fixture = await workspace(page)
   await page.getByRole('group', { name: 'API 환경' }).getByRole('button', { name: 'empty', exact: true }).click()
   await page.getByRole('button', { name: '+ 새 시나리오', exact: true }).click()
   await page.getByRole('button', { name: 'API 문서로 이동', exact: true }).click()
   await expect(page.getByRole('tab', { name: /^API 문서/ })).toHaveAttribute('aria-selected', 'true')
-  await page.getByRole('tab', { name: 'AI 작성 도우미', exact: true }).click()
-  await expect(page.getByRole('note')).toContainText('명세를 먼저 가져오세요')
-  await expect(page.getByRole('button', { name: 'AI 가이드 복사', exact: true })).toBeDisabled()
-  await expect(page.getByRole('button', { name: '가이드 보기', exact: true })).toBeDisabled()
+  const aiTab = page.getByRole('tab', { name: 'AI 작성 도우미', exact: true })
+  await expect(aiTab).toBeDisabled()
+  await expect(aiTab).toHaveAttribute('title', /API 명세가 없습니다/)
+  // Another environment with a spec opens it again.
+  await page.getByRole('tab', { name: '시나리오', exact: true }).click()
+  await page.getByRole('group', { name: 'API 환경' }).getByRole('button', { name: 'dev', exact: true }).click()
+  await expect(aiTab).toBeEnabled()
   expect(fixture.unexpected).toEqual([])
 })
 
@@ -523,4 +549,3 @@ test('the server legend stays off the project form, and an unsavable suite says 
   await expect(page.getByRole('button', { name: '스위트 저장', exact: true })).toBeEnabled()
   expect(fixture.unexpected).toEqual([])
 })
-

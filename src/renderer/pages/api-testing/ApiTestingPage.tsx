@@ -9,7 +9,7 @@ import { GlobalVariableMenu } from "../../features/api-testing/configure-globals
 import { ApiTestingProviders } from "./ui/ApiTestingProviders";
 import { ScenarioPanel } from "./ui/ScenarioPanel";
 import { ScenarioEditorPanel } from "./ui/ScenarioEditorPanel";
-import { AiAuthorPanel } from "../../features/api-testing/author-scenarios";
+import { AiAuthorPanel, showAiChat } from "../../features/api-testing/author-scenarios";
 import { SpecSourcePanel } from "../../features/api-testing/configure-spec";
 import "./ui/api-testing.css";
 import type { OnRunAction } from "../../shared/model/run-action";
@@ -34,7 +34,7 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
   const [projectId, setProjectId] = useState("");
   const [serverId, setServerId] = useState("");
   const [environmentId, setEnvironmentId] = useState("");
-  const [form, setForm] = useState<"new" | "edit" | null>(null);
+  const [form, setForm] = useState<"new" | "edit" | "edit-ai" | null>(null);
   const [catalog, setCatalog] = useState<ApiCatalog | null>(null);
   const [sync, setSync] = useState<ApiSpecSync | null>(null);
   // Saved scenarios whose steps no longer find their API in the current environment's specs.
@@ -179,6 +179,16 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
     }
     return () => { live = false; };
   }, [projectId, serverId, environmentId]);
+  // The AI tab needs at least one spec in this environment (any server): without one the AI has no APIs.
+  // Rechecked when the shown spec changes (import, refresh, delete).
+  const [aiHasSpec, setAiHasSpec] = useState(true);
+  useEffect(() => {
+    let live = true;
+    if (!project || !environmentId || !bridge) return;
+    void Promise.all(project.servers.map(server => bridge.getCatalog({ projectId: project.id, environmentId, serverId: server.id }).catch(() => null)))
+      .then(catalogs => { if (live) setAiHasSpec(catalogs.some(item => Boolean(item?.operations.length))); });
+    return () => { live = false; };
+  }, [project, environmentId, catalog?.importedAt]);
   // Checked only on the API tab, after a spec (re)load, or on request — never blocks the sync itself.
   const [missingCheck, setMissingCheck] = useState(0);
   const [checkingMissing, setCheckingMissing] = useState(false);
@@ -233,7 +243,7 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
     {error && <p className="api-warning" role="alert">{error}</p>}
     {importPlan && <ProjectImportDialog plan={importPlan.plan} onCancel={() => setImportPlan(null)} onImport={async update => { await finishImport(await bridge.importProject(importPlan.text, update)); }} />}
     {notice && !form && (!specNotice || tab === "api") && <p className="api-page-notice" role="status">{notice}<button type="button" className="api-compose-link" onClick={() => { setNotice(""); setSpecNotice(false); }}>닫기</button></p>}
-    {form ? <ProjectForm key={`${form}:${projectId}`} initial={form === "edit" ? project : undefined} onCancel={() => setForm(null)} onDelete={async () => {
+    {form ? <ProjectForm key={`${form}:${projectId}`} bridge={bridge} initial={form !== "new" ? project : undefined} focusBackendFolders={form === "edit-ai"} onCancel={() => setForm(null)} onDelete={async () => {
       setBusy(true);
       try {
       await bridge.deleteProject(projectId);
@@ -241,7 +251,7 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
       if (remaining[0]) selectProject(remaining[0]);
       else { setProjectId(""); setServerId(""); setEnvironmentId(""); setCatalog(null); setSync(null); setLoading(false); }
       } finally { setBusy(false); }
-    }} onSave={async p => { const isNew = form === "new"; const saved = await bridge.saveProject(p); setProjects(await bridge.listProjects()); selectProject(saved); setForm(null); if (isNew) setTab("api"); }}
+    }} onSave={async (p, settings) => { const isNew = form === "new"; const saved = await bridge.saveProject(p); if (settings) await bridge.saveAiChatSettings(saved.id, settings); setProjects(await bridge.listProjects()); selectProject(saved); setForm(null); if (isNew) setTab("api"); }}
     onExport={async () => { const saved = await bridge.exportProject(projectId); return saved ? `저장했습니다 · ${saved}` : ""; }}
     onImport={importProject} /> : <>
       {!project ? <div className="api-empty"><h2>API 테스트를 시작하세요</h2><p>프로젝트를 만든 뒤 API 명세(OpenAPI) 파일이나 URL을 가져오세요.</p><div className="api-actions"><button className="api-primary" onClick={() => setForm("new")}>프로젝트 만들기</button><button type="button" onClick={() => void importProject().catch(error => setError((error as Error).message))}>공유받은 파일 가져오기</button></div></div> : <>
@@ -254,14 +264,16 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
               else backToScenarios();
             }}>시나리오</button>
             <button role="tab" aria-selected={tab === "api"} disabled={locked} onClick={() => changeTab("api")}>API 문서{catalog ? <small className="api-tab-count" title={`API ${catalog.operations.length}개`}>{catalog.operations.length}</small> : null}</button>
-            <button role="tab" aria-selected={tab === "ai"} disabled={locked} onClick={() => changeTab("ai")}>AI 작성 도우미</button>
+            <button role="tab" aria-selected={tab === "ai"} disabled={locked || (!aiHasSpec && tab !== "ai")} title={aiHasSpec ? undefined : "이 환경에 가져온 API 명세가 없습니다. API 문서에서 명세를 먼저 가져오세요"} onClick={() => changeTab("ai")}>AI 작성 도우미</button>
           </div>
           {/* The server picks which spec the API docs show. Scenarios choose a server per step (the composer has
               its own picker) and the AI guide covers every server, so the other tabs leave it out. */}
           <div className="api-context" title={tab === "api" ? `기본 주소 · ${project.environments.find(e => e.id === environmentId)?.baseUrls[serverId] ?? ""}` : undefined}>{tab === "api" && <select aria-label="API 서버" value={serverId} disabled={locked || loading} onChange={e => { setServerId(e.target.value); setUrl(""); }}>{project.servers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select>}{environmentPicker}{valueActions}</div>
         </div>
-        {tab === "ai" && <AiAuthorPanel key={`${projectId}:${environmentId}`} project={project} scope={{ projectId, environmentId }} bridge={bridge} onBusy={setBusy} onSaved={first => { setBusy(false); setOpenSaved(first ?? null); setTab("scenarios"); }} />}
-        {tab === "scenarios" && <ScenarioPanel key={`${projectId}:${environmentId}:${serverId}`} project={project} scope={scope} bridge={bridge} onBusy={setBusy} onRunAction={onRunAction} runSaved={runSaved} onRunSavedConsumed={() => setRunSaved(null)} openSaved={openSaved} onOpenSavedConsumed={() => setOpenSaved(null)} onOpenAi={() => changeTab("ai")} onCreateScenario={() => openScenarioEditor()} onEditScenario={item => openScenarioEditor(item.id)} />}
+        {/* Only this area scrolls; the title, project and tabs rows above stay in place. */}
+        <div className="api-page-body">
+        {tab === "ai" && <AiAuthorPanel key={`${projectId}:${environmentId}`} project={project} scope={{ projectId, environmentId }} bridge={bridge} onBusy={setBusy} onConfigureProject={() => setForm("edit-ai")} onOpenSpecs={() => changeTab("api")} onSaved={first => { setBusy(false); setOpenSaved(first ?? null); setTab("scenarios"); }} />}
+        {tab === "scenarios" && <ScenarioPanel key={`${projectId}:${environmentId}:${serverId}`} project={project} scope={scope} bridge={bridge} onBusy={setBusy} onRunAction={onRunAction} runSaved={runSaved} onRunSavedConsumed={() => setRunSaved(null)} openSaved={openSaved} onOpenSavedConsumed={() => setOpenSaved(null)} onOpenAi={() => changeTab("ai")} onAiAskSent={target => { showAiChat(projectId, target); changeTab("ai"); }} onCreateScenario={() => openScenarioEditor()} onEditScenario={item => openScenarioEditor(item.id)} />}
         {tab === "scenario-editor" && <ScenarioEditorPanel key={`${projectId}:${serverId}`} project={project} scope={scope} bridge={bridge} onBusy={setBusy} onRunAction={onRunAction} onBackToScenarios={backToScenarios} onOpenSpecs={openSpecs} onExecuteSaved={executeSaved} startCreateRequest={scenarioCreateRequest} editScenarioId={scenarioEditorScenarioId} onCreateConsumed={() => setScenarioCreateRequest(0)} onComposerOpenChange={setScenarioComposerOpen} onUnsavedChange={setScenarioDirty} onCreateScenario={() => openScenarioEditor()} onEditScenario={item => openScenarioEditor(item.id)} composeContext={<div className="api-compose-context">{environmentPicker}{valueActions}</div>} />}
         {tab === "api" && <>
         {(catalog || sync || !loading) && <SpecSourcePanel key={`${projectId}:${serverId}:${environmentId}:${catalog ? "loaded" : "empty"}`}
@@ -289,6 +301,7 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
         {loading && <LoadingSpinner label="명세를 불러오는 중…" />}
         {catalog ? <ApiDocumentation project={project} key={`${projectId}:${serverId}:${environmentId}:${catalog.importedAt}`} catalog={catalog} scope={scope} bridge={bridge} baseUrl={project.environments.find(e => e.id === environmentId)?.baseUrls[serverId] ?? ""} busy={busy} onBusy={setBusy} onRunAction={onRunAction} /> : !loading && <div className="api-empty"><h2>API 명세를 가져오세요</h2><p>선택한 서버·환경에 OpenAPI 3.0 / 3.1 명세를 등록합니다.</p></div>}
         </>}
+        </div>
       </>}
     </>}
     {refreshConfirmOpen && <div className="api-confirm-dialog-backdrop">
