@@ -401,6 +401,9 @@ test('global setup callbacks refresh the editor, summary and authentication choi
   await editorLink.click()
   const menu = page.getByRole('dialog', { name: '{ } 전역변수', exact: true })
   await expect(menu.getByLabel('전역변수 이름', { exact: true })).toHaveValue('accessToken')
+  // The setup link opens the edit modal over the panel; closing it leaves the panel, which then closes.
+  await menu.getByRole('button', { name: '취소', exact: true }).click()
+  await expect(menu.getByLabel('전역변수 이름', { exact: true })).toHaveCount(0)
   await menu.getByRole('button', { name: '{ } 전역변수 닫기', exact: true }).click()
   await summaryLink.click()
   await expect(menu.getByLabel('전역변수 이름', { exact: true })).toHaveValue('accessToken')
