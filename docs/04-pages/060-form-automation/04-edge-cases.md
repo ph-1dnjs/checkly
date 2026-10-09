@@ -3,9 +3,20 @@
 - 마지막으로 열린 dialog가 있으면 페이지 전체보다 dialog 내부 필드를 우선합니다.
 - 같은 name의 radio·checkbox는 하나의 필드 그룹으로 처리합니다.
 - label이 없으면 aria-label, placeholder, name, 주변 구조 텍스트 순으로 이름을 추론합니다.
-- React 제어 입력은 native setter 뒤 input·change·blur·focusout 이벤트를 발생시킵니다.
+- `aria-hidden`·`inert` 또는 투명한 영역의 자동완성 차단용 입력은 감지·입력에서 제외합니다. 화면에 표시된 `readonly` 텍스트 입력은 후보로 포함하고, 실제 입력 시 포커스 후 해제되는지 확인합니다. 해제되지 않으면 미입력으로 보고합니다.
+- React 제어 텍스트 입력은 native setter 뒤 input·change·blur·focusout 이벤트를 발생시킵니다. 체크박스는 실제 클릭으로 변경하고 렌더링 후 상태를 검증하며, 이미 원하는 상태면 클릭하지 않습니다. `role="checkbox"`·`data-scope="checkbox"` 컨트롤과 숨겨진 input은 한 항목으로 처리합니다.
+- Ark UI의 `data-scope`·`data-part`와 ARIA 관계를 사용해 체크박스·스위치·라디오·Select·Combobox·NumberInput·단일 DatePicker를 감지합니다. 숨겨진 backing input과 표시 컨트롤을 중복 감지하지 않으며, RHF 제어 상태에 실제 변경 이벤트가 전달되도록 입력합니다.
+- Ant Design 5·6의 Input·Password·InputNumber·Checkbox·Switch·Radio·Select·Checkbox.Group·단일 DatePicker를 실제 Form fixture로 검증합니다. Form의 `id_name` 식별자를 복원하고 사용자 지정 클래스 접두사도 처리합니다. 색상·테마 토큰 값에는 의존하지 않습니다.
+- Checkbox 그룹과 다중 Select는 배열로 저장·편집합니다. Select 검색창에 문자열만 쓰지 않고 숨겨진 select 또는 키보드 선택 이벤트로 선택값을 반영하며, 가상 목록은 최대 200개 탐색 단계 안에서 수집합니다. 옵션을 여는 과정에서 포커스가 복원된 뒤 다음 필드로 이동합니다.
+- 비활성·읽기 전용 필드, 없는 옵션, 선택을 거부하는 컨트롤은 성공으로 표시하지 않습니다. 서버 검색 결과처럼 현재 제공되지 않은 옵션이나 공개 DOM/ARIA 관계가 없는 전용 컨트롤은 미입력 항목으로 남을 수 있습니다.
+- 단일 날짜 입력은 해당 컴포넌트의 입력 형식으로 쓰고 Enter·blur로 확정하며, 초기화 트리거가 있으면 실제 클릭합니다. 날짜 범위 등 여러 입력을 가진 전용 컨트롤은 별도 지원이 필요합니다.
+- 코드 업데이트나 renderer origin 변경 후에도 저장 케이스·세션·주소는 userData 파일에서 복원합니다. 현재 화면의 origin+pathname이 다른 케이스는 목록에서 필터링되지만 저장 파일에서는 유지됩니다.
+- 웹뷰 안에서 SPA 라우트가 바뀌면 주소 표시용 `currentPageUrl`만 갱신합니다. 웹뷰의 `src`에 연결된 시작 URL을 다시 지정하면 페이지가 새로 로드되어 React Router의 이동 상태(예: 2차 인증 challenge)가 사라집니다.
+- 저장 IPC 처리기 누락은 구버전 앱 연결로 구분하여 폼 화면을 유지하고 현재 origin의 화면 저장소에 변경한 키만 임시 기록합니다. 재연결 뒤 임시 변경을 파일에 반영하며, 실제 파일 읽기·쓰기 오류에는 호환 저장을 적용하지 않습니다.
+- 영속 데이터 조회 실패를 빈 목록으로 처리하지 않습니다. 기존 화면 저장본으로 화면은 유지하고 파일 저장은 복구 전까지 막습니다. 오류를 표시하고 다시 불러올 수 있으며, 케이스 저장 실패는 성공으로 안내하지 않습니다.
 - 날짜 컴포넌트는 최대 24개월을 이동해 선택하며, 지원하지 않는 달력은 미입력 항목으로 보고합니다.
 - 파일 input은 accept와 multiple 조건에 맞는 임시 fixture를 생성합니다.
+- 네트워크 기록 복원 중 발생한 새 이벤트는 저장 기록과 ID 기준으로 병합하고 최신 1,000개를 유지합니다. 세션을 전환하면 이전 상세 선택을 해제하고 현재 세션에 속한 응답만 상세 패널에 표시합니다.
 - 네트워크 훅은 fetch와 XMLHttpRequest만 관찰하며 브라우저 자체의 정적 리소스 요청은 기록하지 않습니다.
 - 응답 오버라이드는 HTTP method와 정규화된 pathname이 정확히 일치할 때만 적용합니다. query string은 경로 판정에서 제외합니다.
 - OpenAPI 문서의 `$ref`, object, array, primitive 타입을 검증하며 복잡한 조합 스키마는 문서가 제공하는 범위 안에서 확인합니다.

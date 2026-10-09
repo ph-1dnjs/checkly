@@ -154,6 +154,7 @@ export const detectedFieldValue = (
   }
 
   if (!valid) {
+    if (field.type === "checkbox-group") return [];
     if (field.type === "checkbox") return false;
     if (field.type === "radio") return null;
     if (field.type === "email") return "wrong-email";
@@ -172,6 +173,7 @@ export const detectedFieldValue = (
   }
 
   if (field.type === "checkbox") return true;
+  if (field.type === "checkbox-group") return firstOption ? [firstOption] : [];
   if (field.type === "radio" || field.type === "select-one") return firstOption;
   if (field.type === "select-multiple")
     return field.options
