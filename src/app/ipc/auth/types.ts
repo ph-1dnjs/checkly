@@ -74,6 +74,8 @@ export type AuthBridge = {
 
   signIn(input: { projectCode: string; nickname: string; password: string; remember: boolean }): Promise<AuthSession>;
   signOut(): Promise<void>;
+  /** 직접 하지 않은 로그아웃(관리자가 내보냄)의 이유. 없으면 "". 다시 로그인하면 지워진다. */
+  getSignOutNotice(): Promise<string>;
   /** "기억하기"로 저장한 마지막 프로젝트 코드·닉네임. */
   getRemembered(): Promise<{ projectCode: string; nickname: string } | null>;
   listRecentProjects(): Promise<RecentProject[]>;

@@ -45,6 +45,15 @@ test('세션 확인이 실패하면(오프라인) 이유와 다시 시도를 보
 })
 
 test.describe('로그인', () => {
+  test('내보내져 로그아웃됐으면 로그인 화면에 이유를 보여주고, 입력을 시작하면 지운다', async ({ page }) => {
+    const notice = '프로젝트에서 내보내져 로그아웃되었습니다. 다시 참여하려면 관리자에게 초대코드를 받아 새로 가입하세요.'
+    await installAuthStub(page, { enabled: true, signOutNotice: notice })
+    await page.goto('/')
+    await expect(loginForm(page).getByRole('alert')).toContainText(notice)
+    await page.getByLabel('프로젝트 코드').fill('checkly-team')
+    await expect(loginForm(page).getByRole('alert')).toHaveCount(0)
+  })
+
   test('잘못된 비밀번호는 main의 문장을 그대로 보여주고, 맞으면 앱으로 들어간다', async ({ page }) => {
     await installAuthStub(page, { enabled: true, remembered: { projectCode: 'checkly-team', nickname: 'minsu' } })
     await page.goto('/')

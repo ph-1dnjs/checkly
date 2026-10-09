@@ -79,6 +79,8 @@ export class AuthService implements Omit<AuthBridge, "getConfig" | "onSessionCha
   private restoring: Promise<void> | undefined;
   /** 마지막으로 읽어 준 프로젝트 설정. 저장할 때 "읽었던 행"과 "모르는 새 행"을 가르는 기준이다. */
   private known: ProjectSettings | null = null;
+  /** 사용자가 직접 하지 않은 로그아웃의 이유(내보내짐). 로그인 화면이 보여 주고, 다시 로그인하면 지운다. */
+  private notice = "";
 
   constructor(private readonly options: AuthServiceOptions) {
     this.client = createClient(options.env.url, options.env.anonKey, {
@@ -108,6 +110,7 @@ export class AuthService implements Omit<AuthBridge, "getConfig" | "onSessionCha
   }
 
   private setSession(session: AuthSession | null): void {
+    if (session) this.notice = "";
     if (JSON.stringify(session) === JSON.stringify(this.current)) return;
     this.current = session;
     this.known = null;
@@ -129,10 +132,33 @@ export class AuthService implements Omit<AuthBridge, "getConfig" | "onSessionCha
     // 네트워크 오류면 저장된 세션을 그대로 두고 실패를 알린다. 그 밖의 갱신 실패는 supabase-js가 세션을 지운다.
     if (error && isAuthRetryableFetchError(error)) throw error;
     if (!data.session) return this.setSession(null);
-    const session = await this.loadMember(data.session.user.id);
+    // 다시 시도하지 않는다: 오프라인이면 빈 화면으로 기다리게 하지 않고 바로 "다시 시도"를 보여 준다.
+    const session = await this.loadMember(data.session.user.id, false);
     // 내보내진 멤버 등 프로젝트에 없는 계정이면 로그아웃한다.
-    if (!session) await this.client.auth.signOut({ scope: "local" });
+    if (!session) return this.signOutRemoved();
     this.setSession(session);
+  }
+
+  /** 멤버 행이 보이지 않는 계정(내보내짐·프로젝트 삭제): 이 기기에서 로그아웃하고 로그인 화면에 이유를 남긴다. */
+  private async signOutRemoved(): Promise<void> {
+    this.notice = MESSAGES.removed;
+    await this.client.auth.signOut({ scope: "local" });
+    this.setSession(null);
+  }
+
+  /**
+   * 요청이 권한·만료 오류로 실패했을 때 부른다(index.ts). 그 사이 관리자가 내보냈으면 토큰이 아직 살아 있어도
+   * 멤버 행이 보이지 않으므로, 로그아웃해 로그인 화면으로 보낸다.
+   */
+  async checkMembership(): Promise<void> {
+    const current = this.current;
+    if (!current) return;
+    const member = await this.loadMember(current.userId).catch(() => undefined);
+    if (member === null && this.current === current) await this.signOutRemoved();
+  }
+
+  async getSignOutNotice(): Promise<string> {
+    return this.notice;
   }
 
   /** 복원 중에 로그인·로그아웃이 겹치지 않게 기다린다. */
@@ -146,9 +172,9 @@ export class AuthService implements Omit<AuthBridge, "getConfig" | "onSessionCha
     return this.current;
   }
 
-  private async loadMember(userId: string): Promise<AuthSession | null> {
+  private async loadMember(userId: string, retry = true): Promise<AuthSession | null> {
     const row = (await must(
-      this.client.from("members").select("user_id, project_id, nickname, role, projects(code)").eq("user_id", userId).maybeSingle(),
+      this.client.from("members").select("user_id, project_id, nickname, role, projects(code)").eq("user_id", userId).maybeSingle().retry(retry),
     )) as MemberRow | null;
     if (!row) return null;
     return { userId: row.user_id, projectId: row.project_id, projectCode: row.projects.code, nickname: row.nickname, role: row.role };
@@ -184,6 +210,7 @@ export class AuthService implements Omit<AuthBridge, "getConfig" | "onSessionCha
     // 이 기기의 세션만 끝낸다. 서버에 못 닿아도 supabase-js가 로컬 세션은 지운다.
     const { error } = await this.client.auth.signOut({ scope: "local" });
     if (error) console.warn("[auth] 로그아웃 요청 실패", error);
+    this.notice = "";
     this.setSession(null);
   }
 

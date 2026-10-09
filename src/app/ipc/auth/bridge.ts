@@ -16,6 +16,7 @@ export const authBridge: AuthBridge = {
   onSessionChange: (listener) => subscribe<AuthSession | null>('auth:session', listener),
   signIn: (input) => call('signIn', input),
   signOut: () => call('signOut'),
+  getSignOutNotice: () => call('getSignOutNotice'),
   getRemembered: () => call('getRemembered'),
   listRecentProjects: () => call('listRecentProjects'),
   previewInvite: (inviteCode) => call('previewInvite', inviteCode),

@@ -12,6 +12,8 @@ export type AuthStubOptions = {
   offlineSessionChecks?: number
   /** 두 번째 저장부터 충돌로 거절한다. */
   conflictOnSecondSave?: boolean
+  /** 직접 하지 않은 로그아웃(내보내짐)의 이유. */
+  signOutNotice?: string
 }
 
 export const owner: AuthSession = {
@@ -98,6 +100,7 @@ export async function installAuthStub(page: Page, options: AuthStubOptions) {
         record('signOut', null)
         emit(null)
       },
+      getSignOutNotice: async () => options.signOutNotice ?? '',
       getRemembered: async () => options.remembered ?? null,
       listRecentProjects: async () => [
         { projectCode: 'checkly-team', nickname: 'minsu', lastUsedAt: '2026-10-06T09:00:00.000Z' },

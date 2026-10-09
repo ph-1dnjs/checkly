@@ -19,10 +19,16 @@ export const LoginPage = ({ bridge, onEnter, onJoin, onCreate }: Props) => {
   const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(false);
   const [error, setError] = useState("");
+  // 관리자가 내보내 로그아웃된 경우처럼 직접 하지 않은 로그아웃의 이유.
+  const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     let alive = true;
+    bridge.getSignOutNotice().then(
+      (text) => alive && setNotice(text),
+      () => undefined,
+    );
     bridge.getRemembered().then(
       (remembered) => {
         if (!alive || !remembered) return;
@@ -41,6 +47,7 @@ export const LoginPage = ({ bridge, onEnter, onJoin, onCreate }: Props) => {
   const edit = (setter: (value: string) => void) => (value: string) => {
     setter(value);
     setError("");
+    setNotice("");
   };
 
   const submit = async (event: FormEvent) => {
@@ -91,7 +98,7 @@ export const LoginPage = ({ bridge, onEnter, onJoin, onCreate }: Props) => {
             <input type="checkbox" checked={remember} onChange={(event) => setRemember(event.target.checked)} />
             기억하기
           </label>
-          <AuthError message={error} />
+          <AuthError message={error || notice} />
           <Button type="submit" className="auth-btn auth-btn-primary auth-login-submit" disabled={busy} aria-busy={busy}>
             {busy ? "로그인 중…" : "로그인"}
           </Button>

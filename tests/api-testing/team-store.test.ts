@@ -112,7 +112,7 @@ test("team project: servers·environments map to the common tables, scenarios·s
     const second = await workspace.saveScenario(devScope, yaml.replace("조회", "상품 조회"), {}, first.updatedAt);
     assert.notEqual(second.updatedAt, first.updatedAt);
     assert.equal(second.groupPath?.[0], "상품");
-    await assert.rejects(workspace.saveScenario(devScope, yaml, {}, first.updatedAt), /같은 ID의 시나리오가 있습니다/);
+    await assert.rejects(workspace.saveScenario(devScope, yaml, {}, first.updatedAt), /그 사이 다른 곳\(팀원·다른 화면\)에서 이 시나리오를 저장했습니다/);
     await assert.rejects(workspace.deleteScenario(team.projectId, "read", first.updatedAt), /시나리오가 변경되었습니다/);
     // Kept titles are metadata: the version stays, so an open editor can still save.
     await db.from("api_scenarios").update({ kept_titles: [{ from: "a", to: "b" }] }).eq("project_id", team.projectId).eq("id", "read");

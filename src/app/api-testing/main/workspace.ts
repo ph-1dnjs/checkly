@@ -1106,7 +1106,8 @@ export class ApiWorkspace {
         ...(previous?.keptTitles ? { keptTitles: previous.keptTitles } : {}),
       };
       const stored = await this.store().putScenario(input.projectId, item, expectedUpdatedAt);
-      if (!stored) throw new Error("같은 ID의 시나리오가 있습니다. 목록에서 최신 시나리오를 열어 수정하세요");
+      // With the version that was read: it changed meanwhile (a teammate or another screen saved first).
+      if (!stored) throw new Error(expectedUpdatedAt ? "그 사이 다른 곳(팀원·다른 화면)에서 이 시나리오를 저장했습니다. 목록에서 최신 시나리오를 열어 다시 수정하세요" : "같은 ID의 시나리오가 있습니다. 목록에서 최신 시나리오를 열어 수정하세요");
       return stored;
     });
     this.queue = action.catch(() => undefined);

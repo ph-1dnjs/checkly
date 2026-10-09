@@ -543,6 +543,9 @@ async function main() {
     await expect(restored.getByLabel("프로젝트 이름")).toHaveCount(0);
     await restored.getByRole("button", { name: "명세 설정", exact: true }).click();
     await expect(restored.getByLabel("OpenAPI URL", { exact: true })).toHaveValue(`${url}/openapi.json`);
+    // Clicking the environment already chosen keeps the URL (nothing loads it again).
+    await restored.getByRole("group", { name: "API 환경" }).locator('button[aria-pressed="true"]').click();
+    await expect(restored.getByLabel("OpenAPI URL", { exact: true })).toHaveValue(`${url}/openapi.json`);
     if (canRemember) {
       await expect(restored.getByLabel("Swagger 비밀번호", { exact: true })).toHaveValue("");
       await restored.getByRole("button", { name: "명세 새로고침", exact: true }).click();

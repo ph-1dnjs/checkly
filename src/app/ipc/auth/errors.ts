@@ -10,6 +10,7 @@ export const MESSAGES = {
   forbidden: "권한이 없습니다.",
   signedOut: "로그인이 필요합니다.",
   expired: "로그인이 만료되었습니다. 다시 로그인하세요.",
+  removed: "프로젝트에서 내보내져 로그아웃되었습니다. 다시 참여하려면 관리자에게 초대코드를 받아 새로 가입하세요.",
   conflict: "다른 팀원이 먼저 수정했습니다. 새로 불러온 뒤 다시 저장하세요.",
   wrongPassword: "현재 비밀번호가 올바르지 않습니다.",
   shortPassword: "비밀번호는 6자 이상이어야 합니다.",

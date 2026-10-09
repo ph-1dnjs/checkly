@@ -309,8 +309,25 @@ test("AuthService against local Supabase", async t => {
       assert.deepEqual((await creator.service.getProject()).members.map(m => m.nickname), ["boss", "crew2"]);
 
       await fails(joiner.service.removeMember(created.session.userId), /[가-힣]/);
+      // 내보내기 전에 다른 기기에도 로그인해 둔다(재실행 때 복원되는 세션).
+      const other = await newService();
+      await other.service.signIn({ projectCode: codeC, nickname: "crew2", password: "crew-pass1", remember: false });
       await creator.service.removeMember(joined.userId);
       assert.deepEqual((await creator.service.getProject()).members.map(m => m.nickname), ["boss"]);
+
+      // 내보내진 멤버: 토큰이 살아 있어도 다음 요청의 권한 오류 뒤 로그아웃되고 이유가 남는다.
+      await fails(joiner.service.getProject(), MESSAGES.forbidden);
+      await joiner.service.checkMembership();
+      assert.equal(joiner.events.at(-1), null);
+      assert.equal(await joiner.service.getSignOutNotice(), MESSAGES.removed);
+      // 재실행: 저장된 세션은 복원되지 않고 같은 이유가 남는다.
+      const restarted = await newService(other.dir);
+      assert.equal(await restarted.service.getSession(), null);
+      assert.equal(await restarted.service.getSignOutNotice(), MESSAGES.removed);
+      // 내보내지지 않은 멤버는 그대로다.
+      await creator.service.checkMembership();
+      assert.equal((await creator.service.getSession())?.userId, created.session.userId);
+      assert.equal(await creator.service.getSignOutNotice(), "");
     });
   } finally {
     if (projectIds.length) await admin.from("projects").delete().in("id", projectIds);

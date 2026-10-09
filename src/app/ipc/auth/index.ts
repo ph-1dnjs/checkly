@@ -11,6 +11,7 @@ const METHODS = [
   "getSession",
   "signIn",
   "signOut",
+  "getSignOutNotice",
   "getRemembered",
   "listRecentProjects",
   "previewInvite",
@@ -32,7 +33,10 @@ const handle = (channel: string, run: (...args: unknown[]) => unknown): void => 
     try {
       return { ok: true, value: await run(...args) };
     } catch (error) {
-      return { ok: false, message: toUserMessage(error) };
+      const message = toUserMessage(error);
+      // 권한·만료 오류는 내보내진 멤버일 수 있다. 그렇다면 로그인 화면으로 보낸다(auth:session).
+      if (message === MESSAGES.forbidden || message === MESSAGES.expired) await getAuthService()?.checkMembership();
+      return { ok: false, message };
     }
   });
 };
