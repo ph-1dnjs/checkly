@@ -7,6 +7,7 @@ import { z } from "zod";
 import type { ApiAiTerminal, ApiAiTerminalEvent, ApiAiTool } from "../shared/workspace";
 import { cliEnv, describeAiTools } from "./ai-cli";
 import type { ApiWorkspace } from "./workspace";
+import { scenarioRequest } from "./ai-context";
 
 /**
  * The in-app AI terminal: the user's own Claude Code or Codex runs interactively in a pseudo terminal
@@ -46,6 +47,11 @@ const startSchema = z.object({
   scope: z.object({ projectId: z.string().uuid(), environmentId: z.string().uuid() }).strict(),
   size: sizeSchema,
 }).strict();
+const askSchema = z.object({
+  scope: z.object({ projectId: z.string().uuid(), environmentId: z.string().uuid() }).strict(),
+  request: z.string().trim().max(4000, "요청은 4000자 이하로 적어 주세요"),
+  about: z.object({ scenarioId: z.string().min(1).max(1000), failures: z.array(z.string().max(500)).max(50).optional(), response: z.string().max(4000).optional() }).strict(),
+}).strict().refine(value => value.request || value.about.failures?.length, { message: "요청할 내용을 적어 주세요", path: ["request"] });
 const markerSchema = z.object({ modifiedAt: z.string().max(40), scenarioId: z.string().max(1000).optional() }).strict();
 const savedSchema = z.object({ tool: z.enum(["claude", "codex"]), environmentId: z.string().uuid(), sessionId: z.string().uuid().optional(), startedAt: z.string(), saved: markerSchema.optional() });
 
@@ -238,6 +244,25 @@ export class AiTerminalService {
         session.resultTimer = setTimeout(() => this.emit({ type: "result", projectId }), 300);
       });
     } catch { /* The screen can still check on demand. */ }
+  }
+
+  /**
+   * AI에게 요청 into the open terminal conversation: the request about a saved scenario is pasted as one block
+   * and sent, so the CLI goes on with what it already knows.
+   */
+  async ask(raw: unknown): Promise<void> {
+    const { scope, request, about } = askSchema.parse(raw);
+    const session = await this.load(scope.projectId);
+    if (!session?.process) throw new Error("열린 터미널 대화가 없습니다. AI 작성 도우미의 터미널에서 대화를 열거나, 새로 가볍게 물어보세요");
+    const target = await this.workspace.aiFixScenario(scope.projectId, about.scenarioId);
+    const text = scenarioRequest({
+      ...target, resultFile: this.workspace.aiTerminalResultFile(scope.projectId),
+      ...(about.failures?.length ? { failures: about.failures } : {}),
+      ...(about.response ? { response: this.workspace.aiMask(scope.projectId, about.response) } : {}),
+      ...(request ? { message: request } : {}),
+    });
+    session.process.write(`\x1b[200~${text}\x1b[201~`);
+    session.process.write("\r");
   }
 
   async markSaved(rawProjectId: unknown, rawSaved: unknown): Promise<void> {

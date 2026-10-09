@@ -1400,37 +1400,27 @@ body.panel-resizing { cursor:col-resize; user-select:none; }
 .api-testing-page .api-ai-author-heading .api-ai-style-toggle { min-height:0; margin-left:auto; padding:4px 8px; border:0; background:transparent; color:var(--ck-color-text-secondary); font-size:12.5px; box-shadow:none; }
 .api-testing-page .api-ai-author-heading .api-ai-style-toggle:hover:not(:disabled) { color:var(--api-ink); text-decoration:underline; }
 .api-ai-quick { display:grid; gap:12px; }
-.api-ai-quick > .api-field-help { margin:0; }
-.api-ai-quick-asked { display:flex; align-items:flex-start; gap:12px; padding-bottom:10px; border-bottom:var(--ck-fx-hairline); }
-.api-ai-quick-asked > span { flex:none; padding-top:2px; color:var(--api-muted); font-size:12px; }
-.api-ai-quick-asked ol { flex:1 1 auto; display:grid; gap:4px; margin:0; padding:0; list-style:none; color:var(--api-ink); white-space:pre-wrap; }
-.api-ai-quick-asked ol li + li::before { content:"바꾸기 · "; color:var(--api-muted); font-size:12px; }
-.api-ai-quick-asked > button { flex:none; }
 .api-ai-quick-progress { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:var(--ck-dim-radius-base); background:var(--ck-color-surface-subtle); color:var(--ck-color-text-body); }
 .api-ai-quick-progress > span:nth-child(2) { flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .api-ai-quick-spinner { flex:none; width:14px; height:14px; border:2px solid var(--api-border); border-top-color:var(--ck-color-blue-action); border-radius:50%; animation:api-ai-quick-spin .8s linear infinite; }
 @keyframes api-ai-quick-spin { to { transform:rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .api-ai-quick-spinner { animation:none; } }
-.api-ai-quick-note { padding:10px 12px; border-left:3px solid var(--ck-color-blue-action); background:var(--ck-color-blue-tint-soft); }
-.api-ai-quick-note strong { display:block; margin-bottom:4px; color:var(--api-ink); font-size:12px; }
-.api-ai-quick-note p { margin:0; color:var(--ck-color-text-body); line-height:1.6; white-space:pre-wrap; }
 .api-ai-quick-saved { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
 .api-ai-quick-saved p { flex:1 1 280px; margin:0; color:var(--ck-color-text-body); }
 /* AI로 고치기 under a failed run: only where it failed goes to the AI. */
-.api-testing-page button.api-ai-fix-open:not(.swagger-ui *) { display:inline-flex; align-items:center; gap:5px; align-self:center; min-height:0; margin-left:auto; padding:5px 12px; border:1px solid transparent; border-radius:999px; background:var(--ck-color-blue-action); color:#fff; font-size:12.5px; font-weight:700; white-space:nowrap; }
-.api-testing-page button.api-ai-fix-open:not(.swagger-ui *):hover:not(:disabled) { filter:brightness(1.08); }
-.api-testing-page button.api-ai-fix-open:not(.swagger-ui *)[aria-expanded="true"] { border-color:var(--ck-color-blue-action); background:var(--ck-color-canvas); color:var(--ck-color-blue-action); }
-.api-ai-fix { display:grid; gap:8px; padding:12px; border:1px solid var(--api-border); border-radius:var(--ck-dim-radius-base); }
-.api-ai-fix p, .api-ai-fix ul { margin:0; }
-.api-ai-fix ul { padding-left:18px; color:var(--ck-color-text-body); font-size:13px; }
-.api-ai-fix textarea { width:100%; box-sizing:border-box; resize:vertical; }
-.api-ai-fix .api-actions { margin:0; }
-.api-testing-page .api-ai-fix .api-check-row { flex-direction:row; align-items:center; gap:8px; margin:0; }
-.api-ai-fix .api-check-row input { flex:none; width:16px; height:16px; margin:0; }
+.api-testing-page button.api-ai-ask-open:not(.swagger-ui *) { display:inline-flex; align-items:center; gap:5px; white-space:nowrap; }
+.api-testing-page button.api-ai-ask-open.is-primary:not(.swagger-ui *) { display:inline-flex; align-items:center; gap:5px; align-self:center; min-height:0; margin-left:auto; padding:5px 12px; border:1px solid transparent; border-radius:999px; background:var(--ck-color-blue-action); color:#fff; font-size:12.5px; font-weight:700; white-space:nowrap; }
+.api-testing-page button.api-ai-ask-open.is-primary:not(.swagger-ui *):hover:not(:disabled) { filter:brightness(1.08); }
+.api-ai-ask.api-input-modal { display:grid; gap:12px; }
+.api-ai-ask.api-input-modal > header { margin-bottom:0; }
+.api-ai-ask ul { margin:0; padding-left:18px; color:var(--ck-color-text-body); font-size:13px; }
+.api-ai-ask .api-input-note { margin:0; }
+.api-ai-ask.api-input-modal footer { margin-top:4px; }
+.api-testing-page .api-ai-ask .api-check-row { flex-direction:row; align-items:center; gap:8px; margin:0; }
+.api-ai-ask .api-check-row input { flex:none; width:16px; height:16px; margin:0; }
 /* 바로 만들기 uses the page width like the terminal. */
 .api-page-body > .api-ai-author:has(.api-ai-quick) { max-width:none; }
 .api-ai-quick-title { margin:4px 0 0; color:var(--api-ink); font-size:15px; font-weight:700; }
-.api-ai-quick-asked > button { white-space:nowrap; }
 /* Chat-style input: one rounded box, the textarea borderless inside, actions on its bottom bar. */
 .api-ai-composer { display:grid; gap:4px; padding:12px 12px 10px 14px; border:1px solid var(--api-border); border-radius:14px; background:var(--ck-color-canvas); box-shadow:0 1px 2px rgb(20 24 28 / 6%); transition:border-color .15s, box-shadow .15s; }
 .api-ai-composer:focus-within { border-color:var(--ck-color-blue-action); box-shadow:0 0 0 3px var(--ck-color-blue-tint-soft); }
@@ -1441,7 +1431,38 @@ body.panel-resizing { cursor:col-resize; user-select:none; }
 .api-ai-composer-bar > .api-primary { white-space:nowrap; }
 .api-ai-composer-bar .api-ai-tool-row label { margin:0; }
 /* The save button sits apart from the suite list above it. */
-.api-ai-quick .api-ai-author-result > .api-actions { margin:16px 0 0; }
-.api-ai-quick .api-ai-quick-revise { margin-top:8px; }
-.api-testing-page .api-ai-fix textarea:not(.swagger-ui *) { font-family:var(--ck-font-ui); font-size:13px; }
+.api-testing-page .api-ai-ask textarea:not(.swagger-ui *) { font-family:var(--ck-font-ui); font-size:13px; }
 .api-ai-author .api-ai-quick > h3.api-ai-quick-title { margin:4px 0 -2px; }
+/* With a session 바로 만들기 fills the page like the terminal: the conversation on the left, the result over its right side. */
+.api-page-body:has(.api-ai-quick.is-active) { display:flex; flex-direction:column; overflow:hidden; padding-bottom:12px; }
+.api-page-body:has(.api-ai-quick.is-active) > .api-ai-author { display:flex; flex-direction:column; flex:1 1 auto; min-height:0; padding-bottom:0; }
+.api-page-body:has(.api-ai-quick.is-active) > .api-ai-author > * { flex:none; }
+.api-page-body:has(.api-ai-quick.is-active) > .api-ai-author > .api-ai-quick { display:flex; flex-direction:column; flex:1 1 auto; min-height:0; }
+.api-ai-quick.is-active > * { flex:none; }
+.api-ai-quick.is-active > .api-ai-terminal-body { position:relative; flex:1 1 auto; min-height:0; grid-template-rows:minmax(0,1fr); }
+.api-ai-quick-chat { display:flex; flex-direction:column; gap:10px; width:100%; min-height:0; }
+.api-ai-quick-log { display:flex; flex-direction:column; gap:12px; flex:1 1 auto; min-height:0; overflow-y:auto; overscroll-behavior:contain; padding:4px 4px 8px 0; }
+.api-ai-quick-turn { display:flex; flex-direction:column; gap:10px; }
+.api-ai-bubble { max-width:min(82%, 760px); margin:0; padding:10px 14px; line-height:1.6; white-space:pre-wrap; overflow-wrap:anywhere; }
+.api-ai-bubble.is-user { align-self:flex-end; border-radius:16px 16px 4px 16px; background:var(--ck-color-blue-action); color:#fff; }
+.api-ai-bubble.is-ai { align-self:flex-start; border:1px solid var(--api-border); border-radius:16px 16px 16px 4px; background:var(--ck-color-surface-subtle); color:var(--ck-color-text-body); }
+.api-ai-bubble.is-ai strong { display:block; margin-bottom:2px; color:var(--api-muted); font-size:11.5px; }
+.api-ai-bubble.is-ai p { margin:0; }
+.api-ai-quick-log > .api-ai-quick-progress { align-self:flex-start; }
+.api-ai-quick-ready { align-self:flex-start; margin:0; color:var(--ck-color-text-body); font-size:13px; }
+.api-ai-quick-after { margin:0; padding:10px 14px; border-radius:12px; background:var(--ck-color-surface-subtle); color:var(--ck-color-text-body); font-size:13px; }
+.api-ai-terminal-side .api-ai-quick-saved { padding-top:4px; }
+.api-ai-terminal-side .api-ai-author-result { margin-top:0; padding-top:0; border-top:0; }
+.api-ai-terminal-side .api-ai-author-result > .api-actions { margin:16px 0 0; }
+.api-ai-quick-log > .api-ai-quick-progress { max-width:100%; box-sizing:border-box; }
+.api-ai-quick-next { display:grid; gap:6px; padding:12px 14px; border-left:3px solid var(--ck-color-wait); border-radius:0 12px 12px 0; background:var(--ck-color-wait-tint); color:var(--ck-color-text-body); font-size:13px; line-height:1.6; }
+.api-ai-quick-next p, .api-ai-quick-next ul { margin:0; }
+.api-ai-quick-next ul { padding-left:18px; }
+.api-ai-quick-next > strong { color:var(--ck-color-wait-ink); }
+.api-testing-page label.api-ai-author-replace { flex-direction:row; justify-content:flex-start; margin-bottom:0; }
+/* In the result panel the YAML grows with its content: the panel is the one scroll. */
+.api-ai-terminal-side .api-ai-author-result pre { max-height:none; overflow:visible; }
+.api-ai-ask-failure { display:grid; gap:6px; padding:10px 12px; border-radius:var(--ck-dim-radius-base); background:var(--ck-color-wait-tint); }
+.api-testing-page fieldset.api-ai-ask-target { display:grid; gap:6px; min-width:0; margin:0; padding:0; border:0; background:none; }
+.api-testing-page .api-ai-ask-target legend { float:left; width:100%; margin:0 0 6px; padding:0; color:var(--api-ink); font-size:12.5px; font-weight:700; }
+.api-ai-ask-target small { margin-left:4px; color:var(--ck-color-text-mute); font-size:11.5px; }

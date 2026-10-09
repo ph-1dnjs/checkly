@@ -78,6 +78,7 @@ export function registerApiTesting() {
   ipcMain.handle("api-testing:resume-ai-terminal", (_event, request) => terminals.resume(request));
   ipcMain.on("api-testing:write-ai-terminal", (_event, projectId, data) => { try { terminals.write(projectId, data); } catch { /* Ignored: bad input from the screen. */ } });
   ipcMain.on("api-testing:resize-ai-terminal", (_event, projectId, size) => { try { terminals.resize(projectId, size); } catch { /* Ignored. */ } });
+  ipcMain.handle("api-testing:ask-ai-terminal", (_event, request) => terminals.ask(request));
   ipcMain.handle("api-testing:clear-ai-terminal", (_event, projectId) => terminals.clear(projectId));
   ipcMain.handle("api-testing:check-ai-terminal-result", (_event, scope) => workspace.checkAiTerminalResult(scope));
   ipcMain.handle("api-testing:mark-ai-terminal-result-saved", (_event, projectId, saved) => terminals.markSaved(projectId, saved));

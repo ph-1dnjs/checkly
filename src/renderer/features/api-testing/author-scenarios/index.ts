@@ -1,3 +1,3 @@
 export { AiAuthorPanel } from "./ui/AiAuthorPanel";
-export { AiFixButton, AiFixRequest } from "./ui/AiFixRequest";
-export { showAiQuick } from "./model/ai-fix";
+export { AiAskButton, AiAskRequest, type AiAskTarget } from "./ui/AiAskRequest";
+export { showAiChat } from "./model/ai-fix";

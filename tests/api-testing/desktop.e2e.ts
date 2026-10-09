@@ -264,7 +264,9 @@ process.stdin.on("data", chunk => {
     await quickPane.getByLabel("무엇을 테스트할까요?", { exact: true }).fill("로그인 확인");
     await quickPane.getByRole("button", { name: "만들기", exact: true }).click();
     await expect(quickPane.getByLabel("AI 메모", { exact: true })).toContainText("API 경로를 고쳤습니다.", { timeout: 15_000 });
-    await expect(quickPane.getByRole("region", { name: "AI 작성 결과", exact: true })).toContainText("바로 실행 가능");
+    // The conversation stays on the left; the result opens on its own over the right side.
+    await expect(quickPane.getByLabel("대화", { exact: true })).toContainText("로그인 확인");
+    await expect(quickPane.getByRole("complementary", { name: "AI 결과", exact: true }).getByRole("region", { name: "AI 작성 결과", exact: true })).toContainText("바로 실행 가능");
     await shot("ai-quick");
     const quickCalls = await readAiCliCalls();
     expect(quickCalls).toHaveLength(2);
@@ -281,9 +283,12 @@ process.stdin.on("data", chunk => {
     await expect(page.getByRole("alert").filter({ hasText: "최근 실행" })).toContainText("1단계 · 로그인");
     await shot("ai-fix-button");
     await page.getByRole("button", { name: "AI로 고치기", exact: true }).click();
-    const fixForm = page.getByRole("region", { name: "AI로 고치기", exact: true });
+    const fixForm = page.getByRole("dialog", { name: "빠른 로그인", exact: true });
     await expect(fixForm).toContainText("1단계 '로그인' 실패 · HTTP 오류 상태 · HTTP 400");
     await fixForm.getByLabel("AI에게 할 말", { exact: true }).fill("로그인 아이디를 고쳐 주세요");
+    await expect(fixForm.getByRole("checkbox", { name: "최근 실행 실패 내용 포함" })).toBeChecked();
+    await expect(fixForm.getByRole("radio", { name: /새로 가볍게/ })).toBeChecked();
+    await expect(fixForm.getByRole("radio", { name: /터미널 대화에 이어서/ })).toBeDisabled();
     await fixForm.getByRole("checkbox", { name: "실패한 단계의 응답 내용도 보내기" }).check();
     await shot("ai-fix");
     await fixForm.getByRole("button", { name: "AI에 보내기", exact: true }).click();

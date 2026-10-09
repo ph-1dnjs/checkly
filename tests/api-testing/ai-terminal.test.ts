@@ -216,3 +216,23 @@ test("a result whose suite has the name of one saved suite updates that suite in
     assert.equal((await workspace.checkAiScenarios(scope, bundle)).suite?.replaces, undefined);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
+
+test("AI에게 요청 into the terminal pastes the request about a saved scenario into the open conversation only", async () => {
+  const { dir, workspace, scope } = await setup();
+  const saved = await workspace.saveScenario(scope, good, {});
+  const { runs, spawn } = fakeSpawn();
+  const events: ApiAiTerminalEvent[] = [];
+  const terminals = service(workspace, spawn, events);
+  try {
+    const request = { scope, request: "실패 경우도 추가해 줘", about: { scenarioId: saved.id, failures: ["1단계 '로그인' 실패 · HTTP 400"] } };
+    await assert.rejects(terminals.ask(request), /열린 터미널 대화가 없습니다/);
+    await terminals.start({ scope, size });
+    await terminals.ask(request);
+    const typed = runs[0]!.typed.join("");
+    assert.match(typed, /^\x1b\[200~기존 시나리오 '로그인'에 대한 요청입니다/);
+    assert.match(typed, /사용자 요청:\n실패 경우도 추가해 줘/);
+    assert.ok(typed.includes(workspace.aiTerminalResultFile(scope.projectId)));
+    assert.ok(typed.endsWith("\x1b[201~\r"));
+    await terminals.clear(scope.projectId);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});

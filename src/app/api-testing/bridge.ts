@@ -25,6 +25,7 @@ export const apiTestingBridge: ApiTestingBridge = {
     ipcRenderer.on('api-testing:ai-terminal-event', handler)
     return () => { ipcRenderer.removeListener('api-testing:ai-terminal-event', handler) }
   },
+  askAiTerminal: (request) => ipcRenderer.invoke('api-testing:ask-ai-terminal', request),
   getAiQuick: (projectId) => ipcRenderer.invoke('api-testing:get-ai-quick', projectId),
   startAiQuick: (request) => ipcRenderer.invoke('api-testing:start-ai-quick', request),
   reviseAiQuick: (projectId, request) => ipcRenderer.invoke('api-testing:revise-ai-quick', projectId, request),

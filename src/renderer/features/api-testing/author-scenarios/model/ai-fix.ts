@@ -31,7 +31,7 @@ export function aiFixResponse(result: ApiScenarioResult, limit = 2000): string |
 
 const wayKey = (projectId: string) => `checkly.api-testing.ai-way.${projectId}`;
 const styleKey = (projectId: string) => `checkly.api-testing.ai-style.${projectId}`;
-/** Opens the AI tab on 앱에서 AI와 대화 · 바로 만들기 next time (where AI로 고치기 shows its run). */
-export function showAiQuick(projectId: string) {
-  try { localStorage.setItem(wayKey(projectId), "chat"); localStorage.setItem(styleKey(projectId), "quick"); } catch { /* only a convenience */ }
+/** Opens the AI tab on 앱에서 AI와 대화 in the given style next time (where an AI에게 요청 shows its answer). */
+export function showAiChat(projectId: string, style: "quick" | "terminal") {
+  try { localStorage.setItem(wayKey(projectId), "chat"); localStorage.setItem(styleKey(projectId), style); } catch { /* only a convenience */ }
 }

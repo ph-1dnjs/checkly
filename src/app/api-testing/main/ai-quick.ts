@@ -7,6 +7,7 @@ import type { ApiAiQuick, ApiAiQuickEvent, ApiAiTool } from "../shared/workspace
 import { problemReport } from "../shared/ai-problem-report";
 import { cliEnv, describeAiTools } from "./ai-cli";
 import { claudeFilePolicy } from "./ai-terminal";
+import { scenarioRequest } from "./ai-context";
 import type { ApiWorkspace } from "./workspace";
 
 /**
@@ -19,16 +20,20 @@ import type { ApiWorkspace } from "./workspace";
 
 export type QuickSpawn = (file: string, args: string[], options: { cwd: string; env: NodeJS.ProcessEnv }) => ChildProcessWithoutNullStreams;
 
-type Session = Omit<ApiAiQuick, "requests" | "check" | "saved"> & {
-  requests: string[];
+type Session = Omit<ApiAiQuick, "check" | "saved"> & {
   check?: ApiAiQuick["check"];
   saved?: ApiAiQuick["saved"];
   /** Claude's session id (chosen here) or Codex's thread id (reported by the CLI). */
   sessionId?: string;
+  /** Started from a saved scenario (AI에게 요청): a turn that saves nothing is an answer, not a failure. */
+  about?: boolean;
   /** Whether the CLI recorded the session, so the next request resumes it. */
   started: boolean;
   child?: ChildProcessWithoutNullStreams;
 };
+
+/** Said when the AI ended without a usable result; the screen shows what to do next. */
+export const notMade = "AI가 시나리오를 만들지 못했습니다";
 
 /** How many times Checkly's problems are sent back on their own before the user sees them. */
 export const maxAutoFixes = 2;
@@ -36,25 +41,18 @@ const requestSchema = z.string().trim().min(1, "만들 내용을 적어 주세�
 const startSchema = z.object({
   scope: z.object({ projectId: z.string().uuid(), environmentId: z.string().uuid() }).strict(),
   request: z.string().trim().max(4000, "요청은 4000자 이하로 적어 주세요"),
-  fix: z.object({ scenarioId: z.string().min(1).max(1000), failures: z.array(z.string().max(500)).min(1).max(50), response: z.string().max(4000).optional() }).strict().optional(),
-}).strict().refine(value => value.fix || value.request, { message: "만들 내용을 적어 주세요", path: ["request"] });
+  about: z.object({ scenarioId: z.string().min(1).max(1000), failures: z.array(z.string().max(500)).max(50).optional(), response: z.string().max(4000).optional() }).strict().optional(),
+}).strict().refine(value => value.request || value.about?.failures?.length, { message: "요청할 내용을 적어 주세요", path: ["request"] });
 const markerSchema = z.object({ modifiedAt: z.string().max(40), scenarioId: z.string().max(1000).optional() }).strict();
 
 export const quickOpening = (guideFile: string, request: string) =>
-  `Checkly 시나리오 작성 가이드 파일 ${guideFile} 을 읽고 그대로 따르세요. 질문하지 말고 바로 작성해 결과 파일에 저장한 뒤, 만든 내용과 직접 정한 점을 짧게 알려 주세요.\n\n요청:\n${request}`;
-/** AI로 고치기: the saved YAML and where its run failed; the AI looks for the cause in the backend code. */
-export function quickFix(input: { name: string; yaml: string; failures: string[]; response?: string; message?: string }): string {
-  return [
-    `기존 시나리오 '${input.name}'를 실행했더니 실패했습니다. 원인을 백엔드 코드에서 찾아 고친 시나리오 하나만 같은 name과 같은 group(프로젝트 상태 파일에 있음)으로 결과 파일에 저장하세요. 저장하면 그 시나리오가 업데이트됩니다. 다른 시나리오와 스위트는 쓰지 않습니다.`,
-    ["실행 결과:", ...input.failures.map(failure => `- ${failure}`)].join("\n"),
-    ...(input.response ? [`실패한 단계의 응답(앞부분):\n\`\`\`\n${input.response}\n\`\`\``] : []),
-    ...(input.message ? [`사용자 메시지:\n${input.message}`] : []),
-    `현재 YAML:\n\`\`\`yaml\n${input.yaml.trimEnd()}\n\`\`\``,
-  ].join("\n\n");
-}
+  `Checkly 시나리오 작성 가이드 파일 ${guideFile} 을 읽고 그대로 따르세요.\n\n${request}`;
+/** A new request: written straight away, without questions. */
+export const quickCreate = (request: string) =>
+  `질문하지 말고 바로 작성해 결과 파일에 저장한 뒤, 만든 내용과 직접 정한 점을 짧게 알려 주세요.\n\n요청:\n${request}`;
 
 export const quickRevision = (request: string) =>
-  `수정 요청:\n${request}\n\n질문하지 말고 고친 전체 결과를 같은 결과 파일에 다시 저장한 뒤, 바꾼 점을 짧게 알려 주세요.`;
+  `이어서 요청:\n${request}\n\n질문이면 결과 파일은 그대로 두고 답만 하세요. 고쳐야 하면 되묻지 말고 고친 전체 결과를 같은 결과 파일에 다시 저장한 뒤, 바꾼 점을 짧게 알려 주세요.`;
 
 /** Claude Code without its screen: the prompt comes on stdin, events come as JSON lines. */
 export function claudeQuickArgs(input: { sessionId: string; resume: boolean; backendFolders: string[] }): string[] {
@@ -124,8 +122,8 @@ export class AiQuickService {
 
   private view(session: Session | undefined): ApiAiQuick | null {
     if (!session) return null;
-    const { sessionId: _id, started: _started, child: _child, ...rest } = session;
-    return { ...rest, requests: [...rest.requests] };
+    const { sessionId: _id, started: _started, child: _child, about: _about, ...rest } = session;
+    return { ...rest, turns: rest.turns.map(turn => ({ ...turn })) };
   }
 
   private changed(projectId: string) { this.emit({ projectId, quick: this.view(this.sessions.get(projectId)) }); }
@@ -134,19 +132,20 @@ export class AiQuickService {
 
   /** A new 바로 만들기 in the requested environment; the previous one (not running) is replaced. */
   async start(raw: unknown): Promise<ApiAiQuick> {
-    const { scope, request, fix } = startSchema.parse(raw);
+    const { scope, request, about } = startSchema.parse(raw);
     if (this.sessions.get(scope.projectId)?.status === "running") throw new Error("이미 만들고 있습니다. 끝나거나 중단한 뒤 다시 시도하세요");
     const settings = await this.workspace.getAiChatSettings(scope.projectId);
     const installed = await this.tools();
     const chosen = installed.find(item => item.tool === settings.tool) ?? installed[0];
     if (!chosen) throw new Error("이 PC에서 Claude Code나 Codex CLI를 찾지 못했습니다");
-    const target = fix ? await this.workspace.aiFixScenario(scope.projectId, fix.scenarioId) : null;
+    const target = about ? await this.workspace.aiFixScenario(scope.projectId, about.scenarioId) : null;
     const setup = await this.workspace.aiTerminalSetup(scope, false, "quick");
-    const prompt = quickOpening(setup.guideFile, target && fix
-      ? quickFix({ ...target, failures: fix.failures, ...(fix.response ? { response: this.workspace.aiMask(scope.projectId, fix.response) } : {}), ...(request ? { message: request } : {}) })
-      : request);
+    const prompt = quickOpening(setup.guideFile, target && about
+      ? scenarioRequest({ ...target, ...(about.failures?.length ? { failures: about.failures } : {}), ...(about.response ? { response: this.workspace.aiMask(scope.projectId, about.response) } : {}), ...(request ? { message: request } : {}) })
+      : quickCreate(request));
     const session: Session = {
-      tool: chosen.tool, environmentId: scope.environmentId, status: "running", requests: [target ? `‘${target.name}’ 고치기${request ? ` · ${request}` : ""}` : request], progress: "시작하는 중", note: "", fixes: 0, started: false,
+      tool: chosen.tool, environmentId: scope.environmentId, status: "running", turns: [{ request: target ? `‘${target.name}’${about?.failures?.length ? " 고치기" : "에 대해"}${request ? ` · ${request}` : ""}` : request, note: "" }],
+      ...(target ? { about: true } : {}), progress: "시작하는 중", fixes: 0, started: false,
       ...(chosen.tool === "claude" ? { sessionId: randomUUID() } : {}),
     };
     this.sessions.set(scope.projectId, session);
@@ -166,7 +165,7 @@ export class AiQuickService {
     if (!tool) throw new Error(`${session.tool === "claude" ? "Claude Code" : "Codex"}를 찾지 못했습니다. 새로 만드세요`);
     const setup = await this.workspace.aiTerminalSetup({ projectId, environmentId: session.environmentId }, true, "quick");
     Object.assign(session, { status: "running", progress: "시작하는 중", fixes: 0, error: undefined });
-    session.requests.push(request);
+    session.turns.push({ request, note: "" });
     this.changed(projectId);
     void this.work(projectId, session, tool.path, setup.cwd, setup.backendFolders, quickRevision(request));
     return this.view(session)!;
@@ -184,9 +183,10 @@ export class AiQuickService {
       if (outcome.error) { this.finish(projectId, session, "failed", outcome.error); return; }
       let check: ApiAiQuick["check"] | null = null;
       try { check = await this.workspace.checkAiTerminalResult({ projectId, environmentId: session.environmentId }, "quick"); }
-      catch (error) { this.finish(projectId, session, "failed", `결과를 검사하지 못했습니다: ${(error as Error).message}`); return; }
+      // A result file without any scenario: the AI could not make one (it says why in its answer).
+      catch { this.finish(projectId, session, "failed", notMade); return; }
       if (this.left(projectId, session)) return;
-      if (!check) { this.finish(projectId, session, "failed", "AI가 결과를 저장하지 않았습니다. 요청을 조금 더 구체적으로 적어 다시 해 보세요"); return; }
+      if (!check) { if (session.about) this.finish(projectId, session, "done"); else this.finish(projectId, session, "failed", notMade); return; }
       session.check = check;
       const report = problemReport(check.result);
       if (!report || session.fixes >= maxAutoFixes) { this.finish(projectId, session, "done"); return; }
@@ -227,7 +227,7 @@ export class AiQuickService {
         const event = readQuickEvent(session.tool, text);
         if (event.sessionId && session.tool === "codex") session.sessionId = event.sessionId;
         if (event.error) failure = event.error;
-        if (event.note !== undefined) session.note = event.note;
+        if (event.note !== undefined) session.turns[session.turns.length - 1]!.note = event.note;
         if (event.progress && session.child === child) session.progress = event.progress;
         // Claude records the session as soon as it answers; Codex once it names the thread.
         if (session.tool === "claude" || session.sessionId) session.started = true;

@@ -18,9 +18,10 @@ const errorText = (error: unknown) => (error as Error).message.replace(/^Error i
  * - 가이드 복사: otherwise the user pastes the guide into their AI, which writes a
  *   result file that Checkly checks and saves.
  */
-export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved, onConfigureProject }: {
+export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved, onConfigureProject, onOpenSpecs }: {
   project: ApiProject; scope: ApiEnvironmentScope; bridge: ApiTestingBridge; onBusy: (busy: boolean) => void; onSaved: (first?: SavedApiScenario) => void;
   onConfigureProject: () => void;
+  onOpenSpecs?: () => void;
 }) {
   // Every operation the AI could use, and the ones picked for it (empty = all).
   const [operations, setOperations] = useState<PickableOperation[]>([]);
@@ -144,7 +145,7 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved, onConfi
           </li>
         </ul>
         {!tools.length && <p className="api-field-help">{chatStatus?.error ?? "Claude Code나 Codex CLI를 설치한 뒤 다시 확인하세요"}</p>}
-      </section> : style === "quick" ? <AiQuickPanel project={project} scope={scope} bridge={bridge} onBusy={chatActivity} onSaved={onSaved}
+      </section> : style === "quick" ? <AiQuickPanel project={project} scope={scope} bridge={bridge} onBusy={chatActivity} onSaved={onSaved} onOpenSpecs={onOpenSpecs}
         toolChoice={toolChoice} noSpec={noSpec} specNote={specNote} /> : <AiTerminalPanel project={project} scope={scope} bridge={bridge} onBusy={chatActivity} onSaved={onSaved} toolName={aiToolNames[tool!]}
         toolChoice={toolChoice} noSpec={noSpec} specNote={specNote} />}
     </> : <ol className="api-ai-steps" aria-label="AI 작성 순서">

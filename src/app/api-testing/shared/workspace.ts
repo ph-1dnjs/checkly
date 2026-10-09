@@ -135,16 +135,14 @@ export type ApiAiTerminalEvent =
   | { type: "exit"; projectId: string; exitCode: number }
   /** The AI saved its result file; the screen checks it. */
   | { type: "result"; projectId: string };
-/** 바로 만들기: the AI writes from one request without a conversation; only its progress and last answer are shown. */
+/** 바로 만들기: the AI writes from a request without asking; shown as requests and the AI's answers, with the result beside. */
 export type ApiAiQuick = {
   tool: ApiAiTool; environmentId: string;
   status: "running" | "done" | "failed" | "stopped";
-  /** The requests so far, the first one and each 수정 요청. */
-  requests: string[];
+  /** Each request (the first one, then each 내용 바꾸기) and the AI's last answer to it: what it made and decided on its own. */
+  turns: Array<{ request: string; note: string }>;
   /** What the AI is doing now, e.g. "읽는 중: UserController.java". */
   progress: string;
-  /** The AI's last answer: what it made and what it decided on its own. */
-  note: string;
   /** Automatic fixes of Checkly's problems used for the latest request. */
   fixes: number;
   error?: string;
@@ -154,10 +152,10 @@ export type ApiAiQuick = {
 };
 export type ApiAiQuickEvent = { projectId: string; quick: ApiAiQuick | null };
 /**
- * fix: AI로 고치기 from a failed run. Only the saved YAML, where it failed (step, HTTP status) and, when the user
- * allows it, the start of that step's response go to the AI; request is the user's optional message then.
+ * about: AI에게 요청 from a saved scenario. Only its YAML, the user's words and, when chosen, where its last run
+ * failed (step, HTTP status) and the start of that step's response go to the AI.
  */
-export type ApiAiQuickRequest = { scope: ApiEnvironmentScope; request: string; fix?: { scenarioId: string; failures: string[]; response?: string } };
+export type ApiAiQuickRequest = { scope: ApiEnvironmentScope; request: string; about?: { scenarioId: string; failures?: string[]; response?: string } };
 export type ApiAiTerminalStartRequest = { scope: ApiEnvironmentScope; size: { cols: number; rows: number } };
 /** checkly: messages Checkly adds (guide sent, check results); `result` is a checked AI answer to review and save. */
 export type ApiTestingBridge = {
@@ -184,6 +182,8 @@ export type ApiTestingBridge = {
   refreshAiTerminalFiles(scope: ApiEnvironmentScope): Promise<void>;
   /** Terminal output, exits and result saves of every project; returns the unsubscribe. */
   onAiTerminalEvent(listener: (event: ApiAiTerminalEvent) => void): () => void;
+  /** AI에게 요청 into the running terminal conversation (pasted and sent). */
+  askAiTerminal(request: ApiAiQuickRequest & { about: NonNullable<ApiAiQuickRequest["about"]> }): Promise<void>;
   /** 바로 만들기 of the project (in memory only; gone after a restart). */
   getAiQuick(projectId: string): Promise<ApiAiQuick | null>;
   /** Starts a new 바로 만들기 from a request (replaces the previous one). */

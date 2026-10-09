@@ -106,7 +106,7 @@ test("a request runs the AI in its own folder with the guide, then shows the che
     assert.equal(started.status, "running");
     const done = await until(events, value => value.status !== "running");
     assert.equal(done.status, "done", done.error);
-    assert.equal(done.note, "로그인 시나리오 1개를 만들었습니다.");
+    assert.equal(done.turns[0]?.note, "로그인 시나리오 1개를 만들었습니다.");
     assert.equal(done.check?.result.drafts[0]?.name, "로그인");
     assert.ok(events.some(event => event.quick?.progress === "읽는 중: Login.java"));
     assert.equal(path.basename(runs[0]!.cwd), "quick");
@@ -143,12 +143,14 @@ test("problems go back to the same session on their own, twice at most; a 수정
 
     events.length = 0;
     const revised = await quick.revise(scope.projectId, "API 경로를 고쳐 주세요");
-    assert.deepEqual(revised.requests, ["로그인", "API 경로를 고쳐 주세요"]);
+    assert.deepEqual(revised.turns.map(turn => turn.request), ["로그인", "API 경로를 고쳐 주세요"]);
+    assert.equal(revised.turns[0]?.note, "2번째 답");
     const fixed = await until(events, value => value.status !== "running");
     assert.equal(fixed.status, "done");
     assert.equal(fixed.fixes, 0);
+    assert.deepEqual(fixed.turns.map(turn => turn.note), ["2번째 답", "3번째 답"]);
     assert.equal(fixed.check?.result.drafts[0]?.issues.length, 0);
-    assert.match(await runs[3]!.prompt, /수정 요청:\nAPI 경로를 고쳐 주세요/);
+    assert.match(await runs[3]!.prompt, /이어서 요청:\nAPI 경로를 고쳐 주세요/);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
@@ -171,8 +173,8 @@ test("Codex resumes the thread it reported; a run without a saved result or with
     await quick.start({ scope, request: "로그인" });
     const first = await until(events, value => value.status !== "running");
     assert.equal(first.status, "failed");
-    assert.match(first.error!, /결과를 저장하지 않았습니다/);
-    assert.equal(first.note, "무엇을 테스트할까요?");
+    assert.equal(first.error, "AI가 시나리오를 만들지 못했습니다");
+    assert.equal(first.turns[0]?.note, "무엇을 테스트할까요?");
     events.length = 0;
     await quick.revise(scope.projectId, "로그인 성공만");
     const second = await until(events, value => value.status !== "running");
@@ -201,11 +203,11 @@ test("중단 stops the CLI; 새로 만들기 forgets the session and its result;
     await quick.clear(scope.projectId);
     assert.equal(await quick.get(scope.projectId), null);
     assert.equal(await stat(resultFile).then(() => true, () => false), false);
-    await assert.rejects(quick.start({ scope, request: "  " }), /만들 내용을 적어 주세요/);
+    await assert.rejects(quick.start({ scope, request: "  " }), /요청할 내용을 적어 주세요/);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
-test("AI로 고치기 sends the saved YAML without its id, where the run failed and the masked response; the request names the scenario", async () => {
+test("AI에게 요청 with a failed run sends the saved YAML without its id, where it failed and the masked response; the request names the scenario", async () => {
   const { dir, workspace, scope, project } = await setup();
   const saved = await workspace.saveScenario(scope, good, {});
   await workspace.setGlobal({ projectId: scope.projectId }, "accessToken", "secret-token-123");
@@ -213,23 +215,65 @@ test("AI로 고치기 sends the saved YAML without its id, where the run failed 
   const events: ApiAiQuickEvent[] = [];
   const quick = service(workspace, spawn, events);
   try {
-    const started = await quick.start({ scope, request: "주소만 바꾸면 돼요", fix: { scenarioId: saved.id, failures: ["1단계 '로그인' 실패 · HTTP 오류 상태 · HTTP 400"], response: "{\"token\":\"secret-token-123\",\"message\":\"주소 필수\"}" } });
-    assert.deepEqual(started.requests, ["‘로그인’ 고치기 · 주소만 바꾸면 돼요"]);
+    const started = await quick.start({ scope, request: "주소만 바꾸면 돼요", about: { scenarioId: saved.id, failures: ["1단계 '로그인' 실패 · HTTP 오류 상태 · HTTP 400"], response: "{\"token\":\"secret-token-123\",\"message\":\"주소 필수\"}" } });
+    assert.deepEqual(started.turns, [{ request: "‘로그인’ 고치기 · 주소만 바꾸면 돼요", note: "" }]);
     await until(events, value => value.status !== "running");
     const prompt = await runs[0]!.prompt;
-    assert.match(prompt, /기존 시나리오 '로그인'를 실행했더니 실패했습니다/);
+    assert.match(prompt, /기존 시나리오 '로그인'에 대한 요청입니다. 이 시나리오를 실행했더니 실패했습니다/);
     assert.match(prompt, /- 1단계 '로그인' 실패 · HTTP 오류 상태 · HTTP 400/);
-    assert.match(prompt, /사용자 메시지:\n주소만 바꾸면 돼요/);
+    assert.match(prompt, /사용자 요청:\n주소만 바꾸면 돼요/);
     assert.match(prompt, /api: POST \/login/);
     assert.doesNotMatch(prompt, /^id: /m);
     assert.match(prompt, /주소 필수/);
     assert.doesNotMatch(prompt, /secret-token-123/);
     // Without a message or response only the YAML and the failure go.
     await quick.clear(scope.projectId);
-    await quick.start({ scope, request: "", fix: { scenarioId: saved.id, failures: ["1단계 '로그인' 실패"] } });
-    await until(events, value => value.status !== "running" && value.requests[0] === "‘로그인’ 고치기");
+    await quick.start({ scope, request: "", about: { scenarioId: saved.id, failures: ["1단계 '로그인' 실패"] } });
+    await until(events, value => value.status !== "running" && value.turns[0]?.request === "‘로그인’ 고치기");
     const plain = await runs[1]!.prompt;
-    assert.doesNotMatch(plain, /사용자 메시지|응답\(앞부분\)/);
-    await assert.rejects(quick.start({ scope, request: "", fix: { scenarioId: "missing", failures: ["x"] } }), /고칠 시나리오를 찾지 못했습니다/);
+    assert.doesNotMatch(plain, /사용자 요청|응답\(앞부분\)/);
+    await assert.rejects(quick.start({ scope, request: "", about: { scenarioId: "missing", failures: ["x"] } }), /고칠 시나리오를 찾지 못했습니다/);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test("a result file without any scenario (the AI wrote only why it could not) is a plain failure, not a check error", async () => {
+  const { dir, workspace, scope } = await setup();
+  const { spawn } = fakeSpawn(async run => {
+    const prompt = await run.prompt;
+    const resultFile = /결과를 파일 (\S+) 에 저장/.exec(await readFile(/가이드 파일 (\S+) 을/.exec(prompt)![1]!, "utf8"))![1]!;
+    await writeFile(resultFile, "로컬 로그인 API가 명세에 없어 만들 수 없습니다.\n");
+    run.say({ type: "result", is_error: false, result: "명세를 다시 가져와 주세요." });
+    run.close();
+  });
+  const events: ApiAiQuickEvent[] = [];
+  const quick = service(workspace, spawn, events);
+  try {
+    await quick.start({ scope, request: "로컬 로그인" });
+    const done = await until(events, value => value.status !== "running");
+    assert.equal(done.status, "failed");
+    assert.equal(done.error, "AI가 시나리오를 만들지 못했습니다");
+    assert.equal(done.check, undefined);
+    assert.equal(done.turns[0]?.note, "명세를 다시 가져와 주세요.");
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test("a question about a saved scenario is answered without a result, which is not a failure; it needs words or a failure", async () => {
+  const { dir, workspace, scope } = await setup();
+  const saved = await workspace.saveScenario(scope, good, {});
+  const { runs, spawn } = fakeSpawn(async run => { await run.prompt; run.say({ type: "result", is_error: false, result: "로그인 단계는 토큰을 만들기 위한 것입니다." }); run.close(); });
+  const events: ApiAiQuickEvent[] = [];
+  const quick = service(workspace, spawn, events);
+  try {
+    await assert.rejects(quick.start({ scope, request: " ", about: { scenarioId: saved.id } }), /요청할 내용을 적어 주세요/);
+    const started = await quick.start({ scope, request: "이 단계는 왜 있어?", about: { scenarioId: saved.id } });
+    assert.equal(started.turns[0]?.request, "‘로그인’에 대해 · 이 단계는 왜 있어?");
+    const done = await until(events, value => value.status !== "running");
+    assert.equal(done.status, "done");
+    assert.equal(done.error, undefined);
+    assert.equal(done.check, undefined);
+    assert.equal(done.turns[0]?.note, "로그인 단계는 토큰을 만들기 위한 것입니다.");
+    const prompt = await runs[0]!.prompt;
+    assert.match(prompt, /질문이면 결과 파일에 쓰지 말고 답만 하세요/);
+    assert.doesNotMatch(prompt, /실행했더니 실패/);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
