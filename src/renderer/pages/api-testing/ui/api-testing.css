@@ -637,7 +637,6 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 }
 .api-edit-layout > .api-compose-editor { border-left:0; }
 .api-edit-layout .api-builder-step { scroll-margin-top:16px; }
-.api-web-dev-banner { width:min(1740px,calc(100% - 40px)); margin:0 auto; padding:12px 0; color:var(--ck-color-text-secondary); font-size:12px; }
 .api-swagger-shell .api-toolbar { border-bottom:1px solid var(--ck-color-line); margin:0 0 16px; padding:0 0 16px; }
 .api-swagger-shell .api-toolbar h1 { color:var(--ck-color-text-ink); font-size:22px; font-weight:600; letter-spacing:-.02em; }
 .api-swagger-shell .api-context { border-bottom:1px solid var(--ck-color-line-strong); margin-bottom:22px; padding-bottom:20px; }
@@ -652,7 +651,7 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 .api-swagger-renderer .swagger-ui .wrapper { max-width:none; }
 .api-swagger-renderer .swagger-ui .opblock-body .opblock-loading-animation { transform-box:fill-box; transform-origin:center; animation:ckSpin 1s linear infinite; }
 @keyframes ckSpin { to { transform:rotate(360deg); } }
-@media(max-width:800px) { .api-swagger-shell { padding-left:12px; padding-right:12px; } .api-web-dev-banner { width:calc(100% - 24px); } .api-swagger-shell .api-toolbar { align-items:flex-start; flex-direction:column; } }
+@media(max-width:800px) { .api-swagger-shell { padding-left:12px; padding-right:12px; } .api-swagger-shell .api-toolbar { align-items:flex-start; flex-direction:column; } }
 @media(max-width:600px) { .content:has(.api-compose-layout) { padding-bottom:80px; } }
 .api-suite-panel{min-width:0;padding-bottom:110px}.api-suite-editor{display:grid;gap:16px;padding:20px 0}.api-suite-editor>label,.api-suite-editor fieldset>label{display:grid;gap:6px}.api-suite-editor input,.api-suite-editor select{min-width:0;width:100%}.api-suite-editor fieldset{display:grid;gap:10px;border:1px solid var(--ck-color-line);padding:14px}.api-suite-results{margin:24px 0}.api-suite-results details{border:1px solid var(--ck-color-line);margin-top:8px;padding:12px}.api-suite-results summary{cursor:pointer;font-weight:600}.api-suite-results li{margin:6px 0;overflow-wrap:anywhere}
 .api-scenarios aside .api-sidebar-section{min-width:0;margin-top:14px}
