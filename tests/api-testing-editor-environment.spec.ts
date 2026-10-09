@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { parseScenario, stringifyScenario } from '../src/app/api-testing/shared/scenario'
-import type { ApiAiImportResult, ApiAiTerminal, ApiAiChatSettings, ApiAiChatStatus, ApiCatalog, ApiEnvironmentScope, ApiGlobal, ApiProject, ApiScenarioPreview, ApiScope, ApiTestingBridge, SavedApiScenario } from '../src/app/api-testing/shared/workspace'
+import type { ApiCatalog, ApiEnvironmentScope, ApiGlobal, ApiProject, ApiScenarioPreview, ApiScope, ApiTestingBridge, SavedApiScenario } from '../src/app/api-testing/shared/workspace'
 
 const projectId = '00000000-0000-4000-8000-000000000001'
 const serverId = '00000000-0000-4000-8000-000000000002'
@@ -61,7 +61,6 @@ function structuredCatalog(summary: string): ApiCatalog {
 // twoServers: the project has a second server. missingGlobals: previewScenario reports globals with no value, per step.
 async function workspace(page: Page, structured = false, linkedGlobal = false, options: {
   twoServers?: boolean; missingGlobals?: boolean; extra?: SavedApiScenario[]; failSecondStep?: boolean; cancelRun?: boolean;
-  chat?: { current: ApiAiTerminal | null; settings?: ApiAiChatSettings; tools?: ApiAiChatStatus['tools']; result?: { modifiedAt: string; result: ApiAiImportResult } | null };
 } = {}) {
   const catalogs: Record<string, ApiCatalog | null> = {
     [environments.dev]: structured ? structuredCatalog('개발 구조 입력') : catalog('/dev-items', '개발 환경 조회'),
@@ -84,10 +83,6 @@ async function workspace(page: Page, structured = false, linkedGlobal = false, o
     bindings: {}, updatedAt: importedAt, groupPath: ['기존 그룹'],
   }, ...(options.extra ?? [])]
   const saves: Array<{ scope: ApiEnvironmentScope; item: SavedApiScenario }> = []
-  const chatMarks: Parameters<ApiTestingBridge['markAiTerminalResultSaved']>[] = []
-  const terminalWrites: string[] = []
-  const terminalStarts: unknown[] = []
-  const chatSettingsSaves: ApiAiChatSettings[] = []
   let saveAttempts = 0
   const requests: string[] = []
   const unexpected: string[] = []
@@ -165,38 +160,10 @@ async function workspace(page: Page, structured = false, linkedGlobal = false, o
         saves.push({ scope, item })
         return item
       }
-      case 'getAiChatStatus':
-        await gates.get('ai-status')
-        return options.chat ? { tools: options.chat.tools ?? [{ tool: 'claude', version: 'test' }] }
-          : { tools: [], error: 'Claude Code나 Codex CLI가 설치되어 있지 않습니다' }
-      case 'getAiChatSettings':
-        await gates.get('ai-settings')
-        return options.chat ? options.chat.settings ?? { folders: { [serverId]: ['/backend'] }, tool: 'claude' } : { folders: {} }
-      case 'saveAiChatSettings': {
-        const next = args[1] as ApiAiChatSettings
-        chatSettingsSaves.push(next)
-        if (options.chat) options.chat.settings = next
-        return next
-      }
-      case 'getAiTerminal': return options.chat?.current ?? null
-      case 'startAiTerminal': {
-        const request = args[0] as Parameters<ApiTestingBridge['startAiTerminal']>[0]
-        terminalStarts.push(request)
-        options.chat!.current = { tool: options.chat!.settings?.tool ?? 'claude', environmentId: request.scope.environmentId, running: true, buffer: '' }
-        return options.chat!.current
-      }
-      case 'resumeAiTerminal': options.chat!.current!.running = true; return options.chat!.current
-      case 'clearAiTerminal': options.chat!.current = null; options.chat!.result = null; return undefined
-      case 'writeAiTerminal': terminalWrites.push(args[1] as string); return undefined
-      case 'resizeAiTerminal': return undefined
-      case 'checkAiTerminalResult': return options.chat?.result ?? null
-      case 'refreshAiTerminalFiles': return undefined
-      case 'markAiTerminalResultSaved': {
-        const input = args as Parameters<ApiTestingBridge['markAiTerminalResultSaved']>
-        options.chat!.current!.saved = input[1]
-        chatMarks.push(input)
-        return undefined
-      }
+      // The in-app AI runs only in the desktop app (its own E2E); here no AI is installed.
+      case 'getAiChatStatus': return { tools: [], error: 'Claude Code나 Codex CLI가 설치되어 있지 않습니다' }
+      case 'getAiChatSettings': return { folders: {} }
+      case 'saveAiChatSettings': return args[1]
       default:
         unexpected.push(method)
         throw new Error(`Unexpected bridge call: ${method}`)
@@ -217,15 +184,14 @@ async function workspace(page: Page, structured = false, linkedGlobal = false, o
       onQaPreview: () => () => undefined,
       onQaStepPreview: () => () => undefined,
       onRunVideo: () => () => undefined,
-      // Terminal events cannot cross into the test; the subscription is a no-op.
-      apiTesting: new Proxy({}, { get: (_target, method: string) => method === 'onAiTerminalEvent' ? () => () => undefined : (...args: unknown[]) => call(method, args) }),
+      apiTesting: new Proxy({}, { get: (_target, method: string) => (...args: unknown[]) => call(method, args) }),
     } })
   })
   await page.goto(`/?tab=scenarios&project=${projectId}&server=${serverId}&environment=${environments.dev}`)
   await page.getByRole('button', { name: 'API 테스트', exact: true }).click()
   await expect(page.getByRole('button', { name: '+ 새 시나리오', exact: true })).toBeEnabled()
   return {
-    saves, requests, unexpected, globalSaves, chatMarks, terminalWrites, terminalStarts, chatSettingsSaves,
+    saves, requests, unexpected, globalSaves,
     get runs() { return runs }, get saveAttempts() { return saveAttempts },
     pause(environment: string) {
       gates.set(environment, new Promise<void>(resolve => releases.set(environment, resolve)))
@@ -240,217 +206,10 @@ async function workspace(page: Page, structured = false, linkedGlobal = false, o
   }
 }
 
-/** A Claude terminal session started in dev. */
-const terminalSession = (): ApiAiTerminal => ({ tool: 'claude', environmentId: environments.dev, running: true, buffer: 'Claude 대화 중' })
-/** A checked result file with one draft; `issues` makes it need fixing. */
-function checkedResult(issues: string[] = []) {
-  const yaml = `id: ai-chat-draft\nname: 대화 조회\nserver: ${serverId}\nsteps:\n  - api: GET /dev-items\n`
-  return { modifiedAt: importedAt, result: { drafts: [{ id: 'ai-chat-draft', name: '대화 조회', yaml, stepCount: 1, issues, executionIssues: [], notices: [] }], suite: null } }
-}
-
-test('the AI terminal checks the result file below the terminal; saving it is remembered for the session', async ({ page }) => {
-  const state = await workspace(page, false, false, { chat: { current: terminalSession(), result: checkedResult() } })
-  state.pauseSaving()
-  await openAi(page, 'chat')
-  const terminal = page.getByRole('region', { name: 'AI 터미널', exact: true })
-  const check = terminal.getByRole('region', { name: 'AI 결과 검사', exact: true })
-  await expect(terminal).toContainText('Claude 대화')
-  await expect(terminal.locator('.xterm')).toBeVisible()
-  await check.getByRole('button', { name: '선택한 것 저장', exact: true }).click()
-  await expect.poll(() => state.saveAttempts).toBe(1)
-  await expect(page.getByRole('tab', { name: '시나리오', exact: true })).toBeDisabled()
-  state.resumeSaving()
-  await expect.poll(() => state.chatMarks.length).toBe(1)
-  expect(state.chatMarks[0]).toEqual([projectId, { modifiedAt: importedAt, scenarioId: 'ai-chat-draft' }])
-  expect(state.saves[0].scope).toEqual({ projectId, environmentId: environments.dev })
-  await expect(page.getByRole('tab', { name: '시나리오', exact: true })).toBeEnabled()
-  await page.getByRole('tab', { name: '시나리오', exact: true }).click()
-  await page.getByRole('tab', { name: 'AI 작성 도우미', exact: true }).click()
-  // Already saved: the results panel stays closed, without a "저장 전" mark, until opened.
-  await expect(check).toHaveCount(0)
-  await terminal.getByRole('button', { name: '결과 열기', exact: true }).click()
-  await expect(check.getByRole('status').filter({ hasText: '저장했습니다' })).toBeVisible()
-  await expect(check.getByRole('button', { name: '선택한 것 저장', exact: true })).toHaveCount(0)
-  expect(state.saves).toHaveLength(1)
-  expect(state.unexpected).toEqual([])
-})
-
-test('problems in the result go back to the terminal as one pasted block; another environment keeps the session environment', async ({ page }) => {
-  const state = await workspace(page, false, false, { chat: { current: terminalSession(), result: checkedResult(['API를 찾을 수 없습니다']) } })
-  await page.getByRole('group', { name: 'API 환경', exact: true }).getByRole('button', { name: 'stage', exact: true }).click()
-  await openAi(page, 'chat')
-  const terminal = page.getByRole('region', { name: 'AI 터미널', exact: true })
-  await expect(terminal).toContainText('이 대화는 dev에서 시작했습니다')
-  await terminal.getByRole('button', { name: '문제를 AI에 보내기', exact: true }).click()
-  await expect(terminal.getByRole('button', { name: 'AI에 보냈습니다', exact: true })).toBeDisabled()
-  await expect.poll(() => state.terminalWrites.length).toBe(2)
-  expect(state.terminalWrites[0]).toMatch(/^\x1b\[200~Checkly 검사에서 아래 문제가 나왔습니다[\s\S]*API를 찾을 수 없습니다[\s\S]*\x1b\[201~$/)
-  expect(state.terminalWrites[1]).toBe('\r')
-  // 대화 초기화 asks first (the result was not saved), then goes back to 대화 시작 in the current environment.
-  const asked: string[] = []
-  page.once('dialog', dialog => { asked.push(dialog.message()); void dialog.accept() })
-  await terminal.getByRole('button', { name: '대화 초기화', exact: true }).click()
-  await expect.poll(() => asked).toEqual(['저장하지 않은 결과가 사라집니다. 초기화할까요?'])
-  await terminal.getByRole('button', { name: '대화 시작', exact: true }).click()
-  await expect.poll(() => state.terminalStarts.length).toBe(1)
-  expect((state.terminalStarts[0] as { scope: unknown }).scope).toEqual({ projectId, environmentId: environments.stage })
-  await expect(terminal).not.toContainText('이 대화는 dev에서 시작했습니다')
-  expect(state.unexpected).toEqual([])
-})
-
-test('AI chat settings fall back to an installed tool when the chosen one is missing', async ({ page }) => {
-  const state = await workspace(page, false, false, { chat: { current: terminalSession(),
-    settings: { folders: { [serverId]: ['/backend'] }, tool: 'codex' },
-  } })
-  await openAi(page, 'chat')
-  // Only one AI is installed: nothing to choose, and nothing is saved.
-  await expect(page.getByRole('region', { name: 'AI 터미널', exact: true })).toBeVisible()
-  await expect(page.getByRole('region', { name: 'AI 실행 설정', exact: true })).toHaveCount(0)
-  expect(state.chatSettingsSaves).toEqual([])
-  await page.getByRole('button', { name: '프로젝트 설정', exact: true }).click()
-  await expect(page.locator('.api-project-form').getByLabel('모델 (선택)', { exact: true })).toHaveCount(0)
-  await expect(page.locator('.api-project-form').getByLabel('사용할 AI', { exact: true })).toHaveCount(0)
-  expect(state.unexpected).toEqual([])
-})
-
-test('the AI tab has two ways as tabs: chat needs an installed AI and a backend folder, set from the project form', async ({ page }) => {
-  const state = await workspace(page, false, false, { chat: { current: null, settings: { folders: {} } } })
-  await openAi(page)
-  const author = page.getByRole('region', { name: 'AI 시나리오 작성', exact: true })
-  const ways = author.getByRole('tablist', { name: '작성 방식', exact: true })
-  const chatTab = ways.getByRole('tab', { name: '앱에서 AI와 대화', exact: true })
-  const copyTab = ways.getByRole('tab', { name: '내 AI 앱에서 쓰기', exact: true })
-  // Without a folder the copy-and-paste guide opens; the chat tab lists what it still needs.
-  await expect(copyTab).toHaveAttribute('aria-selected', 'true')
-  await expect(author.getByRole('button', { name: 'AI 가이드 복사', exact: true })).toBeVisible()
-  await chatTab.click()
-  const needs = author.getByRole('region', { name: '앱에서 AI와 대화 준비', exact: true })
-  await expect(needs).toContainText('AIClaude')
-  await expect(needs).toContainText('백엔드 코드 폴더없음')
-  await expect(author.getByRole('button', { name: 'AI 가이드 복사', exact: true })).toHaveCount(0)
-  await expect(author.getByRole('button', { name: '작성 방식 바꾸기', exact: true })).toHaveCount(0)
-  state.pause('ai-settings')
-  await needs.getByRole('button', { name: '설정하기', exact: true }).click()
-  const form = page.locator('.api-project-form')
-  await expect(form.getByRole('status')).toContainText('백엔드 폴더를 불러오는 중')
-  state.resume('ai-settings')
-  await expect(form.getByLabel('API 폴더 경로', { exact: true })).toBeFocused()
-  await expect(form.getByLabel('API 폴더 경로', { exact: true })).toBeInViewport()
-  await expect(form.getByRole('heading', { name: '백엔드 코드 폴더 (선택)', exact: true })).toBeVisible()
-  await form.getByRole('button', { name: '프로젝트 저장', exact: true }).click()
-  await expect(needs).toContainText('백엔드 코드 폴더없음')
-  expect(state.chatSettingsSaves.at(-1)?.folders).toEqual({ [serverId]: [] })
-  await needs.getByRole('button', { name: '설정하기', exact: true }).click()
-  // A path typed but not explicitly added is included in the project save.
-  await form.getByLabel('API 폴더 경로', { exact: true }).fill('/backend')
-  await form.getByRole('button', { name: '프로젝트 저장', exact: true }).click()
-  expect(state.chatSettingsSaves.at(-1)?.folders).toEqual({ [serverId]: ['/backend'] })
-  await expect(author.getByRole('button', { name: '대화 시작', exact: true })).toBeEnabled()
-  await expect(author.getByRole('button', { name: 'AI 가이드 복사', exact: true })).toHaveCount(0)
-  // The other way is the other tab, remembered for the project.
-  await copyTab.click()
-  await expect(author.getByRole('button', { name: 'AI 가이드 복사', exact: true })).toBeVisible()
-  await expect(author.getByRole('region', { name: 'AI 대화', exact: true })).toHaveCount(0)
-  await page.getByRole('tab', { name: '시나리오', exact: true }).click()
-  await openAi(page)
-  await expect(copyTab).toHaveAttribute('aria-selected', 'true')
-  await chatTab.click()
-  await page.getByRole('button', { name: '프로젝트 설정', exact: true }).click()
-  await form.getByRole('button', { name: 'API 폴더 /backend 제거', exact: true }).click()
-  await form.getByRole('button', { name: '프로젝트 저장', exact: true }).click()
-  await expect(needs).toContainText('백엔드 코드 폴더없음')
-  expect(state.unexpected).toEqual([])
-})
-
-test('the AI choice is offered before 대화 시작 only; a session shows its AI in the title', async ({ page }) => {
-  const state = await workspace(page, false, false, { chat: { current: terminalSession(),
-    settings: { folders: { [serverId]: ['/backend'] }, tool: 'codex' },
-    tools: [{ tool: 'claude', version: 'claude-test' }, { tool: 'codex', version: 'codex-test' }],
-  } })
-  await openAi(page, 'chat')
-  const terminal = page.getByRole('region', { name: 'AI 터미널', exact: true })
-  // A session cannot move to another CLI, so there is nothing to choose while it exists.
-  await expect(terminal).toContainText('Claude 대화')
-  await expect(page.getByRole('radiogroup', { name: '사용할 AI', exact: true })).toHaveCount(0)
-  await terminal.getByRole('button', { name: '대화 초기화', exact: true }).click()
-  await expect(page.getByRole('radiogroup', { name: '사용할 AI', exact: true }).getByRole('radio', { name: 'Codex', exact: true })).toBeChecked()
-  await expect(terminal.getByRole('button', { name: '대화 시작', exact: true })).toBeVisible()
-  expect(state.chatSettingsSaves).toEqual([])
-  expect(state.unexpected).toEqual([])
-})
-
-test('AI project settings discard picked folders when leaving without saving', async ({ page }) => {
-  const state = await workspace(page, false, false, { chat: { current: null, settings: { folders: {} } } })
-  await openAi(page, 'chat')
-  await page.getByRole('button', { name: '설정하기', exact: true }).click()
-  const form = page.locator('.api-project-form')
-  await form.getByRole('button', { name: '폴더 선택…', exact: true }).click()
-  await expect(form).toContainText('/backend/a')
-  await expect(form).toContainText('/backend/b')
-  await form.getByRole('button', { name: '← 돌아가기', exact: true }).click()
-  await page.getByRole('button', { name: '변경사항 버리고 나가기', exact: true }).click()
-  await expect(page.getByRole('region', { name: '앱에서 AI와 대화 준비', exact: true })).toContainText('백엔드 코드 폴더없음')
-  expect(state.chatSettingsSaves).toEqual([])
-  expect(state.unexpected).toEqual([])
-})
-
-test('AI authoring checks the installed AI (refresh is an icon) and the chat picks the AI with radio buttons', async ({ page }) => {
-  const state = await workspace(page, false, false, { chat: { current: null, settings: { folders: { [serverId]: ['/backend'] }, tool: 'claude' },
-    tools: [{ tool: 'claude', version: 'claude-test' }, { tool: 'codex', version: 'codex-test' }],
-  } })
-  state.pause('ai-status')
-  await openAi(page)
-  await expect(page.getByRole('status').filter({ hasText: '설치된 AI를 확인하는 중' })).toBeVisible()
-  await expect(page.getByRole('tablist', { name: '작성 방식', exact: true })).toHaveCount(0)
-  state.resume('ai-status')
-  // Ready (AI and folder): the chat tab opens with the AI choice and a refresh icon on the tabs row.
-  await expect(page.getByRole('tab', { name: '앱에서 AI와 대화', exact: true })).toHaveAttribute('aria-selected', 'true')
-  const choice = page.getByRole('radiogroup', { name: '사용할 AI', exact: true })
-  await expect(choice).toContainText('AIClaudeCodex')
-  state.pause('ai-status')
-  await page.getByRole('button', { name: 'AI 다시 확인', exact: true }).click()
-  await expect(page.getByRole('status').filter({ hasText: '설치된 AI를 확인하는 중' })).toBeVisible()
-  state.resume('ai-status')
-  await expect(choice.getByRole('radio', { name: 'Claude', exact: true })).toBeChecked()
-  await choice.getByRole('radio', { name: 'Codex', exact: true }).check()
-  // Picking saves right away; there is no save button or effort choice.
-  await expect.poll(() => state.chatSettingsSaves.at(-1)).toEqual({ folders: { [serverId]: ['/backend'] }, tool: 'codex' })
-  await expect(choice.getByRole('radio', { name: 'Codex', exact: true })).toBeChecked()
-  await expect(page.getByRole('button', { name: 'AI 설정 저장', exact: true })).toHaveCount(0)
-  await expect(page.getByLabel('추론 수준', { exact: true })).toHaveCount(0)
-  expect(state.unexpected).toEqual([])
-})
-
-test('AI project settings remain wheel scrollable after focusing a folder in a short window', async ({ page }) => {
-  await page.setViewportSize({ width: 900, height: 520 })
-  const state = await workspace(page, false, false, { chat: { current: null, settings: { folders: {} } } })
-  await openAi(page, 'chat')
-  await page.getByRole('button', { name: '설정하기', exact: true }).click()
-  const form = page.locator('.api-project-form')
-  const input = form.getByLabel('API 폴더 경로', { exact: true })
-  await expect(input).toBeFocused()
-  await expect(input).toBeInViewport()
-  const host = page.locator('.content')
-  const start = await host.evaluate(element => element.scrollTop)
-  expect(start).toBeGreaterThan(0)
-  const box = await input.boundingBox()
-  await page.mouse.move(box!.x + 10, box!.y + 10)
-  await page.mouse.wheel(0, -2000)
-  await expect.poll(() => host.evaluate(element => element.scrollTop)).toBeLessThan(start)
-  await expect(form.getByRole('heading', { name: '프로젝트 설정', exact: true })).toBeInViewport()
-  await page.mouse.wheel(0, 2000)
-  await expect(input).toBeInViewport()
-  const inputBox = await input.boundingBox()
-  const footerBox = await form.locator('footer').boundingBox()
-  expect(inputBox!.y + inputBox!.height).toBeLessThanOrEqual(footerBox!.y)
-  await expect(form.getByRole('button', { name: '프로젝트 저장', exact: true })).toBeInViewport()
-  expect(state.unexpected).toEqual([])
-})
-
 /** Opens the AI tab and, when given, picks the way on its first step. */
-async function openAi(page: Page, way?: 'chat' | 'copy') {
+async function openAi(page: Page, way?: 'copy') {
   await page.getByRole('tab', { name: 'AI 작성 도우미', exact: true }).click()
-  if (way) await page.getByRole('tab', { name: way === 'chat' ? '앱에서 AI와 대화' : '내 AI 앱에서 쓰기', exact: true }).click()
+  if (way) await page.getByRole('tab', { name: '내 AI 앱에서 쓰기', exact: true }).click()
 }
 
 const editStep = (page: Page) => page.getByRole('navigation', { name: '시나리오 작성 단계' }).getByRole('button', { name: /값 설정/ })

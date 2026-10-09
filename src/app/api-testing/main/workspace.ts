@@ -22,6 +22,8 @@ const sidebarMetadataSchema = z.object({
   tags: z.array(z.string().trim().min(1).max(32)).max(20).optional().transform(values => values?.length ? [...new Map(values.map(value => [value.toLocaleLowerCase(), value])).values()] : undefined),
 }).strict();
 const suiteSchema = z.object({ id: z.string().uuid(), name: z.string().trim().min(1).max(100), scenarioIds: z.array(z.string().min(1).max(1000)).min(1).max(100), onFailure: z.enum(["stop", "continue"]) }).extend(sidebarMetadataSchema.shape).strict();
+/** Which in-app AI folder: the terminal's ("chat") or 바로 만들기's ("quick"). */
+export type AiRunKind = "chat" | "quick";
 type ShareBase = { scenarios: Record<string, string>; suites: Record<string, string> };
 const shareHash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex").slice(0, 32);
 // Folder and tags are part of what is shared, so a change to only them still counts.
@@ -405,6 +407,16 @@ export class ApiWorkspace {
     return text => secrets.reduce((masked, secret) => masked.split(secret).join("***"), text);
   }
 
+  /** Text going to the in-app AI (a failed run's response) with the values Checkly holds masked. */
+  aiMask(projectId: string, text: string): string { return this.aiRedact(z.string().uuid().parse(projectId))(text); }
+
+  /** A saved scenario for AI로 고치기: its name and YAML without the id (the AI writes the same name to update it). */
+  async aiFixScenario(projectId: string, scenarioId: string): Promise<{ name: string; yaml: string }> {
+    const item = (await this.listScenarios(projectId)).find(scenario => scenario.id === scenarioId);
+    if (!item) throw new Error("고칠 시나리오를 찾지 못했습니다");
+    return { name: item.name, yaml: this.aiRedact(projectId)(item.source.replace(/^id: .*\n/m, "")) };
+  }
+
   /** Per-project exchange folder with the user's AI: the schema file it reads and the result file it writes. */
   private aiFiles(projectId: string) {
     const dir = path.join(this.directory, "ai", projectId);
@@ -412,8 +424,9 @@ export class ApiWorkspace {
   }
 
   /** The in-app terminal has its own inputs; copying a filtered guide must not replace them. */
-  private aiChatFiles(projectId: string) {
-    const dir = path.join(this.aiFiles(projectId).dir, "chat");
+  /** The in-app AI's files: "chat" for the terminal, "quick" for 바로 만들기 (its own folder, so Codex's resume --last never mixes them). */
+  private aiChatFiles(projectId: string, kind: AiRunKind = "chat") {
+    const dir = path.join(this.aiFiles(projectId).dir, kind);
     return { dir, catalog: path.join(dir, "api-catalog.json"), state: path.join(dir, "project-state.json"), guide: path.join(dir, "guide.md"), result: path.join(dir, "scenarios.yaml") };
   }
 
@@ -525,11 +538,11 @@ export class ApiWorkspace {
 
 
   /**
-   * Everything the in-app terminal needs to open a new session: the guide written to a file (the CLI is
+   * Everything the in-app AI needs to open a new session: the guide written to a file (the CLI is
    * told to read it), the folder the CLI runs in (writable: only the result goes there) and the backend
    * folders it reads. An old result is removed so it is not checked as this session's answer.
    */
-  async aiTerminalSetup(rawScope: unknown, resume = false): Promise<{ cwd: string; guideFile: string; resultFile: string; backendFolders: string[]; apiCount: number }> {
+  async aiTerminalSetup(rawScope: unknown, resume = false, kind: AiRunKind = "chat"): Promise<{ cwd: string; guideFile: string; resultFile: string; backendFolders: string[]; apiCount: number }> {
     const { scope, project } = await this.environment(environmentScopeSchema.parse(rawScope));
     const servers = await this.aiServers(scope, project);
     const configured = (await this.getAiChatSettings(scope.projectId)).folders;
@@ -539,33 +552,41 @@ export class ApiWorkspace {
     for (const folder of backendFolders) {
       if (!(await stat(folder).then(info => info.isDirectory(), () => false))) throw new Error(`백엔드 폴더를 찾을 수 없습니다: ${folder}`);
     }
-    const files = this.aiChatFiles(scope.projectId);
-    await this.refreshAiChatFiles(scope);
-    const guide = this.aiRedact(scope.projectId)(createAuthorPrompt({ servers, catalogFile: files.catalog, stateFile: files.state, resultFile: files.result, backendFolders: byServer, terminal: true }));
+    const files = this.aiChatFiles(scope.projectId, kind);
+    await this.writeAiRunFiles(scope, servers, kind);
+    const guide = this.aiRedact(scope.projectId)(createAuthorPrompt({ servers, catalogFile: files.catalog, stateFile: files.state, resultFile: files.result, backendFolders: byServer, mode: kind === "quick" ? "quick" : "terminal" }));
     await this.writeAiFile(files.guide, guide);
     // A resumed session keeps its last result; a new one starts without it.
     if (!resume) await rm(files.result, { force: true });
     return { cwd: files.dir, guideFile: files.guide, resultFile: files.result, backendFolders, apiCount: servers.reduce((count, server) => count + server.operations.length, 0) };
   }
 
-  /** The terminal session's result file, checked like a pasted answer; null until the AI writes it. */
-  async checkAiTerminalResult(rawScope: unknown): Promise<{ modifiedAt: string; result: ApiAiImportResult } | null> {
+  /** The session's result file, checked like a pasted answer; null until the AI writes it. */
+  async checkAiTerminalResult(rawScope: unknown, kind: AiRunKind = "chat"): Promise<{ modifiedAt: string; result: ApiAiImportResult } | null> {
     const scope = environmentScopeSchema.parse(rawScope);
-    const file = this.aiChatFiles(scope.projectId).result;
+    const file = this.aiChatFiles(scope.projectId, kind).result;
     const info = await stat(file).catch(() => null);
     if (!info?.isFile()) return null;
     if (info.size > 2_000_000) throw new Error("AI 결과 파일은 2MB 이하만 불러올 수 있습니다");
     return { modifiedAt: info.mtime.toISOString(), result: await this.checkAiScenarios(scope, await readFile(file, "utf8")) };
   }
 
-  /** Where the terminal session's result file lives (watched for changes). */
-  aiTerminalResultFile(projectId: string): string { return this.aiChatFiles(z.string().uuid().parse(projectId)).result; }
+  /** Where the session's result file lives (watched for changes). */
+  aiTerminalResultFile(projectId: string, kind: AiRunKind = "chat"): string { return this.aiChatFiles(z.string().uuid().parse(projectId), kind).result; }
 
-  /** Rewrites the terminal session's full catalog and saved state in its environment (at start and after saves). */
+  /** Rewrites the in-app AI's full catalog and saved state in its environment (at start and after saves). */
   async refreshAiChatFiles(rawScope: unknown): Promise<void> {
     const { scope, project } = await this.environment(environmentScopeSchema.parse(rawScope));
     const servers = await this.aiServers(scope, project);
-    const files = this.aiChatFiles(scope.projectId);
+    for (const kind of ["chat", "quick"] as const) {
+      // Only folders already in use: the other way may never have been opened.
+      if (kind === "quick" && !(await stat(this.aiChatFiles(scope.projectId, kind).dir).then(() => true, () => false))) continue;
+      await this.writeAiRunFiles(scope, servers, kind);
+    }
+  }
+
+  private async writeAiRunFiles(scope: { projectId: string }, servers: Awaited<ReturnType<ApiWorkspace["aiServers"]>>, kind: AiRunKind): Promise<void> {
+    const files = this.aiChatFiles(scope.projectId, kind);
     await this.writeAiFile(files.catalog, this.aiRedact(scope.projectId)(JSON.stringify(aiCatalogDetails(servers), null, 1)));
     await this.writeAiProjectState(scope.projectId, files.state);
   }
@@ -573,7 +594,7 @@ export class ApiWorkspace {
   /** The terminal session to resume after a restart (AI, session id, environment); never the conversation. */
   async readAiTerminal(projectId: string): Promise<unknown> { return this.read(`ai-terminal-${z.string().uuid().parse(projectId)}.json`); }
   async writeAiTerminal(projectId: string, session: unknown): Promise<void> { await this.save(`ai-terminal-${z.string().uuid().parse(projectId)}.json`, session); }
-  async removeAiTerminalResult(projectId: string): Promise<void> { await rm(this.aiTerminalResultFile(projectId), { force: true }); }
+  async removeAiTerminalResult(projectId: string, kind: AiRunKind = "chat"): Promise<void> { await rm(this.aiTerminalResultFile(projectId, kind), { force: true }); }
   async removeAiTerminal(projectId: string): Promise<void> { await this.removeFile(`ai-terminal-${z.string().uuid().parse(projectId)}.json`); }
 
   /** What the user's AI last wrote to the result file; null when there is none yet. */

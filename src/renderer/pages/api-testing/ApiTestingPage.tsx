@@ -9,7 +9,7 @@ import { GlobalVariableMenu } from "../../features/api-testing/configure-globals
 import { ApiTestingProviders } from "./ui/ApiTestingProviders";
 import { ScenarioPanel } from "./ui/ScenarioPanel";
 import { ScenarioEditorPanel } from "./ui/ScenarioEditorPanel";
-import { AiAuthorPanel } from "../../features/api-testing/author-scenarios";
+import { AiAuthorPanel, showAiQuick } from "../../features/api-testing/author-scenarios";
 import { SpecSourcePanel } from "../../features/api-testing/configure-spec";
 import "./ui/api-testing.css";
 import type { OnRunAction } from "../../shared/model/run-action";
@@ -273,7 +273,7 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
         {/* Only this area scrolls; the title, project and tabs rows above stay in place. */}
         <div className="api-page-body">
         {tab === "ai" && <AiAuthorPanel key={`${projectId}:${environmentId}`} project={project} scope={{ projectId, environmentId }} bridge={bridge} onBusy={setBusy} onConfigureProject={() => setForm("edit-ai")} onSaved={first => { setBusy(false); setOpenSaved(first ?? null); setTab("scenarios"); }} />}
-        {tab === "scenarios" && <ScenarioPanel key={`${projectId}:${environmentId}:${serverId}`} project={project} scope={scope} bridge={bridge} onBusy={setBusy} onRunAction={onRunAction} runSaved={runSaved} onRunSavedConsumed={() => setRunSaved(null)} openSaved={openSaved} onOpenSavedConsumed={() => setOpenSaved(null)} onOpenAi={() => changeTab("ai")} onCreateScenario={() => openScenarioEditor()} onEditScenario={item => openScenarioEditor(item.id)} />}
+        {tab === "scenarios" && <ScenarioPanel key={`${projectId}:${environmentId}:${serverId}`} project={project} scope={scope} bridge={bridge} onBusy={setBusy} onRunAction={onRunAction} runSaved={runSaved} onRunSavedConsumed={() => setRunSaved(null)} openSaved={openSaved} onOpenSavedConsumed={() => setOpenSaved(null)} onOpenAi={() => changeTab("ai")} onAiFixStarted={() => { showAiQuick(projectId); changeTab("ai"); }} onCreateScenario={() => openScenarioEditor()} onEditScenario={item => openScenarioEditor(item.id)} />}
         {tab === "scenario-editor" && <ScenarioEditorPanel key={`${projectId}:${serverId}`} project={project} scope={scope} bridge={bridge} onBusy={setBusy} onRunAction={onRunAction} onBackToScenarios={backToScenarios} onOpenSpecs={openSpecs} onExecuteSaved={executeSaved} startCreateRequest={scenarioCreateRequest} editScenarioId={scenarioEditorScenarioId} onCreateConsumed={() => setScenarioCreateRequest(0)} onComposerOpenChange={setScenarioComposerOpen} onUnsavedChange={setScenarioDirty} onCreateScenario={() => openScenarioEditor()} onEditScenario={item => openScenarioEditor(item.id)} composeContext={<div className="api-compose-context">{environmentPicker}{valueActions}</div>} />}
         {tab === "api" && <>
         {(catalog || sync || !loading) && <SpecSourcePanel key={`${projectId}:${serverId}:${environmentId}:${catalog ? "loaded" : "empty"}`}

@@ -59,13 +59,20 @@ export const openingPrompt = (guideFile: string) => `Checkly 시나리오 작성
 export function claudeTerminalArgs(input: { sessionId: string; resume: boolean; backendFolders: string[]; prompt?: string }): string[] {
   return [
     ...(input.resume ? ["--resume", input.sessionId] : ["--session-id", input.sessionId]),
-    "--restricted", "--strict-mcp-config", "--tools", "Read", "Grep", "Glob", "Write", "Edit",
-    ...input.backendFolders.flatMap(folder => ["--add-dir", folder]),
-    // Permission paths starting with // are absolute; Edit rules cover every file-editing tool (Write included).
-    "--disallowedTools", ...input.backendFolders.map(folder => `Edit(/${folder}/**)`),
-    // A single-value option last, so the prompt is not taken as another folder or tool.
-    "--permission-mode", "acceptEdits",
+    ...claudeFilePolicy(input.backendFolders),
     ...(input.prompt ? [input.prompt] : []),
+  ];
+}
+
+/** Files only, writing allowed in the working folder, backend folders read-only. Ends with a single-value option. */
+export function claudeFilePolicy(backendFolders: string[]): string[] {
+  return [
+    "--restricted", "--strict-mcp-config", "--tools", "Read", "Grep", "Glob", "Write", "Edit",
+    ...backendFolders.flatMap(folder => ["--add-dir", folder]),
+    // Permission paths starting with // are absolute; Edit rules cover every file-editing tool (Write included).
+    "--disallowedTools", ...backendFolders.map(folder => `Edit(/${folder}/**)`),
+    // A single-value option last, so a prompt after it is not taken as another folder or tool.
+    "--permission-mode", "acceptEdits",
   ];
 }
 

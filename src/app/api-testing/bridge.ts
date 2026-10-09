@@ -1,5 +1,5 @@
 import { ipcRenderer } from 'electron'
-import type { ApiAiTerminalEvent, ApiTestingBridge } from './shared/workspace'
+import type { ApiAiQuickEvent, ApiAiTerminalEvent, ApiTestingBridge } from './shared/workspace'
 
 export const apiTestingBridge: ApiTestingBridge = {
   getSpecSync: (scope) => ipcRenderer.invoke('api-testing:spec-sync', scope),
@@ -24,6 +24,17 @@ export const apiTestingBridge: ApiTestingBridge = {
     const handler = (_event: Electron.IpcRendererEvent, value: ApiAiTerminalEvent) => listener(value)
     ipcRenderer.on('api-testing:ai-terminal-event', handler)
     return () => { ipcRenderer.removeListener('api-testing:ai-terminal-event', handler) }
+  },
+  getAiQuick: (projectId) => ipcRenderer.invoke('api-testing:get-ai-quick', projectId),
+  startAiQuick: (request) => ipcRenderer.invoke('api-testing:start-ai-quick', request),
+  reviseAiQuick: (projectId, request) => ipcRenderer.invoke('api-testing:revise-ai-quick', projectId, request),
+  stopAiQuick: (projectId) => ipcRenderer.invoke('api-testing:stop-ai-quick', projectId),
+  clearAiQuick: (projectId) => ipcRenderer.invoke('api-testing:clear-ai-quick', projectId),
+  markAiQuickResultSaved: (projectId, saved) => ipcRenderer.invoke('api-testing:mark-ai-quick-result-saved', projectId, saved),
+  onAiQuickEvent: (listener) => {
+    const handler = (_event: Electron.IpcRendererEvent, value: ApiAiQuickEvent) => listener(value)
+    ipcRenderer.on('api-testing:ai-quick-event', handler)
+    return () => { ipcRenderer.removeListener('api-testing:ai-quick-event', handler) }
   },
   copyAiPrompt: (request) => ipcRenderer.invoke('api-testing:copy-ai-prompt', request),
   getAiPrompt: (request) => ipcRenderer.invoke('api-testing:get-ai-prompt', request),

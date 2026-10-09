@@ -12,6 +12,7 @@ import { ProgressBar } from "../../../shared/ui/ProgressBar";
 import { LoadingSpinner } from "../../../shared/ui/LoadingSpinner";
 import { GlobalVariableSetupLink } from "../../../entities/api-testing";
 import { useGlobalVariableAccess } from "../../../features/api-testing/configure-globals";
+import { AiFixButton, AiFixRequest } from "../../../features/api-testing/author-scenarios";
 import { readLastRun, writeLastRun, type ScenarioLastRun } from "../../../entities/api-testing";
 import { SuitePanel } from "./SuitePanel";
 import { RunInputModal } from "../../../features/api-testing/submit-run-input";
@@ -52,6 +53,8 @@ export type ScenarioPanelProps = {
   onCreateScenario?: () => void;
   /** Opens the AI authoring tab (a shortcut from the empty detail). */
   onOpenAi?: () => void;
+  /** AI로 고치기 sent a failed run to the in-app AI: show the AI tab, where the fix appears. */
+  onAiFixStarted?: () => void;
   onEditScenario?: (item: SavedApiScenario) => void;
   onExecuteSaved?: (item: SavedApiScenario) => void;
   runSaved?: SavedApiScenario | null;
@@ -65,7 +68,7 @@ export type ScenarioPanelProps = {
   composeContext?: ReactNode;
 };
 
-export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mode = "run", startCreateRequest = 0, editScenarioId, onCreateConsumed, onComposerOpenChange, onUnsavedChange, onCreateScenario, onOpenAi, onEditScenario, onExecuteSaved, runSaved, onRunSavedConsumed, openSaved, onOpenSavedConsumed, onBackToScenarios, onOpenSpecs, composeContext }: ScenarioPanelProps) {
+export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mode = "run", startCreateRequest = 0, editScenarioId, onCreateConsumed, onComposerOpenChange, onUnsavedChange, onCreateScenario, onOpenAi, onAiFixStarted, onEditScenario, onExecuteSaved, runSaved, onRunSavedConsumed, openSaved, onOpenSavedConsumed, onBackToScenarios, onOpenSpecs, composeContext }: ScenarioPanelProps) {
   const editorMode = mode === "editor";
   const globalAccess = useGlobalVariableAccess();
   const checkedGlobalRevision = useRef(globalAccess.revision);
@@ -86,6 +89,8 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
   const [inputs, setInputs] = useState<Record<string, string>>({});
   const [result, setResult] = useState<ApiScenarioResult | null>(null);
   const [runView, setRunView] = useState<"preview" | "result">("preview");
+  // AI로 고치기 form under the failed-run line; closed for each new run or scenario.
+  const [aiFixOpen, setAiFixOpen] = useState(false);
   const [focusRequest, setFocusRequest] = useState<{ index: number; request: number } | null>(null);
   const [resultFocusRequest, setResultFocusRequest] = useState<{ stepId: string; request: number } | null>(null);
   const focusResult = (stepId: string) => {
@@ -366,6 +371,9 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
   const columnsRef = useRef<HTMLDivElement>(null);
   const [listWidth, setListWidth] = useStoredWidth("api-testing-scenario-list");
 
+  const canAiFix = Boolean(result && result.status !== "passed" && result.status !== "cancelled" && current && !current.draft && onAiFixStarted);
+  // A new run or another scenario closes the AI로 고치기 form.
+  useEffect(() => { setAiFixOpen(false); }, [current?.id, lastRun?.completedAt]);
   return <div ref={columnsRef} className="api-columns api-scenarios api-scenario-run" style={listWidth === null ? undefined : { "--api-list-width": `${listWidth}px` } as CSSProperties}>
     <aside ref={sidebarRef} aria-label="저장된 시나리오와 스위트">
       <input aria-label="시나리오·스위트 검색" placeholder="이름·그룹·설명·API 검색" value={query} onChange={event => setQuery(event.target.value)} />
@@ -404,7 +412,8 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
           {/* Only where it went wrong: the result below has the status and each step's message. */}
           {/* Stopped by the user: not a problem to look into. */}
           {result?.status === "cancelled" && <p role="status" className="api-run-notice">실행을 중단했습니다. 다시 실행하려면 <strong>다시 실행</strong>을 누르세요.</p>}
-          {result && result.status !== "passed" && result.status !== "cancelled" && <div role="alert" className="api-warning api-run-last-problem"><strong>최근 실행 {runStatusName(result.status)}</strong>{result.steps.map((step, index) => step.error && <button key={step.id} type="button" className="api-result-error-link" disabled={running} title={step.error} onClick={() => focusResult(step.id)}>{index + 1}단계 · {step.name}</button>)}</div>}
+          {result && result.status !== "passed" && result.status !== "cancelled" && <div role="alert" className="api-warning api-run-last-problem"><strong>최근 실행 {runStatusName(result.status)}</strong>{result.steps.map((step, index) => step.error && <button key={step.id} type="button" className="api-result-error-link" disabled={running} title={step.error} onClick={() => focusResult(step.id)}>{index + 1}단계 · {step.name}</button>)}{canAiFix && <AiFixButton result={result} disabled={busy || running} open={aiFixOpen} onClick={() => setAiFixOpen(value => !value)} />}</div>}
+          {canAiFix && aiFixOpen && <AiFixRequest scope={{ projectId: scope.projectId, environmentId: scope.environmentId }} scenarioId={current!.id} result={result!} bridge={bridge} disabled={busy} onStarted={onAiFixStarted!} onCancel={() => setAiFixOpen(false)} />}
           {current?.draft && <p className="api-run-notice">초안은 아직 실행할 수 없습니다. <strong>수정</strong>에서 요청값과 검증을 보완한 뒤 <strong>저장</strong>을 누르세요.</p>}
           {preview.issues.length > 0 && <details className="api-run-issues" open={Boolean(current?.draft)}><summary>보완이 필요한 항목 {preview.issues.length}개</summary><ul>{preview.issues.map(issue => <li key={issue}>{issue}</li>)}</ul></details>}
           {current?.draft && preview.issues.length === 0 && <p className="api-run-notice">현재 검사는 통과했지만 아직 초안으로 저장되어 있습니다. <strong>수정</strong>에서 <strong>저장</strong>을 누르면 실행할 수 있습니다.</p>}

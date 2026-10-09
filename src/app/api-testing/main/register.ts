@@ -7,6 +7,7 @@ import { specSourceSchema } from "../shared/workspace";
 import { z } from "zod";
 import { SpecSync } from "./spec-sync";
 import { AiTerminalService } from "./ai-terminal";
+import { AiQuickService } from "./ai-quick";
 import { describeAiTools } from "./ai-cli";
 import { isProvidedScenarioInput, matchesScenarioInputType, type Json, type ScenarioInputRequest } from "../shared/scenario";
 import type { ApiScenarioInputRequest } from "../shared/workspace";
@@ -62,7 +63,16 @@ export function registerApiTesting() {
   const terminals = new AiTerminalService(workspace, event => {
     for (const window of BrowserWindow.getAllWindows()) if (!window.isDestroyed()) window.webContents.send("api-testing:ai-terminal-event", event);
   });
-  app.on("before-quit", () => terminals.stopAll());
+  const quick = new AiQuickService(workspace, event => {
+    for (const window of BrowserWindow.getAllWindows()) if (!window.isDestroyed()) window.webContents.send("api-testing:ai-quick-event", event);
+  });
+  app.on("before-quit", () => { terminals.stopAll(); quick.stopAll(); });
+  ipcMain.handle("api-testing:get-ai-quick", (_event, projectId) => quick.get(projectId));
+  ipcMain.handle("api-testing:start-ai-quick", (_event, request) => quick.start(request));
+  ipcMain.handle("api-testing:revise-ai-quick", (_event, projectId, request) => quick.revise(projectId, request));
+  ipcMain.handle("api-testing:stop-ai-quick", (_event, projectId) => quick.stop(projectId));
+  ipcMain.handle("api-testing:clear-ai-quick", (_event, projectId) => quick.clear(projectId));
+  ipcMain.handle("api-testing:mark-ai-quick-result-saved", (_event, projectId, saved) => quick.markSaved(projectId, saved));
   ipcMain.handle("api-testing:get-ai-terminal", (_event, projectId) => terminals.get(projectId));
   ipcMain.handle("api-testing:start-ai-terminal", (_event, request) => terminals.start(request));
   ipcMain.handle("api-testing:resume-ai-terminal", (_event, request) => terminals.resume(request));
@@ -87,7 +97,7 @@ export function registerApiTesting() {
   ipcMain.handle("api-testing:check-ai-scenarios", (_event, scope, text) => workspace.checkAiScenarios(scope, text));
   ipcMain.handle("api-testing:list-projects", () => workspace.listProjects());
   ipcMain.handle("api-testing:save-project", (_event, project) => workspace.saveProject(project));
-  ipcMain.handle("api-testing:delete-project", async (_event, id) => { await terminals.forget(id); await workspace.deleteProject(id); });
+  ipcMain.handle("api-testing:delete-project", async (_event, id) => { await terminals.forget(id); quick.forget(id); await workspace.deleteProject(id); });
   ipcMain.handle("api-testing:delete-catalog", (_event, scope) => workspace.deleteCatalog(scope));
   ipcMain.handle("api-testing:delete-scenario", (_event, projectId, id, revision) => workspace.deleteScenario(projectId, id, revision));
   ipcMain.handle("api-testing:catalog", (_event, scope) => workspace.getCatalog(scope));

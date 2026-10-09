@@ -135,6 +135,29 @@ export type ApiAiTerminalEvent =
   | { type: "exit"; projectId: string; exitCode: number }
   /** The AI saved its result file; the screen checks it. */
   | { type: "result"; projectId: string };
+/** 바로 만들기: the AI writes from one request without a conversation; only its progress and last answer are shown. */
+export type ApiAiQuick = {
+  tool: ApiAiTool; environmentId: string;
+  status: "running" | "done" | "failed" | "stopped";
+  /** The requests so far, the first one and each 수정 요청. */
+  requests: string[];
+  /** What the AI is doing now, e.g. "읽는 중: UserController.java". */
+  progress: string;
+  /** The AI's last answer: what it made and what it decided on its own. */
+  note: string;
+  /** Automatic fixes of Checkly's problems used for the latest request. */
+  fixes: number;
+  error?: string;
+  /** The checked result file (absent until the AI saves it). */
+  check?: { modifiedAt: string; result: ApiAiImportResult };
+  saved?: { modifiedAt: string; scenarioId?: string };
+};
+export type ApiAiQuickEvent = { projectId: string; quick: ApiAiQuick | null };
+/**
+ * fix: AI로 고치기 from a failed run. Only the saved YAML, where it failed (step, HTTP status) and, when the user
+ * allows it, the start of that step's response go to the AI; request is the user's optional message then.
+ */
+export type ApiAiQuickRequest = { scope: ApiEnvironmentScope; request: string; fix?: { scenarioId: string; failures: string[]; response?: string } };
 export type ApiAiTerminalStartRequest = { scope: ApiEnvironmentScope; size: { cols: number; rows: number } };
 /** checkly: messages Checkly adds (guide sent, check results); `result` is a checked AI answer to review and save. */
 export type ApiTestingBridge = {
@@ -161,6 +184,16 @@ export type ApiTestingBridge = {
   refreshAiTerminalFiles(scope: ApiEnvironmentScope): Promise<void>;
   /** Terminal output, exits and result saves of every project; returns the unsubscribe. */
   onAiTerminalEvent(listener: (event: ApiAiTerminalEvent) => void): () => void;
+  /** 바로 만들기 of the project (in memory only; gone after a restart). */
+  getAiQuick(projectId: string): Promise<ApiAiQuick | null>;
+  /** Starts a new 바로 만들기 from a request (replaces the previous one). */
+  startAiQuick(request: ApiAiQuickRequest): Promise<ApiAiQuick>;
+  /** 수정 요청 in the same AI session. */
+  reviseAiQuick(projectId: string, request: string): Promise<ApiAiQuick>;
+  stopAiQuick(projectId: string): Promise<void>;
+  clearAiQuick(projectId: string): Promise<void>;
+  markAiQuickResultSaved(projectId: string, saved: { modifiedAt: string; scenarioId?: string }): Promise<void>;
+  onAiQuickEvent(listener: (event: ApiAiQuickEvent) => void): () => void;
   getSpecSync(scope: ApiScope): Promise<ApiSpecSync>;
   deleteSpecAccount(scope: ApiScope): Promise<void>;
   getRequestAuth(scope: ApiScope): Promise<string | null>;

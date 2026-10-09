@@ -83,8 +83,11 @@ export type AiAuthorPromptInput = {
   resultFile: string;
   /** Backend source folders per Checkly server (the in-app terminal reads them). */
   backendFolders?: Array<{ server: string; folders: string[] }>;
-  /** The in-app terminal: the AI writes the result file and Checkly checks it on its own (no 'AI 결과 불러오기'). */
-  terminal?: boolean;
+  /**
+   * copy: the user's own AI app (they load the result in Checkly). terminal: the in-app terminal (Checkly checks
+   * every save). quick: 바로 만들기, no questions; the AI writes the result straight from the request.
+   */
+  mode?: "copy" | "terminal" | "quick";
 };
 
 export function aiCatalogDetails(servers: AiAuthorServer[]) {
@@ -110,17 +113,19 @@ const authorRules = [
   "- 앞 단계 값: {{steps.1.response.body./data/challengeToken}} (1부터 시작하는 단계 번호 + JSON Pointer). 응답 헤더는 {{steps.1.response.header.X-Request-Id}}, 앞 단계 요청값은 {{steps.1.request.body./loginId}}. 항상 앞선 단계만 참조합니다.",
   "- 다른 시나리오와 공유할 값(토큰 등): 저장은 extract: [{pointer: /data/accessToken, target: globals.accessToken}], 사용은 {{globals.accessToken}}. 전역변수 목록에 이미 있는 값은 {{globals.이름}}으로 씁니다.",
   "- 실행 중 사람이 넣어야 하는 값(비밀번호·인증번호·계정): 그 단계에 inputs: [{name: code, label: 인증번호}]를 두고 {{inputs.code}}로 씁니다. 실제 값은 YAML에 쓰지 않습니다.",
-  "- Bearer 인증: 시나리오 또는 단계에 auth: globals.accessToken. auth를 쓰면 Authorization 헤더를 직접 넣지 않고, 로그인처럼 인증이 없어야 하는 단계는 auth: none.",
+  "- Bearer 인증: 시나리오 또는 단계에 auth: globals.accessToken. auth를 쓰면 Authorization 헤더를 직접 넣지 않습니다. 시나리오 auth는 모든 단계에 적용되므로, 로그인·토큰 재발급처럼 인증 없이 부르는 단계(백엔드 보안 설정에서 확인)는 auth: none. 단계가 응답에서 저장하는 토큰을 그 단계 자신의 인증에 쓰지 않습니다.",
   "- 검증(expect)은 기본으로 넣지 않습니다. HTTP 2xx는 자동으로 확인되므로 그것만으로 충분합니다. 사용자가 특정 값이나 상태 코드를 확인하고 싶다고 말했을 때만 그 확인을 넣고, '/data가 있는지'나 'status 200' 같은 습관성 검증은 넣지 않습니다.",
   "- 검증을 넣을 때: 본문 값은 expect: [{source: body, pointer: /data/status, operator: equals, value: ACTIVE}], 특정 상태 코드는 {source: status, operator: equals, value: 201}(실패 케이스는 404 등). 연산자는 equals·exists·contains. 실행 중 입력처럼 매번 달라지는 값은 기대값에 앞 단계 값을 씁니다: {source: body, pointer: /data/name, operator: equals, value: \"{{steps.1.request.body./name}}\"}. status 검증을 넣으면 그 단계의 2xx 자동 확인은 꺼집니다.",
   "- 실패해도 다음 단계를 계속하려면 시나리오에 onFailure: continue(기본 stop). JavaScript·반복문·함수·외부 파일 참조는 지원하지 않습니다.",
   "- API 파일에 있는 API만 씁니다. 코드에만 있고 API 파일에 없는 API는 Checkly에서 실행할 수 없으니, 필요하면 사용자에게 Checkly에서 API 명세(Swagger)를 다시 가져와 달라고 요청하세요.",
 ];
 
-const outputRules = (resultFile: string, terminal = false) => [
-  terminal
+const outputRules = (resultFile: string, mode: AiAuthorPromptInput["mode"] = "copy") => [
+  mode === "terminal"
     ? `- 결과를 파일 ${resultFile} 에 저장합니다(있으면 덮어씁니다). 이 파일 말고는 만들거나 수정하지 않습니다. 저장할 때마다 Checkly가 바로 검사하므로, 계획이나 질문만 할 때는 저장하지 않습니다.`
-    : `- 결과를 파일 ${resultFile} 에 저장합니다(있으면 덮어씁니다). 이 파일 말고는 만들거나 수정하지 않습니다. 파일에 쓸 수 없으면 \`\`\`yaml 코드 블록 하나로 출력합니다.`,
+    : mode === "quick"
+      ? `- 결과를 파일 ${resultFile} 에 저장합니다(있으면 덮어씁니다). 이 파일 말고는 만들거나 수정하지 않습니다.`
+      : `- 결과를 파일 ${resultFile} 에 저장합니다(있으면 덮어씁니다). 이 파일 말고는 만들거나 수정하지 않습니다. 파일에 쓸 수 없으면 \`\`\`yaml 코드 블록 하나로 출력합니다.`,
   "- 시나리오마다 YAML 문서 하나이고 문서 사이는 --- 줄로 구분합니다.",
   "- 시나리오가 2개 이상이면 마지막 문서로 스위트를 씁니다: suite: {name: 한국어 이름, group: 그룹, scenarios: [실행 순서대로 시나리오 name]}. 기존 시나리오(예: 토큰을 만드는 로그인)도 이름으로 넣을 수 있습니다. 하나면 스위트는 쓰지 않습니다.",
 ];
@@ -150,6 +155,16 @@ const terminalSteps = (catalogFile: string) => [
   "7. 그 뒤 사용자가 수정을 요청하면 바뀐 부분만이 아니라 전체 결과를 같은 파일에 다시 저장하세요.",
 ];
 
+/** 바로 만들기: no conversation; the AI decides from the request and the code, writes, then says what it assumed. */
+const quickSteps = (catalogFile: string) => [
+  "1. 사용자의 요청은 이 가이드를 알려 준 메시지에 있습니다. 질문하지 말고 바로 작성합니다. 정보가 부족하면 백엔드 코드와 API 파일로 가장 알맞게 정하고, 정할 수 없는 값(계정·비밀번호·인증번호 등)은 inputs로 실행 중에 받게 합니다.",
+  "2. 아래 백엔드 코드 위치의 컨트롤러·DTO·검증 규칙·에러 코드를 읽어 요청값과 기대 결과를 정하세요. 백엔드 코드는 읽기만 합니다.",
+  ...sharedSteps(catalogFile),
+  "4. 흐름이 서로 독립적으로 실행·재사용될 수 있으면(예: 로그인과 회원 조회) 시나리오를 나누고, 앞 시나리오가 extract로 전역변수에 저장한 값을 뒤 시나리오가 {{globals.x}}로 씁니다.",
+  "5. 전체 결과(모든 시나리오와 스위트)를 결과 파일에 저장한 뒤, 마지막 답변에 만든 내용과 직접 정한 점을 한국어로 3~6줄 짧게 적습니다. 읽는 사람은 개발자가 아닐 수 있으니 파일 경로나 코드는 쓰지 않습니다.",
+  "6. 'Checkly 검사' 문제 목록이나 수정 요청을 받으면 고친 전체 결과를 같은 파일에 다시 저장하고, 바꾼 점을 짧게 적습니다.",
+];
+
 /**
  * Guide the user pastes into their own AI (Claude Code, Codex…) opened in the
  * backend project. The AI asks what to test first, then writes the result file.
@@ -157,15 +172,15 @@ const terminalSteps = (catalogFile: string) => [
 export function createAuthorPrompt(input: AiAuthorPromptInput): string {
   return [
     "# Checkly API 시나리오 작성 가이드",
-    "Checkly는 YAML 시나리오로 API를 순서대로 호출하는 QA 도구입니다. 당신은 사용자와 대화하며 Checkly 시나리오를 작성합니다. API를 실제로 호출하지 말고, 백엔드 코드는 수정하지 마세요.",
-    "## 진행 순서", (input.terminal ? terminalSteps : fileSteps)(input.catalogFile).join("\n"),
+    `Checkly는 YAML 시나리오로 API를 순서대로 호출하는 QA 도구입니다. 당신은 ${input.mode === "quick" ? "사용자의 요청대로" : "사용자와 대화하며"} Checkly 시나리오를 작성합니다. API를 실제로 호출하지 말고, 백엔드 코드는 수정하지 마세요.`,
+    "## 진행 순서", (input.mode === "terminal" ? terminalSteps : input.mode === "quick" ? quickSteps : fileSteps)(input.catalogFile).join("\n"),
     ...(input.backendFolders?.length ? ["## 백엔드 코드 위치 (읽기만)", input.backendFolders.map(({ server, folders }) => `- ${server}: ${folders.join(", ")}`).join("\n")] : []),
-    "## 결과 파일", ...outputRules(input.resultFile, input.terminal),
+    "## 결과 파일", ...outputRules(input.resultFile, input.mode),
     "## 작성 규칙", ...authorRules,
     "## 현재 프로젝트 상태",
     [
       `JSON 파일 ${input.stateFile} 에 Checkly에 저장된 시나리오(이름·그룹·YAML 전체), 스위트(실행 순서), 그룹, 전역변수(값 제외, 만드는 시나리오·쓰는 시나리오)가 있습니다.`,
-      input.terminal
+      input.mode === "terminal" || input.mode === "quick"
         ? "Checkly가 시나리오를 저장할 때마다 이 파일을 최신으로 갱신합니다. 계획을 세우기 전과, 결과를 작성하거나 고치기 전마다 다시 읽으세요."
         : "계획을 세우기 전에 이 파일을 읽으세요.",
       "- 같은 시나리오를 또 만들지 말고 이름이 겹치지 않게 합니다. 기존 시나리오를 고쳐 달라는 요청이면 그 YAML을 바탕으로 같은 name으로 씁니다(저장하면 그 시나리오가 업데이트됩니다).",

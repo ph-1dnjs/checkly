@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiPicker, type PickableOperation } from "./ApiPicker";
 import { AiResultReview } from "./AiResultReview";
 import { AiTerminalPanel } from "./AiTerminalPanel";
+import { AiQuickPanel } from "./AiQuickPanel";
 import { AiToolSettings } from "./AiToolSettings";
 import { Icon } from "../../../../shared/ui/Icon";
 import { aiToolNames, backendFolderCount, chatTool } from "../../../../entities/api-testing";
@@ -41,6 +42,8 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved, onConfi
   const [statusRevision, setStatusRevision] = useState(0);
   // The chosen way, remembered per project on this PC; without one the chat opens when it is ready.
   const [way, setWay] = useState<AiWay | null>(() => readWay(project.id));
+  // Inside the app: 바로 만들기 by default, the CLI's own terminal for those who want the conversation.
+  const [style, setStyle] = useState<ChatStyle>(() => readStyle(project.id));
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   // Which step the last message belongs to, so it shows next to the button that caused it.
@@ -79,6 +82,7 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved, onConfi
   const chatReady = Boolean(tool) && backendFolderCount(chatSettings) > 0;
   const view: AiWay = way ?? (chatReady ? "chat" : "copy");
   const choose = (next: AiWay) => { setWay(next); writeWay(project.id, next); };
+  const chooseStyle = (next: ChatStyle) => { setStyle(next); writeStyle(project.id, next); };
   // No spec on any server: a guide would give the AI no APIs at all.
   const noSpec = catalogsLoaded && !operations.length;
   const guideRequest = () => ({ scope, ...(picked.length ? { operations: picked } : {}) });
@@ -104,6 +108,11 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved, onConfi
   });
 
   const problems = result ? problemReport(result) : "";
+  const toolChoice = chatStatus && chatSettings && tools.length > 1 && <div className="api-ai-tool-row">
+          <AiToolSettings projectId={project.id} bridge={bridge} status={chatStatus} settings={chatSettings} disabled={busy} onBusy={setSettingsBusy} onSaved={setChatSettings} />
+          <button type="button" className="api-icon-button api-ai-refresh" aria-label="AI 다시 확인" title="AI 다시 확인" disabled={busy} onClick={() => setStatusRevision(value => value + 1)}><Icon name="refresh" size={16} /></button>
+        </div>;
+  const specNote = noSpec ? "가져온 명세가 없어 AI에게 줄 API가 없습니다. API 문서 탭에서 명세를 가져오세요." : specWarnings.join(" · ");
   const usable = operations.filter(operation => !operation.unavailable).length;
   const unavailable = operations.length - usable;
   const status = (step: 1 | 3) => messageStep === step && <>
@@ -117,6 +126,7 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved, onConfi
         <button type="button" role="tab" aria-selected={view === "chat"} disabled={busy} onClick={() => choose("chat")}>앱에서 AI와 대화</button>
         <button type="button" role="tab" aria-selected={view === "copy"} disabled={busy} onClick={() => choose("copy")}>내 AI 앱에서 쓰기</button>
       </div>
+      {view === "chat" && chatReady && <button type="button" className="api-ai-style-toggle" disabled={busy} onClick={() => chooseStyle(style === "quick" ? "terminal" : "quick")}>{style === "quick" ? "터미널로 보기" : "간단히 보기"}</button>}
     </div>}
     {checkingAi ? null : view === "chat" ? <>
       {!chatReady ? <section className="api-ai-chat-requirements" aria-label="앱에서 AI와 대화 준비">
@@ -134,12 +144,9 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved, onConfi
           </li>
         </ul>
         {!tools.length && <p className="api-field-help">{chatStatus?.error ?? "Claude Code나 Codex CLI를 설치한 뒤 다시 확인하세요"}</p>}
-      </section> : <AiTerminalPanel project={project} scope={scope} bridge={bridge} onBusy={chatActivity} onSaved={onSaved} toolName={aiToolNames[tool!]}
-        toolChoice={chatStatus && chatSettings && tools.length > 1 && <div className="api-ai-tool-row">
-          <AiToolSettings projectId={project.id} bridge={bridge} status={chatStatus} settings={chatSettings} disabled={busy} onBusy={setSettingsBusy} onSaved={setChatSettings} />
-          <button type="button" className="api-icon-button api-ai-refresh" aria-label="AI 다시 확인" title="AI 다시 확인" disabled={busy} onClick={() => setStatusRevision(value => value + 1)}><Icon name="refresh" size={16} /></button>
-        </div>}
-        noSpec={noSpec} specNote={noSpec ? "가져온 명세가 없어 AI에게 줄 API가 없습니다. API 문서 탭에서 명세를 가져오세요." : specWarnings.join(" · ")} />}
+      </section> : style === "quick" ? <AiQuickPanel project={project} scope={scope} bridge={bridge} onBusy={chatActivity} onSaved={onSaved}
+        toolChoice={toolChoice} noSpec={noSpec} specNote={specNote} /> : <AiTerminalPanel project={project} scope={scope} bridge={bridge} onBusy={chatActivity} onSaved={onSaved} toolName={aiToolNames[tool!]}
+        toolChoice={toolChoice} noSpec={noSpec} specNote={specNote} />}
     </> : <ol className="api-ai-steps" aria-label="AI 작성 순서">
       <li>
         <header><strong>가이드 복사</strong><span>백엔드 프로젝트 폴더에서 Claude Code나 Codex를 열고 붙여넣습니다.</span></header>
@@ -190,6 +197,15 @@ function readWay(projectId: string): AiWay | null {
 }
 function writeWay(projectId: string, value: AiWay | null) {
   try { if (value) localStorage.setItem(wayKey(projectId), value); else localStorage.removeItem(wayKey(projectId)); } catch { /* only a convenience */ }
+}
+
+type ChatStyle = "quick" | "terminal";
+const styleKey = (projectId: string) => `checkly.api-testing.ai-style.${projectId}`;
+function readStyle(projectId: string): ChatStyle {
+  try { return localStorage.getItem(styleKey(projectId)) === "terminal" ? "terminal" : "quick"; } catch { return "quick"; }
+}
+function writeStyle(projectId: string, value: ChatStyle) {
+  try { localStorage.setItem(styleKey(projectId), value); } catch { /* only a convenience */ }
 }
 
 const staleDays = 30;

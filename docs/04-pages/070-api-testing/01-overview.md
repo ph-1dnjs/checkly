@@ -31,7 +31,7 @@ YAML의 `{{steps.N.…}}` 참조는 파싱할 때 내부 실행 모델의 `value
 | 시나리오 | `scenarios-{projectId}.json` | 동일 형식 |
 | 시나리오 묶음 | `suites-{projectId}.json` | 동일 형식 |
 | API 문서 Try it out 입력값 | `doc-inputs-{projectId}.json` (키 `{serverId} {METHOD path}`, 민감 이름 값 제외) | 동일 형식 |
-| AI 가이드용 명세·프로젝트 상태·외부 AI 결과 | `ai/{projectId}/api-catalog.json`, `project-state.json`, `scenarios.yaml` (앱 안 터미널은 `ai/{projectId}/chat/`에 같은 파일과 `guide.md`) | 동일 형식 |
+| AI 가이드용 명세·프로젝트 상태·외부 AI 결과 | `ai/{projectId}/api-catalog.json`, `project-state.json`, `scenarios.yaml` (앱 안 터미널은 `ai/{projectId}/chat/`, 바로 만들기는 `ai/{projectId}/quick/`에 같은 파일과 `guide.md`) | 동일 형식 |
 | AI 대화 설정·터미널 세션 | `ai-chat-settings.json`(백엔드 폴더·AI), `ai-terminal-{projectId}.json`(이어갈 세션 정보만) | 이 PC 전용 |
 | 전역변수·API 인증 연결 | 프로세스 메모리 | 개발 서버 메모리 |
 | 세션 쿠키(프로젝트별) | 프로세스 메모리 | 개발 서버 메모리 |

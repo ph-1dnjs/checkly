@@ -24,6 +24,8 @@ async function main() {
       let body = "";
       for await (const chunk of req) body += chunk;
       const input = JSON.parse(body);
+      // The AI's first login scenario uses a value the backend refuses (fixed with AI로 고치기).
+      if (input.loginId === "fail-me") { res.statusCode = 400; res.end(JSON.stringify({ message: "주소 필수", accessToken: "login-secret-token" })); return; }
       loginInputs.push(input.loginId);
       if (Object.hasOwn(input, "amount")) decimalInputs.push(input.amount);
       res.setHeader("set-cookie", "SESSION=desktop-session; Path=/; HttpOnly");
@@ -45,11 +47,29 @@ async function main() {
   // missing API, Checkly's pasted problem list makes it write the fixed result (both into its working folder).
   const fakeClaude = path.join(dir, "fake-claude.mjs");
   const aiCliCallsFile = path.join(dir, "ai-cli-calls.jsonl");
+  const aiPromptsFile = path.join(dir, "ai-prompts.jsonl");
   await writeFile(fakeClaude, `#!/usr/bin/env node
 import { appendFileSync, writeFileSync } from "node:fs";
 if (process.argv.includes("--version")) { process.stdout.write("Claude Code 1.0.0\\n"); process.exit(0); }
 appendFileSync(${JSON.stringify(aiCliCallsFile)}, JSON.stringify({ args: process.argv.slice(2), cwd: process.cwd() }) + "\\n");
-const result = api => "name: 대화 로그인\\nserver: 기본 API\\nsteps:\\n  - { name: 로그인, api: " + api + ", body: { loginId: tester } }\\n";
+const result = (api, name = "대화 로그인", loginId = "tester") => "name: " + name + "\\nserver: 기본 API\\nsteps:\\n  - { name: 로그인, api: " + api + ", body: { loginId: " + loginId + " } }\\n";
+// 바로 만들기 (headless): the prompt comes on stdin and events go out as JSON lines; the first result has a
+// missing API, the problem list Checkly sends back on its own gets the fixed one.
+if (process.argv.includes("-p")) {
+  let prompt = "";
+  process.stdin.setEncoding("utf8");
+  process.stdin.on("data", chunk => { prompt += chunk; });
+  process.stdin.on("end", () => {
+    const say = event => process.stdout.write(JSON.stringify(event) + "\\n");
+    say({ type: "assistant", message: { content: [{ type: "tool_use", name: "Read", input: { file_path: "/backend/LoginController.java" } }] } });
+    appendFileSync(${JSON.stringify(aiPromptsFile)}, JSON.stringify(prompt) + "\\n");
+    // AI로 고치기 (a failed run) gets the value the backend accepts.
+    const failedRun = prompt.includes("실행했더니 실패");
+    const fixing = prompt.includes("Checkly 검사");
+    writeFileSync("scenarios.yaml", failedRun ? result("POST /login", "빠른 로그인") : result(fixing ? "POST /login" : "GET /missing", "빠른 로그인", "fail-me"));
+    say({ type: "result", is_error: false, result: failedRun ? "로그인 값을 고쳤습니다." : fixing ? "API 경로를 고쳤습니다." : "로그인 시나리오를 만들었습니다." });
+  });
+} else {
 process.stdout.write(process.argv.includes("--resume") ? "이전 대화를 이어갑니다\\r\\n" : "무엇을 테스트할까요?\\r\\n");
 let line = "";
 process.stdin.setEncoding("utf8");
@@ -62,6 +82,7 @@ process.stdin.on("data", chunk => {
   if (said.includes("Checkly 검사")) { writeFileSync("scenarios.yaml", result("POST /login")); process.stdout.write("고쳐서 다시 저장했습니다\\r\\n"); }
   else if (said.includes("로그인")) { writeFileSync("scenarios.yaml", result("GET /missing")); process.stdout.write("작성했습니다\\r\\n"); }
 });
+}
 `);
   await chmod(fakeClaude, 0o755);
   const env = { ...process.env, CHECKLY_AI_CLI_PATH: fakeClaude };
@@ -236,6 +257,54 @@ process.stdin.on("data", chunk => {
     await expect(chatWay).toHaveCount(0);
     // One AI installed: no choice is shown.
     await expect(page.getByRole("region", { name: "AI 실행 설정", exact: true })).toHaveCount(0);
+    // 바로 만들기 is the default: one request, the AI makes it headless in its own folder, Checkly's problems go
+    // back to it on their own, and only the AI's memo and the checked result are shown.
+    const quickPane = page.getByRole("region", { name: "바로 만들기", exact: true });
+    await shot("ai-quick-empty");
+    await quickPane.getByLabel("무엇을 테스트할까요?", { exact: true }).fill("로그인 확인");
+    await quickPane.getByRole("button", { name: "만들기", exact: true }).click();
+    await expect(quickPane.getByLabel("AI 메모", { exact: true })).toContainText("API 경로를 고쳤습니다.", { timeout: 15_000 });
+    await expect(quickPane.getByRole("region", { name: "AI 작성 결과", exact: true })).toContainText("바로 실행 가능");
+    await shot("ai-quick");
+    const quickCalls = await readAiCliCalls();
+    expect(quickCalls).toHaveLength(2);
+    expect(quickCalls[0].args.slice(0, 4)).toEqual(["-p", "--output-format", "stream-json", "--verbose"]);
+    expect(quickCalls[0].args).toContain(`Edit(/${backend}/**)`);
+    expect(quickCalls[1].args).toContain("--resume");
+    expect(await realpath(quickCalls[0].cwd)).toBe(await realpath(path.join(dir, "api-testing", "ai", aiProject.id, "quick")));
+    await quickPane.getByRole("button", { name: "선택한 것 저장", exact: true }).click();
+    await expect(quickPane.getByRole("status").filter({ hasText: "저장했습니다" })).toBeVisible();
+    await expect(quickPane.getByLabel("내용 바꾸기", { exact: true })).toHaveCount(0);
+    // Testing happens where scenarios run; a failed run goes back to the AI with only where it failed.
+    await quickPane.getByRole("button", { name: "시나리오 보기·실행", exact: true }).click();
+    await page.getByRole("button", { name: "실행", exact: true }).click();
+    await expect(page.getByRole("alert").filter({ hasText: "최근 실행" })).toContainText("1단계 · 로그인");
+    await shot("ai-fix-button");
+    await page.getByRole("button", { name: "AI로 고치기", exact: true }).click();
+    const fixForm = page.getByRole("region", { name: "AI로 고치기", exact: true });
+    await expect(fixForm).toContainText("1단계 '로그인' 실패 · HTTP 오류 상태 · HTTP 400");
+    await fixForm.getByLabel("AI에게 할 말", { exact: true }).fill("로그인 아이디를 고쳐 주세요");
+    await fixForm.getByRole("checkbox", { name: "실패한 단계의 응답 내용도 보내기" }).check();
+    await shot("ai-fix");
+    await fixForm.getByRole("button", { name: "AI에 보내기", exact: true }).click();
+    await expect(quickPane.getByLabel("AI 메모", { exact: true })).toContainText("로그인 값을 고쳤습니다.", { timeout: 15_000 });
+    await expect(quickPane).toContainText("‘빠른 로그인’ 고치기 · 로그인 아이디를 고쳐 주세요");
+    await expect(quickPane.getByLabel("빠른 로그인 저장 방식", { exact: true })).toHaveValue("update");
+    const fixPrompt = (await readFile(aiPromptsFile, "utf8")).trim().split("\n").map(line => JSON.parse(line) as string).at(-1)!;
+    expect(fixPrompt).toContain("loginId: fail-me");
+    expect(fixPrompt).toContain("주소 필수");
+    expect(fixPrompt).not.toContain("login-secret-token");
+    expect(fixPrompt).not.toMatch(/^id: /m);
+    await quickPane.getByRole("button", { name: "선택한 것 저장", exact: true }).click();
+    await expect(quickPane.getByRole("status").filter({ hasText: "저장했습니다" })).toBeVisible();
+    const fixedSource = await page.evaluate(async projectId => {
+      const api = (window as unknown as { electronAPI: { apiTesting: ApiTestingBridge } }).electronAPI.apiTesting;
+      return (await api.listScenarios(projectId)).filter(item => item.name === "빠른 로그인").map(item => item.source);
+    }, aiProject.id);
+    expect(fixedSource).toHaveLength(1);
+    expect(fixedSource[0]).toContain("loginId: tester");
+    // The terminal is the other style, for those who want the conversation.
+    await page.getByRole("button", { name: "터미널로 보기", exact: true }).click();
     await shot("ai-chat-empty");
     // 대화 시작 runs the CLI in a terminal inside the app; it reads the guide file and asks first.
     await page.getByRole("button", { name: "대화 시작", exact: true }).click();
@@ -252,7 +321,7 @@ process.stdin.on("data", chunk => {
     if (!fits) throw new Error("Terminal rows overflow their frame");
     await expect(terminalPane.getByRole("complementary", { name: "AI 결과", exact: true })).toHaveCount(0);
     await expect(terminalPane.getByRole("button", { name: "결과 열기", exact: true })).toBeVisible();
-    const firstCall = (await readAiCliCalls())[0];
+    const firstCall = (await readAiCliCalls())[3];
     for (const flag of ["--session-id", "--restricted", "--strict-mcp-config", "--permission-mode", "acceptEdits"]) expect(firstCall.args).toContain(flag);
     expect(firstCall.args).toContain(backend);
     expect(firstCall.args).toContain(`Edit(/${backend}/**)`);
@@ -303,7 +372,7 @@ process.stdin.on("data", chunk => {
     await expect(check).toHaveCount(0);
     await terminalPane.getByRole("button", { name: "대화 시작", exact: true }).click();
     await expect(screen).toContainText("무엇을 테스트할까요?");
-    const secondCall = (await readAiCliCalls())[1];
+    const secondCall = (await readAiCliCalls())[4];
     expect(sessionOf(secondCall)).not.toBe(sessionOf(firstCall));
     const preserved = await page.evaluate(async projectId => {
       const api = (window as unknown as { electronAPI: { apiTesting: ApiTestingBridge } }).electronAPI.apiTesting;
