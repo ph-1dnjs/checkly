@@ -68,13 +68,12 @@ API 문서의 공통 Bearer 연결은 프로젝트·환경·서버·기본 URL�
 
 ## 개발과 검증
 
-- `npm run dev:api:web`: 127.0.0.1:5174에서 동일 API 화면과 서버 코어 사용.
 - `npm run dev`: Electron 개발 앱. renderer는 HMR, main/preload 변경은 앱 재시작 필요.
 - `npm run test:api`: 코어·변수·저장·인증·삭제·AI·시나리오 편집 검증.
 - `npm run typecheck:api`: API 코어 타입 검사.
 - `npm run test:api:desktop`: Electron 통합 검증.
 - `npm run build`: Vite 및 Electron 빌드.
 
-웹 개발 RPC는 loopback 전용이며 Host·Origin·JSON·전용 헤더를 검사합니다. 문서 Basic 인증은 가능하지만 계정 기억은 제공하지 않습니다. native 파일 대화상자·OS 암호화·패키징은 앱에서 별도로 검증합니다.
+API 테스트는 Electron 앱에서만 동작합니다(웹 개발 모드와 웹 E2E는 제거). native 파일 대화상자·OS 암호화·패키징은 앱에서 별도로 검증합니다.
 
 로컬 샘플은 `npx tsx tests/api-testing/web-fixture.ts`로 실행합니다. 기본 URL은 `http://127.0.0.1:5175`, 명세는 `/openapi.json`, 문서 Basic 계정은 demo/demo, API 토큰은 demo-token입니다. 모두 테스트용 값입니다.

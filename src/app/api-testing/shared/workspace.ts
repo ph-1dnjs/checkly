@@ -122,7 +122,7 @@ export type ApiAiTool = "claude" | "codex";
 /** How hard the AI thinks: lower answers faster. Both CLIs accept these; unset uses the CLI default. */
 /** In-app chat settings of a project on this PC: backend folders per server and which AI CLI (model and effort are the CLI defaults). */
 export type ApiAiChatSettings = { folders: ApiBackendFolders; tool?: ApiAiTool };
-/** AI CLIs installed on this PC; empty (with why) when there is none or in the web dev mode. */
+/** AI CLIs installed on this PC; empty (with why) when there is none. */
 export type ApiAiChatStatus = { tools: Array<{ tool: ApiAiTool; version: string }>; error?: string };
 /** The project's in-app AI terminal: which CLI, in which environment, whether it runs, and recent output to replay. */
 export type ApiAiTerminal = {
