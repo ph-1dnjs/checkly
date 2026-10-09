@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { MESSAGES, toUserMessage } from "../../ipc/auth/errors";
-import type { ApiProject, SavedApiScenario, SavedApiSuite } from "../shared/workspace";
+import type { ApiAuthorship, ApiProject, SavedApiScenario, SavedApiSuite } from "../shared/workspace";
 import type { ApiDocInput } from "../shared/doc-inputs";
 import type { ApiStore, ScenarioRename, SpecUrl } from "./store";
 
@@ -12,11 +12,20 @@ type EndpointRow = { id: string; name: string; kind: "web" | "api"; position: nu
 type EnvironmentRow = { id: string; name: string; position: number; updated_at: string | null };
 type UrlRow = { endpoint_id: string; environment_id: string; base_url: string; spec_url: string | null; updated_at: string | null };
 type Settings = { endpoints: EndpointRow[]; environments: EnvironmentRow[]; urls: UrlRow[] };
-type ScenarioRow = { id: string; name: string; source: string; draft: boolean; group_path: string[] | null; tags: string[] | null; kept_titles: SavedApiScenario["keptTitles"] | null; updated_at: string };
-type SuiteRow = { id: string; name: string; scenario_ids: string[]; on_failure: "stop" | "continue"; group_path: string[] | null; tags: string[] | null; updated_at: string };
+/** Stamped by the database: created_* on insert (kept on update), updated_* on every content change. */
+type AuthorshipRow = { created_at: string; created_by: string | null; updated_by: string | null };
+type ScenarioRow = AuthorshipRow & { id: string; name: string; source: string; draft: boolean; group_path: string[] | null; tags: string[] | null; kept_titles: SavedApiScenario["keptTitles"] | null; updated_at: string };
+/** A spec doc's Basic-auth account shared with the team (only while secrets are shared). */
+export type TeamSpecAccount = { url: string; username: string; password: string };
+type SuiteRow = AuthorshipRow & { id: string; name: string; scenario_ids: string[]; on_failure: "stop" | "continue"; group_path: string[] | null; tags: string[] | null; updated_at: string };
 
-const scenarioColumns = "id, name, source, draft, group_path, tags, kept_titles, updated_at";
-const suiteColumns = "id, name, scenario_ids, on_failure, group_path, tags, updated_at";
+const authorshipColumns = "created_at, created_by, updated_by";
+const scenarioColumns = `id, name, source, draft, group_path, tags, kept_titles, updated_at, ${authorshipColumns}`;
+const suiteColumns = `id, name, scenario_ids, on_failure, group_path, tags, updated_at, ${authorshipColumns}`;
+/** Shown for a creator or editor who is no longer a member of the project. */
+export const LEFT_MEMBER = "(나간 멤버)";
+/** null: the member list could not be read, so names are left out rather than shown as left. */
+type Names = Map<string, string> | null;
 
 /** Supabase answers { data, error }; errors become the same Korean sentences as the rest of the team features. */
 async function must<T>(query: PromiseLike<{ data: unknown; error: unknown }>): Promise<T> {
@@ -25,14 +34,22 @@ async function must<T>(query: PromiseLike<{ data: unknown; error: unknown }>): P
   return data as T;
 }
 
-const fromScenarioRow = (row: ScenarioRow): SavedApiScenario => ({
+/** Member nicknames for the stamped user ids; a user id no longer among the members reads LEFT_MEMBER, none (unknown) is left out. */
+const fromAuthorshipRow = (row: AuthorshipRow, names: Names): ApiAuthorship => {
+  const name = (id: string | null) => id === null || !names ? undefined : names.get(id) ?? LEFT_MEMBER;
+  const createdBy = name(row.created_by), updatedBy = name(row.updated_by);
+  return { createdAt: row.created_at, ...(createdBy ? { createdBy } : {}), ...(updatedBy ? { updatedBy } : {}) };
+};
+const fromScenarioRow = (row: ScenarioRow, names: Names): SavedApiScenario => ({
   id: row.id, name: row.name, source: row.source, bindings: {}, updatedAt: row.updated_at, draft: row.draft,
   ...(row.group_path ? { groupPath: row.group_path } : {}), ...(row.tags ? { tags: row.tags } : {}), ...(row.kept_titles ? { keptTitles: row.kept_titles } : {}),
+  ...fromAuthorshipRow(row, names),
 });
+// created_* are never sent: the database stamps them.
 const scenarioRow = (item: SavedApiScenario) => ({ id: item.id, name: item.name, source: item.source, draft: item.draft ?? false, group_path: item.groupPath ?? null, tags: item.tags ?? null, kept_titles: item.keptTitles ?? null });
-const fromSuiteRow = (row: SuiteRow): SavedApiSuite => ({
+const fromSuiteRow = (row: SuiteRow, names: Names): SavedApiSuite => ({
   id: row.id, name: row.name, scenarioIds: row.scenario_ids, onFailure: row.on_failure, updatedAt: row.updated_at,
-  ...(row.group_path ? { groupPath: row.group_path } : {}), ...(row.tags ? { tags: row.tags } : {}),
+  ...(row.group_path ? { groupPath: row.group_path } : {}), ...(row.tags ? { tags: row.tags } : {}), ...fromAuthorshipRow(row, names),
 });
 const suiteRow = (suite: SavedApiSuite) => ({ id: suite.id, name: suite.name, scenario_ids: suite.scenarioIds, on_failure: suite.onFailure, group_path: suite.groupPath ?? null, tags: suite.tags ?? null });
 /** "<serverId> <METHOD path>" ⇄ (endpoint_id, operation). */
@@ -130,11 +147,13 @@ export class TeamStore implements ApiStore {
   }
 
   async listScenarios() {
-    return (await must<ScenarioRow[]>(this.db.from("api_scenarios").select(scenarioColumns).eq("project_id", this.projectId).order("created_at").order("id"))).map(fromScenarioRow);
+    const rows = await must<ScenarioRow[]>(this.db.from("api_scenarios").select(scenarioColumns).eq("project_id", this.projectId).order("created_at").order("id"));
+    const names = await this.names(rows);
+    return rows.map(row => fromScenarioRow(row, names));
   }
   async putScenario(_projectId: string, item: SavedApiScenario, expectedUpdatedAt: string | undefined) {
     const row = await this.put<ScenarioRow>("api_scenarios", scenarioColumns, item.id, scenarioRow(item), expectedUpdatedAt);
-    return row && fromScenarioRow(row);
+    return row && fromScenarioRow(row, await this.names([row]));
   }
   deleteScenario(_projectId: string, id: string, expectedUpdatedAt: string) { return this.drop("api_scenarios", id, expectedUpdatedAt); }
   async keepTitles(_projectId: string, id: string, keptTitles: NonNullable<SavedApiScenario["keptTitles"]>) {
@@ -143,11 +162,13 @@ export class TeamStore implements ApiStore {
   }
 
   async listSuites() {
-    return (await must<SuiteRow[]>(this.db.from("api_suites").select(suiteColumns).eq("project_id", this.projectId).order("created_at").order("id"))).map(fromSuiteRow);
+    const rows = await must<SuiteRow[]>(this.db.from("api_suites").select(suiteColumns).eq("project_id", this.projectId).order("created_at").order("id"));
+    const names = await this.names(rows);
+    return rows.map(row => fromSuiteRow(row, names));
   }
   async putSuite(_projectId: string, suite: SavedApiSuite, expectedUpdatedAt: string | undefined) {
     const row = await this.put<SuiteRow>("api_suites", suiteColumns, suite.id, suiteRow(suite), expectedUpdatedAt);
-    return row && fromSuiteRow(row);
+    return row && fromSuiteRow(row, await this.names([row]));
   }
   deleteSuite(_projectId: string, id: string, expectedUpdatedAt: string) { return this.drop("api_suites", id, expectedUpdatedAt); }
 
@@ -178,6 +199,58 @@ export class TeamStore implements ApiStore {
     if (!rows.length) return false;
     if (rows[0].spec_url !== url) await must(this.db.from("endpoint_urls").update({ spec_url: url }).eq("project_id", this.projectId).eq("endpoint_id", serverId).eq("environment_id", environmentId));
     return true;
+  }
+
+  private members?: { at: number; value: Promise<Map<string, string>> };
+  /** Member user id → nickname, for "who made / changed it" (a list read in the last 10 seconds is reused). */
+  nicknames(): Promise<Map<string, string>> {
+    if (!this.members || Date.now() - this.members.at > 10_000) {
+      const value = must<Array<{ user_id: string; nickname: string }>>(this.db.from("members").select("user_id, nickname").eq("project_id", this.projectId))
+        .then(rows => new Map(rows.map(row => [row.user_id, row.nickname])));
+      this.members = { at: Date.now(), value };
+      value.catch(() => { if (this.members?.value === value) this.members = undefined; });
+    }
+    return this.members.value;
+  }
+
+  /**
+   * Nicknames for these rows, from the session's member list. An id not in it (someone who joined
+   * since) reads the list again once; a failed read leaves names out ("(나간 멤버)" would be wrong).
+   */
+  private async names(rows: AuthorshipRow[]): Promise<Names> {
+    const ids = rows.flatMap(row => [row.created_by, row.updated_by]).filter((id): id is string => id !== null);
+    if (!ids.length) return new Map();
+    try {
+      const names = await this.nicknames();
+      if (ids.every(id => names.has(id)) || Date.now() - this.members!.at < 1_000) return names;
+      this.members = undefined;
+      return await this.nicknames();
+    } catch { return null; }
+  }
+
+  /** "비밀값도 팀에 공유": on unless someone turned it off (no row = the default, on). */
+  async settings(): Promise<{ shareSecrets: boolean; updatedAt?: string; updatedBy?: string | null }> {
+    const rows = await must<Array<{ share_secrets: boolean; updated_at: string; updated_by: string | null }>>(this.db.from("api_settings").select("share_secrets, updated_at, updated_by").eq("project_id", this.projectId));
+    return rows[0] ? { shareSecrets: rows[0].share_secrets, updatedAt: rows[0].updated_at, updatedBy: rows[0].updated_by } : { shareSecrets: true };
+  }
+  async sharesSecrets(): Promise<boolean> { return (await this.settings()).shareSecrets; }
+  async setShareSecrets(on: boolean): Promise<void> {
+    await must(this.db.from("api_settings").upsert({ project_id: this.projectId, share_secrets: on }, { onConflict: "project_id" }));
+  }
+
+  async specAccount(environmentId: string, serverId: string): Promise<TeamSpecAccount | null> {
+    const rows = await must<Array<{ spec_url: string; username: string; password: string }>>(this.db.from("api_spec_accounts").select("spec_url, username, password").eq("project_id", this.projectId).eq("endpoint_id", serverId).eq("environment_id", environmentId));
+    return rows[0] ? { url: rows[0].spec_url, username: rows[0].username, password: rows[0].password } : null;
+  }
+  /** Refused by the database while secrets are not shared. */
+  async setSpecAccount(environmentId: string, serverId: string, account: TeamSpecAccount): Promise<void> {
+    await must(this.db.from("api_spec_accounts").upsert({ project_id: this.projectId, endpoint_id: serverId, environment_id: environmentId, spec_url: account.url, username: account.username, password: account.password }, { onConflict: "endpoint_id,environment_id" }));
+  }
+  /** One pair, or every account of the project without arguments. */
+  async deleteSpecAccounts(environmentId?: string, serverId?: string): Promise<void> {
+    let query = this.db.from("api_spec_accounts").delete().eq("project_id", this.projectId);
+    if (environmentId && serverId) query = query.eq("endpoint_id", serverId).eq("environment_id", environmentId);
+    await must(query);
   }
 
   async counts(): Promise<{ scenarios: number; suites: number }> {

@@ -28,19 +28,30 @@ export class SpecSync {
     await writeFile(temp, JSON.stringify(data), { mode: 0o600 });
     await rename(temp, this.filename(scope));
   }
-  /** In a team project the URL is the team's (the account and sync status stay on this computer). */
+  /**
+   * In a team project the URL is the team's, and so is a remembered account while the team shares
+   * secrets; otherwise the account (keychain) and the sync status stay on this computer.
+   */
   async get(scope: ApiScope): Promise<ApiSpecSync> {
     const { encrypted, ...metadata } = await this.read(scope);
     const shared = await this.workspace.sharedSpecUrl(scope);
-    return { ...metadata, ...(shared !== undefined ? { url: shared ?? undefined } : {}), hasSavedAccount: Boolean(encrypted), secureStorageAvailable: this.secrets.available() };
+    const team = await this.workspace.sharedSpecAccount(scope).catch(() => undefined);
+    return {
+      ...metadata, ...(shared !== undefined ? { url: shared ?? undefined } : {}),
+      ...(team?.account ? { username: team.account.username, teamAccount: true } : {}),
+      hasSavedAccount: Boolean(encrypted) || Boolean(team?.account), secureStorageAvailable: this.secrets.available(),
+      ...(team?.sharing ? { shareAccount: true } : {}),
+    };
   }
   async deleteAccount(scope: ApiScope) {
     const key = this.filename(scope);
     if (this.active.has(key)) throw new Error("명세 동기화 중에는 계정을 삭제할 수 없습니다");
     const release = this.workspace.beginSpecSync(scope);
     this.active.add(key);
-    try { const { encrypted, username, ...rest } = await this.read(scope); await this.save(scope, rest); }
-    finally { this.active.delete(key); release(); }
+    try {
+      const { encrypted, username, ...rest } = await this.read(scope); await this.save(scope, rest);
+      await this.workspace.forgetSharedSpecAccount(scope);
+    } finally { this.active.delete(key); release(); }
   }
   async importUrl(scope: ApiScope, rawSource: unknown) {
     const parsed = specSourceSchema.safeParse(rawSource);
@@ -54,18 +65,27 @@ export class SpecSync {
     const release = this.workspace.beginSpecSync(scope);
     this.active.add(key);
     let catalog: Awaited<ReturnType<ApiWorkspace["importSpec"]>>;
+    // Team project sharing secrets: the remembered account is the team's (no keychain needed).
+    let shareAccount: { url: string; username: string; password: string } | undefined;
     try {
       const previous = await this.read(scope);
+      const team = await this.workspace.sharedSpecAccount(scope).catch(() => undefined);
       const attempt = new Date().toISOString();
       try {
         let auth = source.auth;
         let encrypted: string | undefined;
-        if (source.useSavedAuth) {
+        if (source.useSavedAuth && !auth && team?.account?.url === source.url) {
+          auth = { kind: "basic", username: team.account.username, password: team.account.password };
+          if (previous.url === source.url) encrypted = previous.encrypted;
+        } else if (source.useSavedAuth) {
           if (auth || source.url !== previous.url || !previous.encrypted || !previous.username) throw new Error("저장된 계정은 저장 당시의 명세 주소에서만 사용할 수 있습니다");
           if (!this.secrets.available()) throw new Error("OS 보안 저장소를 사용할 수 없습니다. 계정을 다시 입력하세요");
           try { auth = { kind: "basic", username: previous.username, password: this.secrets.decrypt(previous.encrypted) }; }
           catch { throw new Error("저장된 계정을 복호화하지 못했습니다. 계정을 삭제하고 다시 입력하세요"); }
           encrypted = previous.encrypted;
+        } else if (source.remember && team?.sharing) {
+          if (!auth) throw new Error("저장할 Basic 인증 계정을 입력하세요");
+          shareAccount = { url: source.url, username: auth.username, password: auth.password };
         } else if (source.remember) {
           if (!auth) throw new Error("저장할 Basic 인증 계정을 입력하세요");
           if (!this.secrets.available()) throw new Error("OS 보안 저장소를 사용할 수 없어 계정을 저장하지 않았습니다");
@@ -97,6 +117,10 @@ export class SpecSync {
     // A URL that worked becomes the team's; the spec itself was imported either way.
     try { await this.workspace.shareSpecUrl(scope, source.url); }
     catch (e) { throw new Error(`명세는 가져왔지만 팀 프로젝트에 명세 주소를 저장하지 못했습니다. ${(e as Error).message}`); }
+    if (shareAccount) {
+      try { await this.workspace.shareSpecAccount(scope, shareAccount); }
+      catch (e) { throw new Error(`명세는 가져왔지만 문서 계정을 팀에 저장하지 못했습니다. ${(e as Error).message}`); }
+    }
     return catalog;
   }
 }

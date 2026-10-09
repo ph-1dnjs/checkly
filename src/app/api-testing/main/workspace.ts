@@ -1,18 +1,18 @@
 import { constants, copyFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
-import { httpUrl, projectSchema, teamProjectSchema, type ApiStorageInfo, type ApiAiChatSettings, type ApiCatalog, type ApiCookie, type ApiProject, type ApiScope, type ApiResponse, type ApiProjectScope, type ApiEnvironmentScope, type ApiGlobal, type SavedApiScenario, type SavedApiSuite, type ApiSidebarMetadata, type ApiScenarioPreview, type ApiScenarioResult, type ApiRequestTrace, type ApiAiImportResult, type ApiAiDraft, type ApiMissingApi, type ApiTitleRename, type ApiSpecImpact, type ApiProjectExport, type ApiProjectImportResult, type ApiProjectImportPlan, type ApiShareDiff } from "../shared/workspace";
+import { httpUrl, projectSchema, teamProjectSchema, type ApiTeamSettings, type ApiStorageInfo, type ApiAiChatSettings, type ApiCatalog, type ApiCookie, type ApiProject, type ApiScope, type ApiResponse, type ApiProjectScope, type ApiEnvironmentScope, type ApiGlobal, type SavedApiScenario, type SavedApiSuite, type ApiSidebarMetadata, type ApiScenarioPreview, type ApiScenarioResult, type ApiRequestTrace, type ApiAiImportResult, type ApiAiDraft, type ApiMissingApi, type ApiTitleRename, type ApiSpecImpact, type ApiProjectExport, type ApiProjectImportResult, type ApiProjectImportPlan, type ApiShareDiff } from "../shared/workspace";
 import { z } from "zod";
 import { ApiRunner, resolveRequestUrl } from "./execution";
 import { resolve } from "./variables";
-import { docInputFromRequest, type ApiDocInput } from "../shared/doc-inputs";
+import { docInputFromRequest, docInputWithoutSecrets, type ApiDocInput } from "../shared/doc-inputs";
 import { bindingUseLocations, pruneUnusedBrokenBindings, stringifyScenario, parseScenario, ScenarioFormatError, scenarioSchema, scenarioStepInputs, scenarioStepLabel, type Json, type Scenario, type ScenarioInputRequest } from "../shared/scenario";
 import { readOpenApi } from "./openapi";
 import { CookieJar } from "./cookies";
 import { groupMissingGlobals, stepNumbersText } from "../shared/preflight-issues";
 import { aiCatalogDetails, createAuthorPrompt, splitAiBundle, withGeneratedId, type AiBundle } from "./ai-context";
 import { FileStore, type ApiStore, type ScenarioRename } from "./store";
-import { TeamStore, type ApiTeamContext } from "./team-store";
+import { TeamStore, type ApiTeamContext, type TeamSpecAccount } from "./team-store";
 
 export const scopeSchema = z.object({ projectId: z.string().uuid(), serverId: z.string().uuid(), environmentId: z.string().uuid() }).strict();
 const projectScopeSchema = z.object({ projectId: z.string().uuid() }).strict();
@@ -24,6 +24,13 @@ const sidebarMetadataSchema = z.object({
   tags: z.array(z.string().trim().min(1).max(32)).max(20).optional().transform(values => values?.length ? [...new Map(values.map(value => [value.toLocaleLowerCase(), value])).values()] : undefined),
 }).strict();
 const suiteSchema = z.object({ id: z.string().uuid(), name: z.string().trim().min(1).max(100), scenarioIds: z.array(z.string().min(1).max(1000)).min(1).max(100), onFailure: z.enum(["stop", "continue"]) }).extend(sidebarMetadataSchema.shape).strict();
+/** Who made / changed a suite as the team database stamped it (nicknames). Never taken from the renderer. */
+const suiteAuthorshipShape = { createdAt: z.string().datetime({ offset: true }).optional(), createdBy: z.string().optional(), updatedBy: z.string().optional() };
+/** Drops the stored-only authorship fields (a suite read back and saved again carries them). */
+const withoutAuthorship = <T extends object>(item: T) => {
+  const { createdAt: _createdAt, createdBy: _createdBy, updatedBy: _updatedBy, ...rest } = item as T & Record<"createdAt" | "createdBy" | "updatedBy", unknown>;
+  return rest;
+};
 /** Which in-app AI folder: the terminal's ("chat") or 바로 만들기's ("quick"). */
 export type AiRunKind = "chat" | "quick";
 type ShareBase = { scenarios: Record<string, string>; suites: Record<string, string> };
@@ -189,7 +196,7 @@ export class ApiWorkspace {
       origin: (await this.readShareOrigins())[projectId] ?? projectId,
       base: (await this.readShareBases())[projectId] ?? { scenarios: {}, suites: {} }, project, specUrls,
       scenarios: (await this.listScenarios(projectId)).map(item => ({ id: item.id, name: item.name, source: item.source, ...(item.draft ? { draft: true } : {}), ...(item.groupPath ? { groupPath: item.groupPath } : {}), ...(item.tags ? { tags: item.tags } : {}) })),
-      suites: (await this.listSuites(projectId)).map(({ updatedAt: _updatedAt, ...suite }) => suite),
+      suites: (await this.listSuites(projectId)).map(({ updatedAt: _updatedAt, ...suite }) => withoutAuthorship(suite)),
     };
     return JSON.stringify(data, null, 2);
   }
@@ -448,6 +455,59 @@ export class ApiWorkspace {
       scenarios: (await this.files.listScenarios(project.id)).length, suites: (await this.files.listSuites(project.id)).length,
     })));
     return { mode: "team", projectCode: team.context.projectCode, importable };
+  }
+
+  /** "비밀값도 팀에 공유" of the team project; null without sign-in. */
+  async getTeamSettings(): Promise<ApiTeamSettings | null> {
+    const team = this.teamStore();
+    if (!team) return null;
+    const settings = await team.settings();
+    const by = settings.updatedBy ? (await team.nicknames()).get(settings.updatedBy) : undefined;
+    return { shareSecrets: settings.shareSecrets, ...(settings.updatedAt ? { updatedAt: settings.updatedAt } : {}), ...(by ? { updatedBy: by } : {}) };
+  }
+
+  /**
+   * Turns sharing secrets on or off for the whole team. Off also takes back what was shared: the
+   * docs accounts and the secret values in remembered docs inputs (stripped like file mode does).
+   */
+  async setShareSecrets(rawOn: unknown): Promise<ApiTeamSettings> {
+    const on = z.boolean().parse(rawOn);
+    const team = this.teamStore();
+    if (!team) throw new Error("팀 프로젝트에 로그인한 뒤 바꿀 수 있습니다");
+    await team.setShareSecrets(on);
+    if (!on) {
+      await team.deleteSpecAccounts();
+      const action = this.queue.then(async () => {
+        for (const [key, input] of Object.entries(await team.docInputs())) {
+          const stripped = docInputWithoutSecrets(input);
+          if (JSON.stringify(stripped) !== JSON.stringify(input)) await team.setDocInput(team.context.projectId, key, stripped);
+        }
+      });
+      this.queue = action.catch(() => undefined);
+      await action;
+    }
+    return (await this.getTeamSettings())!;
+  }
+
+  /** Team mode: whether secrets are shared and the scope's shared docs account; undefined without sign-in. */
+  async sharedSpecAccount(input: ApiScope): Promise<{ sharing: boolean; account: TeamSpecAccount | null } | undefined> {
+    const team = this.teamStore();
+    if (!team) return undefined;
+    const { scope } = await this.scope(input);
+    const sharing = await team.sharesSecrets();
+    return { sharing, account: sharing ? await team.specAccount(scope.environmentId, scope.serverId) : null };
+  }
+  async shareSpecAccount(input: ApiScope, account: TeamSpecAccount): Promise<void> {
+    const team = this.teamStore();
+    if (!team) return;
+    const { scope } = await this.scope(input);
+    await team.setSpecAccount(scope.environmentId, scope.serverId, account);
+  }
+  async forgetSharedSpecAccount(input: ApiScope): Promise<void> {
+    const team = this.teamStore();
+    if (!team) return;
+    const { scope } = await this.scope(input);
+    await team.deleteSpecAccounts(scope.environmentId, scope.serverId);
   }
 
   /** The team's spec URL of the scope (null when unset); undefined without sign-in, where SpecSync keeps it locally. */
@@ -1009,16 +1069,17 @@ export class ApiWorkspace {
     const projectId = z.string().uuid().parse(rawProjectId);
     await this.requireProject(projectId);
     // Team rows carry the database time (with offset and microseconds); it goes back as is when saving.
-    return z.array(suiteSchema.extend({ updatedAt: z.string().datetime({ offset: true }) })).parse((await this.store().listSuites(projectId)).map(migrateSidebarMetadata));
+    return z.array(suiteSchema.extend({ updatedAt: z.string().datetime({ offset: true }), ...suiteAuthorshipShape })).parse((await this.store().listSuites(projectId)).map(migrateSidebarMetadata));
   }
 
   async saveSuite(rawProjectId: string, rawSuite: Omit<SavedApiSuite, "updatedAt">, expectedUpdatedAt?: string): Promise<SavedApiSuite> {
     const projectId = z.string().uuid().parse(rawProjectId);
-    const suite = suiteSchema.parse(rawSuite);
+    const suite = suiteSchema.parse(rawSuite && typeof rawSuite === "object" ? withoutAuthorship(rawSuite) : rawSuite);
     const action = this.queue.then(async () => {
       const scenarios = await this.listScenarios(projectId);
       if (suite.scenarioIds.some(id => !scenarios.some(item => item.id === id && !item.draft))) throw new Error("저장된 실행 가능 시나리오만 묶음에 추가하세요");
       const previous = (await this.listSuites(projectId)).find(item => item.id === suite.id);
+      // Authorship is the team database's to stamp; file mode keeps none.
       const item: SavedApiSuite = { ...suite, updatedAt: new Date(Math.max(Date.now(), previous ? Date.parse(previous.updatedAt) + 1 : 0)).toISOString() };
       const stored = await this.store().putSuite(projectId, item, expectedUpdatedAt);
       if (!stored) throw new Error("묶음이 변경되었습니다. 최신 목록에서 다시 선택하세요");
@@ -1334,7 +1395,9 @@ export class ApiWorkspace {
     const scenario = scenarioSchema.parse({ version: 1, id: "single", name: operation.summary, steps: [{ id: "request", name: operation.summary, server: scope.serverId, api: operation.operationId ? { operationId: operation.operationId } : { method: operation.method, path: operation.path }, request }] });
     const req = scenario.steps[0].request;
     // Remember what was typed before any check below can fail; never let storage break the request.
-    const remembered = docInputFromRequest(req);
+    // Secrets are kept only for a team that shares them (read now: a teammate may have just turned it off).
+    const keepSecrets = await this.teamStore()?.sharesSecrets().catch(() => false) ?? false;
+    const remembered = docInputFromRequest(req, { keepSecrets });
     await this.setDocInput(scope.projectId, `${scope.serverId} ${key}`, remembered).catch(() => undefined);
     const auth = this.requestAuth.get(this.authKey(scope));
     if (auth) {

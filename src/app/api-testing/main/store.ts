@@ -14,8 +14,8 @@ type KeptTitles = NonNullable<SavedApiScenario["keptTitles"]>;
  * Where projects, scenarios, suites and docs inputs are kept: files on this computer (FileStore) or
  * the signed-in team project (TeamStore). Writes given the `updatedAt` the caller read resolve
  * null/false when another save got there first; the workspace words that per action. Lists come back
- * as stored and the workspace parses them. Catalogs, AI files, docs accounts, globals and cookies stay
- * local either way.
+ * as stored and the workspace parses them. Catalogs, AI files, globals and cookies stay local either
+ * way; docs accounts too, except in a team project that shares secrets (then TeamStore keeps them).
  */
 export interface ApiStore {
   /** `maxAgeMs`: a copy read this recently may be reused (only the team store keeps one). */

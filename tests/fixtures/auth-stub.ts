@@ -14,6 +14,8 @@ export type AuthStubOptions = {
   conflictOnSecondSave?: boolean
   /** 직접 하지 않은 로그아웃(내보내짐)의 이유. */
   signOutNotice?: string
+  /** 설정 PROJECT의 "비밀값도 팀에 공유"용으로 apiTesting bridge의 팀 설정 두 메서드만 둔다. */
+  teamSettings?: boolean
 }
 
 export const owner: AuthSession = {
@@ -168,10 +170,23 @@ export async function installAuthStub(page: Page, options: AuthStubOptions) {
       },
     }
 
+    // "비밀값도 팀에 공유"(기본 켬). 바꾸면 바꾼 사람·시각이 남는다.
+    let teamSettings: { shareSecrets: boolean; updatedAt?: string; updatedBy?: string } = { shareSecrets: true }
+    const apiTesting = {
+      getTeamSettings: async () => ({ ...teamSettings }),
+      setShareSecrets: async (on: boolean) => {
+        record('setShareSecrets', on)
+        await wait()
+        teamSettings = { shareSecrets: on, updatedAt: '2026-10-09T05:20:00.000Z', updatedBy: session?.nickname ?? 'minsu' }
+        return { ...teamSettings }
+      },
+    }
+
     const off = () => () => undefined
     Object.defineProperty(window, 'electronAPI', {
       value: {
         ...(options.enabled === 'missing' ? {} : { auth }),
+        ...(options.teamSettings ? { apiTesting } : {}),
         loadScenarioMarkdown: async () => null,
         loadMarkerPositions: async () => null,
         saveMarkerPositions: async () => undefined,

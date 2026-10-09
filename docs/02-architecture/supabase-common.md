@@ -125,7 +125,7 @@ npx tsx --test tests/auth/*.test.ts
 
 | 구분 | 데이터 |
 | --- | --- |
-| DB | 시나리오 본문(`.md`), 마커 위치(`marker-positions.json`), 실행 요약(`reports/*/report.json` + 실행자) |
+| DB | 시나리오 본문(`.md`), 마커 위치(`marker-positions.json`) |
 | 로컬 | 영상, `report.html`, 폴더 선택(`scenario-folder.json`, 유지 여부는 담당자가 정함) |
 | 환경 | 선택한 환경의 `web` 엔드포인트 주소를 상대 경로의 기준으로 씀 (새 기능) |
 
@@ -142,18 +142,30 @@ npx tsx --test tests/auth/*.test.ts
 
 | 구분 | 데이터 |
 | --- | --- |
-| DB | 시나리오·묶음(`scenarios-*`, `suites-*`), 개별 요청 입력값(`doc-inputs-*`), 실행 요약 |
-| 공통으로 이동 | `projects.json`의 서버·환경·주소, `spec-source-*` → 위 공통 테이블 |
-| 로컬 | 카탈로그 캐시(`catalog-*`, `ai/*`), AI 대화·설정, 스웨거 문서 접근 계정(키체인) |
+| DB | 시나리오·묶음(`api_scenarios`, `api_suites`), 개별 요청 입력값(`api_doc_inputs`), 설정(`api_settings`), 문서 계정(`api_spec_accounts`, 공유가 켜져 있을 때만) |
+| 공통으로 이동 | `projects.json`의 서버·환경·주소, `spec-source-*`의 명세 주소 → 위 공통 테이블 |
+| 로컬 | 명세·카탈로그 캐시(`catalog-*`, 각자 팀의 명세 주소에서 가져옴), `ai/*`, AI 대화·설정, 동기화 상태, 공유를 끈 경우의 문서 계정(키체인) |
 | 없어짐 | `share-origins.json`, `share-bases.json`(내보내기·가져오기 공유), API 테스트 안의 프로젝트 목록·생성·삭제 UI |
 | 이전 | 최초 1회 "로컬 프로젝트 → 현재 팀 프로젝트로 가져오기" (기존 가져오기 코드 재사용) |
 
+API 테스트 테이블 (`20261007000200_api_testing.sql`, `20261009000000_api_share_secrets.sql`, `20261009000200_api_authorship.sql`)
+
+| 테이블 | 키 | 내용 |
+| --- | --- | --- |
+| `api_scenarios`, `api_suites` | (project_id, id) | 시나리오 YAML·묶음 순서. 작성 정보: `created_at`·`created_by`(트리거가 추가 때 `now()`·`auth.uid()`로 채우고 수정 때 원래 값으로 되돌림 → 다른 사람을 작성자로 꾸밀 수 없음), `updated_at`·`updated_by`(`touch()`). |
+| `api_settings` | project_id | `share_secrets`(기본 true). 멤버 누구나 바꾸고 `updated_by`가 남음 |
+| `api_spec_accounts` | (endpoint_id, environment_id), 복합 FK·cascade | 명세 주소의 Basic 계정(`spec_url`, `username`, `password` 평문). 추가·수정 RLS는 `api_shares_secrets()`가 참일 때만 |
+
+- 명세 본문은 DB에 두지 않는다. 팀은 명세 주소(`endpoint_urls.spec_url`)와, 비밀값 공유가 켜져 있으면 그 주소의 Basic 계정만 같이 쓰고, 각 PC가 그 주소에서 직접 가져와 로컬 카탈로그 캐시로 둔다. 접속할 수 없는 주소(예: 다른 사람 PC의 localhost)는 가져올 수 없다.
+- 작성 정보(1단계, 버전 기록 없음): 앱은 `created_by`·`updated_by`를 `members`의 닉네임으로 바꿔 보여 주고(세션 캐시, 모르는 id가 나오면 한 번 다시 읽음), 멤버가 아닌 id는 `(나간 멤버)`로 표시한다. 기존 행은 `created_by = updated_by`로 채웠다.
+- 비밀값 공유를 끄면 앱이 `api_spec_accounts`를 지우고 `api_doc_inputs`의 비밀값을 뺀다(`shared/sensitive.ts` 기준).
+
 공통 규칙
-- 토큰·비밀번호 같은 값은 `{{globals.이름}}` 변수로 빼고, 실제 값은 각자 로컬에 둔다. DB에 저장된 값은 평문이다.
-- 실행 기록(웹 시나리오·API 테스트)은 **90일** 보관 후 삭제한다. 수동 입력·비밀번호 단계의 값은 로그에 `••••`로 저장한다.
+- 토큰·비밀번호 같은 값은 `{{globals.이름}}` 변수로 빼고, 실제 값은 각자 로컬에 둔다. DB에 저장된 값은 평문이다. 예외: API 테스트의 `비밀값도 팀에 공유`(기본 켬)가 켜져 있으면 Try it out 입력값의 비밀값과 문서 계정을 DB에 평문으로 둔다(개발용 계정 전제, 운영 계정을 쓰는 프로젝트는 끈다).
+- 실행 기록은 DB에 저장하지 않는다. 웹 시나리오는 각자 PC의 `reports/`·영상, API 테스트는 화면 세션 동안의 마지막 실행과 직접 저장한 스위트 HTML 리포트만 둔다.
 
 ## 열린 질문
 
 1. **로그인 이메일 도메인**: 실사용자 가입 전에 확정한다. Auth 이메일 형식 검사를 통과하는지 확인한다.
 2. **관리자 탈퇴·위임**: 관리자 계정이 삭제되면 관리자 없는 프로젝트가 된다. 위임 기능이 필요한가?
-3. **스웨거 파일 업로드**: API 테스트는 URL 말고 파일로도 스펙을 넣을 수 있다. 파일 스펙도 공유한다면 Storage나 컬럼이 따로 필요하다.
+3. **스웨거 파일 업로드**: API 테스트는 URL 말고 파일로도 스펙을 넣을 수 있다. 파일 스펙은 공유하지 않는다(각 PC에만 둠). 공유한다면 Storage나 컬럼이 따로 필요하다.

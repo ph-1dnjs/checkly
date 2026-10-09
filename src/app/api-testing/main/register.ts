@@ -103,6 +103,8 @@ export function registerApiTesting() {
   ipcMain.handle("api-testing:read-ai-result", (_event, scope) => workspace.readAiResult(scope));
   ipcMain.handle("api-testing:check-ai-scenarios", (_event, scope, text) => workspace.checkAiScenarios(scope, text));
   ipcMain.handle("api-testing:get-storage", () => workspace.getStorage());
+  ipcMain.handle("api-testing:get-team-settings", () => workspace.getTeamSettings());
+  ipcMain.handle("api-testing:set-share-secrets", (_event, on) => workspace.setShareSecrets(on));
   ipcMain.handle("api-testing:import-local-project", (_event, projectId) => workspace.importLocalProject(projectId));
   ipcMain.handle("api-testing:list-projects", () => workspace.listProjects());
   ipcMain.handle("api-testing:save-project", (_event, project) => workspace.saveProject(project));

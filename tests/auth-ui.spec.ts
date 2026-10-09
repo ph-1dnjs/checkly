@@ -178,6 +178,35 @@ test('새 프로젝트 2단계와 초대코드 복사', async ({ page, context }
 })
 
 test.describe('설정 · 계정과 프로젝트', () => {
+  test('PROJECT의 비밀값도 팀에 공유: 기본 켬, 끌 때는 확인 후 끄고 바꾼 사람이 보인다', async ({ page }) => {
+    await installAuthStub(page, { enabled: true, session: owner, teamSettings: true })
+    await page.goto('/')
+    await openSettings(page)
+    const toggle = page.getByRole('switch', { name: '비밀값도 팀에 공유' })
+    const row = page.locator('.settings-row').filter({ has: toggle })
+    await expect(toggle).toHaveAttribute('aria-checked', 'true')
+    await expect(row).toContainText('개발용 계정·토큰을 팀원과 같이 씁니다. 운영 계정을 넣는 프로젝트라면 끄세요.')
+    await toggle.click()
+    const dialog = page.getByRole('dialog', { name: '비밀값 공유를 끌까요?' })
+    await dialog.getByRole('button', { name: '취소' }).click()
+    await expect(toggle).toHaveAttribute('aria-checked', 'true')
+    await toggle.click()
+    await dialog.getByRole('button', { name: '끄기' }).click()
+    await expect(toggle).toHaveAttribute('aria-checked', 'false')
+    await expect(row).toContainText('minsu님이 2026. 10. 9.에 바꿈')
+    await toggle.click()
+    await expect(toggle).toHaveAttribute('aria-checked', 'true')
+    expect((await authCalls(page)).filter(([name]) => name === 'setShareSecrets').map(([, on]) => on)).toEqual([false, true])
+  })
+
+  test('apiTesting bridge가 없으면 비밀값 공유 행을 보여주지 않는다', async ({ page }) => {
+    await installAuthStub(page, { enabled: true, session: owner })
+    await page.goto('/')
+    await openSettings(page)
+    await expect(page.locator('.settings-invite-code')).toHaveText('CHK-7Q2M3X')
+    await expect(page.getByRole('switch', { name: '비밀값도 팀에 공유' })).toHaveCount(0)
+  })
+
   test('계정 카드, 멤버, 엔드포인트 × 환경 저장과 충돌 안내', async ({ page }) => {
     await installAuthStub(page, { enabled: true, session: owner, conflictOnSecondSave: true })
     await page.goto('/')

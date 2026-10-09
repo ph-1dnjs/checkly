@@ -4,6 +4,7 @@ import type { ProjectMember } from "../../shared/model/electron-api/auth";
 import { CopyButton } from "../auth/AuthFields";
 import { errorMessage, formatDate, NICKNAME_HINT, NICKNAME_PATTERN, passwordError, PASSWORD_MIN, type AuthAccount } from "../auth/model";
 import { EndpointMatrix } from "./EndpointMatrix";
+import { ShareSecretsRow } from "./ShareSecretsRow";
 import { ConfirmDialog } from "./SettingsDialog";
 import type { ProjectInfoState } from "./useProjectInfo";
 
@@ -95,6 +96,7 @@ const ProjectGroup = ({ account, project }: Props) => {
         </div>
         <EndpointMatrix account={account} />
       </div>
+      <ShareSecretsRow projectId={session.projectId} />
 
       {confirm?.kind === "invite" && (
         <ConfirmDialog

@@ -8,6 +8,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { ApiWorkspace } from "../../src/app/api-testing/main/workspace";
+import { SpecSync } from "../../src/app/api-testing/main/spec-sync";
 import type { ApiTeamContext } from "../../src/app/api-testing/main/team-store";
 
 const spec = JSON.stringify({ openapi: "3.0.3", info: { title: "팀 명세", version: "1" }, paths: {
@@ -55,6 +56,24 @@ async function member(cleanup: Array<() => Promise<unknown>>): Promise<ApiTeamCo
   if (signInError) throw signInError;
   return { client, userId: user.user.id, projectId, projectCode: code };
 }
+
+/** Another member of the same team project (joined with the invite code), signed in. */
+async function teammate(team: ApiTeamContext, nickname: string, cleanup: Array<() => Promise<unknown>>): Promise<ApiTeamContext> {
+  const email = `${nickname}.${team.projectCode}@checkly.test`, password = randomUUID();
+  const { data: user, error } = await admin!.auth.admin.createUser({ email, password, email_confirm: true });
+  if (error) throw error;
+  cleanup.push(() => admin!.auth.admin.deleteUser(user.user.id));
+  const { data: project } = await admin!.from("projects").select("invite_code").eq("id", team.projectId).single();
+  const { error: joinError } = await admin!.rpc("join_project_for", { p_user: user.user.id, p_invite: project!.invite_code, p_nickname: nickname });
+  if (joinError) throw joinError;
+  const client = createClient(local!.url, local!.anonKey, options);
+  const { error: signInError } = await client.auth.signInWithPassword({ email, password });
+  if (signInError) throw signInError;
+  return { client, userId: user.user.id, projectId: team.projectId, projectCode: team.projectCode };
+}
+
+/** OS keychain stand-in: reversible, always available. */
+const keychain = { available: () => true, encrypt: (value: string) => Buffer.from(value).toString("base64"), decrypt: (value: string) => Buffer.from(value, "base64").toString() };
 
 async function rows(client: SupabaseClient, table: string) {
   const { data, error } = await client.from(table).select("*");
@@ -126,10 +145,10 @@ test("team project: servers·environments map to the common tables, scenarios·s
     assert.deepEqual((await workspace.listSuites(team.projectId)).map(item => [item.name, item.scenarioIds, item.onFailure]), [["다른 이름", ["read"], "continue"]]);
     await assert.rejects(workspace.deleteSuite(team.projectId, suite.id, suite.updatedAt), /묶음이 변경되었습니다/);
 
-    // Docs inputs: shared per server, secrets dropped as before.
+    // Docs inputs: shared per server; secrets too, since "비밀값도 팀에 공유" is on by default.
     await workspace.execute(devScope, "POST /login", { body: { loginId: "tester", password: "pw" } });
-    assert.deepEqual(await workspace.getDocInputs(devScope), { "POST /login": { body: { loginId: "tester", password: "" } } });
-    assert.deepEqual(await new ApiWorkspace(await mkdtemp(path.join(tmpdir(), "checkly-team-2-")), () => team).getDocInputs(devScope), { "POST /login": { body: { loginId: "tester", password: "" } } });
+    assert.deepEqual(await workspace.getDocInputs(devScope), { "POST /login": { body: { loginId: "tester", password: "pw" } } });
+    assert.deepEqual(await new ApiWorkspace(await mkdtemp(path.join(tmpdir(), "checkly-team-2-")), () => team).getDocInputs(devScope), { "POST /login": { body: { loginId: "tester", password: "pw" } } });
 
     // Spec URL: shared through endpoint_urls.spec_url, the account stays local.
     await workspace.shareSpecUrl(devScope, "https://dev.api.test/v3/api-docs");
@@ -205,6 +224,8 @@ test("team project: a local project is copied in once, matching servers and envi
     assert.deepEqual(prod.baseUrls, { [backend.id]: "https://api.test", [authId]: "https://auth.test" });
     assert.ok((await rows(db, "endpoints")).some(row => row.id === web.id && row.kind === "web"));
     assert.deepEqual((await workspace.listScenarios(team.projectId)).map(item => [item.id, item.draft]), [["draft", true], ["login", false]].sort((a, b) => String(a[0]).localeCompare(String(b[0]))));
+    // Brought in from the local project: made by whoever imported it.
+    assert.deepEqual((await workspace.listScenarios(team.projectId)).map(item => item.createdBy), ["owner", "owner"]);
     assert.deepEqual((await workspace.listSuites(team.projectId)).map(suite => suite.scenarioIds), [["login"]]);
     const teamDev = { projectId: team.projectId, serverId: backend.id, environmentId: dev.id };
     assert.deepEqual(await workspace.getDocInputs(teamDev), { "POST /login": { body: { loginId: "a" } } });
@@ -221,4 +242,199 @@ test("team project: a local project is copied in once, matching servers and envi
     for (const step of cleanup.reverse()) await Promise.resolve(step()).catch(() => undefined);
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test("team project: docs inputs' secrets and docs accounts are shared with the team; each member fetches the spec", async t => {
+  if (!await needSupabase(t)) return;
+  const cleanup: Array<() => Promise<unknown>> = [];
+  const dirA = await mkdtemp(path.join(tmpdir(), "checkly-spec-a-")), dirB = await mkdtemp(path.join(tmpdir(), "checkly-spec-b-"));
+  // The team's swagger, behind Basic auth.
+  const swagger = createServer((req, res) => {
+    if (req.url === "/login") { res.setHeader("content-type", "application/json"); res.end("{}"); return; }
+    if (req.headers.authorization !== `Basic ${Buffer.from("docs:docs-pw").toString("base64")}`) { res.statusCode = 401; res.end(); return; }
+    res.setHeader("content-type", "application/json"); res.end(spec);
+  });
+  await new Promise<void>(resolve => swagger.listen(0, "127.0.0.1", resolve));
+  const baseUrl = `http://127.0.0.1:${(swagger.address() as { port: number }).port}`, specUrl = `${baseUrl}/v3/api-docs`;
+  try {
+    const a = await member(cleanup), b = await teammate(a, "minsu", cleanup), outsider = await member(cleanup);
+    const workspaceA = new ApiWorkspace(dirA, () => a), workspaceB = new ApiWorkspace(dirB, () => b);
+    const syncA = new SpecSync(dirA, workspaceA, keychain), syncB = new SpecSync(dirB, workspaceB, keychain);
+    const serverId = randomUUID(), devId = randomUUID();
+    const [empty] = await workspaceA.listProjects();
+    await workspaceA.saveProject({ ...empty, servers: [{ id: serverId, name: "백엔드" }], environments: [{ id: devId, name: "dev", baseUrls: { [serverId]: baseUrl } }] });
+    const dev = { projectId: a.projectId, serverId, environmentId: devId };
+
+    // 1. A imports by URL with a remembered docs account: the URL and the account go to the team (the spec stays A's cache).
+    assert.deepEqual(await workspaceA.getTeamSettings(), { shareSecrets: true });
+    assert.equal((await syncA.get(dev)).shareAccount, true);
+    const imported = await syncA.importUrl(dev, { kind: "url", url: specUrl, remember: true, auth: { kind: "basic", username: "docs", password: "docs-pw" } });
+    assert.deepEqual((await rows(a.client, "api_spec_accounts")).map(row => [row.spec_url, row.username, row.password]), [[specUrl, "docs", "docs-pw"]]);
+
+    // 2. B has no spec until fetching it, but sees the team's URL and account and fetches with them.
+    assert.equal(await workspaceB.getCatalog(dev), null);
+    const syncedB = await syncB.get(dev);
+    assert.deepEqual([syncedB.url, syncedB.username, syncedB.hasSavedAccount, syncedB.teamAccount, syncedB.shareAccount], [specUrl, "docs", true, true, true]);
+    const fetchedB = await syncB.importUrl(dev, { kind: "url", url: specUrl, useSavedAuth: true });
+    assert.deepEqual(fetchedB.operations.map(operation => operation.key), imported.operations.map(operation => operation.key));
+    await access(path.join(dirB, `catalog-${a.projectId}-${devId}-${serverId}.json`));
+
+    // 3. Secrets in docs inputs: kept while sharing is on, stripped (now and later) once it is off.
+    await workspaceA.execute(dev, "POST /login", { headers: { Authorization: "Bearer dev-token" }, body: { loginId: "tester", password: "pw" } }).catch(() => undefined);
+    assert.deepEqual(await workspaceB.getDocInputs(dev), { "POST /login": { headers: { Authorization: "Bearer dev-token" }, body: { loginId: "tester", password: "pw" } } });
+    const off = await workspaceB.setShareSecrets(false);
+    assert.deepEqual([off.shareSecrets, off.updatedBy], [false, "minsu"]);
+    assert.deepEqual(await workspaceA.getDocInputs(dev), { "POST /login": { body: { loginId: "tester", password: "" } } });
+    await workspaceA.execute(dev, "POST /login", { body: { loginId: "tester2", password: "pw2" } }).catch(() => undefined);
+    assert.deepEqual(await workspaceB.getDocInputs(dev), { "POST /login": { body: { loginId: "tester2", password: "" } } });
+
+    // 4. Docs accounts: off removes the team's and stops new ones (also at the database).
+    assert.deepEqual(await rows(a.client, "api_spec_accounts"), []);
+    const offSync = await syncB.get(dev);
+    assert.deepEqual([offSync.hasSavedAccount, offSync.teamAccount, offSync.shareAccount], [false, undefined, undefined]);
+    const { error: blocked } = await a.client.from("api_spec_accounts").insert({ project_id: a.projectId, endpoint_id: serverId, environment_id: devId, spec_url: specUrl, username: "docs", password: "x" });
+    assert.ok(blocked, "RLS refuses a shared account while sharing is off");
+    await workspaceA.setShareSecrets(true);
+    assert.deepEqual((await workspaceB.getTeamSettings())?.shareSecrets, true);
+
+    // 5. Another team sees none of it and cannot write into it.
+    for (const table of ["api_settings", "api_spec_accounts"]) assert.deepEqual(await rows(outsider.client, table), [], table);
+    const { error: foreignSetting } = await outsider.client.from("api_settings").upsert({ project_id: a.projectId, share_secrets: false });
+    assert.ok(foreignSetting);
+    assert.equal((await workspaceA.getTeamSettings())?.shareSecrets, true);
+    assert.equal(await new ApiWorkspace(dirB, () => outsider).getTeamSettings().then(settings => settings?.shareSecrets), true);
+  } finally {
+    swagger.closeAllConnections(); await new Promise<void>(resolve => swagger.close(() => resolve()));
+    for (const step of cleanup.reverse()) await Promise.resolve(step()).catch(() => undefined);
+    await rm(dirA, { recursive: true, force: true }); await rm(dirB, { recursive: true, force: true });
+  }
+});
+
+test("team project: docs accounts stay in the keychain while sharing is off", async t => {
+  if (!await needSupabase(t)) return;
+  const cleanup: Array<() => Promise<unknown>> = [];
+  const dir = await mkdtemp(path.join(tmpdir(), "checkly-spec-off-"));
+  const swagger = createServer((req, res) => {
+    if (req.headers.authorization !== `Basic ${Buffer.from("docs:docs-pw").toString("base64")}`) { res.statusCode = 401; res.end(); return; }
+    res.setHeader("content-type", "application/json"); res.end(spec);
+  });
+  await new Promise<void>(resolve => swagger.listen(0, "127.0.0.1", resolve));
+  const baseUrl = `http://127.0.0.1:${(swagger.address() as { port: number }).port}`;
+  try {
+    const team = await member(cleanup);
+    const workspace = new ApiWorkspace(dir, () => team), sync = new SpecSync(dir, workspace, keychain);
+    const serverId = randomUUID(), devId = randomUUID();
+    const [empty] = await workspace.listProjects();
+    await workspace.saveProject({ ...empty, servers: [{ id: serverId, name: "백엔드" }], environments: [{ id: devId, name: "dev", baseUrls: { [serverId]: baseUrl } }] });
+    const dev = { projectId: team.projectId, serverId, environmentId: devId };
+    await workspace.setShareSecrets(false);
+    await sync.importUrl(dev, { kind: "url", url: `${baseUrl}/v3/api-docs`, remember: true, auth: { kind: "basic", username: "docs", password: "docs-pw" } });
+    assert.deepEqual(await rows(team.client, "api_spec_accounts"), []);
+    const saved = await sync.get(dev);
+    assert.deepEqual([saved.hasSavedAccount, saved.teamAccount, saved.shareAccount, saved.username], [true, undefined, undefined, "docs"]);
+    // The keychain account still works for a refresh.
+    assert.equal((await sync.importUrl(dev, { kind: "url", url: `${baseUrl}/v3/api-docs`, useSavedAuth: true })).operations.length, 2);
+    await workspace.execute(dev, "POST /login", { body: { loginId: "a", password: "b" } }).catch(() => undefined);
+    assert.deepEqual(await workspace.getDocInputs(dev), { "POST /login": { body: { loginId: "a", password: "" } } });
+  } finally {
+    swagger.closeAllConnections(); await new Promise<void>(resolve => swagger.close(() => resolve()));
+    for (const step of cleanup.reverse()) await Promise.resolve(step()).catch(() => undefined);
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("team project: who made·changed scenarios and suites is stamped by the database", async t => {
+  if (!await needSupabase(t)) return;
+  const cleanup: Array<() => Promise<unknown>> = [];
+  const dirA = await mkdtemp(path.join(tmpdir(), "checkly-author-a-")), dirB = await mkdtemp(path.join(tmpdir(), "checkly-author-b-"));
+  try {
+    const a = await member(cleanup), b = await teammate(a, "hyewon", cleanup), leaver = await teammate(a, "leaver", cleanup);
+    const workspaceA = new ApiWorkspace(dirA, () => a), workspaceB = new ApiWorkspace(dirB, () => b);
+    const serverId = randomUUID(), devId = randomUUID();
+    const [empty] = await workspaceA.listProjects();
+    await workspaceA.saveProject({ ...empty, servers: [{ id: serverId, name: "백엔드" }], environments: [{ id: devId, name: "dev", baseUrls: { [serverId]: "https://dev.api.test" } }] });
+    const scope = { projectId: a.projectId, serverId, environmentId: devId };
+    await workspaceA.importSpec(scope, spec);
+    await workspaceB.importSpec(scope, spec);
+    const yaml = (id: string, name = id) => `id: ${id}\nname: ${name}\nserver: 백엔드\nsteps:\n  - api: 'GET /items/{id}'\n    pathParams: { id: 1 }\n`;
+    const byId = async (workspace: ApiWorkspace, id: string) => (await workspace.listScenarios(a.projectId)).find(item => item.id === id)!;
+
+    // 1. A writes, B edits: A stays the author, B is the last editor.
+    const made = await workspaceA.saveScenario(scope, yaml("by-hand"), {});
+    assert.deepEqual([made.createdBy, made.updatedBy, made.createdAt], ["owner", "owner", made.updatedAt]);
+    const edited = await workspaceB.saveScenario(scope, yaml("by-hand", "고친 이름"), {}, made.updatedAt);
+    assert.deepEqual([edited.createdBy, edited.updatedBy, edited.createdAt], ["owner", "hyewon", made.createdAt]);
+    assert.notEqual(edited.updatedAt, made.updatedAt);
+    // Optimistic concurrency is unchanged: A's stale copy is refused.
+    await assert.rejects(workspaceA.saveScenario(scope, yaml("by-hand"), {}, made.updatedAt), /그 사이 다른 곳/);
+    assert.deepEqual([(await byId(workspaceA, "by-hand")).createdBy, (await byId(workspaceA, "by-hand")).updatedBy], ["owner", "hyewon"]);
+
+    // 2. Nobody can claim to be the author or rewrite when it was made.
+    const { error: spoofError } = await b.client.from("api_scenarios").update({ created_by: b.userId, created_at: "2000-01-01T00:00:00Z" }).eq("project_id", a.projectId).eq("id", "by-hand");
+    assert.equal(spoofError, null);
+    const [row] = (await rows(a.client, "api_scenarios")).filter(item => item.id === "by-hand");
+    assert.deepEqual([row.created_by, Date.parse(row.created_at as string)], [a.userId, Date.parse(made.createdAt!)]);
+    const { error: insertError } = await b.client.from("api_scenarios").insert({ project_id: a.projectId, id: "claimed", name: "x", source: yaml("claimed"), created_by: a.userId, created_at: "2000-01-01T00:00:00Z" });
+    assert.equal(insertError, null);
+    const [claimed] = (await rows(a.client, "api_scenarios")).filter(item => item.id === "claimed");
+    assert.equal(claimed.created_by, b.userId);
+    assert.notEqual(new Date(claimed.created_at as string).getFullYear(), 2000);
+
+    // 3. A share file brought in: made by whoever imported it.
+    const shared = JSON.parse(await workspaceA.exportProject(a.projectId)) as { scenarios: Array<{ id: string; source: string }>; suites: unknown[] };
+    shared.scenarios = shared.scenarios.filter(item => item.id === "by-hand").map(item => ({ ...item, id: "imported", source: item.source.replace("id: by-hand", "id: imported") }));
+    const imported = await workspaceB.importProject(JSON.stringify(shared));
+    assert.equal(imported.scenarios, 1);
+    const importedItem = await byId(workspaceA, "imported");
+    assert.deepEqual([importedItem.createdBy, importedItem.updatedBy], ["hyewon", "hyewon"]);
+
+    // 4. Suites: same authorship; one read back (with its authorship) saves as is.
+    const suite = await workspaceA.saveSuite(a.projectId, { id: randomUUID(), name: "묶음", scenarioIds: ["by-hand"], onFailure: "stop" });
+    assert.deepEqual([suite.createdBy, suite.updatedBy], ["owner", "owner"]);
+    const listedSuite = (await workspaceB.listSuites(a.projectId))[0];
+    const { updatedAt: _updatedAt, ...withAuthorship } = listedSuite;
+    const suiteEdited = await workspaceB.saveSuite(a.projectId, { ...withAuthorship, name: "고친 묶음" }, listedSuite.updatedAt);
+    assert.deepEqual([suiteEdited.createdBy, suiteEdited.updatedBy, suiteEdited.createdAt], ["owner", "hyewon", suite.createdAt]);
+    await assert.rejects(workspaceA.saveSuite(a.projectId, { id: suite.id, name: "x", scenarioIds: ["by-hand"], onFailure: "stop" }, suite.updatedAt), /묶음이 변경되었습니다/);
+    // The share file stays importable (no authorship in it).
+    const exported = JSON.parse(await workspaceA.exportProject(a.projectId)) as { suites: Array<Record<string, unknown>> };
+    assert.deepEqual(Object.keys(exported.suites[0]).sort(), ["id", "name", "onFailure", "scenarioIds"]);
+
+    // 5. A member who left: their work stays, shown as "(나간 멤버)".
+    const leaverWorkspace = new ApiWorkspace(path.join(dirB, "leaver"), () => leaver);
+    await leaverWorkspace.importSpec(scope, spec);
+    await leaverWorkspace.saveScenario(scope, yaml("left-behind"), {});
+    assert.equal((await byId(workspaceA, "left-behind")).createdBy, "leaver");
+    const { error: leaveError } = await admin!.from("members").delete().eq("user_id", leaver.userId);
+    assert.equal(leaveError, null);
+    const fresh = new ApiWorkspace(dirA, () => ({ ...a }));
+    const left = await byId(fresh, "left-behind");
+    assert.deepEqual([left.createdBy, left.updatedBy], ["(나간 멤버)", "(나간 멤버)"]);
+    // A cached member list is read again when an id it does not know shows up (someone who just joined).
+    const late = await teammate(a, "latecomer", cleanup);
+    const lateWorkspace = new ApiWorkspace(path.join(dirB, "late"), () => late);
+    await lateWorkspace.importSpec(scope, spec);
+    await lateWorkspace.saveScenario(scope, yaml("late"), {});
+    await new Promise(resolve => setTimeout(resolve, 1_100));
+    assert.equal((await byId(fresh, "late")).createdBy, "latecomer");
+  } finally {
+    for (const step of cleanup.reverse()) await Promise.resolve(step()).catch(() => undefined);
+    await rm(dirA, { recursive: true, force: true }); await rm(dirB, { recursive: true, force: true });
+  }
+});
+
+test("file mode: no authorship is kept or shown", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "checkly-author-file-"));
+  try {
+    const workspace = new ApiWorkspace(dir);
+    const serverId = randomUUID(), devId = randomUUID();
+    const project = await workspace.saveProject({ id: randomUUID(), name: "로컬", servers: [{ id: serverId, name: "백엔드" }], environments: [{ id: devId, name: "dev", baseUrls: { [serverId]: "https://dev.api.test" } }] });
+    const scope = { projectId: project.id, serverId, environmentId: devId };
+    await workspace.importSpec(scope, spec);
+    const made = await workspace.saveScenario(scope, `id: by-hand\nname: 처음\nserver: 백엔드\nsteps:\n  - api: 'GET /items/{id}'\n    pathParams: { id: 1 }\n`, {});
+    assert.deepEqual([made.createdAt, made.createdBy, made.updatedBy], [undefined, undefined, undefined]);
+    const suite = await workspace.saveSuite(project.id, { id: randomUUID(), name: "묶음", scenarioIds: ["by-hand"], onFailure: "stop" });
+    assert.deepEqual([suite.createdAt, suite.createdBy, suite.updatedBy], [undefined, undefined, undefined]);
+    assert.doesNotMatch(await workspace.exportProject(project.id), /createdAt|createdBy|updatedBy/);
+  } finally { await rm(dir, { recursive: true, force: true }); }
 });

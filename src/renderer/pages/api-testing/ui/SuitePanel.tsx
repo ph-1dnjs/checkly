@@ -6,7 +6,7 @@ import { groupMissingGlobals, issueGlobal, missingGlobalIssue, stepNumbersText }
 import { GlobalVariableSetupLink, SidebarMetadataFields, writeLastRun } from "../../../entities/api-testing";
 import { useGlobalVariableAccess } from "../../../features/api-testing/configure-globals";
 
-import { DeleteAction } from "../../../entities/api-testing";
+import { AuthorshipLine, DeleteAction } from "../../../entities/api-testing";
 import { SortableList } from "../../../shared/ui/SortableList";
 import { RunInputModal } from "../../../features/api-testing/submit-run-input";
 import { Icon } from "../../../shared/ui/Icon";
@@ -178,7 +178,7 @@ export function SuitePanel({ project, scope, bridge, scenarios, suites, selected
   };
   const unsaved = !selected || selected.name !== name.trim() || selected.onFailure !== onFailure || selected.scenarioIds.join("\0") !== ids.join("\0") || JSON.stringify(selected.groupPath ?? []) !== JSON.stringify(groupPath);
   return <article className="api-request-panel api-scenario-detail api-suite-panel">
-      <header className="api-detail-heading"><div><h2>{selected?.name ?? "새 스위트"}</h2><p className="api-description">시나리오를 지정한 순서대로 실행하고 HTML 리포트를 받습니다.</p></div>{selected && <div className="api-actions api-detail-actions"><span className="api-action-group" role="group" aria-label="실행"><button type="button" className="api-primary" disabled={running || unsaved} title={unsaved ? "변경사항을 저장한 뒤 실행할 수 있습니다" : undefined} onClick={() => void run()}>{running ? "실행 중…" : "실행"}</button>{running && <button type="button" onClick={() => void cancel()}>실행 중단</button>}</span><span className="api-action-group" role="group" aria-label="편집"><button type="button" disabled={running || editing} onClick={() => setEditing(true)}>수정</button></span><span className="api-action-group" role="group" aria-label="관리"><DeleteAction key={selected.id} label="스위트 삭제" text="삭제" disabled={running} description={`‘${selected.name}’ 스위트를 삭제합니다. 포함된 시나리오는 유지됩니다.`} onDelete={remove} /></span></div>}</header>
+      <header className="api-detail-heading"><div><h2>{selected?.name ?? "새 스위트"}</h2>{selected && <AuthorshipLine item={selected} />}<p className="api-description">시나리오를 지정한 순서대로 실행하고 HTML 리포트를 받습니다.</p></div>{selected && <div className="api-actions api-detail-actions"><span className="api-action-group" role="group" aria-label="실행"><button type="button" className="api-primary" disabled={running || unsaved} title={unsaved ? "변경사항을 저장한 뒤 실행할 수 있습니다" : undefined} onClick={() => void run()}>{running ? "실행 중…" : "실행"}</button>{running && <button type="button" onClick={() => void cancel()}>실행 중단</button>}</span><span className="api-action-group" role="group" aria-label="편집"><button type="button" disabled={running || editing} onClick={() => setEditing(true)}>수정</button></span><span className="api-action-group" role="group" aria-label="관리"><DeleteAction key={selected.id} label="스위트 삭제" text="삭제" disabled={running} description={`‘${selected.name}’ 스위트를 삭제합니다. 포함된 시나리오는 유지됩니다.`} onDelete={remove} /></span></div>}</header>
       {selected && editing && unsaved && !running && <p className="api-run-notice">저장하지 않은 변경사항이 있습니다. <strong>스위트 저장</strong> 후 실행할 수 있습니다.</p>}
       {selected && !editing && <section className="api-suite-view" aria-label="스위트 구성">
         <p className="api-spec-meta">{selected.scenarioIds.length}개 시나리오 · {selected.onFailure === "stop" ? "실패하면 나머지 건너뛰기" : "실패해도 다음 시나리오 계속"}{selected.groupPath?.length ? ` · ${selected.groupPath.join(" › ")}` : ""}</p>
