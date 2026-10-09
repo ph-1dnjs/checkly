@@ -1,6 +1,11 @@
 import { ipcRenderer } from 'electron'
+import type { FormAutomationStorageKey, FormAutomationStoredState, FormAutomationStoredValues } from './storageTypes'
 
 export const formAutomationBridge = {
+  loadFormAutomationState: (legacy: FormAutomationStoredValues): Promise<FormAutomationStoredState> =>
+    ipcRenderer.invoke('form-automation:load-state', legacy),
+  setFormAutomationState: (key: FormAutomationStorageKey, value: unknown): Promise<void> =>
+    ipcRenderer.invoke('form-automation:set-state', key, value),
   insertFormAutomationText: (input: { webContentsId: number; text: string }): Promise<void> =>
     ipcRenderer.invoke('form-automation:insert-text', input),
   attachFormAutomationFixture: (input: {

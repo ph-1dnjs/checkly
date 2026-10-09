@@ -1,4 +1,4 @@
-import { app, clipboard, dialog, ipcMain, safeStorage } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, safeStorage } from "electron";
 import { readFile, stat, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
@@ -6,6 +6,9 @@ import { ApiWorkspace, scopeSchema } from "./workspace";
 import { specSourceSchema } from "../shared/workspace";
 import { z } from "zod";
 import { SpecSync } from "./spec-sync";
+import { AiTerminalService } from "./ai-terminal";
+import { AiQuickService } from "./ai-quick";
+import { describeAiTools } from "./ai-cli";
 import { isProvidedScenarioInput, matchesScenarioInputType, type Json, type ScenarioInputRequest } from "../shared/scenario";
 import type { ApiScenarioInputRequest } from "../shared/workspace";
 import { getCurrentSession, getSupabase, isSupabaseEnabled, onSessionChanged } from "../../ipc/auth/client";
@@ -62,6 +65,40 @@ export function registerApiTesting() {
   ipcMain.handle("api-testing:copy-ai-prompt", async (_event, request) => {
     clipboard.writeText(await workspace.buildAiPrompt(request));
   });
+  // A quitting app does not take its child processes along on macOS.
+  const terminals = new AiTerminalService(workspace, event => {
+    for (const window of BrowserWindow.getAllWindows()) if (!window.isDestroyed()) window.webContents.send("api-testing:ai-terminal-event", event);
+  });
+  const quick = new AiQuickService(workspace, event => {
+    for (const window of BrowserWindow.getAllWindows()) if (!window.isDestroyed()) window.webContents.send("api-testing:ai-quick-event", event);
+  });
+  app.on("before-quit", () => { terminals.stopAll(); quick.stopAll(); });
+  ipcMain.handle("api-testing:get-ai-quick", (_event, projectId) => quick.get(projectId));
+  ipcMain.handle("api-testing:start-ai-quick", (_event, request) => quick.start(request));
+  ipcMain.handle("api-testing:revise-ai-quick", (_event, projectId, request) => quick.revise(projectId, request));
+  ipcMain.handle("api-testing:stop-ai-quick", (_event, projectId) => quick.stop(projectId));
+  ipcMain.handle("api-testing:clear-ai-quick", (_event, projectId) => quick.clear(projectId));
+  ipcMain.handle("api-testing:mark-ai-quick-result-saved", (_event, projectId, saved) => quick.markSaved(projectId, saved));
+  ipcMain.handle("api-testing:get-ai-terminal", (_event, projectId) => terminals.get(projectId));
+  ipcMain.handle("api-testing:start-ai-terminal", (_event, request) => terminals.start(request));
+  ipcMain.handle("api-testing:resume-ai-terminal", (_event, request) => terminals.resume(request));
+  ipcMain.on("api-testing:write-ai-terminal", (_event, projectId, data) => { try { terminals.write(projectId, data); } catch { /* Ignored: bad input from the screen. */ } });
+  ipcMain.on("api-testing:resize-ai-terminal", (_event, projectId, size) => { try { terminals.resize(projectId, size); } catch { /* Ignored. */ } });
+  ipcMain.handle("api-testing:ask-ai-terminal", (_event, request) => terminals.ask(request));
+  ipcMain.handle("api-testing:clear-ai-terminal", (_event, projectId) => terminals.clear(projectId));
+  ipcMain.handle("api-testing:check-ai-terminal-result", (_event, scope) => workspace.checkAiTerminalResult(scope));
+  ipcMain.handle("api-testing:mark-ai-terminal-result-saved", (_event, projectId, saved) => terminals.markSaved(projectId, saved));
+  ipcMain.handle("api-testing:refresh-ai-terminal-files", (_event, scope) => workspace.refreshAiChatFiles(scope));
+  ipcMain.handle("api-testing:ai-chat-status", async (_event, refresh) => {
+    const tools = (await describeAiTools(refresh === true)).map(({ tool, version }) => ({ tool, version }));
+    return tools.length ? { tools } : { tools, error: "Claude Code나 Codex CLI를 찾지 못했습니다. 설치한 뒤 다시 확인하세요" };
+  });
+  ipcMain.handle("api-testing:get-ai-chat-settings", (_event, projectId) => workspace.getAiChatSettings(projectId));
+  ipcMain.handle("api-testing:save-ai-chat-settings", (_event, projectId, settings) => workspace.saveAiChatSettings(projectId, settings));
+  ipcMain.handle("api-testing:choose-directories", async () => {
+    const selected = await dialog.showOpenDialog({ title: "백엔드 코드 폴더 선택", properties: ["openDirectory", "multiSelections"] });
+    return selected.canceled ? [] : selected.filePaths;
+  });
   ipcMain.handle("api-testing:get-ai-prompt", (_event, request) => workspace.buildAiPrompt(request));
   ipcMain.handle("api-testing:read-ai-result", (_event, scope) => workspace.readAiResult(scope));
   ipcMain.handle("api-testing:check-ai-scenarios", (_event, scope, text) => workspace.checkAiScenarios(scope, text));
@@ -69,7 +106,7 @@ export function registerApiTesting() {
   ipcMain.handle("api-testing:import-local-project", (_event, projectId) => workspace.importLocalProject(projectId));
   ipcMain.handle("api-testing:list-projects", () => workspace.listProjects());
   ipcMain.handle("api-testing:save-project", (_event, project) => workspace.saveProject(project));
-  ipcMain.handle("api-testing:delete-project", (_event, id) => workspace.deleteProject(id));
+  ipcMain.handle("api-testing:delete-project", async (_event, id) => { await terminals.forget(id); quick.forget(id); await workspace.deleteProject(id); });
   ipcMain.handle("api-testing:delete-catalog", (_event, scope) => workspace.deleteCatalog(scope));
   ipcMain.handle("api-testing:delete-scenario", (_event, projectId, id, revision) => workspace.deleteScenario(projectId, id, revision));
   ipcMain.handle("api-testing:catalog", (_event, scope) => workspace.getCatalog(scope));

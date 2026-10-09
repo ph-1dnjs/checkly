@@ -1,11 +1,42 @@
 import { ipcRenderer } from 'electron'
-import type { ApiTestingBridge } from './shared/workspace'
+import type { ApiAiQuickEvent, ApiAiTerminalEvent, ApiTestingBridge } from './shared/workspace'
 
 export const apiTestingBridge: ApiTestingBridge = {
   getSpecSync: (scope) => ipcRenderer.invoke('api-testing:spec-sync', scope),
   deleteSpecAccount: (scope) => ipcRenderer.invoke('api-testing:delete-spec-account', scope),
   getRequestAuth: (scope) => ipcRenderer.invoke('api-testing:get-request-auth', scope),
   setRequestAuth: (scope, variable) => ipcRenderer.invoke('api-testing:set-request-auth', scope, variable),
+  getAiChatStatus: (refresh) => ipcRenderer.invoke('api-testing:ai-chat-status', refresh),
+  getAiChatSettings: (projectId) => ipcRenderer.invoke('api-testing:get-ai-chat-settings', projectId),
+  saveAiChatSettings: (projectId, settings) => ipcRenderer.invoke('api-testing:save-ai-chat-settings', projectId, settings),
+  chooseDirectories: () => ipcRenderer.invoke('api-testing:choose-directories'),
+  getAiTerminal: (projectId) => ipcRenderer.invoke('api-testing:get-ai-terminal', projectId),
+  startAiTerminal: (request) => ipcRenderer.invoke('api-testing:start-ai-terminal', request),
+  resumeAiTerminal: (request) => ipcRenderer.invoke('api-testing:resume-ai-terminal', request),
+  // Keystrokes and resizes are frequent and need no answer.
+  writeAiTerminal: (projectId, data) => ipcRenderer.send('api-testing:write-ai-terminal', projectId, data),
+  resizeAiTerminal: (projectId, size) => ipcRenderer.send('api-testing:resize-ai-terminal', projectId, size),
+  clearAiTerminal: (projectId) => ipcRenderer.invoke('api-testing:clear-ai-terminal', projectId),
+  checkAiTerminalResult: (scope) => ipcRenderer.invoke('api-testing:check-ai-terminal-result', scope),
+  markAiTerminalResultSaved: (projectId, saved) => ipcRenderer.invoke('api-testing:mark-ai-terminal-result-saved', projectId, saved),
+  refreshAiTerminalFiles: (scope) => ipcRenderer.invoke('api-testing:refresh-ai-terminal-files', scope),
+  onAiTerminalEvent: (listener) => {
+    const handler = (_event: Electron.IpcRendererEvent, value: ApiAiTerminalEvent) => listener(value)
+    ipcRenderer.on('api-testing:ai-terminal-event', handler)
+    return () => { ipcRenderer.removeListener('api-testing:ai-terminal-event', handler) }
+  },
+  askAiTerminal: (request) => ipcRenderer.invoke('api-testing:ask-ai-terminal', request),
+  getAiQuick: (projectId) => ipcRenderer.invoke('api-testing:get-ai-quick', projectId),
+  startAiQuick: (request) => ipcRenderer.invoke('api-testing:start-ai-quick', request),
+  reviseAiQuick: (projectId, request) => ipcRenderer.invoke('api-testing:revise-ai-quick', projectId, request),
+  stopAiQuick: (projectId) => ipcRenderer.invoke('api-testing:stop-ai-quick', projectId),
+  clearAiQuick: (projectId) => ipcRenderer.invoke('api-testing:clear-ai-quick', projectId),
+  markAiQuickResultSaved: (projectId, saved) => ipcRenderer.invoke('api-testing:mark-ai-quick-result-saved', projectId, saved),
+  onAiQuickEvent: (listener) => {
+    const handler = (_event: Electron.IpcRendererEvent, value: ApiAiQuickEvent) => listener(value)
+    ipcRenderer.on('api-testing:ai-quick-event', handler)
+    return () => { ipcRenderer.removeListener('api-testing:ai-quick-event', handler) }
+  },
   copyAiPrompt: (request) => ipcRenderer.invoke('api-testing:copy-ai-prompt', request),
   getAiPrompt: (request) => ipcRenderer.invoke('api-testing:get-ai-prompt', request),
   readAiResult: (scope) => ipcRenderer.invoke('api-testing:read-ai-result', scope),
