@@ -17,6 +17,8 @@ export const MESSAGES = {
   samePassword: "새 비밀번호가 현재 비밀번호와 같습니다.",
   rateLimited: "요청이 너무 많습니다. 잠시 후 다시 시도하세요.",
   duplicateName: "같은 이름이 이미 있습니다.",
+  invalidCreateCode: "생성 코드가 올바르지 않습니다. 운영자에게 문의하세요.",
+  createDisabled: "지금은 새 프로젝트를 만들 수 없습니다. 운영자에게 문의하세요.",
   unknown: "요청을 처리하지 못했습니다. 잠시 후 다시 시도하세요.",
 } as const;
 

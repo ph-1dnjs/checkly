@@ -83,8 +83,11 @@ export type AuthBridge = {
   previewInvite(inviteCode: string): Promise<InvitePreview | null>;
   isProjectCodeAvailable(code: string): Promise<boolean>;
   isNicknameAvailable(inviteCode: string, nickname: string): Promise<boolean>;
-  /** 프로젝트를 만들고 그 계정으로 로그인까지 한다. */
-  createProject(input: { code: string; nickname: string; password: string }): Promise<{ session: AuthSession; inviteCode: string }>;
+  /**
+   * 프로젝트를 만들고 그 계정으로 로그인까지 한다. createCode는 운영자가 발급한 생성 코드이며,
+   * 틀리거나 서버에서 생성이 꺼져 있으면 거절한다.
+   */
+  createProject(input: { code: string; nickname: string; password: string; createCode: string }): Promise<{ session: AuthSession; inviteCode: string }>;
   /** 초대코드로 가입하고 그 계정으로 로그인까지 한다. */
   joinProject(input: { inviteCode: string; nickname: string; password: string }): Promise<AuthSession>;
 

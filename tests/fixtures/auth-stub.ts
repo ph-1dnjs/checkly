@@ -116,9 +116,11 @@ export async function installAuthStub(page: Page, options: AuthStubOptions) {
       },
       isProjectCodeAvailable: async (code: string) => (await wait(), code !== 'checkly-team'),
       isNicknameAvailable: async (code: string, nickname: string) => (await wait(), !invites[code]?.members.includes(nickname)),
-      createProject: async (input: { code: string; nickname: string; password: string }) => {
+      createProject: async (input: { code: string; nickname: string; password: string; createCode: string }) => {
         record('createProject', input)
         await wait()
+        // 운영자가 발급한 생성 코드는 'OPS-2026'으로 둔다.
+        if (input.createCode !== 'OPS-2026') throw new Error('생성 코드가 올바르지 않습니다. 운영자에게 문의하세요.')
         const next = { userId: 'u-new', projectId: 'p-new', projectCode: input.code, nickname: input.nickname, role: 'owner' }
         emit(next)
         return { session: next, inviteCode: 'NEW-4K8P2Z' }

@@ -7,6 +7,7 @@ import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { createClient, FunctionsHttpError, type SupabaseClient } from "@supabase/supabase-js";
+import { localCreateCode } from "../fixtures/create-code";
 
 const root = path.resolve(__dirname, "../..");
 const fileEnv: Record<string, string> = (() => {
@@ -82,6 +83,9 @@ test("팀 프로젝트 계정 Edge Function", async (t: TestContext) => {
   const reason = await skipReason();
   const key = reason ? "" : serviceKey();
   if (reason || !key) return t.skip(reason || "service_role 키를 읽지 못했습니다(supabase status)");
+  // 함수 서빙(supabase functions serve)이 읽는 supabase/functions/.env와 같은 값.
+  const createCode = localCreateCode();
+  assert.ok(createCode, "supabase/functions/.env에 CHECKLY_CREATE_PROJECT_CODE가 필요합니다");
 
   const admin = createClient(url, key, options);
   const codes: string[] = [];
@@ -94,8 +98,46 @@ test("팀 프로젝트 계정 Edge Function", async (t: TestContext) => {
   });
   const create = async (code: string, nickname: string, password = PASSWORD) => {
     codes.push(code);
-    return invoke(anon(), "create-project", { code, nickname, password });
+    return invoke(anon(), "create-project", { code, nickname, password, createCode });
   };
+  const authUserExists = async (address: string) => {
+    for (let page = 1; ; page++) {
+      const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 1000 });
+      assert.ifError(error);
+      if (data.users.some((u) => u.email === address)) return true;
+      if (data.users.length < 1000) return false;
+    }
+  };
+
+  await t.test("생성 코드: 없거나 틀리면 403이고 auth 사용자를 만들지 않는다", async () => {
+    const code = newCode();
+    codes.push(code);
+    const body = { code, nickname: "gate", password: PASSWORD };
+    assertError(await invoke(anon(), "create-project", body), 403, "invalid_create_code");
+    assertError(await invoke(anon(), "create-project", { ...body, createCode: "" }), 403, "invalid_create_code");
+    assertError(await invoke(anon(), "create-project", { ...body, createCode: `${createCode}x` }), 403, "invalid_create_code");
+    assertError(await invoke(anon(), "create-project", { ...body, createCode: 12345 }), 403, "invalid_create_code");
+    const res = await invoke(anon(), "create-project", { ...body, createCode: "nope" });
+    assert.equal(res.body.error.message, "생성 코드가 올바르지 않습니다. 운영자에게 문의하세요.");
+    // 코드 확인이 다른 검증보다 먼저다(형식이 틀려도 같은 403).
+    assertError(await invoke(anon(), "create-project", { code: "AB", nickname: "1x", password: "1", createCode: "nope" }), 403, "invalid_create_code");
+    assert.equal(await authUserExists(email("gate", code)), false, "틀린 코드로 auth 사용자가 생기면 안 된다");
+    assert.equal((await anon().rpc("project_code_available", { p_code: code })).data, true);
+
+    // 맞는 코드면 만들어진다.
+    const ok = await create(code, "gate");
+    assert.equal(ok.status, 200, JSON.stringify(ok.body));
+    assert.equal(await authUserExists(email("gate", code)), true);
+  });
+
+  await t.test("공개 가입(auth signUp)은 config.toml에서 꺼 둔다", async () => {
+    // 실행 중인 로컬 스택은 재시작해야 config.toml이 적용된다. 여기서는 설정 파일을 확인한다.
+    const config = readFileSync(path.join(root, "supabase/config.toml"), "utf8");
+    const auth = config.slice(config.indexOf("[auth]"), config.indexOf("[auth.rate_limit]"));
+    const email_ = config.slice(config.indexOf("[auth.email]"), config.indexOf("[auth.sms]"));
+    assert.match(auth, /^enable_signup = false$/m);
+    assert.match(email_, /^enable_signup = false$/m);
+  });
 
   const codeA = newCode();
   let projectA = "", inviteA = "";

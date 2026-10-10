@@ -30,6 +30,12 @@ test("login email and env config", () => {
     emailDomain: "checkly.test",
   });
   assert.equal(readAuthEnv({ CHECKLY_SUPABASE_URL: "u", CHECKLY_SUPABASE_ANON_KEY: "k", CHECKLY_AUTH_EMAIL_DOMAIN: "a.io" })?.emailDomain, "a.io");
+
+  // 패키징된 앱의 기본 서버: 환경 변수가 없을 때만 쓰고, 빈 값으로 두면 로컬 모드로 끈다.
+  const release = { url: "https://r.supabase.co", anonKey: "rk", emailDomain: "checkly.test" };
+  assert.deepEqual(readAuthEnv({}, release), release);
+  assert.equal(readAuthEnv({ CHECKLY_SUPABASE_URL: "" }, release), null);
+  assert.equal(readAuthEnv({ CHECKLY_SUPABASE_URL: "http://x", CHECKLY_SUPABASE_ANON_KEY: "k" }, release)?.url, "http://x");
 });
 
 test("errors map to Korean messages", () => {

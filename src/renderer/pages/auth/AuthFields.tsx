@@ -28,11 +28,12 @@ export const AuthInput = ({ onValue, className, ...rest }: InputProps) => (
 export const PasswordInput = ({
   visible,
   onToggle,
+  subject = "비밀번호",
   ...rest
-}: Omit<InputProps, "type"> & { visible: boolean; onToggle: () => void }) => (
+}: Omit<InputProps, "type"> & { visible: boolean; onToggle: () => void; /** 표시/숨기기 버튼 이름에 쓴다. */ subject?: string }) => (
   <div className="auth-password">
     <AuthInput type={visible ? "text" : "password"} autoComplete="current-password" {...rest} />
-    <Button className="auth-password-toggle" onClick={onToggle} aria-pressed={visible} aria-label={visible ? "비밀번호 숨기기" : "비밀번호 표시"}>
+    <Button className="auth-password-toggle" onClick={onToggle} aria-pressed={visible} aria-label={visible ? `${subject} 숨기기` : `${subject} 표시`}>
       {visible ? "숨기기" : "표시"}
     </Button>
   </div>

@@ -10,6 +10,7 @@ import { MESSAGES, toUserMessage } from "../../src/app/ipc/auth/errors";
 import { AuthService, authEmail } from "../../src/app/ipc/auth/service";
 import { createFileStorage, type SessionCipher } from "../../src/app/ipc/auth/storage";
 import type { AuthSession, ProjectSettings } from "../../src/app/ipc/auth/types";
+import { localCreateCode } from "../fixtures/create-code";
 
 // 로컬 Supabase(`supabase start`)에 붙여 AuthService를 검증한다. 연결할 수 없으면 건너뛴다.
 // service_role 키는 실행할 때 `supabase status -o env`에서 읽는다(파일에 남기지 않음).
@@ -42,7 +43,8 @@ const functionsServed = async (local: Local): Promise<boolean> => {
       signal: AbortSignal.timeout(5000),
     });
     const body = (await response.json().catch(() => null)) as { error?: { code?: string } } | null;
-    return body?.error?.code === "invalid_input";
+    // 생성 코드를 먼저 확인하므로 빈 본문은 invalid_create_code(코드 미설정이면 create_disabled)로 거절된다.
+    return typeof body?.error?.code === "string";
   } catch {
     return false;
   }
@@ -281,10 +283,15 @@ test("AuthService against local Supabase", async t => {
         return;
       }
       const codeC = unique("auth-c");
+      const createCode = localCreateCode(ROOT);
+      assert.ok(createCode, "supabase/functions/.env에 CHECKLY_CREATE_PROJECT_CODE가 필요합니다");
       const creator = await newService();
       const joiner = await newService();
-      await fails(creator.service.createProject({ code: codeC, nickname: "boss", password: "123" }), MESSAGES.shortPassword);
-      const created = await creator.service.createProject({ code: codeC, nickname: "boss", password: "boss-pass1" });
+      await fails(creator.service.createProject({ code: codeC, nickname: "boss", password: "123", createCode }), MESSAGES.shortPassword);
+      await fails(creator.service.createProject({ code: codeC, nickname: "boss", password: "boss-pass1", createCode: "" }), MESSAGES.invalidCreateCode);
+      await fails(creator.service.createProject({ code: codeC, nickname: "boss", password: "boss-pass1", createCode: "wrong" }), MESSAGES.invalidCreateCode);
+      assert.equal(await creator.service.isProjectCodeAvailable(codeC), true);
+      const created = await creator.service.createProject({ code: codeC, nickname: "boss", password: "boss-pass1", createCode });
       projectIds.push(created.session.projectId);
       userIds.push(created.session.userId);
       assert.equal(created.session.role, "owner");
@@ -293,8 +300,8 @@ test("AuthService against local Supabase", async t => {
       assert.deepEqual(creator.events.at(-1), created.session);
       assert.equal((await creator.service.listRecentProjects())[0].projectCode, codeC);
       // 함수가 돌려준 한국어 오류를 그대로 보여준다.
-      await fails(joiner.service.createProject({ code: codeC, nickname: "other", password: "other-pass1" }), /[가-힣]/);
-      await assert.rejects(joiner.service.createProject({ code: codeC, nickname: "other", password: "other-pass1" }), (e: unknown) => toUserMessage(e) !== MESSAGES.unknown);
+      await fails(joiner.service.createProject({ code: codeC, nickname: "other", password: "other-pass1", createCode }), /[가-힣]/);
+      await assert.rejects(joiner.service.createProject({ code: codeC, nickname: "other", password: "other-pass1", createCode }), (e: unknown) => toUserMessage(e) !== MESSAGES.unknown);
 
       const joined = await joiner.service.joinProject({ inviteCode: created.inviteCode, nickname: "crew", password: "crew-pass1" });
       userIds.push(joined.userId);

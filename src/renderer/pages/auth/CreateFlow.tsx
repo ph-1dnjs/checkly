@@ -31,6 +31,8 @@ export const CreateFlow = ({ bridge, backLabel, onBack, onEnter }: Props) => {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [createCode, setCreateCode] = useState("");
+  const [showCreateCode, setShowCreateCode] = useState(false);
   const [created, setCreated] = useState<{ session: AuthSession; inviteCode: string } | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -59,9 +61,11 @@ export const CreateFlow = ({ bridge, backLabel, onBack, onEnter }: Props) => {
     if (!nickCheck.ok) return setError(nick ? `${nickCheck.text}.` : "닉네임을 입력하세요.");
     const passwordProblem = passwordError(password, confirm);
     if (passwordProblem) return setError(passwordProblem);
+    const operatorCode = createCode.trim();
+    if (!operatorCode) return setError("생성 코드를 입력하세요. 운영자에게 받은 코드입니다.");
     setBusy(true);
     try {
-      setCreated(await bridge.createProject({ code: projectCode, nickname: nick, password }));
+      setCreated(await bridge.createProject({ code: projectCode, nickname: nick, password, createCode: operatorCode }));
       setError("");
     } catch (reason) {
       setError(errorMessage(reason, "프로젝트를 만들지 못했습니다."));
@@ -120,6 +124,20 @@ export const CreateFlow = ({ bridge, backLabel, onBack, onEnter }: Props) => {
                 placeholder="한 번 더 입력"
                 aria-label="비밀번호 확인"
                 autoComplete="new-password"
+              />
+            </Field>
+            <Field label="생성 코드" className="auth-field-gap" check={{ text: "운영자에게 받은 코드", tone: "hint", ok: true }}>
+              <PasswordInput
+                className="mono"
+                value={createCode}
+                onValue={edit(setCreateCode)}
+                placeholder="코드 입력"
+                aria-label="생성 코드"
+                autoComplete="off"
+                spellCheck={false}
+                subject="생성 코드"
+                visible={showCreateCode}
+                onToggle={() => setShowCreateCode((value) => !value)}
               />
             </Field>
             <AuthError message={error} />

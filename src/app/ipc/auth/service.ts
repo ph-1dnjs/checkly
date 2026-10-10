@@ -16,9 +16,13 @@ import type { AuthBridge, AuthRole, AuthSession, InvitePreview, ProjectInfo, Pro
 
 export type AuthEnv = { url: string; anonKey: string; emailDomain: string };
 
-/** URL이나 anon 키가 없으면 null — 로그인 없이 기존 로컬 모드로 동작한다. */
-export const readAuthEnv = (env: NodeJS.ProcessEnv = process.env): AuthEnv | null => {
-  const url = env.CHECKLY_SUPABASE_URL?.trim();
+/**
+ * 환경 변수에 CHECKLY_SUPABASE_URL이 있으면(빈 값 포함) 그것을, 없으면 fallback(배포용 앱의 기본 서버)을 쓴다.
+ * URL이나 anon 키가 비면 null — 로그인 없이 기존 로컬 모드로 동작한다.
+ */
+export const readAuthEnv = (env: NodeJS.ProcessEnv = process.env, fallback: AuthEnv | null = null): AuthEnv | null => {
+  if (env.CHECKLY_SUPABASE_URL === undefined) return fallback;
+  const url = env.CHECKLY_SUPABASE_URL.trim();
   const anonKey = env.CHECKLY_SUPABASE_ANON_KEY?.trim();
   if (!url || !anonKey) return null;
   return { url, anonKey, emailDomain: env.CHECKLY_AUTH_EMAIL_DOMAIN?.trim() || "checkly.test" };
@@ -55,7 +59,9 @@ const writeJson = async (file: string, value: unknown): Promise<void> => {
 /** Edge Function 오류 본문 `{ error: { message } }`의 한국어 문장을 그대로 보여준다. */
 const functionError = async (error: unknown): Promise<unknown> => {
   if (!(error instanceof FunctionsHttpError)) return error;
-  const body = (await (error.context as Response).json().catch(() => null)) as { error?: { message?: unknown } } | null;
+  const body = (await (error.context as Response).json().catch(() => null)) as { error?: { code?: unknown; message?: unknown } } | null;
+  if (body?.error?.code === "invalid_create_code") return new AuthFailure(MESSAGES.invalidCreateCode);
+  if (body?.error?.code === "create_disabled") return new AuthFailure(MESSAGES.createDisabled);
   return typeof body?.error?.message === "string" ? new AuthFailure(body.error.message) : error;
 };
 
@@ -264,12 +270,23 @@ export class AuthService implements Omit<AuthBridge, "getConfig" | "onSessionCha
     return data as T;
   }
 
-  async createProject(input: { code: string; nickname: string; password: string }): Promise<{ session: AuthSession; inviteCode: string }> {
+  async createProject(input: {
+    code: string;
+    nickname: string;
+    password: string;
+    createCode: string;
+  }): Promise<{ session: AuthSession; inviteCode: string }> {
     await this.settled();
+    if (!input.createCode?.trim()) throw new AuthFailure(MESSAGES.invalidCreateCode);
     if (input.password.length < MIN_PASSWORD) throw new AuthFailure(MESSAGES.shortPassword);
     const code = normalize(input.code);
     const nickname = normalize(input.nickname);
-    const result = await this.invoke<{ projectId: string; inviteCode: string }>("create-project", { code, nickname, password: input.password });
+    const result = await this.invoke<{ projectId: string; inviteCode: string }>("create-project", {
+      code,
+      nickname,
+      password: input.password,
+      createCode: input.createCode.trim(),
+    });
     const session = await this.signInAs(code, nickname, input.password);
     return { session, inviteCode: result.inviteCode };
   }

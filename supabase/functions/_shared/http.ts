@@ -10,6 +10,8 @@ export type ErrorCode =
   | "unauthorized"
   | "owner_only"
   | "cannot_remove_owner"
+  | "invalid_create_code"
+  | "create_disabled"
   | "not_found"
   | "internal";
 
@@ -22,6 +24,8 @@ const STATUS: Record<ErrorCode, number> = {
   unauthorized: 401,
   owner_only: 403,
   cannot_remove_owner: 403,
+  invalid_create_code: 403,
+  create_disabled: 403,
   not_found: 404,
   internal: 500,
 };

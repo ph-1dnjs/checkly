@@ -44,6 +44,28 @@ export function password(value: unknown) {
   return pw;
 }
 
+/**
+ * 새 프로젝트 생성 코드(운영자가 발급). env CHECKLY_CREATE_PROJECT_CODE와 상수 시간으로 비교한다.
+ * env가 비어 있으면 누구도 만들 수 없다. 다른 검증·사용자 생성보다 먼저 부른다.
+ */
+export async function requireCreateCode(value: unknown) {
+  const expected = Deno.env.get("CHECKLY_CREATE_PROJECT_CODE")?.trim() ?? "";
+  if (!expected) throw new AppError("create_disabled", "지금은 새 프로젝트를 만들 수 없습니다. 운영자에게 문의하세요.");
+  const given = typeof value === "string" ? value.trim() : "";
+  if (!(await sameSecret(given, expected))) {
+    throw new AppError("invalid_create_code", "생성 코드가 올바르지 않습니다. 운영자에게 문의하세요.");
+  }
+}
+
+/** 길이에 상관없이 같은 시간이 걸리도록 SHA-256으로 길이를 맞춘 뒤 모든 바이트를 비교한다. */
+async function sameSecret(a: string, b: string) {
+  const digest = async (s: string) => new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s)));
+  const [x, y] = await Promise.all([digest(a), digest(b)]);
+  let diff = 0;
+  for (let i = 0; i < x.length; i++) diff |= x[i] ^ y[i];
+  return diff === 0;
+}
+
 export const invalidInvite = () => new AppError("invalid_invite", "유효하지 않은 초대코드입니다.");
 export const nicknameTaken = () => new AppError("nickname_taken", "이 프로젝트에서 이미 쓰는 닉네임입니다.");
 export const codeTaken = () => new AppError("code_taken", "이미 사용 중인 프로젝트 코드입니다.");

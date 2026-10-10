@@ -161,9 +161,28 @@ test('새 프로젝트 2단계와 초대코드 복사', async ({ page, context }
   await page.getByLabel('닉네임').fill('dain')
   await page.getByLabel('비밀번호', { exact: true }).fill('secret1')
   await page.getByLabel('비밀번호 확인').fill('secret1')
+
+  // 생성 코드: 비우면 제출 전에 막고, 가림/표시를 바꿀 수 있고, 틀리면 서버 문장을 그대로 보여준다.
+  const createCode = page.getByLabel('생성 코드', { exact: true })
+  await expect(createCode).toHaveAttribute('type', 'password')
+  await expect(flow).toContainText('운영자에게 받은 코드')
+  await page.getByRole('button', { name: '프로젝트 만들기' }).click()
+  await expect(flow.getByRole('alert')).toHaveText(/생성 코드를 입력하세요\./)
+  expect((await authCalls(page)).some(([name]) => name === 'createProject')).toBe(false)
+  await createCode.fill('WRONG-1')
+  await page.getByRole('button', { name: '생성 코드 표시' }).click()
+  await expect(createCode).toHaveAttribute('type', 'text')
+  await page.getByRole('button', { name: '프로젝트 만들기' }).click()
+  await expect(flow.getByRole('alert')).toHaveText(/생성 코드가 올바르지 않습니다\. 운영자에게 문의하세요\./)
+  await expect(flow.getByRole('heading', { name: '새 프로젝트 만들기' })).toBeVisible()
+  await createCode.fill('OPS-2026')
+  await expect(flow.getByRole('alert')).toHaveCount(0)
   await page.getByRole('button', { name: '프로젝트 만들기' }).click()
 
   await expect(flow.getByRole('heading', { name: '프로젝트를 만들었습니다' })).toBeVisible()
+  expect((await authCalls(page)).filter(([name]) => name === 'createProject').at(-1)?.[1]).toEqual({
+    code: 'qa-squad', nickname: 'dain', password: 'secret1', createCode: 'OPS-2026',
+  })
   await expect(flow.locator('li[aria-current="step"]')).toContainText('초대코드 공유')
   await expect(flow.locator('.auth-invite-code')).toHaveText('NEW-4K8P2Z')
   await expect(page.getByLabel('만든 프로젝트')).toContainText('관리자')

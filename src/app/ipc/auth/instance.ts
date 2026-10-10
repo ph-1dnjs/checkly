@@ -1,6 +1,7 @@
 import { app, safeStorage } from "electron";
 import path from "node:path";
-import { AuthService, readAuthEnv } from "./service";
+import { RELEASE_SUPABASE } from "./release-config";
+import { AuthService, readAuthEnv, type AuthEnv } from "./service";
 import { createFileStorage } from "./storage";
 import type { AuthSession } from "./types";
 
@@ -18,10 +19,13 @@ const cipher = {
   decryptString: (encrypted: Buffer) => safeStorage.decryptString(encrypted),
 };
 
+/** 개발 실행은 .env만 따르고, 패키징된 앱은 .env가 없으면 배포용 팀 서버에 접속한다. */
+export const appAuthEnv = (): AuthEnv | null => readAuthEnv(process.env, app.isPackaged ? RELEASE_SUPABASE : null);
+
 /** Supabase 설정이 없으면 null. */
 export const getAuthService = (): AuthService | null => {
   if (service !== undefined) return service;
-  const env = readAuthEnv();
+  const env = appAuthEnv();
   const dataDir = app.getPath("userData");
   service = env
     ? new AuthService({

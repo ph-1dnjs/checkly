@@ -28,7 +28,7 @@
 | 로그인 | `auth.signInWithPassword(가상 이메일, 비밀번호)` | anon |
 | 가입 1 · 초대코드 입력 / 2 · 프로젝트 확인 | `rpc preview_invite(초대코드)` → 코드, 관리자, 팀원 수, 만든 날 | anon |
 | 가입 3 · 계정 설정 | 입력 중 `rpc nickname_available(초대코드, 닉네임)` → **Edge Function `join-project`** | anon |
-| 새 프로젝트 1 | 입력 중 `rpc project_code_available(코드)` → **Edge Function `create-project`** | anon |
+| 새 프로젝트 1 | 입력 중 `rpc project_code_available(코드)` → **Edge Function `create-project`**(운영자가 준 생성 코드 필요) | anon + 생성 코드 |
 | 새 프로젝트 2 · 초대코드 공유 | `create-project` 응답의 초대코드 | — |
 | 설정 · 계정 카드 | `projects`, `members` 조회 | 멤버 |
 | 설정 · 초대코드 재발급 | `rpc regenerate_invite_code()` | 관리자 |
@@ -38,7 +38,7 @@
 
 | 함수 | 하는 일 |
 | --- | --- |
-| `create-project` | 입력값 확인 → Admin API로 auth 사용자 생성 → `create_project_for(user, code, nick)`. 실패하면 사용자 삭제. 초대코드 반환 |
+| `create-project` | **생성 코드 확인**(`createCode` ↔ secret `CHECKLY_CREATE_PROJECT_CODE`, 상수 시간 비교, 다른 검증보다 먼저) → 입력값 확인 → Admin API로 auth 사용자 생성 → `create_project_for(user, code, nick)`. 실패하면 사용자 삭제. 초대코드 반환. 코드가 틀리거나 없으면 403 `invalid_create_code`, secret이 비어 있으면 403 `create_disabled`(누구도 못 만듦) |
 | `join-project` | 입력값 확인 → auth 사용자 생성 → `join_project_for(user, invite, nick)`. 실패하면 사용자 삭제 |
 | `change-nickname` | auth 이메일과 `members.nickname`을 같이 변경 (프로필 관리) |
 | `remove-member` | 관리자가 멤버를 내보냄 → auth 사용자 삭제(멤버 행은 cascade) |
@@ -108,6 +108,27 @@ create policy "같은 프로젝트" on public.<테이블> for all to authenticat
 
 - IPC 채널은 `auth:<메서드>`, 세션 변경 알림은 `auth:session`. 실패는 `{ ok: false, message }`로 돌려주고 bridge가 `Error(message)`로 reject한다.
 - 프로젝트 설정 저장은 `save_project_settings(p jsonb)` 한 번으로 한다(한 트랜잭션, security invoker). main이 마지막으로 읽은 행 중 빠진 것만 지우고, 읽은 뒤 다른 팀원이 추가·수정한 행이 있으면 충돌로 거절한다.
+
+## 접속 서버 정하기
+
+| 실행 | 접속 서버 |
+| --- | --- |
+| 배포용 앱(패키징) | `src/app/ipc/auth/release-config.ts`의 팀 클라우드(주소·anon 키 커밋). 환경 변수가 있으면 그 값 |
+| 개발 실행(`npm run dev`, 테스트) | `.env`만 따른다. 없으면 로그인 없는 로컬 모드 |
+
+- 팀 클라우드로 개발: `.env`에 `release-config.ts`의 주소·anon 키를 넣는다(`.env.example` 참고).
+- 로컬 Docker로 개발: 아래 "로컬 개발" 후 `supabase status`의 값을 넣는다.
+- `CHECKLY_SUPABASE_URL=`처럼 빈 값을 주면 패키징된 앱도 로컬 모드로 끈다.
+
+## 운영: 새 프로젝트 생성 코드 · 공개 가입
+
+- 새 프로젝트는 **운영자가 발급한 생성 코드**를 아는 사람만 만들 수 있다. 화면 `시작 · 새 프로젝트`의 "생성 코드" 칸에 넣는다(초대코드 가입은 그대로).
+- 코드는 Edge Function secret `CHECKLY_CREATE_PROJECT_CODE` 하나다. 저장소에는 값을 두지 않는다.
+  - 클라우드 설정·교체: `supabase secrets set CHECKLY_CREATE_PROJECT_CODE=<새 값>` → 함수가 다음 요청부터 새 값을 쓴다(재배포 불필요). 이전 코드는 바로 무효.
+  - 생성 막기: `supabase secrets unset CHECKLY_CREATE_PROJECT_CODE`(또는 빈 값) → 모두 `create_disabled`.
+  - 로컬: `supabase/functions/.env`(gitignore)에 `CHECKLY_CREATE_PROJECT_CODE=<개발용 값>`을 두면 `supabase functions serve`가 읽는다. 값을 바꾸면 serve를 다시 띄운다. 테스트(`tests/supabase`, `tests/auth`)와 `team-check.ts`도 이 파일(또는 같은 이름 환경 변수)에서 읽는다.
+- **공개 가입은 끈다**: `supabase/config.toml` `[auth] enable_signup = false`, `[auth.email] enable_signup = false`. 계정은 함수가 Admin API(`auth.admin.createUser`)로만 만들고, 이 설정과 상관없이 동작한다.
+  - 로컬은 `supabase stop && supabase start` 뒤에 적용된다. 클라우드는 대시보드 Authentication › Sign In / Providers의 "Allow new users to sign up"을 끄거나 `supabase config push`로 맞춘다.
 
 ## 로컬 개발
 

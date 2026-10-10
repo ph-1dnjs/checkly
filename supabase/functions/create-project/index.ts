@@ -1,8 +1,22 @@
-// 새 프로젝트: auth 사용자(관리자) 생성 → create_project_for. body { code, nickname, password } → { projectId, inviteCode }
-import { admin, codeTaken, dbError, isUnique, loginEmail, nickname, password, projectCode, withNewUser } from "../_shared/account.ts";
+// 새 프로젝트: 생성 코드 확인 → auth 사용자(관리자) 생성 → create_project_for.
+// body { code, nickname, password, createCode } → { projectId, inviteCode }
+import {
+  admin,
+  codeTaken,
+  dbError,
+  isUnique,
+  loginEmail,
+  nickname,
+  password,
+  projectCode,
+  requireCreateCode,
+  withNewUser,
+} from "../_shared/account.ts";
 import { serve } from "../_shared/http.ts";
 
 serve(async (body) => {
+  // 운영자가 발급한 코드가 맞아야 한다. 다른 검증·조회보다 먼저.
+  await requireCreateCode(body.createCode);
   const code = projectCode(body.code);
   const nick = nickname(body.nickname);
   const pw = password(body.password);
