@@ -399,7 +399,7 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
           setSaved(item); await onSaved?.(item); setDirty(false);
           setNotice(preview.issues.length ? "초안으로 저장했습니다. 아래 항목을 보완하세요." : preview.executionIssues?.length ? "저장됨 · 실행 전 설정 필요. 아래 항목을 설정한 뒤 다시 검사하세요." : "시나리오를 저장했습니다. 이 화면에서 계속 수정할 수 있습니다.");
           if (execute) onExecuteSaved?.(item);
-        } catch (error) { setIssues([(error as Error).message]); }
+        } catch (error) { setIssues([(error as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, "")]); }
         finally { setSaving(false); }
       }} /></div>
       {notice && <p role="status">{notice}</p>}

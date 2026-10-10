@@ -31,6 +31,8 @@ type Props = {
   onDeleteSavedAccount: () => void;
   /** The last import failure; the form opens so the URL or account can be fixed in place. */
   error?: string;
+  /** Team project: a URL that imports becomes the team's; a file stays on this computer. */
+  shared?: boolean;
 };
 
 /**
@@ -104,14 +106,17 @@ export function SpecSourcePanel(props: Props) {
         {props.authKind === "basic" && <>
           <label>아이디<input aria-label="Swagger 아이디" autoComplete="off" value={props.username} disabled={disabled} onChange={event => props.onUsernameChange(event.target.value)} /></label>
           <label>비밀번호<input aria-label="Swagger 비밀번호" ref={passwordInput} className="api-secret-input" type="text" autoComplete="off" placeholder={sync?.hasSavedAccount && sameUrl && sync.username === props.username && props.remember ? "비워두면 저장된 계정 사용" : undefined} value={props.password} disabled={disabled} onChange={event => props.onPasswordChange(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && url.trim() && !event.nativeEvent.isComposing) void importUrl(); }} /></label>
-          <label className="api-remember" title={sync?.secureStorageAvailable ? "비밀번호를 OS 보안 기능으로 암호화해 이 기기에 저장합니다" : "이 환경에서는 OS 보안 저장소를 쓸 수 없어 계정을 기억할 수 없습니다"}><input type="checkbox" aria-label="이 기기에 계정 기억" disabled={disabled || !sync?.secureStorageAvailable} checked={props.remember} onChange={event => props.onRememberChange(event.target.checked)} />이 기기에 계정 기억</label>
+          {sync?.shareAccount
+            ? <label className="api-remember" title="'비밀값도 팀에 공유'가 켜져 있어 계정을 팀 프로젝트에 저장하고 팀원과 같이 씁니다"><input type="checkbox" aria-label="팀원과 계정 공유" disabled={disabled} checked={props.remember} onChange={event => props.onRememberChange(event.target.checked)} />팀원과 계정 공유</label>
+            : <label className="api-remember" title={sync?.secureStorageAvailable ? "비밀번호를 OS 보안 기능으로 암호화해 이 기기에 저장합니다" : "이 환경에서는 OS 보안 저장소를 쓸 수 없어 계정을 기억할 수 없습니다"}><input type="checkbox" aria-label="이 기기에 계정 기억" disabled={disabled || !sync?.secureStorageAvailable} checked={props.remember} onChange={event => props.onRememberChange(event.target.checked)} />이 기기에 계정 기억</label>}
         </>}
-        {catalog && <span className="api-spec-delete"><DeleteAction label="명세 삭제" disabled={disabled} description={`${props.scopeLabel}의 API ${catalog.operations.length}개와 명세 주소·저장 계정·인증 연결을 삭제합니다. 시나리오는 유지되지만 이 명세를 쓰는 단계는 명세를 다시 가져오기 전까지 실행할 수 없습니다.`} onDelete={async () => { await props.onDeleteCatalog(); setOpen(true); }} /></span>}
+        {catalog && <span className="api-spec-delete"><DeleteAction label="명세 삭제" disabled={disabled} description={`${props.scopeLabel}의 API ${catalog.operations.length}개와 ${props.shared ? "이 컴퓨터의 저장 계정·인증 연결을 삭제합니다(팀의 명세 주소와 팀이 같이 쓰는 계정은 남습니다)" : "명세 주소·저장 계정·인증 연결을 삭제합니다"}. 시나리오는 유지되지만 이 명세를 쓰는 단계는 명세를 다시 가져오기 전까지 실행할 수 없습니다.`} onDelete={async () => { await props.onDeleteCatalog(); setOpen(true); }} /></span>}
       </div>
+      {props.shared && <p className="api-field-help api-spec-shared">URL로 가져오면 그 주소가 팀 프로젝트에 저장되어 팀원도 같은 주소로 각자 받습니다. 파일로 가져온 명세는 이 컴퓨터에만 있습니다. {sync?.shareAccount ? "문서 계정은 '비밀값도 팀에 공유'가 켜져 있어 팀원과 같이 씁니다." : "문서 계정은 이 컴퓨터에만 저장합니다."}</p>}
       {askPassword > 0 && props.authKind === "basic" && !props.password && <p className="api-field-help api-spec-ask-password" role="status">계정을 기억하지 않아 비밀번호를 다시 입력해야 합니다. 입력 후 [이 URL로 가져오기]를 누르세요.</p>}
       {/* Only worth saying when a password would actually go over plain HTTP. */}
       {props.authKind === "basic" && /^http:\/\//i.test(url.trim()) && !/^http:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/i.test(url.trim()) && <p className="api-field-help api-spec-http-warning">HTTP 주소라 비밀번호가 암호화되지 않고 전송됩니다. 가능하면 HTTPS 주소를 쓰세요.</p>}
-      {sync?.hasSavedAccount && <p className="api-field-help api-spec-saved-account">{sameUrl ? "이 주소에 저장된 계정이 있습니다." : "저장된 계정은 기존 명세 주소에만 쓰입니다."}<button type="button" className="api-compose-link" disabled={disabled} onClick={props.onDeleteSavedAccount}>저장된 계정 삭제</button></p>}
+      {sync?.hasSavedAccount && <p className="api-field-help api-spec-saved-account">{sameUrl ? sync.teamAccount ? "이 주소에 팀이 같이 쓰는 계정이 있습니다." : "이 주소에 저장된 계정이 있습니다." : "저장된 계정은 기존 명세 주소에만 쓰입니다."}<button type="button" className="api-compose-link" disabled={disabled} onClick={props.onDeleteSavedAccount}>저장된 계정 삭제</button></p>}
     </div>}
   </section>;
 }

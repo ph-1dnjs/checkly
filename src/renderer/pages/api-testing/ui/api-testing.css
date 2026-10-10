@@ -1266,6 +1266,14 @@ body.panel-resizing { cursor:col-resize; user-select:none; }
 .api-testing-page .api-detail-heading h2 { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; overflow-wrap:anywhere; }
 /* Prose (a scenario's description) reads in the UI font; code-like text areas stay monospace. */
 .api-testing-page textarea.api-prose-input:not(.swagger-ui textarea) { font-family:inherit; font-size:inherit; font-variant-numeric:normal; }
+/* Signed in: the team project instead of the project list, and the one-time local project import. */
+.api-team-project { display:inline-flex; align-items:baseline; gap:6px; color:var(--ck-color-text-mute); font-size:12px; white-space:nowrap; }
+.api-team-project strong { color:var(--api-body); font-size:14px; }
+.api-project-import.api-local-import { margin:0 0 12px; }
+.api-local-import > span:first-child { flex:1 1 320px; }
+.api-local-import .api-actions { flex-wrap:wrap; align-items:center; gap:8px; }
+.api-local-import .api-actions small { color:var(--api-muted); }
+.api-local-import .api-warning { flex-basis:100%; margin:0; }
 
 /* AI 작성 도우미: 작성 방식 전환과 앱 안 AI 대화 */
 .api-ai-mode { display:inline-flex; gap:2px; margin:4px 0 12px; padding:2px; border:1px solid var(--api-border); border-radius:var(--ck-dim-radius-base); }
@@ -1487,3 +1495,13 @@ body.panel-resizing { cursor:col-resize; user-select:none; }
 .api-global-modal > header { margin-bottom:0; }
 .api-testing-page .api-global-modal fieldset { margin:0; padding:0; border:0; }
 .api-global-modal footer { margin-top:4px; }
+
+/* Authorship (team mode): who changed it last (list) and who made·changed it (detail header). */
+.api-columns aside button.api-sidebar-entry.has-by { flex-wrap:wrap; row-gap:1px; }
+.api-sidebar-entry-by { flex-basis:100%; min-width:0; overflow:hidden; color:var(--api-muted); font-size:10px; font-weight:400; line-height:1.3; text-overflow:ellipsis; white-space:nowrap; }
+.api-sidebar-entry.selected .api-sidebar-entry-by { color:color-mix(in srgb, var(--ck-color-blue-action-hover) 70%, var(--api-muted)); }
+.api-authorship { display:flex; flex-wrap:wrap; align-items:center; gap:2px 0; margin:-2px 0 8px; color:var(--api-muted); font-size:11px; line-height:1.5; }
+/* In the grid header: right under the title (full width), the description below it. */
+.api-detail-heading > div:first-child > .api-authorship { grid-column:1 / -1; grid-row:2; margin:6px 0 0; }
+.api-detail-heading > div:first-child > .api-authorship + .api-description { grid-row:3; }
+.api-authorship-sep { padding:0 4px; color:var(--ck-color-line-strong); white-space:pre; }

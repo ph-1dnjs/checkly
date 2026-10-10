@@ -1,5 +1,6 @@
 import { contextBridge } from 'electron'
 import { apiTestingBridge } from './api-testing/bridge'
+import { authBridge } from './ipc/auth/bridge'
 import { formAutomationBridge } from './ipc/form-automation/bridge'
 import { qaBridge } from './ipc/qa/bridge'
 import { scenarioFileBridge } from './ipc/scenario-file/bridge'
@@ -11,6 +12,7 @@ import { windowSettingsBridge } from './ipc/window-settings/bridge'
 // bridge.ts는 preload에서 실행되므로 main 전용 모듈(index.ts 등)을 값으로 import하지 않는다.
 contextBridge.exposeInMainWorld('electronAPI', {
   apiTesting: apiTestingBridge,
+  auth: authBridge,
   windowSettings: windowSettingsBridge,
   ...updateBridge,
   ...scenarioFileBridge,

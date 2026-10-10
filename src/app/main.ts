@@ -9,6 +9,7 @@ import { is } from "@electron-toolkit/utils";
 import path from "node:path";
 import type { MainDomain } from "./ipc/domain";
 import { apiTestingDomain } from "./api-testing";
+import { authDomain } from "./ipc/auth";
 import { formAutomationDomain } from "./ipc/form-automation";
 import { qaDomain } from "./ipc/qa";
 import { scenarioFileDomain } from "./ipc/scenario-file";
@@ -18,6 +19,7 @@ import { loadInitialWindowOptions, windowSettingsDomain } from "./ipc/window-set
 // 새 기능은 해당 도메인의 index.ts에 추가한다. 이 목록은 도메인을 새로 만들 때만 수정한다.
 const domains: MainDomain[] = [
   apiTestingDomain,
+  authDomain,
   formAutomationDomain,
   qaDomain,
   scenarioFileDomain,

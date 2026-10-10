@@ -11,9 +11,15 @@ import { AiQuickService } from "./ai-quick";
 import { describeAiTools } from "./ai-cli";
 import { isProvidedScenarioInput, matchesScenarioInputType, type Json, type ScenarioInputRequest } from "../shared/scenario";
 import type { ApiScenarioInputRequest } from "../shared/workspace";
+import { getCurrentSession, getSupabase, isSupabaseEnabled, onSessionChanged } from "../../ipc/auth/client";
 
 export function registerApiTesting() {
-  const workspace = new ApiWorkspace(path.join(app.getPath("userData"), "api-testing"));
+  // Signed in to a team project: its data lives in Supabase; otherwise in this folder as before.
+  const workspace = new ApiWorkspace(path.join(app.getPath("userData"), "api-testing"), () => {
+    const session = isSupabaseEnabled() ? getCurrentSession() : null;
+    return session && { client: getSupabase(), userId: session.userId, projectId: session.projectId, projectCode: session.projectCode };
+  });
+  if (isSupabaseEnabled()) onSessionChanged(() => workspace.syncSession());
   const sync = new SpecSync(path.join(app.getPath("userData"), "api-testing"), workspace, {
     available: () => safeStorage.isEncryptionAvailable() && (process.platform !== "linux" || safeStorage.getSelectedStorageBackend() !== "basic_text"),
     encrypt: value => safeStorage.encryptString(value).toString("base64"),
@@ -96,6 +102,10 @@ export function registerApiTesting() {
   ipcMain.handle("api-testing:get-ai-prompt", (_event, request) => workspace.buildAiPrompt(request));
   ipcMain.handle("api-testing:read-ai-result", (_event, scope) => workspace.readAiResult(scope));
   ipcMain.handle("api-testing:check-ai-scenarios", (_event, scope, text) => workspace.checkAiScenarios(scope, text));
+  ipcMain.handle("api-testing:get-storage", () => workspace.getStorage());
+  ipcMain.handle("api-testing:get-team-settings", () => workspace.getTeamSettings());
+  ipcMain.handle("api-testing:set-share-secrets", (_event, on) => workspace.setShareSecrets(on));
+  ipcMain.handle("api-testing:import-local-project", (_event, projectId) => workspace.importLocalProject(projectId));
   ipcMain.handle("api-testing:list-projects", () => workspace.listProjects());
   ipcMain.handle("api-testing:save-project", (_event, project) => workspace.saveProject(project));
   ipcMain.handle("api-testing:delete-project", async (_event, id) => { await terminals.forget(id); quick.forget(id); await workspace.deleteProject(id); });

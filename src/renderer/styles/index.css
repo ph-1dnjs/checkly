@@ -9,6 +9,8 @@
 @import "./reference-theme.css";
 @import "./v6.css";
 @import "./settings.css";
+@import "./settings-account.css";
+@import "./auth.css";
 @import "./screen-extract.css";
 @import "./form-automation.css";
 
