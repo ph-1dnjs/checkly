@@ -72,7 +72,10 @@ const off = window.electronAPI.auth.onSessionChange(s => { /* 로그인·로그�
 
 1. `supabase/migrations/<YYYYMMDDhhmmss>_<이름>.sql` 추가
 2. 로컬에서 `supabase migration up`(데이터 유지) → 테스트. `supabase db reset`은 로컬 데이터가 지워진다.
-3. **클라우드 반영(`supabase db push`, 함수 배포)은 운영자에게 요청한다.** 직접 하지 않는다.
+3. PR을 올린다. GitHub Actions(`.github/workflows/supabase.yml`)가 빈 DB에 마이그레이션을 모두 적용하고 lint해 SQL 오류를 검사한다.
+4. **develop에 머지되면 Actions가 팀 클라우드에 자동 반영한다**(`db push` + Edge Function 배포). 직접 `db push`하지 않는다.
+5. 이미 develop에 들어간 마이그레이션 파일은 고치지 않는다. 바꿀 게 있으면 새 파일을 만든다. 머지 직전에 파일 이름의 시간이 develop의 마지막 파일보다 뒤인지 확인한다.
+6. SQL은 PR 리뷰에서 꼭 본다. 클라우드에 한 번 반영되면 되돌리려면 반대 작업 마이그레이션이 필요하다.
 
 ## 6. 테스트
 
@@ -83,7 +86,7 @@ const off = window.electronAPI.auth.onSessionChange(s => { /* 로그인·로그�
 ## 7. 하지 말 것
 
 - `service_role`·`secret` 키, DB 비밀번호를 앱 코드·`.env.example`·커밋에 넣지 않는다(서버 함수 환경에만 있다).
-- 클라우드에 직접 `db push`·함수 배포를 하지 않는다.
+- 클라우드에 직접 `db push`·함수 배포를 하지 않는다(develop 머지 → Actions가 반영).
 - 운영 계정·실서비스 토큰을 시나리오에 넣지 않는다. API 테스트의 "비밀값도 팀에 공유"가 켜져 있으면 팀 DB에 그대로 저장된다.
 
 ## 할 일
@@ -105,5 +108,6 @@ const off = window.electronAPI.auth.onSessionChange(s => { /* 로그인·로그�
 - [ ] 위 두 기능이 연결되면 설정의 엔드포인트 안내 문구에서 "연결 예정" 제거
 
 ### 운영
+- [ ] GitHub 저장소 secret `SUPABASE_ACCESS_TOKEN` 등록(Supabase 대시보드 > Account > Access Tokens), develop 브랜치 보호(PR 리뷰 필수)
 - [ ] Supabase 대시보드 계정 2단계 인증(MFA)
 - [ ] 무료 플랜: 7일 미사용 시 일시 정지, 자동 백업 없음 — 사용량이 늘면 Pro 검토

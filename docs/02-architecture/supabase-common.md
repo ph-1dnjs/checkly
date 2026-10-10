@@ -131,6 +131,18 @@ create policy "같은 프로젝트" on public.<테이블> for all to authenticat
 - **공개 가입은 끈다**: `supabase/config.toml` `[auth] enable_signup = false`, `[auth.email] enable_signup = false`. 계정은 함수가 Admin API(`auth.admin.createUser`)로만 만들고, 이 설정과 상관없이 동작한다.
   - 로컬은 `supabase stop && supabase start` 뒤에 적용된다. 클라우드는 대시보드 Authentication › Sign In / Providers의 "Allow new users to sign up"을 끄거나 `supabase config push`로 맞춘다.
 
+## 운영: 클라우드 반영 (GitHub Actions)
+
+`.github/workflows/supabase.yml` — `supabase/**`가 바뀐 경우만 돈다.
+
+| 언제 | 하는 일 |
+| --- | --- |
+| PR | 빈 Postgres(`supabase db start`)에 마이그레이션을 모두 적용하고 `db lint`. 클라우드는 건드리지 않는다 |
+| develop 머지(또는 수동 실행) | `supabase link` → `db push` → Edge Function 전체 배포. 한 번에 하나만 실행 |
+
+- 저장소 secret `SUPABASE_ACCESS_TOKEN`: Supabase 대시보드 > Account > Access Tokens에서 발급. 발급한 계정의 권한으로 동작하므로 develop 브랜치 보호(PR 리뷰 필수)를 켠다.
+- 함수 secret(`CHECKLY_CREATE_PROJECT_CODE` 등)은 Actions가 다루지 않는다. 위 "새 프로젝트 생성 코드" 방법으로 따로 관리한다.
+
 ## 로컬 개발
 
 ```bash
