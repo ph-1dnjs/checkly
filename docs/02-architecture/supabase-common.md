@@ -1,6 +1,7 @@
 # 공통 프로젝트 · Supabase (설계 초안)
 
 > 상태: 초안. SQL은 [`supabase/migrations/20261007000000_common_project.sql`](../../supabase/migrations/20261007000000_common_project.sql).
+> 기능 담당자용 사용법과 남은 할 일: [supabase-guide.md](supabase-guide.md)
 > 화면 기준: 디자인 시스템 `Checkly v21.dc.html`의 `시작 · 로그인`, `시작 · 초대코드 가입`, `시작 · 새 프로젝트`, `설정 · 계정 카드`.
 
 ## 결정 사항

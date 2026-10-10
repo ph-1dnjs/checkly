@@ -91,7 +91,7 @@ const ProjectGroup = ({ account, project }: Props) => {
         <div>
           <div className="settings-row-label">엔드포인트 × 환경</div>
           <div className="settings-row-hint">
-            웹 시나리오·폼 자동 완성·API 테스트가 같이 쓰는 주소입니다. 각 기능은 자기 화면에서 환경을 고릅니다. 빈 칸은 미설정입니다.
+            팀이 같이 쓰는 주소입니다. 지금은 API 테스트가 API 엔드포인트를 씁니다(웹 시나리오·폼 자동 완성은 연결 예정). 빈 칸은 미설정입니다.
           </div>
         </div>
         <EndpointMatrix account={account} />
