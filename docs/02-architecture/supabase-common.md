@@ -137,7 +137,7 @@ create policy "같은 프로젝트" on public.<테이블> for all to authenticat
 
 | 언제 | 하는 일 |
 | --- | --- |
-| PR | 빈 Postgres(`supabase db start`)에 마이그레이션을 모두 적용하고 `db lint`. 클라우드는 건드리지 않는다 |
+| PR | 빈 Postgres(`supabase db start`)에 마이그레이션을 모두 적용하고 `db lint`. 이어서 팀 클라우드에 적용될 마이그레이션을 `db push --dry-run`으로 미리 보여 준다(적용 안 함, 토큰 확인 겸용, fork PR은 건너뜀) |
 | develop 머지(또는 수동 실행) | `supabase link` → `db push` → Edge Function 전체 배포. 한 번에 하나만 실행 |
 
 - 저장소 secret `SUPABASE_ACCESS_TOKEN`: Supabase 대시보드 > Account > Access Tokens에서 발급. 발급한 계정의 권한으로 동작하므로 develop 브랜치 보호(PR 리뷰 필수)를 켠다.

@@ -24,6 +24,8 @@ jobs:
   check:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: supabase/setup-cli@v1
@@ -32,6 +34,14 @@ jobs:
       # 빈 DB를 띄우면서 supabase/migrations/*.sql을 순서대로 적용한다. SQL 오류면 여기서 실패한다.
       - run: supabase db start
       - run: supabase db lint --level error --fail-on error
+      # 머지되면 팀 클라우드에 적용될 마이그레이션 미리보기(실제로 적용하지 않음). 토큰 확인도 겸한다.
+      # fork에서 온 PR은 secret이 없어 건너뛴다.
+      - name: 팀 클라우드 반영 미리보기
+        if: env.SUPABASE_ACCESS_TOKEN != ''
+        run: |
+          supabase link --project-ref "$SUPABASE_PROJECT_REF"
+          supabase migration list --linked
+          supabase db push --linked --dry-run
 
   deploy:
     if: github.event_name != 'pull_request'
