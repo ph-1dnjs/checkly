@@ -1548,6 +1548,7 @@ body.panel-resizing { cursor:col-resize; user-select:none; }
 .api-scn-message { margin:12px 0 0; color:var(--ck-color-text-secondary); font-size:12px; }
 .api-testing-page button.api-scn-text-button:not(.swagger-ui *) { min-height:0; height:24px; padding:0 6px; border:0; background:transparent; color:var(--ck-color-blue-action); font-size:11.5px; white-space:nowrap; }
 .api-testing-page button.api-scn-text-button:not(.swagger-ui *):hover:not(:disabled) { background:var(--ck-color-surface-hover-strong); }
+.api-testing-page button.api-scn-report-download:not(.swagger-ui *) { display:inline-flex; flex:none; align-items:center; gap:3px; }
 
 .api-scn-steps { margin-top:0; }
 .api-request-panel header.api-scn-steps-heading { display:flex; align-items:center; gap:8px; min-width:0; margin:0 0 10px; padding:26px 0 10px; border-bottom:1px solid var(--ck-color-line-soft); }

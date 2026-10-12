@@ -18,6 +18,7 @@ import { RunInputModal } from "../../../features/api-testing/submit-run-input";
 import { globalProducerScenarios } from "../../../entities/api-testing";
 import { AuthorshipLine, ScenarioSidebarTree } from "../../../entities/api-testing";
 import { Icon } from "../../../shared/ui/Icon";
+import { renderSuiteReport, reportFilename, scenarioRunReport } from "../../../../app/api-testing/shared/suite-report";
 import { completedLabel, operationForStep, ScenarioSteps } from "../../../entities/api-testing";
 import { YamlCode } from "../../../entities/api-testing";
 import { highlightTerms, parseApiSearch, scenarioSearch, type SearchableScenario } from "../../../entities/api-testing";
@@ -244,22 +245,39 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
   const runScenario = async () => {
     if (!preview) return;
     working(true); setRunning(true); setError(""); setNotice("");
+    const startedAt = new Date().toISOString();
     try {
       const parsed = Object.fromEntries(Object.entries(preview.scenario.inputs).filter(([key, definition]) => definition.required || inputs[key] !== undefined && inputs[key] !== "").map(([key, definition]) => [key, definition.type === "string" ? inputs[key] ?? "" : JSON.parse(inputs[key] ?? "")])) as Record<string, Json>;
       const response = await bridge.runScenario(scenarioScope, source, bindings, parsed);
-      rememberResult(response);
+      rememberResult(response, startedAt);
     } catch (e) {
       if (live.current) { setResult(null); setError(e instanceof SyntaxError ? "숫자·불리언·객체·배열 입력은 JSON 형식으로 입력하세요" : errorText(e)); }
     } finally {
       if (live.current) { working(false); setRunning(false); }
     }
   };
-  const rememberResult = (response: ApiScenarioResult) => {
+  const rememberResult = (response: ApiScenarioResult, startedAt: string) => {
     if (!preview) return;
-    const snapshot = { result: response, preview, bindings, completedAt: new Date().toISOString() };
+    const snapshot = { result: response, preview, bindings, startedAt, completedAt: new Date().toISOString() };
     writeLastRun(scope.projectId, scope.environmentId, current?.id ?? preview.scenario.id, snapshot);
     if (live.current) { setResult(response); setLastRun(snapshot); setFocusRequest(null); }
     // Runs can extract new globals (e.g. accessToken); reload them for masking.
+  };
+  const downloadReport = async () => {
+    if (!lastRun || running) return;
+    const { result: runResult, preview: runPreview, bindings: runBindings, completedAt } = lastRun;
+    const steps = runPreview.scenario.steps;
+    // Same projection as a suite run: API names and check outcomes only, never request/response values.
+    const references = runResult.steps.map(step => {
+      const authored = steps.find(candidate => candidate.id === step.id);
+      const operation = authored && operationForStep(authored, catalogs, runBindings);
+      return { name: authored?.name ?? operation?.summary ?? step.name, reference: operation ? `${operation.method.toUpperCase()} ${operation.path}` : !authored ? "API" : "operationId" in authored.api ? authored.api.operationId : `${authored.api.method} ${authored.api.path}` };
+    });
+    const startedAt = lastRun.startedAt ?? new Date(Date.parse(completedAt) - runResult.steps.reduce((total, step) => total + step.durationMs, 0)).toISOString();
+    const report = scenarioRunReport({ id: runPreview.scenario.id, name: runPreview.scenario.name, projectName: project.name, environmentName: project.environments.find(environment => environment.id === scope.environmentId)?.name ?? "", startedAt, completedAt, result: runResult, references, scenario: runPreview.scenario });
+    setError("");
+    try { if (await bridge.saveSuiteReport(reportFilename(startedAt), renderSuiteReport(report))) setNotice("실행 리포트를 저장했습니다."); }
+    catch (e) { setError(errorText(e)); }
   };
   const autoRunStarted = useRef(false);
   useEffect(() => {
@@ -483,7 +501,7 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
             if (result) {
               // The steps changed since that run: its results may not line up with every step any more.
               const stale = lastRun?.preview && JSON.stringify(lastRun.preview.scenario.steps) !== JSON.stringify(preview.scenario.steps);
-              return <>{lastRun?.completedAt && <span title="이 결과는 앱을 새로고침하면 사라집니다">최근 실행 {completedLabel(lastRun.completedAt)}</span>}<span>{environment}</span><strong className={`api-scn-result-status is-${result.status.toLowerCase()}`}>{runStatusName(result.status)}</strong>{stale && <span>· 이후 수정됨</span>}</>;
+              return <>{lastRun?.completedAt && <span title="이 결과는 앱을 새로고침하면 사라집니다">최근 실행 {completedLabel(lastRun.completedAt)}</span>}<span>{environment}</span><strong className={`api-scn-result-status is-${result.status.toLowerCase()}`}>{runStatusName(result.status)}</strong>{stale && <span>· 이후 수정됨</span>}{lastRun && <button type="button" className="api-scn-text-button api-scn-report-download" title="요청·응답 원문과 변수 값은 제외한 HTML 리포트를 저장합니다" onClick={() => void downloadReport()}><Icon name="download" size={14} />리포트 받기</button>}</>;
             }
             return <><span>{environment} · 아직 실행하지 않았습니다</span><span className={`api-run-status${current?.draft ? " is-draft" : canUse ? " is-ready" : " is-review"}`}>{current?.draft ? "초안" : canUse ? "실행 가능" : "설정 필요"}</span></>;
           })()}

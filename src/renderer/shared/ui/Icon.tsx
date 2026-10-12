@@ -11,6 +11,7 @@ export type IconName =
   | "content_copy"
   | "data_object"
   | "delete"
+  | "download"
   | "drag_indicator"
   | "dynamic_form"
   | "edit"
@@ -51,6 +52,7 @@ const CONTENT: Record<IconName, ReactNode> = {
     <path d="m9 9 3 3-3 3m6-6-3 3 3 3" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
   </>,
   delete: <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12ZM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4Z" />,
+  download: <path d="M19 9h-4V3H9v6H5l7 7 7-7ZM5 18v2h14v-2H5Z" />,
   drag_indicator: <>
     <circle cx="9" cy="6" r="1.35" />
     <circle cx="15" cy="6" r="1.35" />
