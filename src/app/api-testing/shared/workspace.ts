@@ -9,9 +9,11 @@ export const httpUrl = z.string().url("http:// 또는 https://로 시작하는 �
   try { url = new URL(value); } catch { return false; }
   return ["http:", "https:"].includes(url.protocol) && !url.username && !url.password && !url.hash;
 }, "인증정보를 제외한 HTTP(S) 주소를 입력하세요");
-export const projectSchema = z.object({
+const projectShape = z.object({
   id: z.string().uuid(),
   name: z.string().trim().min(1).max(100),
+  /** Team project only: the version of its servers·environments·addresses this copy was read from. */
+  revision: z.string().max(200).optional(),
   servers: z.array(z.object({
     id: z.string().uuid(), name: z.string().trim().min(1).max(100),
   }).strict()).min(1),
@@ -19,7 +21,8 @@ export const projectSchema = z.object({
     id: z.string().uuid(), name: z.string().trim().min(1).max(100),
     baseUrls: z.record(z.string().uuid(), httpUrl.refine(v => !new URL(v).search, "기본 주소에 쿼리를 넣을 수 없습니다")),
   }).strict()).min(1),
-}).strict().superRefine((p, ctx) => {
+}).strict();
+const projectRules = (allUrls: boolean) => (p: z.infer<typeof projectShape>, ctx: z.RefinementCtx) => {
   if (new Set(p.servers.map(server => server.name)).size !== p.servers.length)
     ctx.addIssue({ code: "custom", path: ["servers"], message: "프로젝트 내 서버 이름은 중복될 수 없습니다" });
   for (const group of [p.servers, p.environments]) {
@@ -27,9 +30,19 @@ export const projectSchema = z.object({
       ctx.addIssue({ code: "custom", message: "중복 식별자" });
   }
   for (const e of p.environments) {
-    if (p.servers.some(s => !e.baseUrls[s.id]) || Object.keys(e.baseUrls).some(id => !p.servers.some(s => s.id === id)))
+    if ((allUrls && p.servers.some(s => !e.baseUrls[s.id])) || Object.keys(e.baseUrls).some(id => !p.servers.some(s => s.id === id)))
       ctx.addIssue({ code: "custom", message: "모든 환경에 서버별 기본 주소가 필요합니다" });
   }
+};
+export const projectSchema = projectShape.superRefine(projectRules(true));
+/**
+ * The signed-in team project (Supabase): an address may be left unset ("미설정") for some
+ * server·environment pairs, and environment names are unique like in the shared settings.
+ */
+export const teamProjectSchema = projectShape.superRefine((p, ctx) => {
+  projectRules(false)(p, ctx);
+  if (new Set(p.environments.map(environment => environment.name)).size !== p.environments.length)
+    ctx.addIssue({ code: "custom", path: ["environments"], message: "환경 이름은 중복될 수 없습니다" });
 });
 export type ApiProject = z.infer<typeof projectSchema>;
 export const specSourceSchema = z.discriminatedUnion("kind", [
@@ -39,7 +52,13 @@ export const specSourceSchema = z.discriminatedUnion("kind", [
   }).strict().optional() }).strict(),
 ]);
 export type ApiSpecSource = z.infer<typeof specSourceSchema>;
-export type ApiSpecSync = { url?: string; username?: string; hasSavedAccount: boolean; secureStorageAvailable: boolean; lastAttemptAt?: string; lastSuccessAt?: string; status?: "success" | "failed" };
+/**
+ * `shareAccount`: team project with "비밀값도 팀에 공유" on — a remembered docs account is saved for the
+ * team instead of this computer's keychain. `teamAccount`: the saved account shown is the team's.
+ */
+export type ApiSpecSync = { url?: string; username?: string; hasSavedAccount: boolean; secureStorageAvailable: boolean; lastAttemptAt?: string; lastSuccessAt?: string; status?: "success" | "failed"; shareAccount?: boolean; teamAccount?: boolean };
+/** Team project settings for API testing; `updatedBy` is a nickname. */
+export type ApiTeamSettings = { shareSecrets: boolean; updatedAt?: string; updatedBy?: string };
 export type ApiParameter = { name: string; location: string; required: boolean; description: string; type: string; style?: string; explode?: boolean; example?: Json };
 export type ApiOperation = {
   tags?: string[];
@@ -59,7 +78,12 @@ export type ApiEnvironmentScope = Pick<ApiScope, "projectId" | "environmentId">;
 export type ApiGlobal = { name: string; type: string; displayValue: string };
 /** Session cookie scope only; values never leave the main process. */
 export type ApiCookie = { name: string; domain: string; path: string };
-export type SavedApiScenario = { id: string; name: string; source: string; bindings: Record<string, string>; updatedAt: string; draft?: boolean; groupPath?: string[]; tags?: string[]; /** Old-title → new-title renames the user chose to keep as is. */ keptTitles?: Array<{ from: string; to: string }> };
+/**
+ * Who made / last changed it: team mode only, stamped by the database, with nicknames from the
+ * project's members ("(나간 멤버)" for one who left). File mode keeps none of it.
+ */
+export type ApiAuthorship = { createdAt?: string; createdBy?: string; updatedBy?: string };
+export type SavedApiScenario = ApiAuthorship & { id: string; name: string; source: string; bindings: Record<string, string>; updatedAt: string; draft?: boolean; groupPath?: string[]; tags?: string[]; /** Old-title → new-title renames the user chose to keep as is. */ keptTitles?: Array<{ from: string; to: string }> };
 /**
  * A project shared as one file: settings, scenarios and suites, plus each spec's URL, as written.
  * Never carries globals, saved docs accounts, cookies, remembered docs inputs or spec bodies.
@@ -91,7 +115,13 @@ export type ApiProjectImportPlan = {
   /** Local copies of the same project that the file can update. */
   targets: Array<{ projectId: string; name: string; scenarios: ApiShareDiff; suites: ApiShareDiff; serversAdded: string[]; environmentsAdded: string[] }>;
 };
-export type SavedApiSuite = { id: string; name: string; scenarioIds: string[]; onFailure: "stop" | "continue"; updatedAt: string; groupPath?: string[]; tags?: string[] };
+/**
+ * Where API testing keeps its data. "file": this computer only (no sign-in). "team": the signed-in
+ * team project, the only project; `importable` lists local projects that can be copied into it once,
+ * offered while the team project has no scenarios or suites yet.
+ */
+export type ApiStorageInfo = { mode: "file" } | { mode: "team"; projectCode: string; importable: Array<{ id: string; name: string; scenarios: number; suites: number }> };
+export type SavedApiSuite = ApiAuthorship & { id: string; name: string; scenarioIds: string[]; onFailure: "stop" | "continue"; updatedAt: string; groupPath?: string[]; tags?: string[] };
 export type ApiSidebarMetadata = { groupPath?: string[]; tags?: string[] };
 export type ApiScenarioPreview = { scenario: Scenario; issues: string[]; executionIssues?: string[] };
 /** A saved scenario with steps whose API is gone from the current specs; steps read "label (METHOD path)". */
@@ -206,6 +236,13 @@ export type ApiTestingBridge = {
   readAiResult(scope: ApiEnvironmentScope): Promise<{ path: string; text: string; modifiedAt: string } | null>;
   /** Checks pasted AI output (scenarios separated by ---, optional suite); nothing is saved. */
   checkAiScenarios(scope: ApiEnvironmentScope, text: string): Promise<ApiAiImportResult>;
+  getStorage(): Promise<ApiStorageInfo>;
+  /** Team project only (null without sign-in). */
+  getTeamSettings(): Promise<ApiTeamSettings | null>;
+  /** "비밀값도 팀에 공유". Turning it off also removes the secrets already shared (docs inputs, docs accounts). */
+  setShareSecrets(on: boolean): Promise<ApiTeamSettings>;
+  /** Team mode: copies a local project's servers, environments, scenarios, suites and docs inputs into the team project. */
+  importLocalProject(projectId: string): Promise<ApiProjectImportResult>;
   listProjects(): Promise<ApiProject[]>;
   saveProject(project: ApiProject): Promise<ApiProject>;
   deleteProject(projectId: string): Promise<void>;
@@ -216,7 +253,7 @@ export type ApiTestingBridge = {
   /** Raw, transient response for the Swagger "Try it out". Never use for reports, persistence or AI context. */
   execute(scope: ApiScope, operationKey: string, request: Scenario["steps"][number]["request"]): Promise<ApiResponse>;
   cancel(scope: ApiScope): Promise<void>;
-  /** Last "Try it out" values per operation key of the scope's server; secrets are never kept. */
+  /** Last "Try it out" values per operation key of the scope's server; secrets only when the team shares them. */
   getDocInputs(scope: ApiScope): Promise<Record<string, ApiDocInput>>;
   forgetDocInput(scope: ApiScope, operationKey: string): Promise<void>;
   /** Saves the project as a share file; resolves to where it was saved, or null when cancelled. */
@@ -236,7 +273,7 @@ export type ApiTestingBridge = {
   applyTitleRenames(scope: ApiEnvironmentScope): Promise<{ updated: string[]; skipped: string[] }>;
   keepTitles(scope: ApiEnvironmentScope, scenarioId: string): Promise<void>;
   listSuites(projectId: string): Promise<SavedApiSuite[]>;
-  saveSuite(projectId: string, suite: Omit<SavedApiSuite, "updatedAt">, expectedUpdatedAt?: string): Promise<SavedApiSuite>;
+  saveSuite(projectId: string, suite: Omit<SavedApiSuite, "updatedAt" | keyof ApiAuthorship>, expectedUpdatedAt?: string): Promise<SavedApiSuite>;
   deleteSuite(projectId: string, id: string, expectedUpdatedAt: string): Promise<void>;
   saveSuiteReport(filename: string, html: string): Promise<string | null>;
   readScenarioFile(): Promise<string | null>;

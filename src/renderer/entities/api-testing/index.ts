@@ -24,3 +24,6 @@ export { writeLastRun } from "./model/scenario-last-run";
 export { useGlobalValuesVisible } from "./model/global-values-visibility";
 export { YamlCode } from "./ui/YamlCode";
 export { aiToolNames, backendFolderCount, chatTool } from "./lib/ai-chat-settings";
+export { authorshipParts, lastEditedText, relativeTime, shortDateTime } from "./lib/authorship";
+export type { AuthoredItem } from "./lib/authorship";
+export { AuthorshipLine } from "./ui/AuthorshipLine";

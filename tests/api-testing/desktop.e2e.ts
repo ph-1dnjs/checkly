@@ -85,7 +85,8 @@ process.stdin.on("data", chunk => {
 }
 `);
   await chmod(fakeClaude, 0o755);
-  const env = { ...process.env, CHECKLY_AI_CLI_PATH: fakeClaude };
+  // These flows are the local (no sign-in) mode: an empty value keeps .env's team server switched off.
+  const env = { ...process.env, CHECKLY_AI_CLI_PATH: fakeClaude, CHECKLY_SUPABASE_URL: "", CHECKLY_SUPABASE_ANON_KEY: "" };
   delete env.ELECTRON_RUN_AS_NODE;
   let app: Awaited<ReturnType<typeof electron.launch>> | undefined;
   try {
@@ -708,8 +709,9 @@ process.stdin.on("data", chunk => {
     // It shows another suite, not an empty new-suite form.
     await expect(page.getByRole("region", { name: "스위트 구성" })).toBeVisible();
     await expect(page.getByLabel("스위트 이름", { exact: true })).toHaveCount(0);
-    // Scenarios are deleted from their detail view.
+    // Scenarios are deleted from their detail view. File mode shows no authorship line.
     await page.getByRole("button", { name: "AI 상품 조회", exact: true }).click();
+    await expect(page.getByLabel("작성 정보", { exact: true })).toHaveCount(0);
     await page.getByRole("button", { name: "시나리오 삭제", exact: true }).click();
     await page.getByRole("button", { name: "시나리오 삭제 확인", exact: true }).click();
     await expect(page.getByRole("button", { name: "AI 상품 조회", exact: true })).toHaveCount(0);
@@ -761,6 +763,9 @@ process.stdin.on("data", chunk => {
     await expect(restored.getByLabel("API 프로젝트")).toContainText("쇼핑몰 QA");
     await expect(restored.getByLabel("프로젝트 이름")).toHaveCount(0);
     await restored.getByRole("button", { name: "명세 설정", exact: true }).click();
+    await expect(restored.getByLabel("OpenAPI URL", { exact: true })).toHaveValue(`${url}/openapi.json`);
+    // Clicking the environment already chosen keeps the URL (nothing loads it again).
+    await restored.getByRole("group", { name: "API 환경" }).locator('button[aria-pressed="true"]').click();
     await expect(restored.getByLabel("OpenAPI URL", { exact: true })).toHaveValue(`${url}/openapi.json`);
     if (canRemember) {
       await expect(restored.getByLabel("Swagger 비밀번호", { exact: true })).toHaveValue("");

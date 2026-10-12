@@ -15,8 +15,12 @@ import { useNavigation } from "./hooks/useNavigation";
 import { useScenarioState } from "./hooks/useScenarioState";
 import { useRunOrchestration } from "./hooks/useRunOrchestration";
 import { ApiTestingPage } from "../pages/api-testing/ApiTestingPage";
+import { AuthScreen } from "../pages/auth/AuthScreen";
+import { AuthUnavailable } from "../pages/auth/AuthUnavailable";
+import type { AuthAccount } from "../pages/auth/model";
+import { useAuth } from "./hooks/useAuth";
 
-export const App = (): ReactElement => {
+const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement => {
   const [apiRunAction, setApiRunAction] = useState<ApiRunAction | null>(null);
   const [keepSessionPromptChecked, setKeepSessionPromptChecked] =
     useState(false);
@@ -256,7 +260,7 @@ export const App = (): ReactElement => {
             onDownloadFullRunVideo={downloadFullRunVideo}
           />
         )}
-        {route === "settings" && <SettingsPage scenario={scenario} />}
+        {route === "settings" && <SettingsPage scenario={scenario} account={account} />}
         {route === "form-automation" && <FormAutomationPage />}
       </section>
       <RunReportDrawer
@@ -510,5 +514,23 @@ export const App = (): ReactElement => {
         </div>
       )}
     </main>
+  );
+};
+
+// 팀 프로젝트(Supabase)가 켜져 있으면 로그인해야 앱을 보여준다. 꺼져 있거나 bridge가 없으면 지금처럼 바로 앱을 연다.
+export const App = (): ReactElement => {
+  const auth = useAuth();
+  if (auth.status === "checking") return <main className="auth-pending" aria-busy="true" />;
+  if (auth.status === "unavailable")
+    return <AuthUnavailable message={auth.error} retrying={auth.retrying} onRetry={auth.retry} />;
+  if (auth.status === "signed-out" && auth.bridge)
+    return <AuthScreen bridge={auth.bridge} onEnter={auth.enter} />;
+  return (
+    <>
+      <Workspace account={auth.account} />
+      {auth.joining && auth.bridge && (
+        <AuthScreen bridge={auth.bridge} initialMode="join" onEnter={auth.enter} onExit={auth.closeJoin} />
+      )}
+    </>
   );
 };
