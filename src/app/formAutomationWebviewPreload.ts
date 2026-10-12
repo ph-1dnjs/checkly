@@ -8,6 +8,17 @@ contextBridge.exposeInMainWorld("__CHECKLY_FORM_AUTOMATION__", {
 window.addEventListener("keydown", (event) => {
   if (
     (event.metaKey || event.ctrlKey)
+    && !event.altKey
+    && !event.shiftKey
+    && event.code === "KeyR"
+  ) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!event.repeat) ipcRenderer.sendToHost("form-automation:reload-shortcut");
+    return;
+  }
+  if (
+    (event.metaKey || event.ctrlKey)
     && event.shiftKey
     && !event.altKey
     && event.key.toLowerCase() === "s"

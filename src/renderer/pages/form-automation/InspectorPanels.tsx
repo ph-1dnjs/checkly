@@ -59,10 +59,6 @@ export const NetworkPanel = ({
   const visible = filter === "errors" ? events.filter(isSessionError) : events;
   return (
     <>
-      <div className={`fa-network-health${errorCount ? " danger" : ""}`}>
-        <MaterialIcon name={errorCount ? "error" : "verified_user"} />
-        <span><strong>{errorCount ? `오류 ${errorCount}건을 발견했습니다` : "현재까지 발견된 오류가 없습니다"}</strong><small>{errorCount ? "서버·네트워크·페이지 오류를 표시합니다." : "활동 기록은 앱을 종료해도 로컬에 보관됩니다."}</small></span>
-      </div>
       <div className="fa-inspector-heading">
         <div><strong>{activeSessionName} 타임라인</strong><span>이 로그인 세션의 API·페이지 오류만 표시</span></div>
         {events.length > 0 && <div className="fa-heading-actions"><button onClick={onDownload}><MaterialIcon name="download" /> 다운로드</button><button onClick={onClear}><MaterialIcon name="delete" /> 전체 삭제</button></div>}

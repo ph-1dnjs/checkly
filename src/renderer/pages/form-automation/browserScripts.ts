@@ -132,7 +132,7 @@ export const discoverFieldsScript = `(async () => {
     const candidateText = clean(element.getAttribute('aria-label') || element.getAttribute('placeholder') || element.textContent);
     const structuralLabel = nearbyStructuralLabel(element);
     const opensDialog = element.getAttribute('aria-haspopup') === 'dialog' || element.getAttribute('data-state') != null;
-    const dateTrigger = !checkbox && !choice && !isRadio(element) && (element.getAttribute('data-qa-autofill-type') === 'date-trigger' || ((element instanceof HTMLButtonElement || role === 'button') && (/날짜|기간|시작일|종료일|date|calendar/i.test(candidateText) || (opensDialog && /일자|일|기간|date/i.test(structuralLabel)))));
+    const dateTrigger = !checkbox && !choice && !isRadio(element) && (element.getAttribute('data-qa-autofill-type') === 'date-trigger' || ((element instanceof HTMLButtonElement || role === 'button') && (/날짜|기간|시작일|종료일|취득 시기|date|calendar/i.test(candidateText) || (opensDialog && /일자|시기|기간|date/i.test(structuralLabel)))));
     const type = checkbox ? (checkboxGroupFor(element) ? 'checkbox-group' : 'checkbox') : choice ? (choiceMultiple(element) ? 'select-multiple' : 'select-one') : dateTrigger ? 'date-trigger' : element.isContentEditable ? 'contenteditable' : isRadio(element) ? 'radio' : role === 'spinbutton' ? 'number' : element instanceof HTMLInputElement && (classRoot(element, 'picker') || element.closest('[data-scope="date-picker"]')) ? 'date' : (element.type || element.tagName.toLowerCase());
     const formId = element.closest('form')?.id || '';
     const label = dateTrigger ? clean(structuralLabel || labelFor(element)) : labelFor(element);
@@ -294,7 +294,11 @@ export const selectDateRangeScript = (key: string, value: FieldValue): string =>
   const trigger = Array.from(document.querySelectorAll('[data-qa-autofill-name]')).find((candidate) => candidate.getAttribute('data-qa-autofill-name') === key && candidate.getAttribute('data-qa-autofill-type') === 'date-trigger' && visible(candidate));
   if (!trigger) return { selected: 0, expected: 1 };
   const sleep = (duration) => new Promise((resolve) => setTimeout(resolve, duration));
-  const popupFor = () => Array.from(document.querySelectorAll('[role="dialog"], [data-radix-popper-content-wrapper], [data-state="open"], [class*="calendar" i], [class*="datepicker" i]')).filter(visible).findLast((candidate) => candidate.matches('[class*="calendar" i], [class*="datepicker" i]') || candidate.querySelector('[role="grid"], [aria-label*="month" i], [aria-label*="월"]')) || null;
+  const popupFor = () => {
+    const calendar = '[role="grid"], table button[aria-label*="일"], [aria-label*="month" i], [aria-label*="월"]';
+    const dialog = Array.from(document.querySelectorAll('[role="dialog"], dialog[open], [aria-modal="true"]')).filter(visible).findLast((candidate) => candidate.querySelector(calendar));
+    return dialog || Array.from(document.querySelectorAll('[data-radix-popper-content-wrapper], [data-state="open"], [class*="calendar" i], [class*="datepicker" i]')).filter(visible).findLast((candidate) => candidate.querySelector(calendar)) || null;
+  };
   const ensurePopup = async () => { const open = popupFor(); if (open) return open; trigger.click(); await sleep(180); return popupFor(); };
   const dateParts = (iso) => { const [year, month, day] = String(iso || '').split('-').map(Number); return { year, month, day, iso: String(iso || ''), dotted: [year, String(month).padStart(2, '0'), String(day).padStart(2, '0')].join('.'), monthIndex: year * 12 + month - 1 }; };
   const buttons = (popup) => Array.from((popup || document).querySelectorAll('button, [role="gridcell"], [role="button"]')).filter((element) => visible(element) && !element.disabled && element.getAttribute('aria-disabled') !== 'true');
@@ -302,9 +306,11 @@ export const selectDateRangeScript = (key: string, value: FieldValue): string =>
   const visibleMonth = (popup) => { const text = Array.from((popup || document).querySelectorAll('[role="status"], [aria-live], [class*="caption" i], [class*="month" i]')).map((element) => String(element.textContent || '').trim()).find((entry) => /\\d{4}년\\s*\\d{1,2}월/.test(entry) || /[A-Za-z]+\\s+\\d{4}/.test(entry)); const korean = text?.match(/(\\d{4})년\\s*(\\d{1,2})월/); if (korean) return Number(korean[1]) * 12 + Number(korean[2]) - 1; const english = text ? new Date('1 ' + text) : null; return english && !Number.isNaN(english.getTime()) ? english.getFullYear() * 12 + english.getMonth() : null; };
   const navigation = (popup, direction) => buttons(popup).find((element) => { const text = [element.getAttribute('aria-label'), element.getAttribute('title'), element.textContent].filter(Boolean).join(' '); return direction < 0 ? /previous month|prev month|이전 달|이전달/i.test(text) : /next month|다음 달|다음달/i.test(text); });
   const select = async (iso) => { const target = dateParts(iso); if (!target.year || !target.month || !target.day) return false; let popup = await ensurePopup(); if (!popup) return false; for (let attempt = 0; attempt < 24; attempt += 1) { const exact = findDate(popup, iso); const current = visibleMonth(popup); if (exact && (current === null || current === target.monthIndex)) { exact.click(); await sleep(100); return true; } if (current === null || current === target.monthIndex) return false; const next = navigation(popup, target.monthIndex < current ? -1 : 1); if (!next) return false; next.click(); await sleep(120); popup = popupFor() || popup; } return false; };
+  const before = String(trigger.textContent || '').trim();
   const targets = (value?.__qaDateRange ? [value.start, value.end] : [String(value || '')]).filter(Boolean);
   let selected = 0; for (const target of targets) if (await select(target)) selected += 1;
-  const apply = Array.from(document.querySelectorAll('button')).filter(visible).find((element) => /^(적용|확인|선택|완료|apply|confirm|done)$/i.test(String(element.textContent || '').trim()));
-  if (apply) apply.click();
-  return { selected, expected: targets.length };
+  const apply = Array.from((popupFor() || document).querySelectorAll('button')).filter(visible).find((element) => /^(적용|확인|선택|선택 완료|완료|apply|confirm|done)$/i.test(String(element.textContent || '').trim()) && !element.disabled);
+  if (apply) { apply.click(); await sleep(100); }
+  const committed = !popupFor() || String(trigger.textContent || '').trim() !== before;
+  return { selected: committed ? selected : 0, expected: targets.length };
 })()`;

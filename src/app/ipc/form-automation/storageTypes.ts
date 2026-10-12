@@ -5,6 +5,7 @@ export const FORM_AUTOMATION_STORAGE_KEYS = [
   "checkly-form-saved-cases",
   "checkly-form-inspector-width",
   "checkly-form-network-list-height",
+  "checkly-form-case-list-height",
   "checkly-form-overrides",
   "checkly-form-openapi",
   "checkly-form-browser-zoom",
