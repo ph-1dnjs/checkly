@@ -1505,3 +1505,115 @@ body.panel-resizing { cursor:col-resize; user-select:none; }
 .api-detail-heading > div:first-child > .api-authorship { grid-column:1 / -1; grid-row:2; margin:6px 0 0; }
 .api-detail-heading > div:first-child > .api-authorship + .api-description { grid-row:3; }
 .api-authorship-sep { padding:0 4px; color:var(--ck-color-line-strong); white-space:pre; }
+
+/* Scenario detail (v27): one step list for the plan and the latest run, a ⋯ menu, one notice box. */
+.api-scenario-run .api-scenario-detail { max-width:980px; padding:22px 28px 140px; }
+.api-request-panel header.api-scn-head { display:flex; flex-wrap:wrap; align-items:flex-start; gap:12px 16px; margin:0; padding:0; border:0; }
+.api-scn-title { flex:1 1 320px; min-width:0; }
+.api-scn-group { margin:0 0 4px; font:11px var(--ck-font-mono); color:var(--api-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.api-testing-page .api-scn-title h2 { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; margin:0; color:var(--api-ink); font-size:18px; font-weight:700; letter-spacing:-.015em; line-height:1.35; overflow-wrap:anywhere; }
+.api-scn-title .api-authorship { margin:6px 0 0; }
+.api-scn-desc { display:-webkit-box; -webkit-line-clamp:1; -webkit-box-orient:vertical; overflow:hidden; margin:0; padding-top:6px; color:var(--ck-color-text-secondary); font-size:12.5px; line-height:1.6; }
+.api-scn-actions { position:relative; display:flex; flex:none; align-items:center; gap:6px; }
+.api-testing-page .api-scn-actions > button:not(.swagger-ui *) { min-height:28px; height:28px; padding:0 12px; font-size:12px; white-space:nowrap; }
+.api-testing-page button.api-scn-run:not(.swagger-ui *) { display:inline-flex; align-items:center; gap:6px; }
+.api-scn-more { position:relative; }
+.api-testing-page button.api-scn-icon-button:not(.swagger-ui *) { display:flex; align-items:center; justify-content:center; width:28px; height:28px; min-height:28px; padding:0; color:var(--ck-color-text-secondary); }
+.api-scn-menu { position:absolute; top:34px; right:0; z-index:20; display:flex; flex-direction:column; min-width:160px; padding:4px; border:1px solid var(--api-border); border-radius:var(--ck-dim-radius-float); background:var(--ck-color-canvas); box-shadow:0 12px 28px -16px rgb(20 24 28 / 35%); }
+.api-testing-page .api-scn-menu button.api-scn-menu-item:not(.swagger-ui *),.api-testing-page .api-scn-menu button.api-delete-trigger:not(.swagger-ui *) { display:flex; align-items:center; gap:8px; width:100%; height:30px; min-height:30px; padding:0 8px; border:0; border-radius:var(--ck-dim-radius-base); background:transparent; color:var(--api-ink); font-size:12px; text-align:left; white-space:nowrap; }
+.api-testing-page .api-scn-menu button.api-scn-menu-item:not(.swagger-ui *):hover:not(:disabled) { background:var(--ck-color-surface-hover); }
+.api-scn-menu button.api-scn-menu-item .app-icon { color:var(--ck-color-text-secondary); }
+.api-testing-page .api-scn-menu button.api-delete-trigger:not(.swagger-ui *) { color:var(--ck-color-fail-ink); }
+.api-testing-page .api-scn-menu button.api-delete-trigger:not(.swagger-ui *):hover { background:#fdf6f5; }
+
+.api-scenario-run .api-scn-notices { display:flex; flex-direction:column; gap:8px; margin-top:18px; }
+.api-scenario-run .api-scn-notices:empty { display:none; }
+.api-scn-notice { display:flex; flex-direction:column; gap:4px; padding:10px 12px; border:1px solid var(--api-border); border-radius:var(--ck-dim-radius-float); background:var(--ck-color-surface-subtle); color:var(--ck-color-text-body); }
+.api-scn-notice.is-warn { border-color:#e0cfa4; background:#fdf7e9; }
+.api-scn-notice.is-fail { border-color:#f1d5d1; background:#fdf6f5; }
+.api-scn-notice-title { display:flex; align-items:center; gap:8px; font-size:12.5px; }
+.api-scn-notice-title > strong { font-weight:600; }
+.api-scn-notice-title strong strong { font-weight:700; }
+.api-scn-notice.is-warn .api-scn-notice-title { color:var(--ck-color-wait-ink); }
+.api-scn-notice.is-fail .api-scn-notice-title { color:var(--ck-color-fail-ink); }
+.api-scn-notice.is-info .api-scn-notice-title { color:var(--ck-color-text-body); }
+.api-scn-notice-title .app-icon { flex:none; }
+.api-scn-notice-items { display:flex; flex-direction:column; gap:2px; margin:0; padding:0 0 0 25px; list-style:none; font-size:12px; line-height:1.6; }
+.api-scn-notice-items > li { display:flex; flex-wrap:wrap; align-items:baseline; gap:2px 8px; min-width:0; }
+.api-scn-notice-items > li::before { content:"·"; color:var(--api-muted); }
+.api-scn-notice-items code { font-size:11.5px; font-weight:700; }
+.api-scn-notice-hint { min-width:0; color:var(--api-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%; }
+.api-scn-notice-actions { display:flex; align-items:center; gap:8px; padding:4px 0 0 25px; }
+.api-scenario-run .api-scn-inputs { margin:0; padding:12px 14px; border-radius:var(--ck-dim-radius-float); }
+.api-scn-message { margin:12px 0 0; color:var(--ck-color-text-secondary); font-size:12px; }
+.api-testing-page button.api-scn-text-button:not(.swagger-ui *) { min-height:0; height:24px; padding:0 6px; border:0; background:transparent; color:var(--ck-color-blue-action); font-size:11.5px; white-space:nowrap; }
+.api-testing-page button.api-scn-text-button:not(.swagger-ui *):hover:not(:disabled) { background:var(--ck-color-surface-hover-strong); }
+
+.api-scn-steps { margin-top:0; }
+.api-request-panel header.api-scn-steps-heading { display:flex; align-items:center; gap:8px; min-width:0; margin:0 0 10px; padding:26px 0 10px; border-bottom:1px solid var(--ck-color-line-soft); }
+.api-testing-page .api-scn-steps-heading h3 { margin:0; color:var(--api-ink); font-size:13px; font-weight:700; }
+.api-scn-steps-count { font:11.5px var(--ck-font-mono); color:var(--api-muted); }
+.api-scn-steps-meta { display:flex; align-items:center; gap:8px; min-width:0; margin-left:auto; overflow:hidden; color:var(--api-muted); font-size:11.5px; white-space:nowrap; }
+.api-scn-steps-meta > span { min-width:0; overflow:hidden; text-overflow:ellipsis; }
+.api-scn-steps-meta .api-run-status { padding:1px 7px; font-size:10.5px; }
+.api-scn-result-status { font-size:11.5px; font-weight:600; color:var(--api-body); }
+.api-scn-result-status.is-passed { color:var(--ck-color-pass); }
+.api-scn-result-status:is(.is-failed,.is-error) { color:var(--ck-color-fail-ink); }
+.api-scn-result-status.is-blocked { color:var(--ck-color-wait-ink); }
+.api-testing-page button.api-scn-stop:not(.swagger-ui *) { flex:none; height:26px; min-height:26px; padding:0 10px; border-color:#e9c4c0; color:var(--ck-color-fail-ink); font-size:12px; white-space:nowrap; }
+.api-testing-page button.api-scn-stop:not(.swagger-ui *):hover { background:#fdf6f5; }
+@keyframes api-scn-bar { 0% { transform:translateX(-100%); } 100% { transform:translateX(300%); } }
+.api-scn-progress { height:3px; margin:-4px 0 10px; overflow:hidden; border-radius:2px; background:var(--ck-color-line-soft); }
+.api-scn-progress > span { display:block; width:33%; height:100%; background:var(--ck-color-blue); animation:api-scn-bar 1.2s linear infinite; }
+@media (prefers-reduced-motion:reduce) { .api-scn-progress > span { animation-duration:3s; } }
+
+.api-scn-step-list { display:flex; flex-direction:column; gap:6px; }
+.api-scn-step { border:1px solid var(--api-border); border-radius:var(--ck-dim-radius-float); background:var(--ck-color-canvas); }
+.api-scn-step.is-problem { border-color:#f1d5d1; }
+.api-scn-step.is-blocked.is-problem { border-color:#e0cfa4; }
+.api-testing-page button.api-scn-step-head:not(.swagger-ui *) { display:flex; align-items:center; gap:10px; width:100%; min-height:42px; padding:4px 10px 4px 12px; border:0; border-radius:5px; background:transparent; color:var(--api-ink); text-align:left; }
+.api-testing-page .api-scn-step.is-problem button.api-scn-step-head:not(.swagger-ui *) { background:#fdf6f5; }
+.api-testing-page .api-scn-step.is-blocked.is-problem button.api-scn-step-head:not(.swagger-ui *) { background:#fdf7e9; }
+.api-testing-page button.api-scn-step-head:not(.swagger-ui *):hover { background:var(--ck-color-surface-hover); }
+.api-scn-step.is-open button.api-scn-step-head { border-bottom-left-radius:0; border-bottom-right-radius:0; }
+.api-scn-step-index { flex:none; width:14px; font:11.5px var(--ck-font-mono); color:var(--api-muted); }
+.api-scn-step-head .api-method { flex:none; display:flex; align-items:center; justify-content:center; width:54px; min-width:54px; height:20px; padding:0; border-radius:var(--ck-dim-radius-base); font:700 10.5px var(--ck-font-mono); }
+.api-scn-step-main { flex:1; min-width:0; }
+.api-scn-step-path { display:flex; align-items:center; gap:8px; min-width:0; }
+.api-scn-step-path code { min-width:0; overflow:hidden; font-size:12.5px; font-weight:700; text-overflow:ellipsis; white-space:nowrap; }
+.api-scn-step-path .api-run-server { flex:none; margin:0; }
+.api-scn-step-main small { display:block; padding-top:2px; overflow:hidden; color:var(--ck-color-text-secondary); font-size:11.5px; text-overflow:ellipsis; white-space:nowrap; }
+.api-scn-step-fail { display:flex; flex:none; align-items:center; gap:4px; color:var(--ck-color-fail-ink); font-size:11px; white-space:nowrap; }
+.api-scn-step-fail > span { width:6px; height:6px; border-radius:50%; background:currentColor; }
+.api-scn-step.is-blocked .api-scn-step-fail { color:var(--ck-color-wait-ink); }
+.api-scn-step-meta { flex:none; color:var(--ck-color-text-disabled); font:11px var(--ck-font-mono); white-space:nowrap; }
+@media (max-width:1100px) { .api-scn-step-meta { display:none; } }
+.api-scn-step-caret { flex:none; color:var(--api-muted); transition:transform .12s ease; }
+.api-scn-step.is-open .api-scn-step-caret { transform:rotate(180deg); }
+.api-scn-step-body { display:flex; flex-direction:column; gap:12px; padding:10px 14px 14px; border-top:1px solid var(--ck-color-line-soft); }
+.api-scn-step-body[hidden] { display:none!important; }
+.api-scn-step-body > .api-warning { margin:0; padding:8px 12px; border-left:0; border-radius:var(--ck-dim-radius-base); background:var(--ck-color-fail-tint); color:var(--ck-color-fail-ink); font-size:12px; }
+.api-scn-step-flow { margin:0; color:var(--ck-color-text-secondary); font-size:11.5px; overflow-wrap:anywhere; }
+.api-scn-step-flow code { color:var(--api-body); font-size:11.5px; }
+.api-scn-step-body .api-run-checks { margin:0; }
+.api-scn-step-body .api-run-checks li { font-family:var(--ck-font-mono); font-size:11.5px; }
+.api-scn-tabs { display:flex; gap:4px; }
+.api-testing-page .api-scn-tabs button:not(.swagger-ui *) { height:24px; min-height:24px; padding:0 9px; border:0; border-radius:var(--ck-dim-radius-base); background:transparent; color:var(--ck-color-text-secondary); font-size:11.5px; }
+.api-testing-page .api-scn-tabs button[aria-selected="true"]:not(.swagger-ui *) { background:var(--ck-color-surface-hover-strong); color:var(--api-ink); font-weight:600; }
+.api-scn-tabs + .api-scn-tab-panel,.api-scn-tabs ~ .api-scn-tab-panel { margin-top:-6px; }
+.api-scn-step-body [hidden].api-scn-tab-panel { display:none!important; }
+.api-scn-tab-panel.api-run-payload { display:flex; flex-direction:column; gap:6px; min-width:0; border-top:0; }
+.api-scn-tab-panel .api-run-payload-meta { display:flex; flex-wrap:wrap; gap:8px; margin:0; overflow-wrap:anywhere; font:11.5px var(--ck-font-mono); color:var(--ck-color-text-secondary); }
+.api-scn-tab-panel .api-run-payload-empty { margin:0; }
+.api-scn-tab-panel .api-run-headers > summary { padding:2px 0; font-size:11.5px; color:var(--ck-color-text-secondary); }
+
+.api-scenario-run .api-scn-yaml { margin-top:26px; padding:0; border:1px solid var(--api-border); border-radius:var(--ck-dim-radius-float); }
+.api-scenario-run .api-scn-yaml > summary { display:flex; align-items:center; gap:6px; height:36px; padding:0 10px; color:var(--api-body); font-size:12px; font-weight:400; list-style:none; }
+.api-scn-yaml > summary::-webkit-details-marker { display:none; }
+.api-scn-yaml > summary:hover { background:var(--ck-color-surface-hover); }
+.api-scn-yaml > summary small { margin-left:auto; color:var(--ck-color-text-disabled); font-size:11px; }
+.api-scn-yaml-caret { color:var(--api-muted); transform:rotate(-90deg); transition:transform .12s ease; }
+.api-scn-yaml[open] .api-scn-yaml-caret { transform:none; }
+.api-scn-yaml-body { padding:0 10px 10px; border-top:1px solid var(--ck-color-line-soft); }
+.api-scn-yaml-body .api-scenario-yaml-tools { margin-top:10px; margin-bottom:8px; }
+.api-testing-page .api-scn-yaml-body .api-scenario-yaml-tools button:not(.swagger-ui *) { display:inline-flex; align-items:center; gap:6px; height:24px; min-height:24px; padding:0 8px; font-size:11px; }

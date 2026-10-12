@@ -564,10 +564,10 @@ process.stdin.on("data", chunk => {
     await inputDialog.getByRole("textbox").fill("abandoned-input");
     await inputDialog.getByRole("button", { name: "실행 중단", exact: true }).click();
     await expect(inputDialog).not.toBeVisible();
-    await expect(page.getByRole("button", { name: "다시 실행", exact: true })).toBeEnabled();
+    await expect(page.getByRole("button", { name: "실행", exact: true })).toBeEnabled();
     expect(await pendingInput()).toBeNull();
     expect(loginInputs).toHaveLength(loginCallsBefore);
-    await page.getByRole("button", { name: "다시 실행", exact: true }).click();
+    await page.getByRole("button", { name: "실행", exact: true }).click();
     await expect(inputDialog).toBeVisible();
     await expect(inputDialog.getByRole("textbox")).toHaveValue("");
     const nextInput = await pendingInput();
@@ -586,7 +586,7 @@ process.stdin.on("data", chunk => {
     expect(loginInputs).toHaveLength(loginCallsBefore);
     await inputDialog.getByRole("textbox").fill("tester");
     await inputDialog.getByRole("button", { name: "입력 완료 · 계속", exact: true }).click();
-    const result = page.getByRole("region", { name: "시나리오 실행 결과" });
+    const result = page.getByRole("region", { name: "시나리오 단계" });
     await expect(result).toContainText("통과");
     expect(loginInputs).toHaveLength(loginCallsBefore + 1);
     expect(loginInputs.at(-1)).toBe("tester");
@@ -637,22 +637,25 @@ process.stdin.on("data", chunk => {
     await runValues.getByRole("button", { name: "취소", exact: true }).click();
     await page.getByRole("button", { name: "시나리오 목록으로", exact: true }).click();
     await page.getByRole("button", { name: /로그인 후 상품 조회/ }).click();
-    // The run flow lists the checks with the editor's labels.
-    await page.getByRole("button", { name: "실행 흐름", exact: true }).click();
-    await page.getByRole("button", { name: "모두 펼치기", exact: true }).first().click();
-    const flow = page.getByRole("region", { name: "시나리오 실행 흐름" });
+    // The steps list the checks with the editor's labels, next to the latest result.
+    const flow = page.getByRole("region", { name: "시나리오 단계" });
+    await flow.getByRole("button", { name: "모두 펼치기", exact: true }).click();
     await expect(flow).toContainText("HTTP 상태");
     await expect(flow).toContainText("존재하는지");
     // A copy opens in place and is deleted from its detail view.
-    await page.getByRole("button", { name: "복제", exact: true }).click();
+    await page.getByRole("button", { name: "더 보기", exact: true }).click();
+    await page.getByRole("menuitem", { name: "복제", exact: true }).click();
     await expect(page.getByRole("heading", { name: "로그인 후 상품 조회 사본", exact: true })).toBeVisible();
     // Copying again (even a copy) numbers the name instead of repeating it.
-    await page.getByRole("button", { name: "복제", exact: true }).click();
+    await page.getByRole("button", { name: "더 보기", exact: true }).click();
+    await page.getByRole("menuitem", { name: "복제", exact: true }).click();
     await expect(page.getByRole("heading", { name: "로그인 후 상품 조회 사본 2", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "더 보기", exact: true }).click();
     await page.getByRole("button", { name: "시나리오 삭제", exact: true }).click();
     await page.getByRole("button", { name: "시나리오 삭제 확인", exact: true }).click();
     await page.getByRole("button", { name: "로그인 후 상품 조회 사본", exact: true }).click();
     await expect(page.getByRole("heading", { name: "로그인 후 상품 조회 사본", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "더 보기", exact: true }).click();
     await page.getByRole("button", { name: "시나리오 삭제", exact: true }).click();
     await page.getByRole("button", { name: "시나리오 삭제 확인", exact: true }).click();
     await expect(page.getByRole("button", { name: /로그인 후 상품 조회 사본/ })).toHaveCount(0);
@@ -712,6 +715,7 @@ process.stdin.on("data", chunk => {
     // Scenarios are deleted from their detail view. File mode shows no authorship line.
     await page.getByRole("button", { name: "AI 상품 조회", exact: true }).click();
     await expect(page.getByLabel("작성 정보", { exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: "더 보기", exact: true }).click();
     await page.getByRole("button", { name: "시나리오 삭제", exact: true }).click();
     await page.getByRole("button", { name: "시나리오 삭제 확인", exact: true }).click();
     await expect(page.getByRole("button", { name: "AI 상품 조회", exact: true })).toHaveCount(0);
@@ -739,9 +743,10 @@ process.stdin.on("data", chunk => {
     await decimalDialog.getByRole("spinbutton", { name: "금액 입력", exact: true }).fill("1.5");
     await decimalDialog.getByRole("button", { name: "입력 완료 · 계속", exact: true }).click();
     await expect(decimalDialog).not.toBeVisible();
-    await expect(page.getByRole("region", { name: "시나리오 실행 결과" })).toContainText("통과");
+    await expect(page.getByRole("region", { name: "시나리오 단계" })).toContainText("통과");
     expect(decimalInputs).toEqual([1.5]);
     expect(await pendingInput()).toBeNull();
+    await page.getByRole("button", { name: "더 보기", exact: true }).click();
     await page.getByRole("button", { name: "시나리오 삭제", exact: true }).click();
     await page.getByRole("button", { name: "시나리오 삭제 확인", exact: true }).click();
     await expect(page.getByRole("button", { name: "소수 실행 입력", exact: true })).toHaveCount(0);
@@ -923,7 +928,7 @@ process.stdin.on("data", chunk => {
     const importedInput = restored.getByRole("dialog", { name: "loginId 입력", exact: true });
     await importedInput.getByRole("textbox").fill("tester");
     await importedInput.getByRole("button", { name: "입력 완료 · 계속", exact: true }).click();
-    await expect(restored.getByRole("region", { name: "시나리오 실행 결과" })).toContainText("통과");
+    await expect(restored.getByRole("region", { name: "시나리오 단계" })).toContainText("통과");
     // The copy's file (with one more scenario) goes back into the original through the update dialog.
     await restored.getByRole("button", { name: "프로젝트 설정", exact: true }).click();
     await restored.getByRole("button", { name: "프로젝트 내보내기", exact: true }).click();
