@@ -13,6 +13,8 @@
 @import "./auth.css";
 @import "./screen-extract.css";
 @import "./form-automation.css";
+@import "./page-layout.css";
+@import "./scenario-workspace.css";
 
 * {
   box-sizing: border-box;

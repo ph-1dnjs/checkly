@@ -7,6 +7,7 @@ import {
   listScenarioFolder,
   loadMarkerPositions,
   loadScenarioMarkdown,
+  openScenarioFile,
   readScenarioFile,
   saveImportedScenarioFile,
   saveMarkerPositions,
@@ -35,6 +36,9 @@ export const scenarioFileDomain: MainDomain = {
     ipcMain.handle("scenario:choose-folder", () => chooseScenarioFolder());
     ipcMain.handle("scenario:read-file", (_event, filePath: string) =>
       readScenarioFile(filePath),
+    );
+    ipcMain.handle("scenario:open-file", (_event, filePath: string) =>
+      openScenarioFile(filePath),
     );
     // 채널은 qa: 이지만 파일 선택 대화상자라 구현이 있는 이 도메인에서 등록한다.
     ipcMain.handle("qa:select-upload-file", () => selectUploadFile());

@@ -12,4 +12,5 @@ export const scenarioFileBridge = {
   listScenarioFolder: (): Promise<{ folderPath: string | null; files: Array<{ name: string; path: string; updatedAt: string }> }> => ipcRenderer.invoke('scenario:list-folder'),
   chooseScenarioFolder: (): Promise<{ folderPath: string | null; files: Array<{ name: string; path: string; updatedAt: string }> }> => ipcRenderer.invoke('scenario:choose-folder'),
   readScenarioFile: (filePath: string): Promise<string | null> => ipcRenderer.invoke('scenario:read-file', filePath),
+  openScenarioFile: (filePath: string): Promise<{ markdown: string; filePath: string } | null> => ipcRenderer.invoke('scenario:open-file', filePath),
 }

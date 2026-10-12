@@ -37,6 +37,7 @@ import {
   type FieldValue,
   type FileValue,
 } from "./model";
+import { PageHeader } from "../../shared/ui/PageLayout";
 import { NetworkPanel, OverridePanel } from "./InspectorPanels";
 import { OpenApiDialog } from "./OpenApiDialog";
 import { ScreenshotEditor, type ScreenshotCapture } from "./ScreenshotEditor";
@@ -1087,12 +1088,7 @@ const FormAutomationContent = (): ReactElement => {
 
   return (
     <div className="form-automation-page">
-      <header className="form-automation-header">
-        <div>
-          <div className="eyebrow">LIVE QA SESSION</div>
-          <h1>사이트를 보면서 폼을 자동으로 완성하세요</h1>
-          <p>현재 화면의 입력 필드를 감지하고 선택한 값만 폼에 적용합니다.</p>
-        </div>
+      <PageHeader icon="dynamic_form" title="폼 자동 완성" className="form-automation-header">
         <div className="fa-header-actions">
           <button
             className="button fa-header-action secondary"
@@ -1100,19 +1096,20 @@ const FormAutomationContent = (): ReactElement => {
             onClick={() => void startCapture()}
             aria-label="화면 캡처"
             aria-keyshortcuts="Control+Shift+S Meta+Shift+S"
-            title="화면 캡처 (⌘/Ctrl + Shift + S)"
+            title="화면을 캡처해 주석을 달고 클립보드에 복사 (⌘/Ctrl + Shift + S)"
           >
             <MaterialIcon name="photo_camera" /> {captureBusy ? "캡처 중…" : "화면 캡처"}
             {!captureBusy && <span className="fa-shortcut-hint" aria-hidden="true">⌘/Ctrl ⇧ S</span>}
           </button>
           <button className="button fa-header-action secondary" onClick={() => setOpenApiDialog(true)}>
+            {openApi && <span className="fa-swagger-dot" aria-hidden="true" />}
             <MaterialIcon name="data_object" /> {openApi ? "Swagger 연결됨" : "Swagger 연결"}
           </button>
           <button className="button button-primary fa-header-action" onClick={() => void autofill()} disabled={!draftFieldCount}>
             <MaterialIcon name="auto_fix_high" /> 선택 케이스 자동 입력
           </button>
         </div>
-      </header>
+      </PageHeader>
 
       <div
         className={`form-automation-workbench${focusMode ? " browser-focus" : ""}`}

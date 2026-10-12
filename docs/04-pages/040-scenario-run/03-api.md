@@ -16,6 +16,7 @@
 | setQaViewport / `qa:set-viewport` | `{width,height}` | 선택 크기와 현재 활성 Page 갱신 |
 | downloadRunVideo / `qa:download-run-video` | 파일 경로 | Downloads 목적지 경로, 실패 시 reject |
 | mergeRunVideos / `qa:merge-run-videos` | 파일 경로 배열 | 중복 제거 후 병합 경로; 0개면 null |
+| saveRunReport / `qa:save-run-report` | Markdown 문자열, 기본 파일 이름 | 저장 대화상자(기본 위치 Downloads, `.md`)로 저장한 경로; 취소 시 null |
 
 QaScenario는 id/title/url/steps, QaStep은 id/action/target 및 value/required/prompt/condition/waitSeconds/occurrence입니다. 편집기 tag·좌표·connected는 native 실행 판단에 사용하지 않습니다. preload의 headed 옵션은 main의 실행 타입/로직에서 사용하지 않으며 항상 headless입니다.
 

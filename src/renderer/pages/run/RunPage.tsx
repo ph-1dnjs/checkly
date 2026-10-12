@@ -121,7 +121,6 @@ type Props = {
   onCompleteManualControl: () => void;
   onFailManualControl: (reason: string) => void;
   onSetViewport: (width: number, height: number) => void;
-  onGoToPicker: () => void;
   onCancel: () => void;
   onPopout: (viewportLabel: string) => void;
   onLivePreviewChange: (value: boolean) => void;
@@ -129,6 +128,8 @@ type Props = {
   fullRunVideoAvailable: boolean;
   onDownloadRunVideo: (path: string) => void;
   onDownloadFullRunVideo: () => void;
+  reportAvailable: boolean;
+  onOpenReport: () => void;
 };
 
 export const RunPage = ({
@@ -166,7 +167,6 @@ export const RunPage = ({
   onCompleteManualControl,
   onFailManualControl,
   onSetViewport,
-  onGoToPicker,
   onCancel,
   onPopout,
   onLivePreviewChange,
@@ -174,6 +174,8 @@ export const RunPage = ({
   fullRunVideoAvailable,
   onDownloadRunVideo,
   onDownloadFullRunVideo,
+  reportAvailable,
+  onOpenReport,
 }: Props) => {
   const [manualFailureReason, setManualFailureReason] = useState("");
   const [selStep, setSelStep] = useState<string | null>(null);
@@ -278,7 +280,6 @@ export const RunPage = ({
             ? PASS
             : IDLE;
   const canStop = running;
-  const canReplay = !running;
 
   const directOn = Boolean(manualControl);
   const selectedPreview = selStep ? stepPreviews[selStep] : undefined;
@@ -538,9 +539,14 @@ export const RunPage = ({
               실행 중단
             </Button>
           )}
-          {canReplay && (
-            <Button variant="secondary" onClick={onGoToPicker}>
-              시나리오 다시 선택
+          {reportAvailable && !running && (
+            <Button
+              className="run-report-btn"
+              title="실행 결과 리포트 보기 · Markdown 다운로드"
+              onClick={onOpenReport}
+            >
+              <span className="msi">description</span>
+              리포트
             </Button>
           )}
           {fullRunVideoAvailable && !running && (

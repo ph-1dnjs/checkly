@@ -35,6 +35,10 @@ export type ScenarioRunResult = {
   status: "passed" | "failed" | "cancelled";
   failedStepIndex?: number;
   message?: string;
+  // 리포트용 부가 정보. 이전 기록이나 예외로 끝난 실행에는 없을 수 있다.
+  startedAt?: string;
+  elapsedSeconds?: number;
+  log?: string[];
 };
 export type RunRecord = {
   id: string;
@@ -43,6 +47,7 @@ export type RunRecord = {
   passed: number;
   failed: number;
   ranAt: string;
+  startedAt?: string;
   results: ScenarioRunResult[];
 };
 export type RunSummary = { total: number; passed: number; failed: number };
@@ -55,6 +60,13 @@ export type Route =
   | "form-automation"
   | "api-testing"
   | "settings";
+/** 시나리오 작업공간 하나로 묶인 화면: 편집 탭(editor)과 실행 탭(picker · run). */
+export type ScenarioWorkspaceRoute = Extract<Route, "editor" | "picker" | "run">;
+export type ScenarioRunRoute = Extract<Route, "picker" | "run">;
+export const isScenarioWorkspaceRoute = (
+  route: Route,
+): route is ScenarioWorkspaceRoute =>
+  route === "editor" || route === "picker" || route === "run";
 
 export const emptyScenario: Scenario = {
   id: "",

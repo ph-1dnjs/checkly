@@ -1,7 +1,7 @@
 import { runStatusName } from "../../../entities/api-testing";
 import { useEffect, useRef, useState } from "react";
 import type { ApiProject, ApiScope, ApiScenarioInputRequest, ApiScenarioResult, ApiTestingBridge, SavedApiScenario, SavedApiSuite } from "../../../../app/api-testing/shared/workspace";
-import { formatDuration, producedGlobalNames, renderSuiteReport, reportScenario, usesInvalidatedGlobal, type SuiteReport, type SuiteReportScenario } from "../../../../app/api-testing/shared/suite-report";
+import { formatDuration, producedGlobalNames, renderSuiteReport, reportFilename, reportScenario, usesInvalidatedGlobal, type SuiteReport, type SuiteReportScenario } from "../../../../app/api-testing/shared/suite-report";
 import { groupMissingGlobals, issueGlobal, missingGlobalIssue, stepNumbersText } from "../../../../app/api-testing/shared/preflight-issues";
 import { GlobalVariableSetupLink, SidebarMetadataFields, writeLastRun } from "../../../entities/api-testing";
 import { useGlobalVariableAccess } from "../../../features/api-testing/configure-globals";
@@ -169,7 +169,7 @@ export function SuitePanel({ project, scope, bridge, scenarios, suites, selected
   };
   const download = async () => {
     if (!report || running) return;
-    try { await bridge.saveSuiteReport(`checkly-api-report-${new Date(report.startedAt).toISOString().replace(/[:.]/g, "-")}.html`, renderSuiteReport(report)); }
+    try { await bridge.saveSuiteReport(reportFilename(report.startedAt), renderSuiteReport(report)); }
     catch (err) { setError(message(err)); }
   };
   const stopEditing = () => {

@@ -19,6 +19,7 @@ import type {
   QaRunOptions,
   QaScenario,
 } from "./qaTypes";
+import { saveRunReport } from "./reports";
 import { downloadRunVideo, mergeRunVideos } from "./video";
 
 export const qaDomain: MainDomain = {
@@ -43,6 +44,15 @@ export const qaDomain: MainDomain = {
     );
     ipcMain.handle("qa:merge-run-videos", (_event, filePaths: string[]) =>
       mergeRunVideos(filePaths),
+    );
+    ipcMain.handle(
+      "qa:save-run-report",
+      (event, markdown: string, fileName: string) =>
+        saveRunReport(
+          BrowserWindow.fromWebContents(event.sender),
+          markdown,
+          fileName,
+        ),
     );
     ipcMain.handle("qa:manual-input", (_event, value: string) =>
       resolveManualInput(value),

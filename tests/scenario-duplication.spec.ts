@@ -20,7 +20,8 @@ test.beforeEach(async ({ page }) => {
     })
   })
   await page.goto('/')
-  await page.getByRole('button', { name: '편집기' }).click()
+  await page.getByRole('button', { name: '시나리오 · 편집과 실행' }).click()
+  await page.getByRole('tab', { name: '편집' }).click()
   await page.getByRole('textbox', { name: '시나리오 Markdown 원본' }).fill([
     '# 시나리오: 로그인',
     'url: https://example.com',
@@ -31,7 +32,7 @@ test.beforeEach(async ({ page }) => {
 })
 
 test('duplicates multiple cases with defaults, tags and unique names', async ({ page }) => {
-  await page.getByRole('button', { name: '복제', exact: true }).click()
+  await page.getByRole('button', { name: '템플릿 복제', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: '템플릿으로 복제' })
   await dialog.getByRole('textbox', { name: '복제본 이름' }).fill('로그인')
   await dialog.getByRole('textbox', { name: '이메일 값', exact: true }).fill('changed@example.com')
@@ -64,14 +65,14 @@ test('duplicates multiple cases with defaults, tags and unique names', async ({ 
 })
 
 test('removes cases and resets the form after cancellation', async ({ page }) => {
-  await page.getByRole('button', { name: '복제', exact: true }).click()
+  await page.getByRole('button', { name: '템플릿 복제', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: '템플릿으로 복제' })
   await dialog.getByRole('button', { name: '+ 케이스 추가' }).click()
   await dialog.getByRole('button', { name: '현재 케이스 삭제' }).click()
   await expect(dialog.getByRole('tab')).toHaveCount(1)
   await dialog.getByRole('textbox', { name: '이메일 값', exact: true }).fill('discard@example.com')
   await dialog.getByRole('button', { name: '취소', exact: true }).click()
-  await page.getByRole('button', { name: '복제', exact: true }).click()
+  await page.getByRole('button', { name: '템플릿 복제', exact: true }).click()
   await expect(dialog.getByRole('textbox', { name: '이메일 값', exact: true })).toHaveValue('')
   await expect(dialog.getByRole('tab')).toHaveCount(1)
   await expect(page.getByRole('textbox', { name: '시나리오 Markdown 원본' })).not.toHaveValue(/discard@example/)

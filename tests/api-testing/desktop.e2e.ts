@@ -369,9 +369,11 @@ process.stdin.on("data", chunk => {
     await page.getByRole("tab", { name: "AI 작성 도우미", exact: true }).click();
     await page.getByRole("tab", { name: "앱에서 AI와 대화", exact: true }).click();
     await expect(screen).toContainText("고쳐서 다시 저장했습니다");
-    await page.getByRole("group", { name: "API 환경", exact: true }).getByRole("button", { name: "stage", exact: true }).click();
+    await page.getByRole("button", { name: "API 환경", exact: true }).click();
+    await page.getByRole("menuitemradio", { name: /^stage/ }).click();
     await expect(terminalPane).toContainText("이 대화는 dev에서 시작했습니다");
-    await page.getByRole("group", { name: "API 환경", exact: true }).getByRole("button", { name: "dev", exact: true }).click();
+    await page.getByRole("button", { name: "API 환경", exact: true }).click();
+    await page.getByRole("menuitemradio", { name: /^dev/ }).click();
     // 대화 초기화 stops the CLI and goes back to 대화 시작; the next start is a new session. Saved scenarios stay.
     await terminalPane.getByRole("button", { name: "대화 초기화", exact: true }).click();
     await expect(terminalPane.getByRole("button", { name: "대화 시작", exact: true })).toBeVisible();
@@ -450,7 +452,7 @@ process.stdin.on("data", chunk => {
     await page.getByRole("button", { name: "+ 새 시나리오", exact: true }).click();
     // The composer toolbar replaces the locked header: tabs hide, environment and values stay.
     await expect(page.getByRole("tab", { name: "시나리오", exact: true })).toBeHidden();
-    await expect(page.getByRole("group", { name: "시나리오 전체 호출 환경" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "시나리오 전체 호출 환경" })).toBeVisible();
     await expect(page.getByRole("button", { name: "{ } 전역변수", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "시나리오에 API 추가", exact: true }).nth(0).click();
     await page.getByRole("button", { name: "시나리오에 API 추가", exact: true }).nth(1).click();
@@ -541,7 +543,8 @@ process.stdin.on("data", chunk => {
     await expect(secondStep.locator(".api-expect-linked-value")).toContainText("1단계 응답 id");
     await expect(secondStep.locator("details.api-verification-item > summary")).toContainText("기대값과 같은지 [1단계 응답 id]");
     await shot("compose");
-    await page.getByRole("button", { name: "시나리오 검사·저장", exact: true }).click();
+    // The header's 저장 submits the same check-and-save as the editor's button.
+    await page.locator(".page-layout-header").getByRole("button", { name: "저장", exact: true }).click();
     await expect(page.getByText("시나리오를 저장했습니다. 이 화면에서 계속 수정할 수 있습니다.", { exact: true })).toBeVisible();
     await expect(page.getByText("시나리오 수정 · 로그인 후 상품 조회", { exact: true })).toBeVisible();
 
@@ -564,10 +567,10 @@ process.stdin.on("data", chunk => {
     await inputDialog.getByRole("textbox").fill("abandoned-input");
     await inputDialog.getByRole("button", { name: "실행 중단", exact: true }).click();
     await expect(inputDialog).not.toBeVisible();
-    await expect(page.getByRole("button", { name: "다시 실행", exact: true })).toBeEnabled();
+    await expect(page.getByRole("button", { name: "실행", exact: true })).toBeEnabled();
     expect(await pendingInput()).toBeNull();
     expect(loginInputs).toHaveLength(loginCallsBefore);
-    await page.getByRole("button", { name: "다시 실행", exact: true }).click();
+    await page.getByRole("button", { name: "실행", exact: true }).click();
     await expect(inputDialog).toBeVisible();
     await expect(inputDialog.getByRole("textbox")).toHaveValue("");
     const nextInput = await pendingInput();
@@ -586,7 +589,7 @@ process.stdin.on("data", chunk => {
     expect(loginInputs).toHaveLength(loginCallsBefore);
     await inputDialog.getByRole("textbox").fill("tester");
     await inputDialog.getByRole("button", { name: "입력 완료 · 계속", exact: true }).click();
-    const result = page.getByRole("region", { name: "시나리오 실행 결과" });
+    const result = page.getByRole("region", { name: "시나리오 단계" });
     await expect(result).toContainText("통과");
     expect(loginInputs).toHaveLength(loginCallsBefore + 1);
     expect(loginInputs.at(-1)).toBe("tester");
@@ -637,22 +640,25 @@ process.stdin.on("data", chunk => {
     await runValues.getByRole("button", { name: "취소", exact: true }).click();
     await page.getByRole("button", { name: "시나리오 목록으로", exact: true }).click();
     await page.getByRole("button", { name: /로그인 후 상품 조회/ }).click();
-    // The run flow lists the checks with the editor's labels.
-    await page.getByRole("button", { name: "실행 흐름", exact: true }).click();
-    await page.getByRole("button", { name: "모두 펼치기", exact: true }).first().click();
-    const flow = page.getByRole("region", { name: "시나리오 실행 흐름" });
+    // The steps list the checks with the editor's labels, next to the latest result.
+    const flow = page.getByRole("region", { name: "시나리오 단계" });
+    await flow.getByRole("button", { name: "모두 펼치기", exact: true }).click();
     await expect(flow).toContainText("HTTP 상태");
     await expect(flow).toContainText("존재하는지");
     // A copy opens in place and is deleted from its detail view.
-    await page.getByRole("button", { name: "복제", exact: true }).click();
+    await page.getByRole("button", { name: "더 보기", exact: true }).click();
+    await page.getByRole("menuitem", { name: "복제", exact: true }).click();
     await expect(page.getByRole("heading", { name: "로그인 후 상품 조회 사본", exact: true })).toBeVisible();
     // Copying again (even a copy) numbers the name instead of repeating it.
-    await page.getByRole("button", { name: "복제", exact: true }).click();
+    await page.getByRole("button", { name: "더 보기", exact: true }).click();
+    await page.getByRole("menuitem", { name: "복제", exact: true }).click();
     await expect(page.getByRole("heading", { name: "로그인 후 상품 조회 사본 2", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "더 보기", exact: true }).click();
     await page.getByRole("button", { name: "시나리오 삭제", exact: true }).click();
     await page.getByRole("button", { name: "시나리오 삭제 확인", exact: true }).click();
     await page.getByRole("button", { name: "로그인 후 상품 조회 사본", exact: true }).click();
     await expect(page.getByRole("heading", { name: "로그인 후 상품 조회 사본", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "더 보기", exact: true }).click();
     await page.getByRole("button", { name: "시나리오 삭제", exact: true }).click();
     await page.getByRole("button", { name: "시나리오 삭제 확인", exact: true }).click();
     await expect(page.getByRole("button", { name: /로그인 후 상품 조회 사본/ })).toHaveCount(0);
@@ -712,6 +718,7 @@ process.stdin.on("data", chunk => {
     // Scenarios are deleted from their detail view. File mode shows no authorship line.
     await page.getByRole("button", { name: "AI 상품 조회", exact: true }).click();
     await expect(page.getByLabel("작성 정보", { exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: "더 보기", exact: true }).click();
     await page.getByRole("button", { name: "시나리오 삭제", exact: true }).click();
     await page.getByRole("button", { name: "시나리오 삭제 확인", exact: true }).click();
     await expect(page.getByRole("button", { name: "AI 상품 조회", exact: true })).toHaveCount(0);
@@ -739,9 +746,10 @@ process.stdin.on("data", chunk => {
     await decimalDialog.getByRole("spinbutton", { name: "금액 입력", exact: true }).fill("1.5");
     await decimalDialog.getByRole("button", { name: "입력 완료 · 계속", exact: true }).click();
     await expect(decimalDialog).not.toBeVisible();
-    await expect(page.getByRole("region", { name: "시나리오 실행 결과" })).toContainText("통과");
+    await expect(page.getByRole("region", { name: "시나리오 단계" })).toContainText("통과");
     expect(decimalInputs).toEqual([1.5]);
     expect(await pendingInput()).toBeNull();
+    await page.getByRole("button", { name: "더 보기", exact: true }).click();
     await page.getByRole("button", { name: "시나리오 삭제", exact: true }).click();
     await page.getByRole("button", { name: "시나리오 삭제 확인", exact: true }).click();
     await expect(page.getByRole("button", { name: "소수 실행 입력", exact: true })).toHaveCount(0);
@@ -765,7 +773,8 @@ process.stdin.on("data", chunk => {
     await restored.getByRole("button", { name: "명세 설정", exact: true }).click();
     await expect(restored.getByLabel("OpenAPI URL", { exact: true })).toHaveValue(`${url}/openapi.json`);
     // Clicking the environment already chosen keeps the URL (nothing loads it again).
-    await restored.getByRole("group", { name: "API 환경" }).locator('button[aria-pressed="true"]').click();
+    await restored.getByRole("button", { name: "API 환경", exact: true }).click();
+    await restored.getByRole("menuitemradio", { checked: true }).click();
     await expect(restored.getByLabel("OpenAPI URL", { exact: true })).toHaveValue(`${url}/openapi.json`);
     if (canRemember) {
       await expect(restored.getByLabel("Swagger 비밀번호", { exact: true })).toHaveValue("");
@@ -923,7 +932,7 @@ process.stdin.on("data", chunk => {
     const importedInput = restored.getByRole("dialog", { name: "loginId 입력", exact: true });
     await importedInput.getByRole("textbox").fill("tester");
     await importedInput.getByRole("button", { name: "입력 완료 · 계속", exact: true }).click();
-    await expect(restored.getByRole("region", { name: "시나리오 실행 결과" })).toContainText("통과");
+    await expect(restored.getByRole("region", { name: "시나리오 단계" })).toContainText("통과");
     // The copy's file (with one more scenario) goes back into the original through the update dialog.
     await restored.getByRole("button", { name: "프로젝트 설정", exact: true }).click();
     await restored.getByRole("button", { name: "프로젝트 내보내기", exact: true }).click();

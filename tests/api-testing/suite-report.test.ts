@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { createServer } from "node:http";
 import { ApiWorkspace } from "../../src/app/api-testing/main/workspace";
-import { producedGlobalNames, renderSuiteReport, reportScenario, usesInvalidatedGlobal, formatDuration } from "../../src/app/api-testing/shared/suite-report";
+import { producedGlobalNames, renderSuiteReport, reportFilename, reportScenario, scenarioRunReport, usesInvalidatedGlobal, formatDuration } from "../../src/app/api-testing/shared/suite-report";
 import { parseScenario } from "../../src/app/api-testing/shared/scenario";
 
 test("a failed producer invalidates stale globals used by later scenarios", () => {
@@ -55,6 +55,20 @@ test("HTML report lists each check with pass/fail in words, never the actual res
   const html = renderSuiteReport({ suiteName: "검증", projectName: "프로젝트", environmentName: "dev", startedAt: "2026-01-01T00:00:00Z", completedAt: "2026-01-01T00:00:01Z", status: "failed", scenarios: [row] });
   assert.match(html, /✗ \/state 기대값과 같은지 ACTIVE/);
   assert.doesNotMatch(html, /secret-state/);
+});
+
+test("a single scenario run becomes a one-row report without request or response values", () => {
+  const source = parseScenario(`id: lookup\nname: 조회\nserver: main\nsteps:\n  - api: GET /lookup\n    expect:\n      - { source: status, operator: equals, value: 200 }\n`);
+  const result = { status: "passed", variables: { accessToken: "private-token" }, steps: [{ id: source.steps[0].id, name: "조회", status: "passed", durationMs: 12, httpStatus: 200, body: { token: "private-token" } }] };
+  const report = scenarioRunReport({ id: "lookup", name: "조회", projectName: "프로젝트", environmentName: "dev", startedAt: "2026-01-01T00:00:00.000Z", completedAt: "2026-01-01T00:00:00.020Z", result, references: [{ name: "조회", reference: "GET /lookup" }], scenario: source });
+  assert.equal(report.status, "passed");
+  assert.equal(report.suiteName, "조회");
+  assert.equal(report.scenarios.length, 1);
+  assert.equal(report.scenarios[0].durationMs, 12);
+  const html = renderSuiteReport(report);
+  assert.match(html, /GET \/lookup/);
+  assert.doesNotMatch(html, /private-token/);
+  assert.match(reportFilename(report.startedAt), /^checkly-api-report-[A-Za-z0-9-]+\.html$/);
 });
 
 test("suite persistence validates order, revision and referenced scenarios", async () => {

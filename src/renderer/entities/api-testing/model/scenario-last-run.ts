@@ -1,6 +1,6 @@
 import type { ApiScenarioPreview, ApiScenarioResult } from "../../../../app/api-testing/shared/workspace";
 
-export type ScenarioLastRun = { result: ApiScenarioResult; preview: ApiScenarioPreview; bindings: Record<string, string>; completedAt: string };
+export type ScenarioLastRun = { result: ApiScenarioResult; preview: ApiScenarioPreview; bindings: Record<string, string>; /** Absent for runs remembered before it was recorded. */ startedAt?: string; completedAt: string };
 const memory = new Map<string, ScenarioLastRun>();
 const keyFor = (project: string, environment: string, scenario: string) => `checkly:last-run:${JSON.stringify([project, environment, scenario])}`;
 

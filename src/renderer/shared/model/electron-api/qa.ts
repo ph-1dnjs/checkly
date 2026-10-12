@@ -12,6 +12,7 @@ export type QaApi = {
   finishQaWorker: (workerId: string) => Promise<void>;
   downloadRunVideo: (value: string) => Promise<string | null>;
   mergeRunVideos: (values: string[]) => Promise<string | null>;
+  saveRunReport: (markdown: string, fileName: string) => Promise<string | null>;
   submitManualInput: (value: string) => Promise<void>;
   submitManualControl: (result: {
     status: "continue" | "failed";

@@ -20,4 +20,8 @@ export type ScenarioFileApi = {
     files: Array<{ name: string; path: string; updatedAt: string }>;
   }>;
   readScenarioFile: (filePath: string) => Promise<string | null>;
+  openScenarioFile: (filePath: string) => Promise<{
+    markdown: string;
+    filePath: string;
+  } | null>;
 };

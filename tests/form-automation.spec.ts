@@ -30,7 +30,7 @@ test("opens the isolated form automation tab", async ({ page }) => {
   await page.getByRole("button", { name: "폼 자동 완성" }).click();
 
   await expect(
-    page.getByRole("heading", { name: "사이트를 보면서 폼을 자동으로 완성하세요" }),
+    page.getByRole("heading", { name: "폼 자동 완성", level: 1 }),
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "선택 케이스 자동 입력" })).toBeVisible();
   await expect(page.getByRole("button", { name: "화면 캡처" })).toBeVisible();

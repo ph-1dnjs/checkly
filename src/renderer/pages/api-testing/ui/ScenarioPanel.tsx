@@ -8,7 +8,6 @@ import { useRunAction } from "../../../shared/hooks/useRunAction";
 import type { OnRunAction } from "../../../shared/model/run-action";
 import { ApiDocumentation } from "./ApiDocumentation";
 import { DeleteAction } from "../../../entities/api-testing";
-import { ProgressBar } from "../../../shared/ui/ProgressBar";
 import { LoadingSpinner } from "../../../shared/ui/LoadingSpinner";
 import { GlobalVariableSetupLink } from "../../../entities/api-testing";
 import { useGlobalVariableAccess } from "../../../features/api-testing/configure-globals";
@@ -19,7 +18,8 @@ import { RunInputModal } from "../../../features/api-testing/submit-run-input";
 import { globalProducerScenarios } from "../../../entities/api-testing";
 import { AuthorshipLine, ScenarioSidebarTree } from "../../../entities/api-testing";
 import { Icon } from "../../../shared/ui/Icon";
-import { operationForStep, ScenarioRunFlow, ScenarioRunResult } from "../../../entities/api-testing";
+import { renderSuiteReport, reportFilename, scenarioRunReport } from "../../../../app/api-testing/shared/suite-report";
+import { completedLabel, operationForStep, ScenarioSteps } from "../../../entities/api-testing";
 import { YamlCode } from "../../../entities/api-testing";
 import { highlightTerms, parseApiSearch, scenarioSearch, type SearchableScenario } from "../../../entities/api-testing";
 
@@ -33,6 +33,34 @@ function sidebarSearchable(item: SavedApiScenario | SavedApiSuite): SearchableSc
     const scenario = parseScenario(item.source);
     return { ...searchable, description: scenario.description, apis: [...new Set(scenario.steps.map(step => "operationId" in step.api ? step.api.operationId : `${step.api.method.toUpperCase()} ${step.api.path}`))] };
   } catch { return searchable; /* Invalid drafts are still searchable by their saved name and group. */ }
+}
+
+/** The scenario's ⋯ menu: secondary actions (AI, copy, delete) kept out of the heading. */
+function MoreMenu({ disabled, children }: { disabled?: boolean; children: (close: () => void) => ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const outside = (event: Event) => { if (event.target instanceof Node && !root.current?.contains(event.target)) setOpen(false); };
+    const escape = (event: KeyboardEvent) => { if (event.key === "Escape" && !event.defaultPrevented) setOpen(false); };
+    document.addEventListener("pointerdown", outside);
+    document.addEventListener("keydown", escape);
+    return () => { document.removeEventListener("pointerdown", outside); document.removeEventListener("keydown", escape); };
+  }, [open]);
+  useEffect(() => { if (disabled) setOpen(false); }, [disabled]);
+  return <div ref={root} className="api-scn-more">
+    <button type="button" className="api-scn-icon-button" aria-label="더 보기" aria-haspopup="menu" aria-expanded={open} disabled={disabled} onClick={() => setOpen(value => !value)}><Icon name="more_horiz" size={18} /></button>
+    {open && <div role="menu" className="api-scn-menu">{children(() => setOpen(false))}</div>}
+  </div>;
+}
+
+/** One box above the steps for what needs attention: setup, the last failure, drafts. */
+function ScenarioNotice({ tone, title, alert = false, children, actions }: { tone: "warn" | "fail" | "info"; title: ReactNode; alert?: boolean; children?: ReactNode; actions?: ReactNode }) {
+  return <div role={alert ? "alert" : "status"} className={`api-scn-notice is-${tone}`}>
+    <div className="api-scn-notice-title"><Icon name={tone === "fail" ? "error" : tone === "warn" ? "warning" : "info"} size={17} /><strong>{title}</strong></div>
+    {children && <ul className="api-scn-notice-items">{children}</ul>}
+    {actions && <div className="api-scn-notice-actions">{actions}</div>}
+  </div>;
 }
 
 const reasonText = (reason: { description?: true; apis: string[] }) =>
@@ -66,9 +94,11 @@ export type ScenarioPanelProps = {
   onOpenSpecs?: () => void;
   /** Environment and value controls shown in the composer toolbar, which replaces the page header. */
   composeContext?: ReactNode;
+  /** Page header element the composer's toolbar renders into (one header row, like the other workspaces). */
+  composeToolbarSlot?: HTMLElement | null;
 };
 
-export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mode = "run", startCreateRequest = 0, editScenarioId, onCreateConsumed, onComposerOpenChange, onUnsavedChange, onCreateScenario, onOpenAi, onAiAskSent, onEditScenario, onExecuteSaved, runSaved, onRunSavedConsumed, openSaved, onOpenSavedConsumed, onBackToScenarios, onOpenSpecs, composeContext }: ScenarioPanelProps) {
+export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mode = "run", startCreateRequest = 0, editScenarioId, onCreateConsumed, onComposerOpenChange, onUnsavedChange, onCreateScenario, onOpenAi, onAiAskSent, onEditScenario, onExecuteSaved, runSaved, onRunSavedConsumed, openSaved, onOpenSavedConsumed, onBackToScenarios, onOpenSpecs, composeContext, composeToolbarSlot }: ScenarioPanelProps) {
   const editorMode = mode === "editor";
   const globalAccess = useGlobalVariableAccess();
   const checkedGlobalRevision = useRef(globalAccess.revision);
@@ -88,19 +118,10 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
   const [preview, setPreview] = useState<ApiScenarioPreview | null>(null);
   const [inputs, setInputs] = useState<Record<string, string>>({});
   const [result, setResult] = useState<ApiScenarioResult | null>(null);
-  const [runView, setRunView] = useState<"preview" | "result">("preview");
   // AI에게 요청 modal: from the header, or from the failed-run line (then with the failure); closed for each new run or scenario.
   const [aiAsk, setAiAsk] = useState<{ fromFailure: boolean } | null>(null);
-  const [focusRequest, setFocusRequest] = useState<{ index: number; request: number } | null>(null);
-  const [resultFocusRequest, setResultFocusRequest] = useState<{ stepId: string; request: number } | null>(null);
-  const focusResult = (stepId: string) => {
-    setRunView("result");
-    setResultFocusRequest(previous => ({ stepId, request: (previous?.request ?? 0) + 1 }));
-  };
-  const focusPreview = (index: number) => {
-    setRunView("preview");
-    setFocusRequest(previous => ({ index, request: (previous?.request ?? 0) + 1 }));
-  };
+  const [focusRequest, setFocusRequest] = useState<{ stepId: string; request: number } | null>(null);
+  const focusStep = (stepId: string) => setFocusRequest(previous => ({ stepId, request: (previous?.request ?? 0) + 1 }));
   const [lastRun, setLastRun] = useState<ScenarioLastRun | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -198,7 +219,7 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
   const load = async (item: SavedApiScenario) => {
     setComposer(null); setCurrent(item); setSource(item.source); setScenarioGroupPath(item.groupPath ?? []); setDirty(false); setBindings(item.bindings); setInputs({}); setResult(null); setPreview(null); setError(""); setNotice(""); working(true);
     const previous = readLastRun(scope.projectId, scope.environmentId, item.id);
-    setRunView(previous ? "result" : "preview"); setFocusRequest(null); setResultFocusRequest(null);
+    setFocusRequest(null);
     setLastRun(previous); setResult(previous?.result ?? null);
     try {
       const data = await check(item.source, item.bindings);
@@ -224,22 +245,39 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
   const runScenario = async () => {
     if (!preview) return;
     working(true); setRunning(true); setError(""); setNotice("");
+    const startedAt = new Date().toISOString();
     try {
       const parsed = Object.fromEntries(Object.entries(preview.scenario.inputs).filter(([key, definition]) => definition.required || inputs[key] !== undefined && inputs[key] !== "").map(([key, definition]) => [key, definition.type === "string" ? inputs[key] ?? "" : JSON.parse(inputs[key] ?? "")])) as Record<string, Json>;
       const response = await bridge.runScenario(scenarioScope, source, bindings, parsed);
-      rememberResult(response);
+      rememberResult(response, startedAt);
     } catch (e) {
       if (live.current) { setResult(null); setError(e instanceof SyntaxError ? "숫자·불리언·객체·배열 입력은 JSON 형식으로 입력하세요" : errorText(e)); }
     } finally {
       if (live.current) { working(false); setRunning(false); }
     }
   };
-  const rememberResult = (response: ApiScenarioResult) => {
+  const rememberResult = (response: ApiScenarioResult, startedAt: string) => {
     if (!preview) return;
-    const snapshot = { result: response, preview, bindings, completedAt: new Date().toISOString() };
+    const snapshot = { result: response, preview, bindings, startedAt, completedAt: new Date().toISOString() };
     writeLastRun(scope.projectId, scope.environmentId, current?.id ?? preview.scenario.id, snapshot);
-    if (live.current) { setResult(response); setLastRun(snapshot); setRunView("result"); setResultFocusRequest(null); }
+    if (live.current) { setResult(response); setLastRun(snapshot); setFocusRequest(null); }
     // Runs can extract new globals (e.g. accessToken); reload them for masking.
+  };
+  const downloadReport = async () => {
+    if (!lastRun || running) return;
+    const { result: runResult, preview: runPreview, bindings: runBindings, completedAt } = lastRun;
+    const steps = runPreview.scenario.steps;
+    // Same projection as a suite run: API names and check outcomes only, never request/response values.
+    const references = runResult.steps.map(step => {
+      const authored = steps.find(candidate => candidate.id === step.id);
+      const operation = authored && operationForStep(authored, catalogs, runBindings);
+      return { name: authored?.name ?? operation?.summary ?? step.name, reference: operation ? `${operation.method.toUpperCase()} ${operation.path}` : !authored ? "API" : "operationId" in authored.api ? authored.api.operationId : `${authored.api.method} ${authored.api.path}` };
+    });
+    const startedAt = lastRun.startedAt ?? new Date(Date.parse(completedAt) - runResult.steps.reduce((total, step) => total + step.durationMs, 0)).toISOString();
+    const report = scenarioRunReport({ id: runPreview.scenario.id, name: runPreview.scenario.name, projectName: project.name, environmentName: project.environments.find(environment => environment.id === scope.environmentId)?.name ?? "", startedAt, completedAt, result: runResult, references, scenario: runPreview.scenario });
+    setError("");
+    try { if (await bridge.saveSuiteReport(reportFilename(startedAt), renderSuiteReport(report))) setNotice("실행 리포트를 저장했습니다."); }
+    catch (e) { setError(errorText(e)); }
   };
   const autoRunStarted = useRef(false);
   useEffect(() => {
@@ -327,6 +365,7 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
       onSidebarGroupPathChange={value => { setScenarioGroupPath(value); setDirty(true); }}
       onNewScenario={() => { setScenarioGroupPath([]); }}
       toolbarContext={composeContext}
+      toolbarSlot={composeToolbarSlot}
       sidebarMetadata={{ groupPath: scenarioGroupPath }}
       onSaved={async item => {
         setCurrent(item);
@@ -378,66 +417,105 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
     <aside ref={sidebarRef} aria-label="저장된 시나리오와 스위트">
       <input aria-label="시나리오·스위트 검색" placeholder="이름·그룹·설명·API 검색" value={query} onChange={event => setQuery(event.target.value)} />
       <section className="api-sidebar-section">
-        <header><button type="button" className="api-sidebar-section-toggle" aria-expanded={scenariosExpanded} onClick={() => setScenariosExpanded(value => !value)}><span className="api-sidebar-section-label">시나리오<small>{sidebarScenarios.length}{sidebarScenarios.length !== saved.length ? ` / ${saved.length}` : ""}</small></span><Icon name="expand_more" size={18} className="api-sidebar-chevron" /></button><button type="button" className="api-sidebar-add" disabled={busy} onClick={openNewScenario}>+ 새 시나리오</button></header>
+        <header><button type="button" className="api-sidebar-section-toggle" aria-expanded={scenariosExpanded} onClick={() => setScenariosExpanded(value => !value)}><span className="api-sidebar-section-label">시나리오</span><Icon name="expand_more" size={18} className="api-sidebar-chevron" /></button><button type="button" className="api-sidebar-add" disabled={busy} onClick={openNewScenario}>+ 새 시나리오</button></header>
         {scenariosExpanded && <ScenarioSidebarTree kind="scenario" expandAll={Boolean(normalizedQuery)} warnings={specWarnings} reasons={sidebarReasons} items={sidebarScenarios} selectedId={suiteSelection === null ? current?.id : null} disabled={busy} onSelect={item => { setSuiteSelection(null); void load(item); }} />}
       </section>
       <section className="api-sidebar-section api-sidebar-suite-section">
-        <header><button type="button" className="api-sidebar-section-toggle" aria-expanded={suitesExpanded} onClick={() => setSuitesExpanded(value => !value)}><span className="api-sidebar-section-label">스위트<small>{sidebarSuites.length}{sidebarSuites.length !== suites.length ? ` / ${suites.length}` : ""}</small></span><Icon name="expand_more" size={18} className="api-sidebar-chevron" /></button><button type="button" className="api-sidebar-add" disabled={busy} onClick={() => setSuiteSelection("")}>+ 새 스위트</button></header>
+        <header><button type="button" className="api-sidebar-section-toggle" aria-expanded={suitesExpanded} onClick={() => setSuitesExpanded(value => !value)}><span className="api-sidebar-section-label">스위트</span><Icon name="expand_more" size={18} className="api-sidebar-chevron" /></button><button type="button" className="api-sidebar-add" disabled={busy} onClick={() => setSuiteSelection("")}>+ 새 스위트</button></header>
         {suitesExpanded && <ScenarioSidebarTree kind="suite" expandAll={Boolean(normalizedQuery)} reasons={sidebarReasons} items={sidebarSuites} selectedId={suiteSelection || null} disabled={busy} onSelect={item => setSuiteSelection(item.id)} />}
       </section>
     </aside>
-    {suiteSelection !== null ? <SuitePanel key={suiteSelection} project={project} scope={scope} bridge={bridge} scenarios={saved} suites={suites} selectedId={suiteSelection} onSuitesChange={setSuites} onSelectedIdChange={setSuiteSelection} onBusy={working} onOpenScenario={id => { if (busy) return; const item = saved.find(scenario => scenario.id === id); if (item) { setSuiteSelection(null); setRunView("result"); void load(item); } }} /> : <>
+    {suiteSelection !== null ? <SuitePanel key={suiteSelection} project={project} scope={scope} bridge={bridge} scenarios={saved} suites={suites} selectedId={suiteSelection} onSuitesChange={setSuites} onSelectedIdChange={setSuiteSelection} onBusy={working} onOpenScenario={id => { if (busy) return; const item = saved.find(scenario => scenario.id === id); if (item) { setSuiteSelection(null); void load(item); } }} /> : <>
     <article className="api-request-panel api-scenario-detail">
-      {(current || preview) && <header className="api-detail-heading"><div><h2 title={preview?.scenario.name ?? current?.name}>{preview?.scenario.name ?? current?.name}</h2>{current && <AuthorshipLine item={current} />}<p className="api-description">{preview?.scenario.description ?? ""}</p></div>{current && <div className="api-actions api-detail-actions"><span className="api-action-group" role="group" aria-label="실행"><button type="button" ref={runButton} className="api-primary" disabled={busy || !canUse} onClick={() => void runScenario()}>{running ? "실행 중…" : result ? "다시 실행" : "실행"}</button>{running && <button type="button" onClick={() => void bridge.cancel(scope)}>실행 중단</button>}</span>{canAsk && <span className="api-action-group" role="group" aria-label="AI"><AiAskButton label="AI에게 요청" disabled={busy || running} onClick={() => setAiAsk({ fromFailure: false })} /></span>}<span className="api-action-group" role="group" aria-label="편집"><button type="button" disabled={busy} onClick={() => onEditScenario?.(current)}>수정</button><button type="button" disabled={busy || !preview} title="이 시나리오를 복사해 새 시나리오로 저장합니다" onClick={() => void duplicate(current)}>복제</button></span><span className="api-action-group" role="group" aria-label="관리"><DeleteAction key={current.id} label="시나리오 삭제" text="삭제" disabled={busy} description={`‘${current.name}’${current.draft ? " 초안" : ""}을 프로젝트에서 삭제합니다. API 명세와 전역변수는 유지됩니다.`} onDelete={async () => {
-        await bridge.deleteScenario(project.id, current.id, current.updatedAt);
-        setSaved(await bridge.listScenarios(project.id)); setCurrent(null); setSource(""); setScenarioGroupPath([]); setDirty(false); setPreview(null); setResult(null); setBindings({}); setInputs({}); setNotice("시나리오를 삭제했습니다."); onRunAction(null);
-      }} /></span></div>}</header>}
-      {!current && <div className="api-empty"><h3>시나리오를 고르거나 새로 만드세요</h3><p>왼쪽 목록에서 고르면 실행 흐름과 최근 결과를 여기서 봅니다.</p>
+      {(current || preview) && (() => {
+        const name = preview?.scenario.name ?? current?.name;
+        const description = preview?.scenario.description ?? "";
+        const groupPath = current?.groupPath?.filter(Boolean) ?? [];
+        return <header className="api-scn-head">
+          <div className="api-scn-title">
+            {groupPath.length > 0 && <p className="api-scn-group">{groupPath.join(" / ")}</p>}
+            <h2 title={name}>{name}</h2>
+            {current && <AuthorshipLine item={current} />}
+            {description && <p className="api-scn-desc" title={description}>{description}</p>}
+          </div>
+          {current && <div className="api-scn-actions">
+            <button type="button" ref={runButton} className="api-primary api-scn-run" disabled={busy || !canUse} onClick={() => void runScenario()}><Icon name="play_arrow" size={16} />{running ? "실행 중…" : "실행"}</button>
+            <button type="button" disabled={busy} onClick={() => onEditScenario?.(current)}>수정</button>
+            <MoreMenu disabled={busy}>{close => <>
+              {canAsk && <button type="button" role="menuitem" className="api-scn-menu-item" disabled={running} onClick={() => { close(); setAiAsk({ fromFailure: false }); }}><Icon name="auto_fix_high" size={16} />AI에게 요청</button>}
+              <button type="button" role="menuitem" className="api-scn-menu-item" disabled={!preview} title="이 시나리오를 복사해 새 시나리오로 저장합니다" onClick={() => { close(); void duplicate(current); }}><Icon name="content_copy" size={16} />복제</button>
+              <DeleteAction key={current.id} label="시나리오 삭제" text={<><Icon name="delete" size={16} />시나리오 삭제</>} description={`‘${current.name}’${current.draft ? " 초안" : ""}을 프로젝트에서 삭제합니다. API 명세와 전역변수는 유지됩니다.`} onDelete={async () => {
+                await bridge.deleteScenario(project.id, current.id, current.updatedAt);
+                setSaved(await bridge.listScenarios(project.id)); setCurrent(null); setSource(""); setScenarioGroupPath([]); setDirty(false); setPreview(null); setResult(null); setBindings({}); setInputs({}); setNotice("시나리오를 삭제했습니다."); onRunAction(null);
+              }} />
+            </>}</MoreMenu>
+          </div>}
+        </header>;
+      })()}
+      {!current && <div className="api-empty"><h3>시나리오를 고르거나 새로 만드세요</h3><p>왼쪽 목록에서 고르면 단계와 최근 결과를 여기서 봅니다.</p>
         <div className="api-actions">{onCreateScenario && <button type="button" className="api-primary" disabled={busy} onClick={onCreateScenario}>새 시나리오 만들기</button>}{onOpenAi && <button type="button" disabled={busy} onClick={onOpenAi}>AI로 만들기</button>}</div>
       </div>}
       {preview && <>
-        <section className="api-run-summary" aria-label="시나리오 실행 준비">
-          {!!preview.executionIssues?.length && <div role="alert" className="api-warning"><strong>실행 전 설정 필요</strong><ul>{(() => {
+        <section className="api-run-summary api-scn-notices" aria-label="시나리오 실행 준비">
+          {!!preview.executionIssues?.length && <ScenarioNotice tone="warn" alert title="실행 전 설정이 필요합니다" actions={<button type="button" className="api-scn-text-button" disabled={busy} onClick={() => void check().catch(e => setError(errorText(e)))}>설정 다시 확인</button>}>{(() => {
             // One line per missing global with the steps that need it, instead of the same sentence per step.
             const { globals, others } = groupMissingGlobals(preview.executionIssues);
             return <>
               {globals.map(({ name, steps }) => {
                 const producers = globalProducerScenarios(name, saved, preview.scenario.id, scope.environmentId);
                 const shown = steps.filter(step => step <= preview.scenario.steps.length);
-                return <li key={name}><code>{name}</code> 값 없음{shown.length > 0 && <> · {shown.map((step, index) => <span key={step}>{index > 0 && "·"}<button type="button" className="api-issue-step-link" aria-label={`${step}단계로 이동`} onClick={() => focusPreview(step - 1)}>{step}</button></span>)}단계</>} <GlobalVariableSetupLink onConfigure={globalAccess.open} name={name} />{producers.length > 0 && <span> · 이 값을 추출하는 시나리오: {producers.join(", ")}. 먼저 실행한 뒤 다시 확인하세요.</span>}</li>;
+                return <li key={name}><code>{name}</code> 값 없음{shown.length > 0 && <> · {shown.map((step, index) => <span key={step}>{index > 0 && "·"}<button type="button" className="api-issue-step-link" aria-label={`${step}단계로 이동`} onClick={() => focusStep(preview.scenario.steps[step - 1].id)}>{step}</button></span>)}단계</>} <GlobalVariableSetupLink onConfigure={globalAccess.open} name={name} />{producers.length > 0 && <span className="api-scn-notice-hint"> · 이 값을 추출하는 시나리오: {producers.join(", ")}. 먼저 실행한 뒤 다시 확인하세요.</span>}</li>;
               })}
               {others.map(issue => { const name = issueGlobal(issue); return <li key={issue}>{issue}{name && <> <GlobalVariableSetupLink onConfigure={globalAccess.open} name={name} /></>}</li>; })}
             </>;
-          })()}</ul><button type="button" disabled={busy} onClick={() => void check().catch(e => setError(errorText(e)))}>설정 다시 확인</button></div>}
-          {/* Only where it went wrong: the result below has the status and each step's message. */}
+          })()}</ScenarioNotice>}
           {/* Stopped by the user: not a problem to look into. */}
-          {result?.status === "cancelled" && <p role="status" className="api-run-notice">실행을 중단했습니다. 다시 실행하려면 <strong>다시 실행</strong>을 누르세요.</p>}
-          {result && result.status !== "passed" && result.status !== "cancelled" && <div role="alert" className="api-warning api-run-last-problem"><strong>최근 실행 {runStatusName(result.status)}</strong>{result.steps.map((step, index) => step.error && <button key={step.id} type="button" className="api-result-error-link" disabled={running} title={step.error} onClick={() => focusResult(step.id)}>{index + 1}단계 · {step.name}</button>)}{canAsk && failedRun?.steps.some(step => step.error || step.status === "failed") && <AiAskButton label="AI로 고치기" primary disabled={busy || running} onClick={() => setAiAsk({ fromFailure: true })} />}</div>}
+          {!running && result?.status === "cancelled" && <ScenarioNotice tone="info" title={<>실행을 중단했습니다. 다시 실행하려면 <strong>실행</strong>을 누르세요.</>} />}
+          {/* Only where it went wrong: each step below has its status and message. */}
+          {!running && failedRun && <ScenarioNotice tone="fail" alert title={`최근 실행 ${runStatusName(failedRun.status)}`} actions={canAsk && failedRun.steps.some(step => step.error || step.status === "failed") ? <AiAskButton label="AI로 고치기" primary disabled={busy || running} onClick={() => setAiAsk({ fromFailure: true })} /> : undefined}>
+            {failedRun.steps.map((step, index) => step.error && <li key={step.id}><button type="button" className="api-result-error-link" title={step.error} onClick={() => focusStep(step.id)}>{index + 1}단계 · {step.name}</button><span className="api-scn-notice-hint">{step.error}</span></li>)}
+          </ScenarioNotice>}
           {canAsk && aiAsk && current && <AiAskRequest scope={{ projectId: scope.projectId, environmentId: scope.environmentId }} scenarioId={current.id} scenarioName={current.name} {...(failedRun ? { failedRun } : {})} includeFailure={aiAsk.fromFailure} bridge={bridge} disabled={busy} onSent={target => { setAiAsk(null); onAiAskSent!(target); }} onCancel={() => setAiAsk(null)} />}
-          {current?.draft && <p className="api-run-notice">초안은 아직 실행할 수 없습니다. <strong>수정</strong>에서 요청값과 검증을 보완한 뒤 <strong>저장</strong>을 누르세요.</p>}
-          {preview.issues.length > 0 && <details className="api-run-issues" open={Boolean(current?.draft)}><summary>보완이 필요한 항목 {preview.issues.length}개</summary><ul>{preview.issues.map(issue => <li key={issue}>{issue}</li>)}</ul></details>}
-          {current?.draft && preview.issues.length === 0 && <p className="api-run-notice">현재 검사는 통과했지만 아직 초안으로 저장되어 있습니다. <strong>수정</strong>에서 <strong>저장</strong>을 누르면 실행할 수 있습니다.</p>}
-          {Object.keys(preview.scenario.inputs).length > 0 && <fieldset disabled={busy}><legend>실행 입력</legend><p className="api-field-help">실행할 때만 사용하는 값입니다. 저장된 시나리오에는 원문이 남지 않습니다.</p>{Object.entries(preview.scenario.inputs).map(([key, definition]) => <label key={key}>{key}{definition.required ? " *" : ""} · {definition.type}<input aria-label={`시나리오 입력 ${key}`} autoComplete="off" type="text" value={inputs[key] ?? ""} onChange={e => setInputs({ ...inputs, [key]: e.target.value })} /></label>)}</fieldset>}
+          {preview.issues.length > 0 && <ScenarioNotice tone="warn" title={`보완이 필요한 항목 ${preview.issues.length}개`}>{preview.issues.map(issue => <li key={issue}>{issue}</li>)}</ScenarioNotice>}
+          {current?.draft && <ScenarioNotice tone="info" title={preview.issues.length === 0
+            ? <>현재 검사는 통과했지만 아직 초안으로 저장되어 있습니다. <strong>수정</strong>에서 <strong>저장</strong>을 누르면 실행할 수 있습니다.</>
+            : <>초안은 아직 실행할 수 없습니다. <strong>수정</strong>에서 요청값과 검증을 보완한 뒤 <strong>저장</strong>을 누르세요.</>} />}
+          {Object.keys(preview.scenario.inputs).length > 0 && <fieldset className="api-scn-inputs" disabled={busy}><legend>실행 입력</legend><p className="api-field-help">실행할 때만 사용하는 값입니다. 저장된 시나리오에는 원문이 남지 않습니다.</p>{Object.entries(preview.scenario.inputs).map(([key, definition]) => <label key={key}>{key}{definition.required ? " *" : ""} · {definition.type}<input aria-label={`시나리오 입력 ${key}`} autoComplete="off" type="text" value={inputs[key] ?? ""} onChange={e => setInputs({ ...inputs, [key]: e.target.value })} /></label>)}</fieldset>}
         </section>
-        {/* One row: which view, and what this scenario is (step count, environment, readiness). */}
-        <div className="api-run-view-bar">
-          <div className="api-run-view-switch" role="group" aria-label="시나리오 보기"><button type="button" aria-pressed={runView === "preview" || !result} onClick={() => setRunView("preview")}>실행 흐름</button><button type="button" aria-pressed={runView === "result" && Boolean(result)} disabled={!result || running} onClick={() => setRunView("result")}>최근 실행</button></div>
-          <p className="api-spec-meta">{preview.scenario.steps.length}개 API · 순서대로 호출 · {project.environments.find(e => e.id === scope.environmentId)?.name}{/* While showing the last run, its result carries the status; this badge is about running again. */}{!(runView === "result" && result) && <span className={`api-run-status${current?.draft ? " is-draft" : canUse ? " is-ready" : " is-review"}`}>{current?.draft ? "초안" : canUse ? "실행 가능" : "설정 필요"}</span>}</p>
-        </div>
-        <div hidden={runView === "result" && Boolean(result)}><ScenarioRunFlow serverNames={serverNames} onConfigureGlobal={globalAccess.open} key={current?.id} preview={preview} catalogs={catalogs} bindings={bindings} focusRequest={focusRequest} /></div>
+        {notice && <p role="status" className="api-scn-message">{notice}</p>}{error && <p className="api-warning" role="alert">{error}</p>}
+        <ScenarioSteps
+          key={current?.id}
+          serverNames={serverNames}
+          onConfigureGlobal={globalAccess.open}
+          preview={preview}
+          result={running ? null : result}
+          resultPreview={lastRun?.preview ?? null}
+          catalogs={catalogs}
+          bindings={bindings}
+          focusRequest={focusRequest}
+          running={running}
+          onStop={() => void bridge.cancel(scope)}
+          meta={(() => {
+            const environment = project.environments.find(e => e.id === scope.environmentId)?.name;
+            if (running) return <span>{pendingInput ? `입력 대기 · ${pendingInput.index + 1}/${pendingInput.totalSteps}단계 · ${pendingInput.label ?? pendingInput.name}` : `실행 중 · API ${preview.scenario.steps.length}개를 순서대로 호출합니다`}</span>;
+            if (result) {
+              // The steps changed since that run: its results may not line up with every step any more.
+              const stale = lastRun?.preview && JSON.stringify(lastRun.preview.scenario.steps) !== JSON.stringify(preview.scenario.steps);
+              return <>{lastRun?.completedAt && <span title="이 결과는 앱을 새로고침하면 사라집니다">최근 실행 {completedLabel(lastRun.completedAt)}</span>}<span>{environment}</span><strong className={`api-scn-result-status is-${result.status.toLowerCase()}`}>{runStatusName(result.status)}</strong>{stale && <span>· 이후 수정됨</span>}{lastRun && <button type="button" className="api-scn-text-button api-scn-report-download" title="요청·응답 원문과 변수 값은 제외한 HTML 리포트를 저장합니다" onClick={() => void downloadReport()}><Icon name="download" size={14} />리포트 받기</button>}</>;
+            }
+            return <><span>{environment} · 아직 실행하지 않았습니다</span><span className={`api-run-status${current?.draft ? " is-draft" : canUse ? " is-ready" : " is-review"}`}>{current?.draft ? "초안" : canUse ? "실행 가능" : "설정 필요"}</span></>;
+          })()}
+        />
       </>}
-      {notice && <p role="status">{notice}</p>}{error && <p className="api-warning" role="alert">{error}</p>}
-      {(running || result) && <section hidden={!running && runView === "preview"} className={`api-response${running ? " api-response-running" : ""}`} aria-label={running ? "시나리오 실행 중" : "시나리오 실행 결과"}>
-        {running ? <><h2>실행 중</h2><ProgressBar label={pendingInput ? "입력 대기 중" : "시나리오 실행 중"} detail={pendingInput ? `${pendingInput.index + 1}/${pendingInput.totalSteps}단계 · ${pendingInput.label ?? pendingInput.name}` : preview ? `${preview.scenario.steps.length}개 API · 순서대로 실행 중` : "순서대로 실행 중"} /></> : result && <><ScenarioRunResult serverNames={serverNames} completedAt={lastRun?.completedAt} result={result} preview={lastRun?.preview ?? preview} catalogs={catalogs} bindings={lastRun?.bindings ?? bindings} focusRequest={resultFocusRequest} /></>}
-      </section>}
-      {preview && <details key={current?.id} className="api-scenario-yaml" onToggle={event => setYamlOpen(event.currentTarget.open)}>
-        <summary>YAML 보기</summary>
+      {!preview && <>{notice && <p role="status" className="api-scn-message">{notice}</p>}{error && <p className="api-warning" role="alert">{error}</p>}</>}
+      {preview && <details key={current?.id} className="api-scenario-yaml api-scn-yaml" onToggle={event => setYamlOpen(event.currentTarget.open)}>
+        <summary><Icon name="expand_more" size={18} className="api-scn-yaml-caret" />YAML 보기<small>읽기 전용</small></summary>
         {yamlOpen && (() => {
           const yaml = stringifyScenario(preview.scenario, false, step => operationForStep(step, catalogs, bindings), Object.fromEntries(project.servers.map(server => [server.id, server.name])));
-          return <>
-            <div className="api-scenario-yaml-tools"><small>AI에게 보여주거나 공유할 때 쓰는 간단한 형태입니다.</small><button type="button" onClick={() => void navigator.clipboard.writeText(yaml).then(() => { setYamlCopied(true); window.setTimeout(() => setYamlCopied(false), 1200); })}>{yamlCopied ? "복사됨" : "YAML 복사"}</button></div>
+          return <div className="api-scn-yaml-body">
+            <div className="api-scenario-yaml-tools"><small>AI에게 보여주거나 공유할 때 쓰는 간단한 형태입니다.</small><button type="button" onClick={() => void navigator.clipboard.writeText(yaml).then(() => { setYamlCopied(true); window.setTimeout(() => setYamlCopied(false), 1200); })}><Icon name="content_copy" size={14} />{yamlCopied ? "복사됨" : "YAML 복사"}</button></div>
             <YamlCode label="시나리오 YAML" source={yaml} />
-          </>;
+          </div>;
         })()}
       </details>}
     </article>

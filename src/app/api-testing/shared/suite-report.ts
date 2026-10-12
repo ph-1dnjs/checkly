@@ -33,6 +33,15 @@ export function reportScenario(id: string, name: string, result: ApiScenarioResu
   };
 }
 
+/** A single scenario run as a one-row report, so it shares the suite report's layout and redaction. */
+export function scenarioRunReport(input: { id: string; name: string; projectName: string; environmentName: string; startedAt: string; completedAt: string; result: ApiScenarioResult; references: Array<{ name: string; reference: string }>; scenario?: Scenario }): SuiteReport {
+  const row = reportScenario(input.id, input.name, input.result, input.references, input.result.steps.reduce((total, step) => total + step.durationMs, 0), input.scenario);
+  return { suiteName: input.name, projectName: input.projectName, environmentName: input.environmentName, startedAt: input.startedAt, completedAt: input.completedAt, status: row.status, scenarios: [row] };
+}
+
+/** Matches the main process's allowed report filenames (`checkly-api-report-*.html`). */
+export const reportFilename = (startedAt: string) => `checkly-api-report-${new Date(startedAt).toISOString().replace(/[:.]/g, "-")}.html`;
+
 export function safeFailureReason(status: string, httpStatus?: number, failure?: ApiScenarioResult["steps"][number]["failure"]): string {
   if (status === "blocked") return "필수 입력·전역변수 또는 API 설정을 확인하세요.";
   if (status === "cancelled") return "사용자가 실행을 취소했습니다.";

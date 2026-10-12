@@ -92,6 +92,9 @@ export const useRunOrchestration = ({
   });
   const [liveResults, setLiveResults] = useState<ScenarioRunResult[]>([]);
   const [openRunRecord, setOpenRunRecord] = useState<RunRecord | null>(null);
+  // 실행 화면에서 "리포트"로 바로 열 수 있는 가장 최근에 끝난 배치 기록.
+  const [lastRunRecord, setLastRunRecord] = useState<RunRecord | null>(null);
+  const [reportRecord, setReportRecord] = useState<RunRecord | null>(null);
   const [runQueue, setRunQueue] = useState<Scenario[]>([]);
   const [runValidationError, setRunValidationError] = useState<string | null>(
     null,
@@ -227,21 +230,22 @@ export const useRunOrchestration = ({
     passed: number,
     failed: number,
     results: ScenarioRunResult[],
-  ) =>
+    startedAt: string,
+  ) => {
+    const status: "passed" | "failed" = failed ? "failed" : "passed";
+    const record: RunRecord = {
+      id: `${Date.now()}`,
+      scenarios: completed,
+      status,
+      passed,
+      failed,
+      ranAt: new Date().toISOString(),
+      startedAt,
+      results,
+    };
+    setLastRunRecord(record);
     setRunHistory((history) => {
-      const status: "passed" | "failed" = failed ? "failed" : "passed";
-      const nextHistory = [
-        {
-          id: `${Date.now()}`,
-          scenarios: completed,
-          status,
-          passed,
-          failed,
-          ranAt: new Date().toISOString(),
-          results,
-        },
-        ...history,
-      ].slice(0, 5);
+      const nextHistory = [record, ...history].slice(0, 5);
       setRunSummary((summary) => ({
         total: summary.total + 1,
         passed: summary.passed + Number(status === "passed"),
@@ -249,6 +253,7 @@ export const useRunOrchestration = ({
       }));
       return nextHistory;
     });
+  };
 
   const pushTimelineEntry = (scenario: Scenario): number => {
     const seq = ++timelineSeq.current;
@@ -312,6 +317,8 @@ export const useRunOrchestration = ({
     runVideoPaths.current = [];
     runVideoScenario.current = null;
     setLiveResults([]);
+    setLastRunRecord(null);
+    const batchStartedAt = new Date().toISOString();
     runProgressRef.current = {
       current: 0,
       total: toRun[0].steps.length,
@@ -396,6 +403,9 @@ export const useRunOrchestration = ({
                 result.status === "failed"
                   ? result.log[result.log.length - 1]
                   : undefined,
+              startedAt: new Date(attemptStartedAt).toISOString(),
+              elapsedSeconds: attemptElapsed,
+              log: result.log,
             };
             collected.push(entry);
             setLiveResults((r) => [...r, entry]);
@@ -438,6 +448,8 @@ export const useRunOrchestration = ({
             status: "failed",
             failedStepIndex: runProgressRef.current.current,
             message: error instanceof Error ? error.message : String(error),
+            startedAt: new Date(attemptStartedAt).toISOString(),
+            elapsedSeconds: Math.round((Date.now() - attemptStartedAt) / 1000),
           };
           collected.push(entry);
           setLiveResults((r) => [...r, entry]);
@@ -466,7 +478,7 @@ export const useRunOrchestration = ({
       activeWorkerId.current = null;
       if (sequence === runSequence.current) {
         if (!cancelled) {
-          recordRun(toRun, passed, failed, collected);
+          recordRun(toRun, passed, failed, collected, batchStartedAt);
           try {
             const videoPath = await window.electronAPI.mergeRunVideos(
               runVideoPaths.current,
@@ -785,6 +797,14 @@ export const useRunOrchestration = ({
       })
       .catch(() => showToast("실행 영상을 다운로드하지 못했습니다."));
   };
+  const downloadRunReport = (markdown: string, fileName: string) => {
+    void window.electronAPI
+      .saveRunReport(markdown, fileName)
+      .then((filePath) => {
+        if (filePath) showToast("실행 리포트를 저장했습니다.");
+      })
+      .catch(() => showToast("실행 리포트를 저장하지 못했습니다."));
+  };
   const downloadFullRunVideo = () => {
     if (!fullRunVideoPath) return;
     void window.electronAPI
@@ -827,6 +847,10 @@ export const useRunOrchestration = ({
     liveResults,
     openRunRecord,
     setOpenRunRecord,
+    lastRunRecord,
+    reportRecord,
+    setReportRecord,
+    downloadRunReport,
     runQueue,
     runValidationError,
     setRunValidationError,

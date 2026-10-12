@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Popover } from "../../../shared/ui/Popover";
 
 /** Reuses the common disclosure and requires a separate explicit confirmation. */
 export function DeleteAction({ label, text, description, disabled, onDelete }: {
   /** Names what is deleted (accessible name, confirm button); `text` can show just "삭제". */
-  label: string; text?: string; description: string; disabled?: boolean; onDelete: () => Promise<void>;
+  label: string; text?: ReactNode; description: string; disabled?: boolean; onDelete: () => Promise<void>;
 }) {
   const [working, setWorking] = useState(false);
   const [error, setError] = useState("");

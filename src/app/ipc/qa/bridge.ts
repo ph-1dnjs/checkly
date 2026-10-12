@@ -7,6 +7,7 @@ export const qaBridge = {
   finishQaWorker: (workerId: string): Promise<void> => ipcRenderer.invoke('qa:finish-worker', workerId),
   downloadRunVideo: (filePath: string): Promise<string | null> => ipcRenderer.invoke('qa:download-run-video', filePath),
   mergeRunVideos: (filePaths: string[]): Promise<string | null> => ipcRenderer.invoke('qa:merge-run-videos', filePaths),
+  saveRunReport: (markdown: string, fileName: string): Promise<string | null> => ipcRenderer.invoke('qa:save-run-report', markdown, fileName),
   submitManualInput: (value: string): Promise<void> => ipcRenderer.invoke('qa:manual-input', value),
   submitManualControl: (result: { status: 'continue' | 'failed'; reason?: string }): Promise<void> => ipcRenderer.invoke('qa:manual-control', result),
   controlManualBrowser: (event: { type: 'click' | 'wheel' | 'key' | 'text'; x?: number; y?: number; deltaY?: number; key?: string; text?: string }): Promise<void> => ipcRenderer.invoke('qa:manual-browser-event', event),

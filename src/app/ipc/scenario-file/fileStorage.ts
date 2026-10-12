@@ -128,6 +128,15 @@ export const readScenarioFile = async (
     return null;
   }
 };
+// 폴더 목록에서 고른 파일을 편집기로 열고, 이후 저장이 이 파일에 쓰이도록 기억한다.
+export const openScenarioFile = async (
+  filePath: string,
+): Promise<{ markdown: string; filePath: string } | null> => {
+  const markdown = await readScenarioFile(filePath);
+  if (markdown === null) return null;
+  activeScenarioFilePath = filePath;
+  return { markdown, filePath };
+};
 export const selectUploadFile = async (): Promise<string | null> => {
   const result = await dialog.showOpenDialog({
     title: "업로드할 파일 선택",

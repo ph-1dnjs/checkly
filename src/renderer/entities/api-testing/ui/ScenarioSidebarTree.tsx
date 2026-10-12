@@ -25,10 +25,6 @@ type Props<T extends ScenarioSidebarEntry> = {
 
 type Folder<T> = { name: string; path: string; children: Map<string, Folder<T>>; items: T[] };
 
-function countItems<T>(folder: Folder<T>): number {
-  return folder.items.length + [...folder.children.values()].reduce((count, child) => count + countItems(child), 0);
-}
-
 function containsItem<T extends ScenarioSidebarEntry>(folder: Folder<T>, id: string | null | undefined): boolean {
   return Boolean(id) && (folder.items.some(item => item.id === id) || [...folder.children.values()].some(child => containsItem(child, id)));
 }
@@ -70,7 +66,7 @@ export function ScenarioSidebarTree<T extends ScenarioSidebarEntry>({ items, sel
     const children = [...folder.children.values()].sort((left, right) => left.name.localeCompare(right.name, "ko"));
     return <details className="api-sidebar-folder" key={folder.path} open={expandAll || depth === 0 || containsItem(folder, selectedId)}>
       <summary>
-        <Icon name="expand_more" size={16} className="api-sidebar-chevron" /><span>{folder.name}</span><small>{countItems(folder)}</small>
+        <Icon name="expand_more" size={16} className="api-sidebar-chevron" /><span>{folder.name}</span>
       </summary>
       <div className="api-sidebar-folder-content">
         {renderRows(folder)}
