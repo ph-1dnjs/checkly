@@ -135,6 +135,8 @@ create policy "같은 프로젝트" on public.<테이블> for all to authenticat
 
 `.github/workflows/supabase.yml` — `supabase/**`가 바뀐 경우만 돈다.
 
+DB 변경은 각자 클라우드에 직접 적용하고 같은 SQL을 다시 실행해도 안전한 형태로 `supabase/migrations/`에 증적으로 남긴다(절차: [supabase-guide.md](supabase-guide.md) 5장). Actions의 `db push`는 그 기록을 클라우드와 맞추는 역할이다.
+
 | 언제 | 하는 일 |
 | --- | --- |
 | PR | 빈 Postgres(`supabase db start`)에 마이그레이션을 모두 적용하고 `db lint`. 이어서 팀 클라우드에 적용될 마이그레이션을 `db push --dry-run`으로 미리 보여 준다(적용 안 함, 토큰 확인 겸용, fork PR은 건너뜀) |

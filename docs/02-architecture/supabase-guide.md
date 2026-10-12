@@ -25,7 +25,7 @@
 | --- | --- |
 | 지금처럼 개발 | 아무것도 안 한다. `.env`에 Supabase 값이 없으면 로그인 없는 로컬 모드 |
 | 팀 클라우드로 로그인까지 개발 | `.env`에 `src/app/ipc/auth/release-config.ts`의 주소·anon 키를 넣는다(`.env.example` 참고) |
-| 클라우드를 건드리지 않고 개발 | Docker + `brew install supabase/tap/supabase` → `supabase start` → `supabase functions serve` → `supabase status`의 `API_URL`·`ANON_KEY`를 `.env`에 |
+| 클라우드를 건드리지 않고 개발(선택) | Docker + `brew install supabase/tap/supabase` → `supabase start` → `supabase functions serve` → `supabase status`의 `API_URL`·`ANON_KEY`를 `.env`에 |
 
 - 로컬 Docker에서 새 프로젝트를 만들려면 `supabase/functions/.env`에 `CHECKLY_CREATE_PROJECT_CODE=<아무 값>`을 둔다(git 제외).
 - 팀 클라우드에서 새 프로젝트를 만들 때 필요한 생성 코드는 운영자에게 받는다.
@@ -68,14 +68,38 @@ const off = window.electronAPI.auth.onSessionChange(s => { /* 로그인·로그�
 3. 로그인 안 했을 때는 기존 로컬 파일 동작을 그대로 둔다.
 4. 무엇을 공유할지는 기능 담당자가 정한다. 캐시·PC 경로·개인 설정은 올리지 않는다.
 
-## 5. 마이그레이션 절차
+## 5. DB 변경 절차 (직접 적용 + 증적 기록)
 
-1. `supabase/migrations/<YYYYMMDDhhmmss>_<이름>.sql` 추가
-2. 로컬에서 `supabase migration up`(데이터 유지) → 테스트. `supabase db reset`은 로컬 데이터가 지워진다.
-3. PR을 올린다. GitHub Actions(`.github/workflows/supabase.yml`)가 빈 DB에 마이그레이션을 모두 적용하고 lint해 SQL 오류를 검사한다.
-4. **develop에 머지되면 Actions가 팀 클라우드에 자동 반영한다**(`db push` + Edge Function 배포). 직접 `db push`하지 않는다.
-5. 이미 develop에 들어간 마이그레이션 파일은 고치지 않는다. 바꿀 게 있으면 새 파일을 만든다. 머지 직전에 파일 이름의 시간이 develop의 마지막 파일보다 뒤인지 확인한다.
-6. SQL은 PR 리뷰에서 꼭 본다. 클라우드에 한 번 반영되면 되돌리려면 반대 작업 마이그레이션이 필요하다.
+개발 속도를 위해 **팀 클라우드 DB는 각자 직접 바꾸고**, 바꾼 SQL은 **증적으로 `supabase/migrations/`에 남긴다.** 팀원은 Supabase 조직에 Developer로 초대돼 있다.
+
+1. **직접 적용**: Supabase 대시보드 SQL Editor(또는 CLI)에서 SQL을 실행하고 앱으로 확인한다.
+2. **증적 파일**: 같은 SQL을 `supabase/migrations/<YYYYMMDDhhmmss>_<이름>.sql`로 저장한다. 파일 맨 위에 한 줄 주석으로 누가·언제·왜를 적는다.
+   ```sql
+   -- hyewon 2026-10-12: 웹 시나리오 공유 테이블 추가(대시보드에서 적용함)
+   ```
+3. **다시 실행해도 안전하게 쓴다.** develop에 머지되면 Actions가 이 파일을 클라우드에 한 번 더 실행해 기록을 맞추므로, 이미 적용된 상태에서 실행해도 오류 없이 끝나야 한다.
+
+   | 하려는 것 | 쓰는 형태 |
+   | --- | --- |
+   | 테이블 | `create table if not exists …` |
+   | 컬럼 | `alter table … add column if not exists …` |
+   | 인덱스 | `create index if not exists …` |
+   | 함수 | `create or replace function …` |
+   | 트리거 | `drop trigger if exists … on …;` 후 `create trigger …` |
+   | RLS 정책 | `drop policy if exists "…" on …;` 후 `create policy …` |
+   | RLS 켜기 | `alter table … enable row level security;` (반복해도 안전) |
+   | 데이터 수정 | `update … where …`처럼 조건으로 한 번만 바뀌게. `insert`는 `on conflict do nothing` |
+   | 삭제 | `drop … if exists …` |
+
+4. **PR**: Actions가 빈 DB에 모든 파일을 적용·lint하고, 머지하면 적용될 파일을 미리 보여 준다(`db push --dry-run`).
+5. **develop 머지**: Actions가 클라우드에 `db push`해 아직 기록되지 않은 파일을 실행하고 기록한다(이미 적용된 내용이면 바뀌는 것 없음). `supabase/**`가 바뀐 머지에서만 돈다.
+6. 머지된 파일은 고치지 않는다. 바꿀 게 있으면 새 파일로 남긴다.
+
+주의
+- 직접 적용했는데 파일을 남기지 않으면 다른 팀원 로컬·새 환경에서 재현되지 않는다. **적용과 기록은 같은 날 PR까지.**
+- 같은 테이블을 두 사람이 동시에 바꾸지 않는다. 공통 테이블(`projects`·`members`·`endpoints`·`environments`·`endpoint_urls`)은 운영자와 먼저 상의한다.
+- 머지 후 반영이 실패하면 GitHub 저장소 Actions 탭의 `Supabase` 실행 기록(실패 시 GitHub 알림)에서 확인한다. 대개 다시 실행에 안전하지 않은 SQL이 원인이다 — 새 파일로 고친 뒤 다시 머지한다.
+- 이 규칙 이전(2026-10-09까지)의 파일은 Actions로만 적용됐고 같은 기록을 갖고 있다.
 
 ## 6. 테스트
 
@@ -86,7 +110,7 @@ const off = window.electronAPI.auth.onSessionChange(s => { /* 로그인·로그�
 ## 7. 하지 말 것
 
 - `service_role`·`secret` 키, DB 비밀번호를 앱 코드·`.env.example`·커밋에 넣지 않는다(서버 함수 환경에만 있다).
-- 클라우드에 직접 `db push`·함수 배포를 하지 않는다(develop 머지 → Actions가 반영).
+- 직접 바꾼 DB를 증적 파일 없이 두지 않는다. 함수 배포는 Actions에 맡긴다(`supabase/functions/**` 머지 시 배포).
 - 운영 계정·실서비스 토큰을 시나리오에 넣지 않는다. API 테스트의 "비밀값도 팀에 공유"가 켜져 있으면 팀 DB에 그대로 저장된다.
 
 ## 할 일
