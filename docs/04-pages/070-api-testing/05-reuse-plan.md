@@ -25,7 +25,7 @@ Checkly의 현재 구현은 2026-09-29 커밋 `3b62f9f` 기준이다. 외부 프
 - Checkly `src/app/api-testing/shared/scenario.ts`: 단일 YAML 작성 문법 검사·직렬화, 폐기 문법 거절, 내부 실행 모델 변환.
 - Checkly `src/app/api-testing/main/execution.ts`: 실행 전 검사, 단계 입력 공급자 대기, HTTP 단계 실행.
 - Checkly `src/renderer/pages/api-testing/ui/ApiDocumentation.tsx`, `src/renderer/features/api-testing/edit-scenario/ui/ScenarioBuilder.tsx`: API 선택과 별도 값 설정 화면.
-- Checkly `src/app/api-testing/main/register.ts`, `web-dev.ts`: Electron IPC·웹 RPC의 입력 조회와 제출.
+- Checkly `src/app/api-testing/main/register.ts`: Electron IPC의 입력 조회와 제출.
 
 ## 현재 계약과 재사용 시 주의점
 
@@ -50,7 +50,7 @@ Checkly의 현재 구현은 2026-09-29 커밋 `3b62f9f` 기준이다. 외부 프
 - 입력 요청은 runId, stepId, 고유 requestId, 이름, 타입, 라벨, 필수 여부를 포함한다.
 - 제출 시 실행·단계·요청 일치와 타입을 검증한다. 대기 중 이후 API는 호출하지 않는다.
 - 취소·renderer 종료·5분 만료 시 대기를 해제하고, 이전 실행의 늦은 제출 및 이중 제출을 거절한다.
-- Electron IPC와 웹 개발 RPC에서 동일한 요청 계약을 사용한다. 비대화형 실행에서 공급자가 없으면 필수 입력을 blocked로 처리한다.
+- Electron IPC에서 이 요청 계약을 사용한다. 비대화형 실행에서 공급자가 없으면 필수 입력을 blocked로 처리한다.
 
 ## 검증 범위와 후속 확인
 

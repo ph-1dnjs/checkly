@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { ApiWorkspace } from "../../src/app/api-testing/main/workspace";
-import { docInputFromRequest } from "../../src/app/api-testing/shared/doc-inputs";
+import { docInputFromRequest, docInputWithoutSecrets } from "../../src/app/api-testing/shared/doc-inputs";
 
 test("docs inputs keep plain values and drop secrets (body keys stay, emptied)", () => {
   assert.deepEqual(docInputFromRequest({
@@ -58,4 +58,12 @@ test("executing from the docs remembers inputs per server for the whole project,
     await new Promise<void>(resolve => server.close(() => resolve()));
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test("a team that shares secrets keeps them; taking them out again matches the default", () => {
+  const request = { headers: { Authorization: "Bearer t", "X-Trace": "1" }, query: { token: "q", page: 2 }, body: { loginId: "a", password: "pw", nested: { apiKey: "k" } } };
+  const kept = docInputFromRequest(request, { keepSecrets: true });
+  assert.deepEqual(kept, request);
+  assert.deepEqual(docInputWithoutSecrets(kept!), docInputFromRequest(request));
+  assert.deepEqual(docInputFromRequest(request), { headers: { "X-Trace": "1" }, query: { page: 2 }, body: { loginId: "a", password: "", nested: { apiKey: "" } } });
 });

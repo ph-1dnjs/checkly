@@ -66,6 +66,15 @@ preload에는 `headed?` 옵션 타입이 있지만 main은 사용하지 않으�
 
 패키지되지 않은 개발 빌드(`app.isPackaged === false`)에서 `checkForUpdates`는 항상 `{ state: 'not-available' }`을 반환하고 실제 확인을 시도하지 않습니다.
 
+### 폼 자동 입력 저장
+
+| 공개 함수 | IPC | 입력 | 출력·효과 |
+| --- | --- | --- | --- |
+| `loadFormAutomationState` | `form-automation:load-state` | 기존 localStorage의 허용된 키별 값 | `{ version: 1, values }`, userData 파일 최초 생성 시 한 번 이전 |
+| `setFormAutomationState` | `form-automation:set-state` | 허용된 키, JSON 값 | 해당 키만 직렬 저장하며 파일 쓰기 완료 후 resolve |
+
+파일 경로와 저장·백업 정책은 [폼 자동 입력 상태·IPC](../04-pages/060-form-automation/03-api.md)를 참고합니다.
+
 ## Main → Renderer
 
 | 구독 | 채널 | payload |
@@ -92,4 +101,3 @@ preload에는 `headed?` 옵션 타입이 있지만 main은 사용하지 않으�
 - 잘못된 영상 경로, ffmpeg·병합 실패는 reject됩니다.
 
 브라우저 QA IPC에는 HTTP 인증·retry/cache를 관리하는 공통 계층이 없습니다. 파일 저장의 부분 성공, 취소 결과 불일치, 수동 UI 정리 한계는 [편집 예외](../04-pages/020-scenario-editor/04-edge-cases.md)와 [실행 예외](../04-pages/040-scenario-run/04-edge-cases.md)를 기준으로 확인합니다.
-

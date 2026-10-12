@@ -9,9 +9,11 @@ export const httpUrl = z.string().url("http:// 또는 https://로 시작하는 �
   try { url = new URL(value); } catch { return false; }
   return ["http:", "https:"].includes(url.protocol) && !url.username && !url.password && !url.hash;
 }, "인증정보를 제외한 HTTP(S) 주소를 입력하세요");
-export const projectSchema = z.object({
+const projectShape = z.object({
   id: z.string().uuid(),
   name: z.string().trim().min(1).max(100),
+  /** Team project only: the version of its servers·environments·addresses this copy was read from. */
+  revision: z.string().max(200).optional(),
   servers: z.array(z.object({
     id: z.string().uuid(), name: z.string().trim().min(1).max(100),
   }).strict()).min(1),
@@ -19,7 +21,8 @@ export const projectSchema = z.object({
     id: z.string().uuid(), name: z.string().trim().min(1).max(100),
     baseUrls: z.record(z.string().uuid(), httpUrl.refine(v => !new URL(v).search, "기본 주소에 쿼리를 넣을 수 없습니다")),
   }).strict()).min(1),
-}).strict().superRefine((p, ctx) => {
+}).strict();
+const projectRules = (allUrls: boolean) => (p: z.infer<typeof projectShape>, ctx: z.RefinementCtx) => {
   if (new Set(p.servers.map(server => server.name)).size !== p.servers.length)
     ctx.addIssue({ code: "custom", path: ["servers"], message: "프로젝트 내 서버 이름은 중복될 수 없습니다" });
   for (const group of [p.servers, p.environments]) {
@@ -27,9 +30,19 @@ export const projectSchema = z.object({
       ctx.addIssue({ code: "custom", message: "중복 식별자" });
   }
   for (const e of p.environments) {
-    if (p.servers.some(s => !e.baseUrls[s.id]) || Object.keys(e.baseUrls).some(id => !p.servers.some(s => s.id === id)))
+    if ((allUrls && p.servers.some(s => !e.baseUrls[s.id])) || Object.keys(e.baseUrls).some(id => !p.servers.some(s => s.id === id)))
       ctx.addIssue({ code: "custom", message: "모든 환경에 서버별 기본 주소가 필요합니다" });
   }
+};
+export const projectSchema = projectShape.superRefine(projectRules(true));
+/**
+ * The signed-in team project (Supabase): an address may be left unset ("미설정") for some
+ * server·environment pairs, and environment names are unique like in the shared settings.
+ */
+export const teamProjectSchema = projectShape.superRefine((p, ctx) => {
+  projectRules(false)(p, ctx);
+  if (new Set(p.environments.map(environment => environment.name)).size !== p.environments.length)
+    ctx.addIssue({ code: "custom", path: ["environments"], message: "환경 이름은 중복될 수 없습니다" });
 });
 export type ApiProject = z.infer<typeof projectSchema>;
 export const specSourceSchema = z.discriminatedUnion("kind", [
@@ -39,7 +52,13 @@ export const specSourceSchema = z.discriminatedUnion("kind", [
   }).strict().optional() }).strict(),
 ]);
 export type ApiSpecSource = z.infer<typeof specSourceSchema>;
-export type ApiSpecSync = { url?: string; username?: string; hasSavedAccount: boolean; secureStorageAvailable: boolean; lastAttemptAt?: string; lastSuccessAt?: string; status?: "success" | "failed" };
+/**
+ * `shareAccount`: team project with "비밀값도 팀에 공유" on — a remembered docs account is saved for the
+ * team instead of this computer's keychain. `teamAccount`: the saved account shown is the team's.
+ */
+export type ApiSpecSync = { url?: string; username?: string; hasSavedAccount: boolean; secureStorageAvailable: boolean; lastAttemptAt?: string; lastSuccessAt?: string; status?: "success" | "failed"; shareAccount?: boolean; teamAccount?: boolean };
+/** Team project settings for API testing; `updatedBy` is a nickname. */
+export type ApiTeamSettings = { shareSecrets: boolean; updatedAt?: string; updatedBy?: string };
 export type ApiParameter = { name: string; location: string; required: boolean; description: string; type: string; style?: string; explode?: boolean; example?: Json };
 export type ApiOperation = {
   tags?: string[];
@@ -59,7 +78,12 @@ export type ApiEnvironmentScope = Pick<ApiScope, "projectId" | "environmentId">;
 export type ApiGlobal = { name: string; type: string; displayValue: string };
 /** Session cookie scope only; values never leave the main process. */
 export type ApiCookie = { name: string; domain: string; path: string };
-export type SavedApiScenario = { id: string; name: string; source: string; bindings: Record<string, string>; updatedAt: string; draft?: boolean; groupPath?: string[]; tags?: string[]; /** Old-title → new-title renames the user chose to keep as is. */ keptTitles?: Array<{ from: string; to: string }> };
+/**
+ * Who made / last changed it: team mode only, stamped by the database, with nicknames from the
+ * project's members ("(나간 멤버)" for one who left). File mode keeps none of it.
+ */
+export type ApiAuthorship = { createdAt?: string; createdBy?: string; updatedBy?: string };
+export type SavedApiScenario = ApiAuthorship & { id: string; name: string; source: string; bindings: Record<string, string>; updatedAt: string; draft?: boolean; groupPath?: string[]; tags?: string[]; /** Old-title → new-title renames the user chose to keep as is. */ keptTitles?: Array<{ from: string; to: string }> };
 /**
  * A project shared as one file: settings, scenarios and suites, plus each spec's URL, as written.
  * Never carries globals, saved docs accounts, cookies, remembered docs inputs or spec bodies.
@@ -91,7 +115,13 @@ export type ApiProjectImportPlan = {
   /** Local copies of the same project that the file can update. */
   targets: Array<{ projectId: string; name: string; scenarios: ApiShareDiff; suites: ApiShareDiff; serversAdded: string[]; environmentsAdded: string[] }>;
 };
-export type SavedApiSuite = { id: string; name: string; scenarioIds: string[]; onFailure: "stop" | "continue"; updatedAt: string; groupPath?: string[]; tags?: string[] };
+/**
+ * Where API testing keeps its data. "file": this computer only (no sign-in). "team": the signed-in
+ * team project, the only project; `importable` lists local projects that can be copied into it once,
+ * offered while the team project has no scenarios or suites yet.
+ */
+export type ApiStorageInfo = { mode: "file" } | { mode: "team"; projectCode: string; importable: Array<{ id: string; name: string; scenarios: number; suites: number }> };
+export type SavedApiSuite = ApiAuthorship & { id: string; name: string; scenarioIds: string[]; onFailure: "stop" | "continue"; updatedAt: string; groupPath?: string[]; tags?: string[] };
 export type ApiSidebarMetadata = { groupPath?: string[]; tags?: string[] };
 export type ApiScenarioPreview = { scenario: Scenario; issues: string[]; executionIssues?: string[] };
 /** A saved scenario with steps whose API is gone from the current specs; steps read "label (METHOD path)". */
@@ -115,8 +145,85 @@ export type ApiAiGuideRequest = { scope: ApiEnvironmentScope; tags?: string[]; o
  * this name (often the same result loaded again), so it starts unchosen.
  */
 export type ApiAiDraft = { id: string; name: string; yaml: string; stepCount: number; issues: string[]; notices: string[]; executionIssues: string[]; groupPath?: string[]; sameName?: true; /** The saved scenario (same name, the only one) this draft updates when saved as is. */ replaces?: string };
-export type ApiAiImportResult = { drafts: ApiAiDraft[]; suite: { name: string; scenarioIds: string[]; problems: string[]; groupPath?: string[]; /** Already-saved scenarios the suite reuses, by id. */ saved?: Record<string, string>; /** Same-name draft id → the saved scenario used when that draft is not saved. */ fallbacks?: Record<string, string> } | null };
+export type ApiAiImportResult = { drafts: ApiAiDraft[]; suite: { name: string; scenarioIds: string[]; problems: string[]; groupPath?: string[]; /** Already-saved scenarios the suite reuses, by id. */ saved?: Record<string, string>; /** Same-name draft id → the saved scenario used when that draft is not saved. */ fallbacks?: Record<string, string>; /** The one saved suite with the same name: saving updates it instead of adding a copy. */ replaces?: { id: string; updatedAt: string; onFailure: "stop" | "continue" } } | null };
+/** Backend source folders on this PC per server id (absolute paths). Kept out of the shareable project. */
+export type ApiBackendFolders = Record<string, string[]>;
+export type ApiAiTool = "claude" | "codex";
+/** How hard the AI thinks: lower answers faster. Both CLIs accept these; unset uses the CLI default. */
+/** In-app chat settings of a project on this PC: backend folders per server and which AI CLI (model and effort are the CLI defaults). */
+export type ApiAiChatSettings = { folders: ApiBackendFolders; tool?: ApiAiTool };
+/** AI CLIs installed on this PC; empty (with why) when there is none. */
+export type ApiAiChatStatus = { tools: Array<{ tool: ApiAiTool; version: string }>; error?: string };
+/** The project's in-app AI terminal: which CLI, in which environment, whether it runs, and recent output to replay. */
+export type ApiAiTerminal = {
+  tool: ApiAiTool; environmentId: string; running: boolean; buffer: string;
+  /** The result (by its save time) the user already saved from, with the first saved scenario; kept while the app runs. */
+  saved?: { modifiedAt: string; scenarioId?: string };
+};
+export type ApiAiTerminalEvent =
+  | { type: "data"; projectId: string; data: string }
+  | { type: "exit"; projectId: string; exitCode: number }
+  /** The AI saved its result file; the screen checks it. */
+  | { type: "result"; projectId: string };
+/** 바로 만들기: the AI writes from a request without asking; shown as requests and the AI's answers, with the result beside. */
+export type ApiAiQuick = {
+  tool: ApiAiTool; environmentId: string;
+  status: "running" | "done" | "failed" | "stopped";
+  /** Each request (the first one, then each 내용 바꾸기) and the AI's last answer to it: what it made and decided on its own. */
+  turns: Array<{ request: string; note: string }>;
+  /** What the AI is doing now, e.g. "읽는 중: UserController.java". */
+  progress: string;
+  /** Automatic fixes of Checkly's problems used for the latest request. */
+  fixes: number;
+  error?: string;
+  /** The checked result file (absent until the AI saves it). */
+  check?: { modifiedAt: string; result: ApiAiImportResult };
+  saved?: { modifiedAt: string; scenarioId?: string };
+};
+export type ApiAiQuickEvent = { projectId: string; quick: ApiAiQuick | null };
+/**
+ * about: AI에게 요청 from a saved scenario. Only its YAML, the user's words and, when chosen, where its last run
+ * failed (step, HTTP status) and the start of that step's response go to the AI.
+ */
+export type ApiAiQuickRequest = { scope: ApiEnvironmentScope; request: string; about?: { scenarioId: string; failures?: string[]; response?: string } };
+export type ApiAiTerminalStartRequest = { scope: ApiEnvironmentScope; size: { cols: number; rows: number } };
+/** checkly: messages Checkly adds (guide sent, check results); `result` is a checked AI answer to review and save. */
 export type ApiTestingBridge = {
+  /** Which AI CLIs are installed and the project's chat settings (desktop app only). */
+  getAiChatStatus(refresh?: boolean): Promise<ApiAiChatStatus>;
+  getAiChatSettings(projectId: string): Promise<ApiAiChatSettings>;
+  saveAiChatSettings(projectId: string, settings: ApiAiChatSettings): Promise<ApiAiChatSettings>;
+  /** Native picker allowing several folders; empty when cancelled. */
+  chooseDirectories(): Promise<string[]>;
+  /** In-app AI terminal (desktop app only). */
+  getAiTerminal(projectId: string): Promise<ApiAiTerminal | null>;
+  startAiTerminal(request: ApiAiTerminalStartRequest): Promise<ApiAiTerminal>;
+  /** Reopens the saved session (after a restart or after the CLI exited). */
+  resumeAiTerminal(request: ApiAiTerminalStartRequest): Promise<ApiAiTerminal>;
+  writeAiTerminal(projectId: string, data: string): void;
+  resizeAiTerminal(projectId: string, size: { cols: number; rows: number }): void;
+  /** Ends the session (stops the CLI, forgets the session and the last result). */
+  clearAiTerminal(projectId: string): Promise<void>;
+  /** Checks the terminal session's result file; null until the AI writes it. */
+  checkAiTerminalResult(scope: ApiEnvironmentScope): Promise<{ modifiedAt: string; result: ApiAiImportResult } | null>;
+  /** Remembers that the user saved from this result, so reopening the panel shows it as saved. */
+  markAiTerminalResultSaved(projectId: string, saved: { modifiedAt: string; scenarioId?: string }): Promise<void>;
+  /** Rewrites the project state the AI reads (after saving scenarios). */
+  refreshAiTerminalFiles(scope: ApiEnvironmentScope): Promise<void>;
+  /** Terminal output, exits and result saves of every project; returns the unsubscribe. */
+  onAiTerminalEvent(listener: (event: ApiAiTerminalEvent) => void): () => void;
+  /** AI에게 요청 into the running terminal conversation (pasted and sent). */
+  askAiTerminal(request: ApiAiQuickRequest & { about: NonNullable<ApiAiQuickRequest["about"]> }): Promise<void>;
+  /** 바로 만들기 of the project (in memory only; gone after a restart). */
+  getAiQuick(projectId: string): Promise<ApiAiQuick | null>;
+  /** Starts a new 바로 만들기 from a request (replaces the previous one). */
+  startAiQuick(request: ApiAiQuickRequest): Promise<ApiAiQuick>;
+  /** 수정 요청 in the same AI session. */
+  reviseAiQuick(projectId: string, request: string): Promise<ApiAiQuick>;
+  stopAiQuick(projectId: string): Promise<void>;
+  clearAiQuick(projectId: string): Promise<void>;
+  markAiQuickResultSaved(projectId: string, saved: { modifiedAt: string; scenarioId?: string }): Promise<void>;
+  onAiQuickEvent(listener: (event: ApiAiQuickEvent) => void): () => void;
   getSpecSync(scope: ApiScope): Promise<ApiSpecSync>;
   deleteSpecAccount(scope: ApiScope): Promise<void>;
   getRequestAuth(scope: ApiScope): Promise<string | null>;
@@ -129,6 +236,13 @@ export type ApiTestingBridge = {
   readAiResult(scope: ApiEnvironmentScope): Promise<{ path: string; text: string; modifiedAt: string } | null>;
   /** Checks pasted AI output (scenarios separated by ---, optional suite); nothing is saved. */
   checkAiScenarios(scope: ApiEnvironmentScope, text: string): Promise<ApiAiImportResult>;
+  getStorage(): Promise<ApiStorageInfo>;
+  /** Team project only (null without sign-in). */
+  getTeamSettings(): Promise<ApiTeamSettings | null>;
+  /** "비밀값도 팀에 공유". Turning it off also removes the secrets already shared (docs inputs, docs accounts). */
+  setShareSecrets(on: boolean): Promise<ApiTeamSettings>;
+  /** Team mode: copies a local project's servers, environments, scenarios, suites and docs inputs into the team project. */
+  importLocalProject(projectId: string): Promise<ApiProjectImportResult>;
   listProjects(): Promise<ApiProject[]>;
   saveProject(project: ApiProject): Promise<ApiProject>;
   deleteProject(projectId: string): Promise<void>;
@@ -139,7 +253,7 @@ export type ApiTestingBridge = {
   /** Raw, transient response for the Swagger "Try it out". Never use for reports, persistence or AI context. */
   execute(scope: ApiScope, operationKey: string, request: Scenario["steps"][number]["request"]): Promise<ApiResponse>;
   cancel(scope: ApiScope): Promise<void>;
-  /** Last "Try it out" values per operation key of the scope's server; secrets are never kept. */
+  /** Last "Try it out" values per operation key of the scope's server; secrets only when the team shares them. */
   getDocInputs(scope: ApiScope): Promise<Record<string, ApiDocInput>>;
   forgetDocInput(scope: ApiScope, operationKey: string): Promise<void>;
   /** Saves the project as a share file; resolves to where it was saved, or null when cancelled. */
@@ -159,7 +273,7 @@ export type ApiTestingBridge = {
   applyTitleRenames(scope: ApiEnvironmentScope): Promise<{ updated: string[]; skipped: string[] }>;
   keepTitles(scope: ApiEnvironmentScope, scenarioId: string): Promise<void>;
   listSuites(projectId: string): Promise<SavedApiSuite[]>;
-  saveSuite(projectId: string, suite: Omit<SavedApiSuite, "updatedAt">, expectedUpdatedAt?: string): Promise<SavedApiSuite>;
+  saveSuite(projectId: string, suite: Omit<SavedApiSuite, "updatedAt" | keyof ApiAuthorship>, expectedUpdatedAt?: string): Promise<SavedApiSuite>;
   deleteSuite(projectId: string, id: string, expectedUpdatedAt: string): Promise<void>;
   saveSuiteReport(filename: string, html: string): Promise<string | null>;
   readScenarioFile(): Promise<string | null>;

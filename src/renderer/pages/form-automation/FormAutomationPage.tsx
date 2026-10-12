@@ -36,12 +36,14 @@ import {
 import { NetworkPanel, OverridePanel, StoragePanel } from "./InspectorPanels";
 import { OpenApiDialog } from "./OpenApiDialog";
 import { ScreenshotEditor, type ScreenshotCapture } from "./ScreenshotEditor";
+import { FormAutomationStorageProvider, useStoredState } from "./StoredState";
 import {
   EMPTY_STORAGE_SNAPSHOT,
   apiEventClipboardText,
   browserStorageScript,
   contractForEvent,
   isSessionError,
+  mergeNetworkEvents,
   normalizedEndpointPath,
   overrideResponseSchema,
   safeJson,
@@ -85,23 +87,6 @@ const DEFAULT_URL = "https://example.com";
 const MaterialIcon = ({ name }: { name: string }): ReactElement => (
   <span className="msi" aria-hidden="true">{name}</span>
 );
-
-const readStored = <T,>(key: string, fallback: T): T => {
-  try {
-    const value = window.localStorage.getItem(key);
-    return value ? (JSON.parse(value) as T) : fallback;
-  } catch {
-    return fallback;
-  }
-};
-
-const useStoredState = <T,>(key: string, fallback: T) => {
-  const [value, setValue] = useState<T>(() => readStored(key, fallback));
-  useEffect(() => {
-    window.localStorage.setItem(key, JSON.stringify(value));
-  }, [key, value]);
-  return [value, setValue] as const;
-};
 
 const currentWebviewUrl = (webview: WebviewElement | null, fallback: string) => {
   try {
@@ -193,7 +178,7 @@ const CaseValueInput = ({
       </select>
     );
   }
-  if (field.type === "select-multiple" || Array.isArray(value)) {
+  if (field.type === "select-multiple" || field.type === "checkbox-group" || Array.isArray(value)) {
     return (
       <input
         aria-label={`${field.label || field.name} 값`}
@@ -226,7 +211,11 @@ const CaseValueInput = ({
   );
 };
 
-export const FormAutomationPage = (): ReactElement => {
+export const FormAutomationPage = (): ReactElement => (
+  <FormAutomationStorageProvider><FormAutomationContent /></FormAutomationStorageProvider>
+);
+
+const FormAutomationContent = (): ReactElement => {
   const [targetUrl, setTargetUrl] = useStoredState("checkly-form-target-url", DEFAULT_URL);
   const [browserTabs, setBrowserTabs] = useStoredState<BrowserSession[]>(
     "checkly-form-browser-sessions",
@@ -332,7 +321,7 @@ export const FormAutomationPage = (): ReactElement => {
 
   useEffect(() => {
     void window.electronAPI?.readFormAutomationSessionEvents?.(1000)
-      .then((items) => setNetworkEvents((current) => current.length ? current : items as NetworkEvent[]))
+      .then((items) => setNetworkEvents((current) => mergeNetworkEvents(current, items as NetworkEvent[])))
       .catch(() => undefined);
   }, []);
 
@@ -364,7 +353,10 @@ export const FormAutomationPage = (): ReactElement => {
           ? `${fields.length}개 필드를 감지했습니다.${searchCount ? ` 검색 조건 ${searchCount}개가 포함됩니다.` : ""} 케이스를 누르면 즉시 입력됩니다.`
           : "현재 화면에서 입력 가능한 폼 또는 검색 필드를 찾지 못했습니다.",
       );
-      if (selectDefault && fields.length) setSelectedCaseId(detectedCases(fields)[0]?.id ?? "");
+      if (selectDefault && fields.length) {
+        // Delayed page discovery must not replace a case the user just selected.
+        setSelectedCaseId(current => current || detectedCases(fields)[0]?.id || "");
+      }
       return fields;
     } catch (error) {
       setDiscoveryStatus(`필드 감지 실패: ${error instanceof Error ? error.message : String(error)}`);
@@ -376,6 +368,7 @@ export const FormAutomationPage = (): ReactElement => {
     const tab = browserTabsRef.current.find((item) => item.id === tabId);
     if (!tab) return;
     setActiveTabId(tabId);
+    setSelectedEvent(null);
     const url = currentWebviewUrl(webviewRefs.current.get(tabId) ?? null, tab.currentPageUrl || tab.url);
     setDraftUrl(url);
     setTargetUrl(url);
@@ -501,7 +494,7 @@ export const FormAutomationPage = (): ReactElement => {
       };
       const ready = () => {
         const url = currentWebviewUrl(webview, sessionForTab().url);
-        updateBrowserTab(tabId, { state: "ready", url, currentPageUrl: url });
+        updateBrowserTab(tabId, { state: "ready", currentPageUrl: url });
         try { webview.setZoomFactor(Math.min(1.25, Math.max(0.5, Number(zoomPercent) / 100))); } catch { /* 웹뷰 준비 전 */ }
         sendGuestConfig();
         updateHistory();
@@ -520,7 +513,9 @@ export const FormAutomationPage = (): ReactElement => {
       const failed = () => updateBrowserTab(tabId, { state: "error" });
       const navigated = (event: Event & { url?: string }) => {
         const url = event.url || currentWebviewUrl(webview, sessionForTab().url);
-        updateBrowserTab(tabId, { url, currentPageUrl: url });
+        // The webview owns in-page navigation. Updating its src here reloads SPA routes
+        // and discards React Router state passed to screens such as 2FA.
+        updateBrowserTab(tabId, { currentPageUrl: url });
         updateHistory();
         if (isActive()) {
           setDraftUrl(url);
@@ -580,6 +575,7 @@ export const FormAutomationPage = (): ReactElement => {
   const currentPageScope = pageScopeFromUrl(currentPageUrl);
   const activeNetworkEvents = networkEvents.filter((event) =>
     event.browserSessionId ? event.browserSessionId === activeTab?.id : activeTab?.id === "default");
+  const activeSelectedEvent = selectedEvent && activeNetworkEvents.some(event => event.id === selectedEvent.id) ? selectedEvent : null;
   const activeErrorCount = activeNetworkEvents.filter(isSessionError).length;
   const storageIsCurrent = storageSnapshot.browserSessionId === activeTab?.id;
   const storageTotal = storageIsCurrent
@@ -857,7 +853,7 @@ export const FormAutomationPage = (): ReactElement => {
     setCaseDraftFields(cloneFields(selectedCase?.fields));
   }, [selectedCase?.id, JSON.stringify(selectedCase?.fields)]);
 
-  const saveCase = () => {
+  const saveCase = async () => {
     if (!selectedCase?.fieldMeta.length || !caseDraftName.trim()) {
       showToast(!selectedCase?.fieldMeta.length ? "저장할 자동 생성 필드가 없습니다." : "케이스 제목을 입력해 주세요.");
       return;
@@ -875,9 +871,10 @@ export const FormAutomationPage = (): ReactElement => {
       savedAt: new Date().toISOString(),
       fields: cloneFields(caseDraftFields),
     };
-    setSavedCases((items) => items.some((item) => item.id === id)
+    const saved = await setSavedCases((items) => items.some((item) => item.id === id)
       ? items.map((item) => item.id === id ? next : item)
       : [next, ...items]);
+    if (!saved) { showToast("자동 입력 케이스를 저장하지 못했습니다. 다시 저장해 주세요."); return; }
     setSelectedCaseId(id);
     showToast(selectedCase.userSaved ? "수정한 자동 입력 값을 저장했습니다." : "새 자동 입력 케이스를 저장했습니다.");
   };
@@ -891,9 +888,10 @@ export const FormAutomationPage = (): ReactElement => {
     );
   };
 
-  const deleteCase = () => {
+  const deleteCase = async () => {
     if (!selectedCase?.userSaved) return;
-    setSavedCases((items) => items.filter((item) => item.id !== selectedCase.id));
+    const saved = await setSavedCases((items) => items.filter((item) => item.id !== selectedCase.id));
+    if (!saved) { showToast("자동 입력 케이스 삭제를 저장하지 못했습니다."); return; }
     setSelectedCaseId(autoCases[0]?.id ?? "");
     showToast("저장한 케이스를 삭제했습니다.");
   };
@@ -918,6 +916,7 @@ export const FormAutomationPage = (): ReactElement => {
     }
     setSelectedCaseId(item.id);
     try {
+      webview.focus();
       const result = await webview.executeJavaScript(fillFieldsScript(item.fields)) as FillResult;
       const webContentsId = webview.getWebContentsId();
       for (const entry of result.richText) {
@@ -1200,7 +1199,7 @@ export const FormAutomationPage = (): ReactElement => {
           {drawerTab === "network" ? (
             <NetworkPanel
               events={activeNetworkEvents}
-              selectedEvent={selectedEvent}
+              selectedEvent={activeSelectedEvent}
               filter={networkFilter}
               activeSessionName={activeTab.name}
               onSelect={setSelectedEvent}

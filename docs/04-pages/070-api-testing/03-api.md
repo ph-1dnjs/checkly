@@ -10,24 +10,28 @@
 | --- | --- |
 | list-projects / save-project / delete-project | 프로젝트 목록·설정·ID → 목록/저장 결과/완료 |
 | catalog / delete-catalog | projectId, environmentId, serverId → 명세/완료 |
-| import | scope, 파일 또는 URL·Basic 인증 → 명세 또는 취소 시 null |
-| spec-sync / delete-spec-account | scope → 동기화·계정 저장 여부/완료 |
+| import | scope, 파일 또는 URL·Basic 인증 → 명세 또는 취소 시 null. 명세 본문은 이 PC에만 둠(팀 프로젝트에서는 URL만 팀의 명세 주소가 됨) |
+| spec-sync / delete-spec-account | scope → 동기화·계정 저장 여부/완료. 팀 프로젝트에서 비밀값 공유가 켜져 있으면 `shareAccount`(기억하면 팀에 저장), 팀 계정이면 `teamAccount` |
+| get-team-settings / set-share-secrets | 없음 / boolean → `{ shareSecrets, updatedAt?, updatedBy?(닉네임) }`, 로그인 전 get은 null. 끄면 팀에 저장된 문서 계정을 지우고 Try it out 입력값의 비밀값을 뺌 (설정 → PROJECT 화면이 사용) |
 | get-request-auth / set-request-auth | scope, 변수 이름 또는 null → 연결 이름/완료 |
 | list-globals / set-global / delete-global | 프로젝트, 이름·JSON 값 → 원문 값 목록/완료 |
+| ai-chat-status / get-ai-chat-settings / save-ai-chat-settings / choose-directories | 설치된 AI CLI(`{ tools: [{ tool: claude\|codex, version }] }`) / 프로젝트의 대화 설정(`{ folders: { [serverId]: 절대경로[] }, tool? }`, 이 PC 전용 `ai-chat-settings.json`) 조회·저장 / 폴더 다중 선택 |
+| get-ai-terminal / start-ai-terminal / resume-ai-terminal / write-ai-terminal / resize-ai-terminal / clear-ai-terminal | 프로젝트의 터미널 세션(`{ tool, environmentId, running, buffer, saved? }`) / `{ scope, size }`로 새 세션(이미 있으면 거부) / 저장된 세션 다시 열기 / 키 입력(응답 없음) / 크기 변경(응답 없음) / 세션 종료(CLI 종료, 세션 정보·마지막 결과 삭제). 이벤트 `api-testing:ai-terminal-event`로 `data`(출력)·`exit`·`result`(결과 파일 저장)를 보냄. 세션 정보만 `ai-terminal-<projectId>.json`에 저장, 출력은 메모리(최근 400KB). 웹 개발 모드는 미지원 |
+| check-ai-terminal-result / mark-ai-terminal-result-saved / refresh-ai-terminal-files | 세션의 결과 파일(`ai/<projectId>/chat/scenarios.yaml`) 검사(없으면 null) / 그 결과에서 저장했음을 기억(메모리) / AI가 읽는 API 파일·프로젝트 상태 파일 다시 쓰기 |
 | copy-ai-prompt / get-ai-prompt | `{ scope: 프로젝트·환경, tags?, operations? }` → 스키마 파일을 쓰고 가이드를 클립보드로 / 같은 가이드 텍스트. operations는 `["<serverId> <METHOD path>"]` 형식 |
 | read-ai-result | 프로젝트·환경 → 결과 파일의 경로·내용·수정 시각, 없으면 null(2MB 이하) |
 | check-ai-scenarios | 프로젝트·환경, AI 결과 텍스트 → 검사된 초안·스위트(저장하지 않음) |
 | list-cookies / clear-cookies | 프로젝트 → 쿠키 이름·도메인·경로 목록(값 제외)/완료. 실행 중에는 비울 수 없음 |
-| execute | scope, operation key, request → 원문 ApiResponse (Swagger Try it out). 요청 입력값은 민감값을 빼고 기억 |
+| execute | scope, operation key, request → 원문 ApiResponse (Swagger Try it out). 요청 입력값은 민감값을 빼고 기억(팀 프로젝트에서 비밀값 공유가 켜져 있으면 그대로 기억) |
 | export-project | 프로젝트 ID → 저장 대화상자로 공유 파일 저장(경로 또는 null). 원본 프로젝트 ID(`origin`)와 기준 해시(`base`) 포함. 전역변수 값·저장된 문서 계정·세션 쿠키는 제외하며, 시나리오와 명세 URL은 원문 포함 |
 | read-project-file / plan-project-import / import-project | 열기 대화상자 → 파일 텍스트(10MB 이하) / 텍스트 → 새 프로젝트 요약과 같은 프로젝트 사본별 3-way 비교 / 텍스트, 선택적 `{ projectId, scenarioIds, suiteIds }`(파일 쪽으로 할 충돌) → 새 프로젝트 또는 합친 결과. 원본 연결은 `share-origins.json`, 마지막으로 합친 버전은 `share-bases.json` |
 | get-doc-inputs / forget-doc-input | scope(서버 기준)/operation key → 기억한 Try it out 입력값 목록/삭제. 프로젝트 단위(환경 공통), 서버 삭제·프로젝트 삭제 시 함께 삭제 |
 | cancel | scope → 현재 환경 실행 취소 |
-| list-scenarios / read-scenario-file | 프로젝트 ID/파일 선택 → 목록/YAML 또는 null |
+| list-scenarios / read-scenario-file | 프로젝트 ID/파일 선택 → 목록/YAML 또는 null. 목록 항목에는 선택 필드 `createdAt`, `createdBy`·`updatedBy`(팀 모드에서만, 닉네임, 나간 멤버는 `(나간 멤버)`)가 붙음 |
 | check-scenario-specs | 프로젝트·환경 → `{ missing, renamed }`: 명세에서 사라진 API를 쓰는 단계, 이전 제목을 이름으로 쓰는 단계 (서버별 명세를 한 번만 읽음) |
 | apply-title-renames | 프로젝트·환경 → `{ updated, skipped }`: 이전 제목 그대로인 단계 이름만 새 제목으로 저장, 먼저 바뀐 시나리오는 건너뜀 |
 | keep-titles | 프로젝트·환경, 시나리오 ID → 완료. 현재 제목 변경 제안을 `keptTitles`에 기록해 숨기며 `updatedAt`은 유지 |
-| list-suites / save-suite / delete-suite / save-suite-report | 프로젝트, 스위트, expectedUpdatedAt / 파일명·HTML → 목록·저장 결과/완료/저장 경로 |
+| list-suites / save-suite / delete-suite / save-suite-report | 프로젝트, 스위트, expectedUpdatedAt / 파일명·HTML → 목록·저장 결과/완료/저장 경로. 스위트 항목에도 팀 모드에서 `createdAt`·`createdBy`·`updatedBy`가 붙고, save-suite는 받은 작성 정보를 무시함 |
 | preview-scenario | 프로젝트·환경, YAML, 서버 매핑 → `{ scenario, issues, executionIssues }` |
 | save-scenario / save-scenario-draft | 동일 입력 + expectedUpdatedAt?, metadata? → 저장 항목. metadata는 `{ groupPath?: string[], tags?: string[] }` |
 | delete-scenario | 프로젝트 ID, 시나리오 ID, expectedUpdatedAt → 완료 |
@@ -65,13 +69,12 @@ API 문서의 공통 Bearer 연결은 프로젝트·환경·서버·기본 URL�
 
 ## 개발과 검증
 
-- `npm run dev:api:web`: 127.0.0.1:5174에서 동일 API 화면과 서버 코어 사용.
 - `npm run dev`: Electron 개발 앱. renderer는 HMR, main/preload 변경은 앱 재시작 필요.
 - `npm run test:api`: 코어·변수·저장·인증·삭제·AI·시나리오 편집 검증.
 - `npm run typecheck:api`: API 코어 타입 검사.
 - `npm run test:api:desktop`: Electron 통합 검증.
 - `npm run build`: Vite 및 Electron 빌드.
 
-웹 개발 RPC는 loopback 전용이며 Host·Origin·JSON·전용 헤더를 검사합니다. 문서 Basic 인증은 가능하지만 계정 기억은 제공하지 않습니다. native 파일 대화상자·OS 암호화·패키징은 앱에서 별도로 검증합니다.
+API 테스트는 Electron 앱에서만 동작합니다(웹 개발 모드와 웹 E2E는 제거). native 파일 대화상자·OS 암호화·패키징은 앱에서 별도로 검증합니다.
 
 로컬 샘플은 `npx tsx tests/api-testing/web-fixture.ts`로 실행합니다. 기본 URL은 `http://127.0.0.1:5175`, 명세는 `/openapi.json`, 문서 Basic 계정은 demo/demo, API 토큰은 demo-token입니다. 모두 테스트용 값입니다.

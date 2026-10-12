@@ -23,3 +23,6 @@
 | 웹뷰 preload | `src/app/formAutomationWebviewPreload.ts` | fetch/XHR 관찰·오버라이드 적용·페이지 오류 수집 |
 | main IPC | `src/app/ipc/form-automation/formAutomation.ts` | 캡처·클립보드·로그·HTTP·fixture 처리 |
 | 로그 리포트 | `src/app/ipc/form-automation/formAutomationReport.ts` | 네트워크 로그 XLSX 생성 |
+
+
+웹뷰 preload는 main의 import 경로로 로드되지 않고 파일 경로로 실행되므로 `tsconfig.electron.json`의 별도 빌드 진입점에 포함해야 합니다. `npm run build` 뒤 `dist-electron/formAutomationWebviewPreload.js`가 생성되어야 API·페이지 오류 수집과 오버라이드가 작동합니다.

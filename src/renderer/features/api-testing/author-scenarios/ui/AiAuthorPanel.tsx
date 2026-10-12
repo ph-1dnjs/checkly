@@ -1,18 +1,27 @@
 import { problemReport } from "../model/problem-report";
-import { useEffect, useRef, useState } from "react";
-import { YamlCode } from "../../../../entities/api-testing";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiPicker, type PickableOperation } from "./ApiPicker";
-import type { ApiAiImportResult, ApiCatalog, ApiEnvironmentScope, ApiProject, ApiTestingBridge, SavedApiScenario } from "../../../../../app/api-testing/shared/workspace";
+import { AiResultReview } from "./AiResultReview";
+import { AiTerminalPanel } from "./AiTerminalPanel";
+import { AiQuickPanel } from "./AiQuickPanel";
+import { AiToolSettings } from "./AiToolSettings";
+import { Icon } from "../../../../shared/ui/Icon";
+import { aiToolNames, backendFolderCount, chatTool } from "../../../../entities/api-testing";
+import type { ApiAiChatSettings, ApiAiChatStatus, ApiAiImportResult, ApiCatalog, ApiEnvironmentScope, ApiProject, ApiTestingBridge, SavedApiScenario } from "../../../../../app/api-testing/shared/workspace";
 
 const errorText = (error: unknown) => (error as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, "");
 
 /**
- * The user writes scenarios with their own AI (Claude Code, Codex…) opened in the
- * backend project: Checkly hands over a guide, the AI asks what to test and writes a
- * result file, and Checkly checks it and saves the chosen scenarios and suite.
+ * The user writes scenarios with their own AI (Claude Code, Codex…). Two ways:
+ * - AI 대화: when a CLI is installed and backend folders are set in the project settings, the app runs the
+ *   AI itself and the chat happens here.
+ * - 가이드 복사: otherwise the user pastes the guide into their AI, which writes a
+ *   result file that Checkly checks and saves.
  */
-export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
+export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved, onConfigureProject, onOpenSpecs }: {
   project: ApiProject; scope: ApiEnvironmentScope; bridge: ApiTestingBridge; onBusy: (busy: boolean) => void; onSaved: (first?: SavedApiScenario) => void;
+  onConfigureProject: () => void;
+  onOpenSpecs?: () => void;
 }) {
   // Every operation the AI could use, and the ones picked for it (empty = all).
   const [operations, setOperations] = useState<PickableOperation[]>([]);
@@ -23,11 +32,19 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
   const [answer, setAnswer] = useState("");
   const [checking, setChecking] = useState(false);
   const [result, setResult] = useState<ApiAiImportResult | null>(null);
-  const [chosen, setChosen] = useState<string[]>([]);
-  const [saveSuite, setSaveSuite] = useState(true);
-  // Drafts that would update a saved scenario but the user wants added as a new one instead.
-  const [asNew, setAsNew] = useState<string[]>([]);
-  const [saving, setSaving] = useState(false);
+  // A new check starts a fresh review (choices reset).
+  const [resultKey, setResultKey] = useState(0);
+  const [chatStatus, setChatStatus] = useState<ApiAiChatStatus | null>(null);
+  const [chatSettings, setChatSettings] = useState<ApiAiChatSettings | null>(null);
+  const [chatBusy, setChatBusy] = useState(false);
+  const [settingsBusy, setSettingsBusy] = useState(false);
+  const [reviewBusy, setReviewBusy] = useState(false);
+  const [checkingAi, setCheckingAi] = useState(true);
+  const [statusRevision, setStatusRevision] = useState(0);
+  // The chosen way, remembered per project on this PC; without one the chat opens when it is ready.
+  const [way, setWay] = useState<AiWay | null>(() => readWay(project.id));
+  // Inside the app: 바로 만들기 by default, the CLI's own terminal for those who want the conversation.
+  const [style, setStyle] = useState<ChatStyle>(() => readStyle(project.id));
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   // Which step the last message belongs to, so it shows next to the button that caused it.
@@ -48,7 +65,25 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
         }))));
       });
   }, []);
-  const busy = checking || saving;
+  const busy = checking || chatBusy || settingsBusy || reviewBusy || checkingAi;
+  useEffect(() => { onBusy(busy); }, [busy, onBusy]);
+  const chatActivity = useCallback((next: boolean) => { setChatBusy(next); if (next) onBusy(true); }, [onBusy]);
+  useEffect(() => {
+    let active = true;
+    setCheckingAi(true);
+    void bridge.getAiChatStatus(statusRevision > 0).catch((): ApiAiChatStatus => ({ tools: [], error: "AI 대화를 확인하지 못했습니다" }))
+      .then(async status => {
+        const settings = await bridge.getAiChatSettings(project.id).catch(() => ({ folders: {} }));
+        if (live.current && active) { setChatSettings(settings); setChatStatus(status); setCheckingAi(false); }
+      });
+    return () => { active = false; };
+  }, [bridge, project.id, statusRevision]);
+  const tools = chatStatus?.tools ?? [];
+  const tool = chatTool(chatSettings, tools);
+  const chatReady = Boolean(tool) && backendFolderCount(chatSettings) > 0;
+  const view: AiWay = way ?? (chatReady ? "chat" : "copy");
+  const choose = (next: AiWay) => { setWay(next); writeWay(project.id, next); };
+  const chooseStyle = (next: ChatStyle) => { setStyle(next); writeStyle(project.id, next); };
   // No spec on any server: a guide would give the AI no APIs at all.
   const noSpec = catalogsLoaded && !operations.length;
   const guideRequest = () => ({ scope, ...(picked.length ? { operations: picked } : {}) });
@@ -62,12 +97,7 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
       const next = await bridge.checkAiScenarios(scope, text);
       if (!live.current) return;
       setResult(next);
-      // A name already saved usually means this result was loaded before: it updates that scenario
-      // (when there is exactly one); otherwise it is not saved a second time by default.
-      // A draft with problems never replaces a saved scenario by default.
-      setChosen(next.drafts.filter(draft => !draft.sameName || (draft.replaces && !draft.issues.length)).map(draft => draft.id));
-      setAsNew([]);
-      setSaveSuite(Boolean(next.suite));
+      setResultKey(key => key + 1);
     });
     if (live.current) setChecking(false);
   };
@@ -78,54 +108,12 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
     return file.text;
   });
 
-  const save = async () => {
-    if (!result) return;
-    setSaving(true); onBusy(true); setError(""); setMessage(""); setMessageStep(3);
-    const runnable = new Set<string>();
-    // Draft id → the id it was saved under (a draft added as new instead of updating gets a fresh id).
-    const savedIds = new Map<string, string>();
-    const failures: string[] = [];
-    let first: SavedApiScenario | undefined;
-    try {
-      const chosenDrafts = result.drafts.filter(item => chosen.includes(item.id));
-      const current = chosenDrafts.some(draft => draft.replaces && !asNew.includes(draft.id)) ? await bridge.listScenarios(scope.projectId) : [];
-      for (const draft of chosenDrafts) {
-        try {
-          const metadata = draft.groupPath ? { groupPath: draft.groupPath } : undefined;
-          const updating = Boolean(draft.replaces) && !asNew.includes(draft.id);
-          const yaml = draft.replaces && !updating ? draft.yaml.replace(/^id: .*$/m, `id: scenario-${crypto.randomUUID()}`) : draft.yaml;
-          const expectedUpdatedAt = updating ? current.find(item => item.id === draft.replaces)?.updatedAt : undefined;
-          const item = draft.issues.length ? await bridge.saveScenarioDraft(scope, yaml, {}, expectedUpdatedAt, metadata) : await bridge.saveScenario(scope, yaml, {}, expectedUpdatedAt, metadata);
-          savedIds.set(draft.id, item.id);
-          if (!draft.issues.length) runnable.add(item.id);
-          first ??= item;
-        } catch (e) { failures.push(`${draft.name}: ${errorText(e)}`); }
-      }
-      let suiteNote = "";
-      if (result.suite && saveSuite) {
-        const { saved, fallbacks } = result.suite;
-        const ids = result.suite.scenarioIds.map(id => {
-          const savedAs = savedIds.get(id);
-          if (savedAs && runnable.has(savedAs)) return savedAs;
-          return saved?.[id] !== undefined ? id : fallbacks?.[id];
-        }).filter((id): id is string => Boolean(id));
-        const skipped = result.suite.scenarioIds.length - ids.length;
-        if (ids.length) {
-          try {
-            await bridge.saveSuite(scope.projectId, { id: crypto.randomUUID(), name: result.suite.name, scenarioIds: ids, onFailure: "stop", ...(result.suite.groupPath ? { groupPath: result.suite.groupPath } : {}) });
-            suiteNote = ` 스위트 '${result.suite.name}'를 저장했습니다${skipped ? ` (저장하지 않았거나 수정이 필요한 ${skipped}개 제외)` : ""}.`;
-          } catch (e) { failures.push(`스위트: ${errorText(e)}`); }
-        } else suiteNote = " 바로 실행할 수 있는 시나리오가 없어 스위트는 저장하지 않았습니다.";
-      }
-      if (failures.length) { setError(failures.join("\n")); setMessage(`일부만 저장했습니다.${suiteNote}`); return; }
-      onSaved(first);
-    } finally { if (live.current) setSaving(false); onBusy(false); }
-  };
-
   const problems = result ? problemReport(result) : "";
-  // A suite made only of reused saved scenarios is worth saving even with no new scenario chosen.
-  const suiteReuses = Boolean(saveSuite && result?.suite?.scenarioIds.some(id => result.suite!.saved?.[id] !== undefined || result.suite!.fallbacks?.[id]));
-  const nameOf = (id: string) => result?.drafts.find(draft => draft.id === id)?.name ?? result?.suite?.saved?.[id] ?? id;
+  const toolChoice = chatStatus && chatSettings && tools.length > 1 && <div className="api-ai-tool-row">
+          <AiToolSettings projectId={project.id} bridge={bridge} status={chatStatus} settings={chatSettings} disabled={busy} onBusy={setSettingsBusy} onSaved={setChatSettings} />
+          <button type="button" className="api-icon-button api-ai-refresh" aria-label="AI 다시 확인" title="AI 다시 확인" disabled={busy} onClick={() => setStatusRevision(value => value + 1)}><Icon name="refresh" size={16} /></button>
+        </div>;
+  const specNote = noSpec ? "가져온 명세가 없어 AI에게 줄 API가 없습니다. API 문서 탭에서 명세를 가져오세요." : specWarnings.join(" · ");
   const usable = operations.filter(operation => !operation.unavailable).length;
   const unavailable = operations.length - usable;
   const status = (step: 1 | 3) => messageStep === step && <>
@@ -133,8 +121,34 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
     {message && <p className="api-ai-step-status" role="status">{message}</p>}
   </>;
   return <section className="api-ai-author" aria-label="AI 시나리오 작성">
-    <h2>AI 작성 도우미</h2>
-    <ol className="api-ai-steps" aria-label="AI 작성 순서">
+    {/* Two ways as tabs; the AI choice sits next to the chat's start button. */}
+    {checkingAi ? <p role="status" className="api-field-help">설치된 AI를 확인하는 중…</p> : <div className="api-ai-author-heading">
+      <div className="api-ai-mode" role="tablist" aria-label="작성 방식">
+        <button type="button" role="tab" aria-selected={view === "chat"} disabled={busy} onClick={() => choose("chat")}>앱에서 AI와 대화</button>
+        <button type="button" role="tab" aria-selected={view === "copy"} disabled={busy} onClick={() => choose("copy")}>내 AI 앱에서 쓰기</button>
+      </div>
+      {view === "chat" && chatReady && <button type="button" className="api-ai-style-toggle" disabled={busy} onClick={() => chooseStyle(style === "quick" ? "terminal" : "quick")}>{style === "quick" ? "터미널로 보기" : "간단히 보기"}</button>}
+    </div>}
+    {checkingAi ? null : view === "chat" ? <>
+      {!chatReady ? <section className="api-ai-chat-requirements" aria-label="앱에서 AI와 대화 준비">
+        <p>이 PC의 AI가 백엔드 코드를 읽으며 이 화면에서 함께 작성합니다. 아래 두 가지가 있어야 시작할 수 있습니다.</p>
+        <ul className="api-ai-way-checks">
+          <li className={tool ? "is-ok" : "is-missing"}>
+            <span>AI</span>
+            <strong title={tools.map(item => `${aiToolNames[item.tool]} ${item.version}`).join("\n") || undefined}>{tools.length ? tools.map(item => aiToolNames[item.tool]).join(" · ") : "없음"}</strong>
+            <button type="button" className="api-icon-button" aria-label="AI 다시 확인" title="AI 다시 확인" disabled={busy} onClick={() => setStatusRevision(value => value + 1)}><Icon name="refresh" size={16} /></button>
+          </li>
+          <li className={backendFolderCount(chatSettings) ? "is-ok" : "is-missing"}>
+            <span>백엔드 코드 폴더</span>
+            <strong>{backendFolderCount(chatSettings) ? `${backendFolderCount(chatSettings)}개` : "없음"}</strong>
+            {tools.length > 0 && <button type="button" className="api-issue-step-link" disabled={busy} onClick={onConfigureProject}>설정하기</button>}
+          </li>
+        </ul>
+        {!tools.length && <p className="api-field-help">{chatStatus?.error ?? "Claude Code나 Codex CLI를 설치한 뒤 다시 확인하세요"}</p>}
+      </section> : style === "quick" ? <AiQuickPanel project={project} scope={scope} bridge={bridge} onBusy={chatActivity} onSaved={onSaved} onOpenSpecs={onOpenSpecs}
+        toolChoice={toolChoice} noSpec={noSpec} specNote={specNote} /> : <AiTerminalPanel project={project} scope={scope} bridge={bridge} onBusy={chatActivity} onSaved={onSaved} toolName={aiToolNames[tool!]}
+        toolChoice={toolChoice} noSpec={noSpec} specNote={specNote} />}
+    </> : <ol className="api-ai-steps" aria-label="AI 작성 순서">
       <li>
         <header><strong>가이드 복사</strong><span>백엔드 프로젝트 폴더에서 Claude Code나 Codex를 열고 붙여넣습니다.</span></header>
         {noSpec
@@ -166,32 +180,34 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved }: {
           </div>
         </details>
         {status(3)}
-        {result && <section className="api-ai-author-result" aria-label="AI 작성 결과">
-          <h3>시나리오 {result.drafts.length}개</h3>
-          {problems && <div className="api-ai-author-notes">검사에서 문제가 나왔습니다. 문제를 복사해 AI에 붙여넣고, AI가 고쳐 저장하면 다시 불러오세요. 그대로 저장하면 초안이 됩니다.
+        {result && <AiResultReview key={resultKey} result={result} scope={scope} bridge={bridge} onBusy={setReviewBusy} onSaved={onSaved}
+          notes={problems && <div className="api-ai-author-notes">검사에서 문제가 나왔습니다. 문제를 복사해 AI에 붙여넣고, AI가 고쳐 저장하면 다시 불러오세요. 그대로 저장하면 초안이 됩니다.
             <div className="api-actions"><button type="button" onClick={() => void act(async () => { await navigator.clipboard.writeText(problems); setMessage("문제를 복사했습니다. AI에 붙여넣으세요."); })}>문제 복사</button></div>
-          </div>}
-          <ul>{result.drafts.map(draft => <li key={draft.id} className={draft.issues.length ? "has-issues" : ""}>
-            <label className="api-check-row"><input type="checkbox" aria-label={`${draft.name} 저장`} checked={chosen.includes(draft.id)} disabled={saving} onChange={e => setChosen(e.target.checked ? [...chosen, draft.id] : chosen.filter(id => id !== draft.id))} /><strong>{draft.name}</strong><small>{draft.stepCount ? `${draft.stepCount}단계` : "단계 확인 불가"}{draft.groupPath ? ` · ${draft.groupPath.join(" › ")}` : ""} · {draft.issues.length ? "수정 필요 (초안으로 저장)" : draft.executionIssues.length ? "저장 가능 · 실행 전 설정 필요" : "바로 실행 가능"}</small></label>
-            {draft.replaces && <label className="api-ai-author-replace">저장 방식<select aria-label={`${draft.name} 저장 방식`} value={asNew.includes(draft.id) ? "new" : "update"} disabled={saving || !chosen.includes(draft.id)} onChange={e => setAsNew(e.target.value === "new" ? [...asNew, draft.id] : asNew.filter(id => id !== draft.id))}><option value="update">기존 시나리오 업데이트</option><option value="new">새 시나리오로 추가</option></select></label>}
-            {draft.notices.length > 0 && <p className="api-field-help">{draft.replaces && asNew.includes(draft.id) ? "같은 이름의 기존 시나리오가 있습니다. 저장하면 같은 이름이 하나 더 생깁니다" : draft.notices.join(" · ")}</p>}
-            {draft.issues.length > 0 && <ul className="api-ai-author-issues">{draft.issues.map(issue => <li key={issue}>{issue}</li>)}</ul>}
-            {draft.executionIssues.length > 0 && <p className="api-field-help">실행 전에 필요: {draft.executionIssues.join(" · ")}</p>}
-            <details><summary>내용 보기</summary><YamlCode source={draft.yaml} /></details>
-          </li>)}</ul>
-          {result.suite && <div className="api-ai-author-suite">
-            <label className="api-check-row"><input type="checkbox" checked={saveSuite} disabled={saving} onChange={e => setSaveSuite(e.target.checked)} />스위트 ‘{result.suite.name}’{result.suite.groupPath ? ` (${result.suite.groupPath.join(" › ")})` : ""}도 저장</label>
-            <ol>{result.suite.scenarioIds.map(id => <li key={id}>{nameOf(id)}{result.drafts.find(draft => draft.id === id)?.replaces && chosen.includes(id) && !asNew.includes(id) ? " · 기존 시나리오 업데이트" : result.suite!.fallbacks?.[id] && !chosen.includes(id) ? " · 기존 시나리오 사용" : result.drafts.find(draft => draft.id === id)?.issues.length ? " · 수정 필요라 제외" : result.suite!.saved?.[id] !== undefined ? " · 기존 시나리오" : ""}</li>)}</ol>
-            {result.suite.problems.map(problem => <p key={problem} className="api-field-help">{problem}</p>)}
-          </div>}
-          <div className="api-actions"><button className="api-primary" disabled={saving || (!chosen.length && !suiteReuses)} onClick={() => void save()}>{saving ? "저장 중…" : "선택한 것 저장"}</button></div>
-        </section>}
+          </div>} />}
       </li>
-    </ol>
+    </ol>}
   </section>;
 }
 
 /** Text to paste back into the user's AI; empty when everything passed. */
+
+type AiWay = "chat" | "copy";
+const wayKey = (projectId: string) => `checkly.api-testing.ai-way.${projectId}`;
+function readWay(projectId: string): AiWay | null {
+  try { const value = localStorage.getItem(wayKey(projectId)); return value === "chat" || value === "copy" ? value : null; } catch { return null; }
+}
+function writeWay(projectId: string, value: AiWay | null) {
+  try { if (value) localStorage.setItem(wayKey(projectId), value); else localStorage.removeItem(wayKey(projectId)); } catch { /* only a convenience */ }
+}
+
+type ChatStyle = "quick" | "terminal";
+const styleKey = (projectId: string) => `checkly.api-testing.ai-style.${projectId}`;
+function readStyle(projectId: string): ChatStyle {
+  try { return localStorage.getItem(styleKey(projectId)) === "terminal" ? "terminal" : "quick"; } catch { return "quick"; }
+}
+function writeStyle(projectId: string, value: ChatStyle) {
+  try { localStorage.setItem(styleKey(projectId), value); } catch { /* only a convenience */ }
+}
 
 const staleDays = 30;
 /** Servers whose spec is missing, lacks the original document (schemas unresolved) or is old. */

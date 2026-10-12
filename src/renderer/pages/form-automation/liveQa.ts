@@ -30,6 +30,16 @@ export type NetworkEvent = {
   contract?: ContractResult;
 };
 
+export const mergeNetworkEvents = (current: NetworkEvent[], saved: NetworkEvent[]): NetworkEvent[] => {
+  const events = new Map<string, NetworkEvent>();
+  for (const event of [...current, ...saved]) {
+    if (!events.has(event.id)) events.set(event.id, event);
+  }
+  return [...events.values()]
+    .sort((a, b) => (Date.parse(b.at) || 0) - (Date.parse(a.at) || 0))
+    .slice(0, 1000);
+};
+
 export type OverrideRule = {
   id: string;
   name: string;
