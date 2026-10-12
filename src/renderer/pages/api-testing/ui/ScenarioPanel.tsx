@@ -93,9 +93,11 @@ export type ScenarioPanelProps = {
   onOpenSpecs?: () => void;
   /** Environment and value controls shown in the composer toolbar, which replaces the page header. */
   composeContext?: ReactNode;
+  /** Page header element the composer's toolbar renders into (one header row, like the other workspaces). */
+  composeToolbarSlot?: HTMLElement | null;
 };
 
-export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mode = "run", startCreateRequest = 0, editScenarioId, onCreateConsumed, onComposerOpenChange, onUnsavedChange, onCreateScenario, onOpenAi, onAiAskSent, onEditScenario, onExecuteSaved, runSaved, onRunSavedConsumed, openSaved, onOpenSavedConsumed, onBackToScenarios, onOpenSpecs, composeContext }: ScenarioPanelProps) {
+export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mode = "run", startCreateRequest = 0, editScenarioId, onCreateConsumed, onComposerOpenChange, onUnsavedChange, onCreateScenario, onOpenAi, onAiAskSent, onEditScenario, onExecuteSaved, runSaved, onRunSavedConsumed, openSaved, onOpenSavedConsumed, onBackToScenarios, onOpenSpecs, composeContext, composeToolbarSlot }: ScenarioPanelProps) {
   const editorMode = mode === "editor";
   const globalAccess = useGlobalVariableAccess();
   const checkedGlobalRevision = useRef(globalAccess.revision);
@@ -345,6 +347,7 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
       onSidebarGroupPathChange={value => { setScenarioGroupPath(value); setDirty(true); }}
       onNewScenario={() => { setScenarioGroupPath([]); }}
       toolbarContext={composeContext}
+      toolbarSlot={composeToolbarSlot}
       sidebarMetadata={{ groupPath: scenarioGroupPath }}
       onSaved={async item => {
         setCurrent(item);

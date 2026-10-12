@@ -369,9 +369,11 @@ process.stdin.on("data", chunk => {
     await page.getByRole("tab", { name: "AI 작성 도우미", exact: true }).click();
     await page.getByRole("tab", { name: "앱에서 AI와 대화", exact: true }).click();
     await expect(screen).toContainText("고쳐서 다시 저장했습니다");
-    await page.getByRole("group", { name: "API 환경", exact: true }).getByRole("button", { name: "stage", exact: true }).click();
+    await page.getByRole("button", { name: "API 환경", exact: true }).click();
+    await page.getByRole("menuitemradio", { name: /^stage/ }).click();
     await expect(terminalPane).toContainText("이 대화는 dev에서 시작했습니다");
-    await page.getByRole("group", { name: "API 환경", exact: true }).getByRole("button", { name: "dev", exact: true }).click();
+    await page.getByRole("button", { name: "API 환경", exact: true }).click();
+    await page.getByRole("menuitemradio", { name: /^dev/ }).click();
     // 대화 초기화 stops the CLI and goes back to 대화 시작; the next start is a new session. Saved scenarios stay.
     await terminalPane.getByRole("button", { name: "대화 초기화", exact: true }).click();
     await expect(terminalPane.getByRole("button", { name: "대화 시작", exact: true })).toBeVisible();
@@ -450,7 +452,7 @@ process.stdin.on("data", chunk => {
     await page.getByRole("button", { name: "+ 새 시나리오", exact: true }).click();
     // The composer toolbar replaces the locked header: tabs hide, environment and values stay.
     await expect(page.getByRole("tab", { name: "시나리오", exact: true })).toBeHidden();
-    await expect(page.getByRole("group", { name: "시나리오 전체 호출 환경" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "시나리오 전체 호출 환경" })).toBeVisible();
     await expect(page.getByRole("button", { name: "{ } 전역변수", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "시나리오에 API 추가", exact: true }).nth(0).click();
     await page.getByRole("button", { name: "시나리오에 API 추가", exact: true }).nth(1).click();
@@ -541,7 +543,8 @@ process.stdin.on("data", chunk => {
     await expect(secondStep.locator(".api-expect-linked-value")).toContainText("1단계 응답 id");
     await expect(secondStep.locator("details.api-verification-item > summary")).toContainText("기대값과 같은지 [1단계 응답 id]");
     await shot("compose");
-    await page.getByRole("button", { name: "시나리오 검사·저장", exact: true }).click();
+    // The header's 저장 submits the same check-and-save as the editor's button.
+    await page.locator(".page-layout-header").getByRole("button", { name: "저장", exact: true }).click();
     await expect(page.getByText("시나리오를 저장했습니다. 이 화면에서 계속 수정할 수 있습니다.", { exact: true })).toBeVisible();
     await expect(page.getByText("시나리오 수정 · 로그인 후 상품 조회", { exact: true })).toBeVisible();
 
@@ -770,7 +773,8 @@ process.stdin.on("data", chunk => {
     await restored.getByRole("button", { name: "명세 설정", exact: true }).click();
     await expect(restored.getByLabel("OpenAPI URL", { exact: true })).toHaveValue(`${url}/openapi.json`);
     // Clicking the environment already chosen keeps the URL (nothing loads it again).
-    await restored.getByRole("group", { name: "API 환경" }).locator('button[aria-pressed="true"]').click();
+    await restored.getByRole("button", { name: "API 환경", exact: true }).click();
+    await restored.getByRole("menuitemradio", { checked: true }).click();
     await expect(restored.getByLabel("OpenAPI URL", { exact: true })).toHaveValue(`${url}/openapi.json`);
     if (canRemember) {
       await expect(restored.getByLabel("Swagger 비밀번호", { exact: true })).toHaveValue("");

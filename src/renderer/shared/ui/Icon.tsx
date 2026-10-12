@@ -3,7 +3,9 @@ import type { ReactNode } from "react";
 export type IconName =
   | "add"
   | "add_link"
+  | "arrow_back"
   | "auto_fix_high"
+  | "check"
   | "check_circle"
   | "close"
   | "content_copy"
@@ -20,6 +22,7 @@ export type IconName =
   | "play_arrow"
   | "play_circle"
   | "refresh"
+  | "save"
   | "settings"
   | "stop_circle"
   | "unfold_less"
@@ -34,10 +37,12 @@ const CONTENT: Record<IconName, ReactNode> = {
     <path d="M17 7h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5Z" />
     <path d="M17 1h-2v3h-3v2h3v3h2V6h3V4h-3V1Z" />
   </>,
+  arrow_back: <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2Z" />,
   auto_fix_high: <>
     <path d="m14.7 4.3 5 5L9.5 19.5H4.5v-5L14.7 4.3Zm-8.8 11v2.2h2.2l8.8-8.8-2.2-2.2-8.8 8.8Z" />
     <path d="M5 3v4M3 5h4m13 9v4m-2-2h4" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.6" />
   </>,
+  check: <path d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17Z" />,
   check_circle: <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2Zm-2 15-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9Z" />,
   close: <path d="m6 6 12 12M18 6 6 18" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />,
   content_copy: <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1Zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2Zm0 16H8V7h11v14Z" />,
@@ -77,6 +82,7 @@ const CONTENT: Record<IconName, ReactNode> = {
     <path d="m10 8 5.5 4-5.5 4V8Z" />
   </>,
   refresh: <path d="M17.65 6.35A7.96 7.96 0 0 0 12 4a8 8 0 1 0 7.73 10h-2.08A6 6 0 1 1 12 6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35Z" />,
+  save: <path d="M17 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7l-4-4Zm-5 16a3 3 0 1 1 0-6 3 3 0 0 1 0 6Zm3-10H5V5h10v4Z" />,
   settings: <>
     <path d="m19.43 12.98.04-.98-.04-.98 2.11-1.65-2-3.46-2.49 1a7.1 7.1 0 0 0-1.7-.98L15 3h-4l-.35 2.93a7.1 7.1 0 0 0-1.7.98l-2.49-1-2 3.46 2.11 1.65-.04.98.04.98-2.11 1.65 2 3.46 2.49-1c.52.4 1.09.73 1.7.98L11 21h4l.35-2.93a7.1 7.1 0 0 0 1.7-.98l2.49 1 2-3.46-2.11-1.65ZM13 15.5A3.5 3.5 0 1 1 13 8a3.5 3.5 0 0 1 0 7.5Z" />
   </>,

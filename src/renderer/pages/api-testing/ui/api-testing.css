@@ -1617,3 +1617,111 @@ body.panel-resizing { cursor:col-resize; user-select:none; }
 .api-scn-yaml-body { padding:0 10px 10px; border-top:1px solid var(--ck-color-line-soft); }
 .api-scn-yaml-body .api-scenario-yaml-tools { margin-top:10px; margin-bottom:8px; }
 .api-testing-page .api-scn-yaml-body .api-scenario-yaml-tools button:not(.swagger-ui *) { display:inline-flex; align-items:center; gap:6px; height:24px; min-height:24px; padding:0 8px; font-size:11px; }
+
+/* Workspace layout, shared with the scenario and form automation screens: the common 48px PageHeader holds
+   project, tabs (or the composer's toolbar) and environment; the content fills the full width under it. */
+.workspace .content:has(> .api-layout) { width:100%; max-width:none; height:100%; padding-top:0; padding-left:0; padding-right:0; display:flex; flex-direction:column; overflow:clip; }
+.content > .api-testing-page.api-swagger-shell.api-layout,.api-testing-page.api-swagger-shell.api-layout:has(.api-compose-layout) { box-sizing:border-box; display:flex; flex-direction:column; flex:1 1 auto; width:100%; max-width:none; height:100%; min-height:0; margin:0; padding:0; overflow:hidden auto; }
+.api-layout > .page-layout-header { position:sticky; top:0; z-index:20; gap:16px; min-width:0; }
+.api-layout > .page-layout-header > * { flex:none; }
+.api-layout .page-layout-header .api-project-picker { display:flex; align-items:center; gap:0; flex-wrap:nowrap; margin:0; }
+.api-layout .page-layout-header .api-project-picker select { height:28px; min-height:28px; max-width:200px; padding:0 8px; border-color:var(--ck-color-line-strong); border-radius:4px 0 0 4px; font-size:12px; font-weight:600; }
+.api-layout .page-layout-header .api-project-picker button.api-icon-button { width:28px; height:28px; min-height:28px; margin-left:-1px; padding:0; border-color:var(--ck-color-line-strong); border-radius:0 4px 4px 0; color:var(--ck-color-text-secondary); }
+.api-layout .page-layout-header .api-project-picker .api-team-project + button.api-icon-button { margin-left:8px; border-radius:4px; }
+.api-layout .page-layout-header .api-project-servers { align-self:center; margin:0; }
+.api-head-divider { align-self:center; width:1px; height:24px; background:var(--ck-color-line-soft); }
+.api-layout .page-layout-header .api-tabs { display:flex; align-items:stretch; gap:2px; margin:0; border:0; }
+.api-layout .page-layout-header .api-tabs button { display:flex; align-items:center; gap:6px; height:auto; min-height:0; margin-bottom:-1px; padding:0 12px; border:0; border-bottom:2px solid transparent; border-radius:0; background:transparent; color:var(--ck-color-text-secondary); font-size:13px; font-weight:400; white-space:nowrap; }
+.api-layout .page-layout-header .api-tabs button:hover:not(:disabled) { background:var(--ck-color-surface-hover); }
+.api-layout .page-layout-header .api-tabs button[aria-selected="true"] { border-bottom-color:var(--ck-color-blue-action); color:var(--api-ink); font-weight:700; }
+.api-layout .page-layout-header .api-tabs .api-tab-count { margin-left:0; font-size:11px; font-weight:400; }
+.api-layout .page-layout-header .api-context { display:flex; flex-wrap:nowrap; align-items:center; gap:8px; min-width:0; margin:0 0 0 auto; padding:0; border:0; }
+.api-layout .page-layout-header select { height:28px; min-height:28px; padding:0 8px; border-color:var(--ck-color-line-strong); border-radius:4px; font:11.5px var(--ck-font-mono); }
+.api-layout .page-layout-header .api-environments { display:flex; gap:0; padding:0; overflow:hidden; border:1px solid var(--ck-color-line-strong); border-radius:4px; }
+.api-layout .page-layout-header .api-environments button { height:26px; min-height:26px; padding:0 9px; border:0; border-left:1px solid var(--ck-color-line); border-radius:0; background:var(--ck-color-canvas); color:var(--ck-color-text-secondary); font-size:11.5px; }
+.api-layout .page-layout-header .api-environments button:first-child { border-left:0; }
+.api-layout .page-layout-header .api-environments button[aria-pressed="true"] { background:var(--ck-color-blue-tint); color:var(--ck-color-blue-action); font-weight:700; }
+.api-layout .page-layout-header .api-context-value-actions { margin-left:0; }
+.api-layout .page-layout-header .api-context-value-actions button:not(.shared-popover-panel *) { height:28px; min-height:28px; padding:0 12px; font-size:12px; }
+/* The composer's toolbar in the header row: ← 목록, ① ② steps, title and state, then environment and globals. */
+.api-layout > .page-layout-header > .api-head-compose { display:flex; flex:1 1 auto; align-items:center; min-width:0; }
+.api-layout .page-layout-header .api-head-compose > .api-compose-toolbar { display:flex; flex:1 1 auto; flex-wrap:nowrap; align-items:center; gap:8px; min-width:0; min-height:0; margin:0; padding:0; border:0; }
+.api-layout .page-layout-header .api-compose-toolbar > button:first-child { height:28px; min-height:28px; padding:0 10px; border-color:transparent; background:transparent; color:var(--api-body); font-size:12px; }
+.api-layout .page-layout-header .api-compose-toolbar > button:first-child:hover:not(:disabled) { background:var(--ck-color-surface-hover-strong); }
+.api-layout .page-layout-header .api-compose-toolbar > .api-compose-steps { order:1; padding:2px; }
+.api-layout .page-layout-header .api-compose-steps button { min-height:24px; padding:0 10px 0 4px; font-size:12px; }
+.api-layout .page-layout-header .api-compose-toolbar > .api-compose-heading { order:2; display:flex; align-items:center; gap:8px; min-width:0; padding-left:10px; border-left:1px solid var(--ck-color-line); }
+.api-layout .page-layout-header .api-compose-title { min-width:0; max-width:260px; font-size:13px; font-weight:600; }
+.api-layout .page-layout-header .api-compose-status { flex:none; flex-wrap:nowrap; padding:1px 6px; border:1px solid var(--ck-color-line); border-radius:4px; white-space:nowrap; }
+.api-layout .page-layout-header .api-compose-toolbar > .api-compose-context { order:3; margin-left:auto; }
+@media(max-width:1100px) { .api-layout .page-layout-header .api-compose-status,.api-layout .page-layout-header .api-project-servers { display:none; } }
+/* Messages between the header and the content keep the header's side margins. */
+.api-layout > :is(.api-warning,.api-page-notice,.api-local-import,.api-page-message) { flex:none; margin:12px 20px 0; }
+.api-layout > .api-page-body { padding:16px 20px 24px; }
+.api-layout > .api-page-body:has(> .api-columns:first-child),.api-layout > .api-page-body:has(.api-compose-layout) { padding:0; }
+.api-layout .api-page-body > .api-columns:first-child > aside { padding:14px; }
+.api-layout .api-page-body > .api-columns:first-child > aside > input { height:30px; min-height:30px; font-size:12px; }
+
+/* API 테스트 헤더 (Claude Design v27 · API 테스트 · 헤더): 프로젝트 그룹 | 탭 …… (서버) · 환경 ▾ · { } 전역변수. */
+.api-layout .page-layout-header .api-project-picker { align-self:center; height:28px; border:1px solid var(--ck-color-line-strong); border-radius:4px; }
+.api-select-chip { position:relative; display:flex; align-items:center; height:100%; }
+.api-select-chip > .app-icon { position:absolute; right:6px; top:50%; color:var(--ck-color-text-mute); transform:translateY(-50%); pointer-events:none; }
+.api-layout .page-layout-header .api-select-chip > select { appearance:none; -webkit-appearance:none; height:26px; min-height:26px; max-width:220px; padding:0 26px 0 10px; border:0; border-radius:3px 0 0 3px; background:transparent; color:var(--api-ink); font:600 12px var(--ck-font-ui, inherit); cursor:pointer; }
+.api-layout .page-layout-header .api-select-chip > select:hover:not(:disabled) { background:var(--ck-color-surface-hover); }
+.api-layout .page-layout-header .api-project-picker button.api-icon-button,.api-layout .page-layout-header .api-project-picker .api-team-project + button.api-icon-button { width:28px; height:26px; min-height:26px; margin:0; padding:0; border:0; border-left:1px solid var(--ck-color-line-strong); border-radius:0 3px 3px 0; background:transparent; color:var(--ck-color-text-secondary); }
+.api-layout .page-layout-header .api-project-picker button.api-icon-button:hover:not(:disabled) { background:var(--ck-color-surface-hover); }
+.api-layout .page-layout-header .api-team-project { display:flex; align-items:center; gap:6px; height:26px; padding:0 10px; }
+.api-layout .page-layout-header .api-team-project strong { color:var(--api-ink); font-size:12px; font-weight:600; }
+.api-team-project-kind { color:var(--ck-color-text-mute); font-size:11px; }
+.api-head-divider { height:auto; align-self:stretch; margin:12px 0; background:var(--ck-color-line-soft); }
+.api-layout .page-layout-header .api-tabs button[aria-selected="true"] { font-weight:600; }
+.api-layout .page-layout-header .api-tabs .api-tab-count { color:var(--ck-color-text-mute); font-family:var(--ck-font-mono); }
+.api-layout .page-layout-header .api-select-chip.is-mono { height:28px; border:1px solid var(--ck-color-line-strong); border-radius:4px; }
+.api-layout .page-layout-header .api-select-chip.is-mono > select { border-radius:3px; font:11.5px var(--ck-font-mono); }
+/* 환경 ▾ */
+.api-env-menu { position:relative; flex:none; }
+.api-testing-page button.api-env-trigger:not(.swagger-ui *) { display:flex; align-items:center; gap:6px; height:28px; min-height:28px; padding:0 6px 0 10px; border:1px solid var(--ck-color-line-strong); border-radius:4px; background:var(--ck-color-canvas); color:var(--api-ink); white-space:nowrap; }
+.api-testing-page button.api-env-trigger:not(.swagger-ui *):hover:not(:disabled) { background:var(--ck-color-surface-hover); }
+.api-env-trigger .app-icon { color:var(--ck-color-text-mute); }
+.api-env-current { font:700 11.5px var(--ck-font-mono); }
+.api-env-popup { position:absolute; top:32px; right:0; z-index:40; display:flex; flex-direction:column; width:240px; padding:4px; border:1px solid var(--api-border); border-radius:6px; background:var(--ck-color-canvas); box-shadow:0 6px 20px rgb(20 24 28 / 10%); }
+.api-testing-page button.api-env-item:not(.swagger-ui *) { display:flex; align-items:center; gap:8px; width:100%; min-height:32px; padding:0 8px; border:0; border-radius:4px; background:transparent; color:var(--api-ink); font-size:12px; text-align:left; }
+.api-testing-page button.api-env-item:not(.swagger-ui *):hover { background:var(--ck-color-line-faint); }
+.api-env-check { flex:none; color:var(--ck-color-blue-action); opacity:0; }
+.api-env-item[aria-checked="true"] .api-env-check { opacity:1; }
+.api-env-name { font:12px var(--ck-font-mono); }
+.api-env-item[aria-checked="true"] .api-env-name { font-weight:700; }
+.api-env-host { min-width:0; margin-left:auto; overflow:hidden; color:var(--ck-color-text-disabled); font:10.5px var(--ck-font-mono); text-overflow:ellipsis; white-space:nowrap; }
+.api-env-add-icon { flex:none; color:var(--ck-color-text-secondary); }
+.api-env-sep { height:1px; margin:4px 0; background:var(--ck-color-line-soft); }
+.api-env-servers { display:flex; flex-direction:column; gap:4px; margin:4px 0 0; padding:6px 8px 4px; border-top:1px solid var(--ck-color-line-soft); }
+.api-env-server { display:flex; align-items:center; gap:8px; min-width:0; }
+.api-env-server .api-run-server { flex:none; margin:0; }
+.api-env-add { display:flex; gap:6px; padding:4px; }
+.api-testing-page .api-env-add input:not(.swagger-ui *) { flex:1; min-width:0; height:28px; min-height:28px; padding:0 8px; font:12px var(--ck-font-mono); }
+.api-testing-page .api-env-add button:not(.swagger-ui *) { flex:none; height:28px; min-height:28px; padding:0 10px; font-size:12px; }
+.api-env-empty,.api-env-hint,.api-env-error { margin:0; padding:6px 10px; color:var(--ck-color-text-mute); font-size:11.5px; line-height:1.6; }
+.api-env-error { color:var(--ck-color-fail-ink); }
+/* { } 전역변수 */
+.api-testing-page button.api-globals-trigger:not(.swagger-ui *) { display:flex; align-items:center; gap:6px; height:28px; min-height:28px; padding:0 12px; border-color:var(--ck-color-line-strong); background:var(--ck-color-canvas); color:var(--api-ink); font-size:12px; white-space:nowrap; }
+.api-globals-brace { color:var(--ck-color-blue-action); font:700 11px var(--ck-font-mono); }
+@media(max-width:980px) { .api-globals-label { display:none; } }
+/* 작성 툴바: ← · ① API 선택 › ② 값 설정 | 이름 · 상태 …… 환경 · 전역변수 | 저장 · 실행 */
+.api-layout .page-layout-header .api-compose-toolbar > button.api-compose-back:first-child { display:flex; align-items:center; justify-content:center; width:28px; height:28px; min-height:28px; padding:0; border:0; color:var(--api-body); }
+.api-layout .page-layout-header .api-compose-toolbar > .api-compose-steps { gap:2px; padding:0; background:transparent; }
+.api-layout .page-layout-header .api-compose-steps button { gap:5px; height:26px; min-height:26px; padding:0 8px; border-radius:4px; background:transparent; box-shadow:none; color:var(--ck-color-text-secondary); font-size:12px; font-weight:400; }
+.api-layout .page-layout-header .api-compose-steps button[aria-current=step] { background:var(--ck-color-blue-tint); box-shadow:none; color:var(--ck-color-blue-action); font-weight:600; }
+.api-layout .page-layout-header .api-compose-steps button > span { width:15px; height:15px; border:1px solid currentColor; background:transparent; color:inherit; font-size:9.5px; }
+.api-layout .page-layout-header .api-compose-steps button[aria-current=step] > span { background:transparent; color:inherit; }
+.api-layout .page-layout-header .api-compose-step-separator { color:var(--ck-color-text-disabled); }
+.api-layout .page-layout-header .api-compose-toolbar > .api-compose-heading { gap:8px; padding-left:0; border-left:0; }
+.api-layout .page-layout-header .api-compose-toolbar > .api-compose-heading::before { content:""; flex:none; width:1px; height:16px; margin-right:2px; background:var(--ck-color-line); }
+.api-layout .page-layout-header .api-compose-title { max-width:220px; }
+.api-layout .page-layout-header .api-compose-status { border-color:var(--ck-color-line); background:var(--ck-color-surface-subtle); color:var(--ck-color-text-secondary); }
+.api-layout .page-layout-header .api-compose-status[data-state="dirty"],.api-layout .page-layout-header .api-compose-status[data-state="draft"] { border-color:#e0cfa4; background:#fdf7e9; color:var(--ck-color-wait-ink); }
+.api-layout .page-layout-header .api-compose-status[data-state="saved"] { border-color:var(--ck-color-pass-line); background:var(--ck-color-pass-tint); color:var(--ck-color-pass); }
+.api-compose-head-actions { order:4; display:flex; flex:none; align-items:center; gap:8px; }
+.api-compose-head-sep { width:1px; height:18px; background:var(--ck-color-line); }
+.api-testing-page .api-compose-head-actions button:not(.swagger-ui *) { display:flex; align-items:center; gap:6px; height:28px; min-height:28px; padding:0 12px; font-size:12px; white-space:nowrap; }
+.api-compose-head-actions button:not(.api-primary) .app-icon { color:var(--ck-color-text-secondary); }
+.api-compose-toolbar:not(.page-layout-header *) .api-compose-head-actions { display:none; }

@@ -4,11 +4,12 @@ import { LocalProjectImport, ProjectForm, ProjectImportDialog } from "../../feat
 import { ApiDocumentation } from "./ui/ApiDocumentation";
 import { LoadingSpinner } from "../../shared/ui/LoadingSpinner";
 import { Icon } from "../../shared/ui/Icon";
-import { ServerTag } from "../../entities/api-testing";
+import { PageHeader } from "../../shared/ui/PageLayout";
 import { GlobalVariableMenu } from "../../features/api-testing/configure-globals";
 import { ApiTestingProviders } from "./ui/ApiTestingProviders";
 import { ScenarioPanel } from "./ui/ScenarioPanel";
 import { ScenarioEditorPanel } from "./ui/ScenarioEditorPanel";
+import { EnvironmentMenu } from "./ui/EnvironmentMenu";
 import { AiAuthorPanel, showAiChat } from "../../features/api-testing/author-scenarios";
 import { SpecSourcePanel } from "../../features/api-testing/configure-spec";
 import "./ui/api-testing.css";
@@ -65,6 +66,8 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
   const [refreshConfirmOpen, setRefreshConfirmOpen] = useState(false);
   scenarioDirtyRef.current = scenarioDirty;
   const [tab, setTab] = useState<ApiTab>(() => readWorkspaceUrl(window.location.href).tab);
+  // The composer's toolbar takes the header row where the tabs and environment usually are.
+  const [composeToolbarSlot, setComposeToolbarSlot] = useState<HTMLDivElement | null>(null);
   const [scenarioCreateRequest, setScenarioCreateRequest] = useState(0);
   const [scenarioEditorScenarioId, setScenarioEditorScenarioId] = useState(() => readWorkspaceUrl(window.location.href).scenarioId || null);
   useEffect(() => {
@@ -235,36 +238,63 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
     } catch (e) { setSpecError((e as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, "")); return false; }
     finally { try { setSync(await bridge.getSpecSync(scope)); } catch { /* Keep the original import error visible. */ } setLoading(false); setDocsPassword(""); }
   };
-  if (!bridge) return <section className="api-testing-page api-swagger-shell"><h1>API 테스트</h1><p>프로젝트 저장과 실제 API 호출은 Checkly 데스크톱 앱에서 사용할 수 있습니다.</p></section>;
+  if (!bridge) return <section className="api-testing-page api-swagger-shell api-layout"><PageHeader icon="data_object" title="API 테스트" /><p className="api-page-message">프로젝트 저장과 실제 API 호출은 Checkly 데스크톱 앱에서 사용할 수 있습니다.</p></section>;
   const locked = busy || scenarioComposerOpen;
   // Clicking the current environment keeps the spec URL field (the load that fills it does not run again).
-  const environmentPicker = project && <div className="api-environments" role="group" aria-label={tab === "scenario-editor" ? "시나리오 전체 호출 환경" : "API 환경"}>{project.environments.map(e => <button key={e.id} aria-pressed={environmentId === e.id} disabled={busy || loading} title={tab === "scenario-editor" ? "이 시나리오의 전체 API 호출 환경" : undefined} onClick={() => { if (e.id !== environmentId) { setEnvironmentId(e.id); setUrl(""); } }}>{e.name}</button>)}</div>;
+  const addEnvironment = async (name: string) => {
+    if (!project) return;
+    const id = crypto.randomUUID();
+    await bridge.saveProject({ ...project, environments: [...project.environments, { id, name, baseUrls: Object.fromEntries(project.servers.map(server => [server.id, ""])) }] });
+    setProjects(await bridge.listProjects());
+    setEnvironmentId(id); setUrl("");
+  };
+  const environmentPicker = project && <EnvironmentMenu project={project} environmentId={environmentId} serverId={tab === "api" ? serverId : undefined} label={tab === "scenario-editor" ? "시나리오 전체 호출 환경" : "API 환경"} title={tab === "scenario-editor" ? "이 시나리오의 전체 API 호출 환경" : undefined} disabled={busy || loading} onSelect={id => { if (id !== environmentId) { setEnvironmentId(id); setUrl(""); } }} onAdd={locked ? undefined : addEnvironment} />;
   const valueActions = <div className="api-context-value-actions"><GlobalVariableMenu projectId={projectId} bridge={bridge} disabled={busy} /></div>;
   const settingsButton = project && <button type="button" className="api-icon-button" aria-label="프로젝트 설정" title="프로젝트 설정" disabled={locked || loading} onClick={() => setForm("edit")}><Icon name="settings" size={16} /></button>;
   // "+ 새 프로젝트" is the list's last entry: it's rare, and the header stays one row.
   // Signed in there is only the team project: no list, no new or deleted projects.
   const projectPicker = team ? <div className="api-actions api-project-picker">
-    <span className="api-team-project" title="로그인한 팀 프로젝트 · 시나리오·스위트·서버 설정을 팀원과 같이 씁니다">팀 프로젝트 <strong>{project?.name}</strong></span>
+    <span className="api-team-project" title="로그인한 팀 프로젝트 · 시나리오·스위트·서버 설정을 팀원과 같이 씁니다"><span className="api-team-project-kind">팀</span><strong>{project?.name}</strong></span>
     {settingsButton}
   </div> : <div className="api-actions api-project-picker">
-    <select aria-label="API 프로젝트" disabled={locked || loading} value={projectId} onChange={e => { if (e.target.value === newProjectOption) setForm("new"); else { setNotice(""); setSpecNotice(false); } if (e.target.value !== newProjectOption) selectProject(projects.find(p => p.id === e.target.value)!); }}>
+    <span className="api-select-chip"><select aria-label="API 프로젝트" disabled={locked || loading} value={projectId} onChange={e => { if (e.target.value === newProjectOption) setForm("new"); else { setNotice(""); setSpecNotice(false); } if (e.target.value !== newProjectOption) selectProject(projects.find(p => p.id === e.target.value)!); }}>
       <option value="" disabled>프로젝트 선택</option>
       {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
       <option value={newProjectOption}>+ 새 프로젝트</option>
-    </select>
+    </select><Icon name="expand_more" size={16} /></span>
     {settingsButton}
   </div>;
   // A team project can lack an API server or environment until someone sets them up.
   const ready = Boolean(project?.servers.length && project.environments.length);
   const server = project?.servers.find(item => item.id === serverId);
-  // The project's servers in their tag colours, so a step's "인증"/"주문" tag reads as a server name.
   const environment = project?.environments.find(item => item.id === environmentId);
-  const serverNames = Object.fromEntries((project?.servers ?? []).map(server => [server.id, server.name]));
-  // Not over the project form: the servers being edited may differ (or belong to the project being replaced).
-  const serverLegend = !form && project && project.servers.length > 1 && <span className="api-project-servers" aria-label="프로젝트 서버">서버{project.servers.map(server => <ServerTag key={server.id} server={server.id} names={serverNames} title={environment?.baseUrls[server.id] ? `${server.name} 서버 · ${environment.name} ${environment.baseUrls[server.id]}` : undefined} />)}</span>;
-  return <ApiTestingProviders key={projectId} projectId={projectId} bridge={bridge}><section className="api-testing-page api-swagger-shell">
-    {/* Row 1: which project. Row 2 (tabs, or the composer's toolbar): what to do in it and where to call. */}
-    <header className="api-toolbar api-page-head"><h1>API 테스트</h1>{projectPicker}{serverLegend}</header>
+  // Tabs and the server/environment context, in the header once a project is ready.
+  const workbar = !form && project && ready ? {
+    tabs: <div className="api-tabs" role="tablist" aria-label="API 작업 영역">
+      <button role="tab" aria-selected={tab === "scenarios" || tab === "scenario-editor"} disabled={busy} onClick={() => {
+        if (tab !== "scenario-editor") { changeTab("scenarios"); return; }
+        if (scenarioDirty) setError("저장하지 않은 변경사항이 있습니다. 저장하거나 ← 목록에서 변경사항을 버리고 닫으세요.");
+        else backToScenarios();
+      }}>시나리오</button>
+      <button role="tab" aria-selected={tab === "api"} disabled={locked} onClick={() => changeTab("api")}>API 문서{catalog ? <small className="api-tab-count" title={`API ${catalog.operations.length}개`}>{catalog.operations.length}</small> : null}</button>
+      <button role="tab" aria-selected={tab === "ai"} disabled={locked || (!aiHasSpec && tab !== "ai")} title={aiHasSpec ? undefined : "이 환경에 가져온 API 명세가 없습니다. API 문서에서 명세를 먼저 가져오세요"} onClick={() => changeTab("ai")}>AI 작성 도우미</button>
+    </div>,
+    // The server picks which spec the API docs show. Scenarios choose a server per step (the composer has
+    // its own picker) and the AI guide covers every server, so the other tabs leave it out.
+    context: <div className="api-context" title={tab === "api" ? `기본 주소 · ${environment?.baseUrls[serverId] ?? "미설정"}` : undefined}>{tab === "api" && <span className="api-select-chip is-mono"><select aria-label="API 서버" value={serverId} disabled={locked || loading} onChange={e => { setServerId(e.target.value); setUrl(""); }}>{project.servers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select><Icon name="expand_more" size={16} /></span>}{environmentPicker}{valueActions}</div>,
+  } : null;
+  return <ApiTestingProviders key={projectId} projectId={projectId} bridge={bridge}><section className="api-testing-page api-swagger-shell api-layout">
+    {/* One header row, like the other workspaces: which project, what to do in it (tabs, or the composer's toolbar), and where to call. */}
+    <PageHeader icon="data_object" title="API 테스트" className="api-page-head">
+      {projectPicker}
+      {workbar && <>
+        <span className="api-head-divider" aria-hidden="true" />
+        {tab === "scenario-editor" ? <div ref={setComposeToolbarSlot} className="api-head-compose" /> : <>
+          {workbar.tabs}
+          {workbar.context}
+        </>}
+      </>}
+    </PageHeader>
     {error && <p className="api-warning" role="alert">{error}</p>}
     {importPlan && <ProjectImportDialog plan={importPlan.plan} onCancel={() => setImportPlan(null)} onImport={async update => { await finishImport(await bridge.importProject(importPlan.text, update)); }} />}
     {notice && !form && (!specNotice || tab === "api") && <p className="api-page-notice" role="status">{notice}<button type="button" className="api-compose-link" onClick={() => { setNotice(""); setSpecNotice(false); }}>닫기</button></p>}
@@ -289,26 +319,11 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
         <p>{project.servers.length ? "환경이 아직 없습니다." : "API 서버(백엔드)가 아직 없습니다."} 서버와 환경별 기본 주소를 정하면 API 명세를 가져와 테스트할 수 있습니다. 설정은 팀원 모두가 같이 씁니다.</p>
         <div className="api-actions"><button className="api-primary" onClick={() => setForm("edit")}>API 서버·환경 설정</button><button type="button" onClick={() => void importProject().catch(error => setError((error as Error).message))}>공유받은 파일 가져오기</button></div>
       </div> : <>
-        {/* Tabs and the server/environment context share the second row. */}
-        <div className="api-workbar">
-          <div className="api-tabs" role="tablist" aria-label="API 작업 영역">
-            <button role="tab" aria-selected={tab === "scenarios" || tab === "scenario-editor"} disabled={busy} onClick={() => {
-              if (tab !== "scenario-editor") { changeTab("scenarios"); return; }
-              if (scenarioDirty) setError("저장하지 않은 변경사항이 있습니다. 저장하거나 ← 목록에서 변경사항을 버리고 닫으세요.");
-              else backToScenarios();
-            }}>시나리오</button>
-            <button role="tab" aria-selected={tab === "api"} disabled={locked} onClick={() => changeTab("api")}>API 문서{catalog ? <small className="api-tab-count" title={`API ${catalog.operations.length}개`}>{catalog.operations.length}</small> : null}</button>
-            <button role="tab" aria-selected={tab === "ai"} disabled={locked || (!aiHasSpec && tab !== "ai")} title={aiHasSpec ? undefined : "이 환경에 가져온 API 명세가 없습니다. API 문서에서 명세를 먼저 가져오세요"} onClick={() => changeTab("ai")}>AI 작성 도우미</button>
-          </div>
-          {/* The server picks which spec the API docs show. Scenarios choose a server per step (the composer has
-              its own picker) and the AI guide covers every server, so the other tabs leave it out. */}
-          <div className="api-context" title={tab === "api" ? `기본 주소 · ${environment?.baseUrls[serverId] ?? "미설정"}` : undefined}>{tab === "api" && <select aria-label="API 서버" value={serverId} disabled={locked || loading} onChange={e => { setServerId(e.target.value); setUrl(""); }}>{project.servers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select>}{environmentPicker}{valueActions}</div>
-        </div>
-        {/* Only this area scrolls; the title, project and tabs rows above stay in place. */}
+        {/* Only this area scrolls; the header row above stays in place. */}
         <div className="api-page-body">
         {tab === "ai" && <AiAuthorPanel key={`${projectId}:${environmentId}`} project={project} scope={{ projectId, environmentId }} bridge={bridge} onBusy={setBusy} onConfigureProject={() => setForm("edit-ai")} onOpenSpecs={() => changeTab("api")} onSaved={first => { setBusy(false); setOpenSaved(first ?? null); setTab("scenarios"); }} />}
         {tab === "scenarios" && <ScenarioPanel key={`${projectId}:${environmentId}:${serverId}`} project={project} scope={scope} bridge={bridge} onBusy={setBusy} onRunAction={onRunAction} runSaved={runSaved} onRunSavedConsumed={() => setRunSaved(null)} openSaved={openSaved} onOpenSavedConsumed={() => setOpenSaved(null)} onOpenAi={() => changeTab("ai")} onAiAskSent={target => { showAiChat(projectId, target); changeTab("ai"); }} onCreateScenario={() => openScenarioEditor()} onEditScenario={item => openScenarioEditor(item.id)} />}
-        {tab === "scenario-editor" && <ScenarioEditorPanel key={`${projectId}:${serverId}`} project={project} scope={scope} bridge={bridge} onBusy={setBusy} onRunAction={onRunAction} onBackToScenarios={backToScenarios} onOpenSpecs={openSpecs} onExecuteSaved={executeSaved} startCreateRequest={scenarioCreateRequest} editScenarioId={scenarioEditorScenarioId} onCreateConsumed={() => setScenarioCreateRequest(0)} onComposerOpenChange={setScenarioComposerOpen} onUnsavedChange={setScenarioDirty} onCreateScenario={() => openScenarioEditor()} onEditScenario={item => openScenarioEditor(item.id)} composeContext={<div className="api-compose-context">{environmentPicker}{valueActions}</div>} />}
+        {tab === "scenario-editor" && <ScenarioEditorPanel key={`${projectId}:${serverId}`} project={project} scope={scope} bridge={bridge} onBusy={setBusy} onRunAction={onRunAction} onBackToScenarios={backToScenarios} onOpenSpecs={openSpecs} onExecuteSaved={executeSaved} startCreateRequest={scenarioCreateRequest} editScenarioId={scenarioEditorScenarioId} onCreateConsumed={() => setScenarioCreateRequest(0)} onComposerOpenChange={setScenarioComposerOpen} onUnsavedChange={setScenarioDirty} onCreateScenario={() => openScenarioEditor()} onEditScenario={item => openScenarioEditor(item.id)} composeContext={<div className="api-compose-context">{environmentPicker}{valueActions}</div>} composeToolbarSlot={composeToolbarSlot} />}
         {tab === "api" && <>
         {environment && server && !environment.baseUrls[serverId] && <p className="api-warning" role="status">{environment.name} 환경에 {server.name} 서버 주소가 설정되지 않았습니다(미설정). 명세는 볼 수 있지만, API를 호출하려면 프로젝트 설정에서 주소를 입력하세요.</p>}
         {(catalog || sync || !loading) && <SpecSourcePanel key={`${projectId}:${serverId}:${environmentId}:${catalog ? "loaded" : "empty"}`} shared={team}
