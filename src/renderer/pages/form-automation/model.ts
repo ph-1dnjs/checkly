@@ -1,8 +1,30 @@
 export const MAX_FORM_SESSIONS = 8;
 
+export type BrowserIdentity = "electron" | "chrome" | "edge" | "safari";
+
+export const BROWSER_IDENTITY_LABELS: Record<BrowserIdentity, string> = {
+  electron: "앱 기본",
+  chrome: "Chrome UA",
+  edge: "Edge UA",
+  safari: "Safari UA",
+};
+
+export const browserUserAgent = (identity: BrowserIdentity, electronUserAgent: string): string => {
+  if (identity === "electron") return electronUserAgent;
+  const chromeAgent = electronUserAgent.replace(/\sElectron\/[\d.]+/g, "");
+  if (identity === "chrome") return chromeAgent;
+  if (identity === "edge") {
+    const chromiumVersion = /Chrome\/([\d.]+)/.exec(chromeAgent)?.[1] ?? "120.0.0.0";
+    return `${chromeAgent} Edg/${chromiumVersion}`;
+  }
+  // Safari identification only; Electron still renders with Chromium.
+  return "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Safari/605.1.15";
+};
+
 export type BrowserSession = {
   id: string;
   name: string;
+  browserIdentity?: BrowserIdentity;
   url: string;
   currentPageUrl: string;
   state: "loading" | "ready" | "error";
@@ -50,6 +72,7 @@ export type AutofillCase = {
   screen: string;
   fieldMode: "name";
   fields: Record<string, FieldValue>;
+  excludedFields?: string[];
   fieldMeta: DetectedField[];
   expected: string;
   pageScope?: string;
@@ -60,6 +83,7 @@ export type AutofillCase = {
 export const defaultBrowserSession = (url: string): BrowserSession => ({
   id: "default",
   name: "기본 세션",
+  browserIdentity: "electron",
   url,
   currentPageUrl: url,
   state: "loading",
@@ -93,6 +117,9 @@ export const normalizeBrowserSessions = (
     return [{
       id,
       name: String(item?.name || (index === 0 ? "기본 세션" : `회원 세션 ${index + 1}`)).slice(0, 30),
+      browserIdentity: Object.hasOwn(BROWSER_IDENTITY_LABELS, item?.browserIdentity ?? "")
+        ? item.browserIdentity
+        : "electron",
       url,
       currentPageUrl: /^https?:\/\//i.test(String(item?.currentPageUrl || ""))
         ? item.currentPageUrl
@@ -150,7 +177,9 @@ export const detectedFieldValue = (
     const start = new Date(today.getFullYear(), today.getMonth(), 1);
     const format = (date: Date) =>
       `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-    return { __qaDateRange: true, start: format(start), end: format(today) };
+    return /기간|범위|시작.*종료|date.?range/.test(hint)
+      ? { __qaDateRange: true, start: format(start), end: format(today) }
+      : format(today);
   }
 
   if (!valid) {
@@ -254,8 +283,16 @@ export const detectedCases = (fields: DetectedField[]): AutofillCase[] => {
   ];
 };
 
+export const includedCaseFields = (
+  fields: Record<string, FieldValue>,
+  excludedFields: string[] = [],
+): Record<string, FieldValue> => {
+  const excluded = new Set(Array.isArray(excludedFields) ? excludedFields : []);
+  return Object.fromEntries(Object.entries(fields).filter(([name]) => !excluded.has(name)));
+};
+
 export const caseValueCount = (item?: AutofillCase): number =>
-  Object.keys(item?.fields ?? {}).length;
+  Object.keys(includedCaseFields(item?.fields ?? {}, item?.excludedFields)).length;
 
 export const cloneFields = (
   fields?: Record<string, FieldValue>,

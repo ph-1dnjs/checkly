@@ -16,32 +16,34 @@ import {
   selectDateRangeScript,
 } from "./browserScripts";
 import {
+  BROWSER_IDENTITY_LABELS,
   MAX_FORM_SESSIONS,
   browserSessionPartition,
+  browserUserAgent,
   caseValueCount,
   cloneFields,
   defaultBrowserSession,
   detectedCases,
+  includedCaseFields,
   normalizeBrowserSessions,
   pageScopeFromUrl,
   pageScopeLabel,
   reorderBrowserSessions,
   type AutofillCase,
   type BrowserSession,
+  type BrowserIdentity,
   type DateRangeValue,
   type DetectedField,
   type FieldValue,
   type FileValue,
 } from "./model";
 import { PageHeader } from "../../shared/ui/PageLayout";
-import { NetworkPanel, OverridePanel, StoragePanel } from "./InspectorPanels";
+import { NetworkPanel, OverridePanel } from "./InspectorPanels";
 import { OpenApiDialog } from "./OpenApiDialog";
 import { ScreenshotEditor, type ScreenshotCapture } from "./ScreenshotEditor";
 import { FormAutomationStorageProvider, useStoredState } from "./StoredState";
 import {
-  EMPTY_STORAGE_SNAPSHOT,
   apiEventClipboardText,
-  browserStorageScript,
   contractForEvent,
   isSessionError,
   mergeNetworkEvents,
@@ -52,8 +54,6 @@ import {
   type NetworkEvent,
   type OpenApiDocument,
   type OverrideRule,
-  type StorageItem,
-  type StorageSnapshot,
 } from "./liveQa";
 
 type WebviewElement = HTMLElement & {
@@ -67,6 +67,7 @@ type WebviewElement = HTMLElement & {
   loadURL: (url: string) => Promise<void>;
   reload: () => void;
   setZoomFactor: (factor: number) => void;
+  setUserAgent: (userAgent: string) => void;
 };
 
 type FillResult = {
@@ -114,10 +115,12 @@ const isFileValue = (value: FieldValue): value is FileValue =>
 const CaseValueInput = ({
   field,
   value,
+  disabled = false,
   onChange,
 }: {
   field: DetectedField;
   value: FieldValue;
+  disabled?: boolean;
   onChange: (value: FieldValue) => void;
 }) => {
   if (field.type === "date-trigger" && isDateRange(value)) {
@@ -126,6 +129,7 @@ const CaseValueInput = ({
         <input
           aria-label={`${field.label || field.name} 시작일`}
           type="date"
+          disabled={disabled}
           value={value.start}
           onChange={(event) => onChange({ ...value, start: event.target.value })}
         />
@@ -133,16 +137,29 @@ const CaseValueInput = ({
         <input
           aria-label={`${field.label || field.name} 종료일`}
           type="date"
+          disabled={disabled}
           value={value.end}
           onChange={(event) => onChange({ ...value, end: event.target.value })}
         />
       </div>
     );
   }
+  if (field.type === "date-trigger") {
+    return (
+      <input
+        aria-label={`${field.label || field.name} 값`}
+        type="date"
+        disabled={disabled}
+        value={String(value ?? "")}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    );
+  }
   if (field.type === "file" && isFileValue(value)) {
     return (
       <select
         aria-label={`${field.label || field.name} 파일 케이스`}
+        disabled={disabled}
         value={value.valid ? "valid" : "invalid"}
         onChange={(event) => onChange({ ...value, valid: event.target.value === "valid" })}
       >
@@ -156,6 +173,7 @@ const CaseValueInput = ({
       <label className="fa-checkbox">
         <input
           type="checkbox"
+          disabled={disabled}
           checked={Boolean(value)}
           onChange={(event) => onChange(event.target.checked)}
         />
@@ -167,6 +185,7 @@ const CaseValueInput = ({
     return (
       <select
         aria-label={`${field.label || field.name} 값`}
+        disabled={disabled}
         value={String(value ?? "")}
         onChange={(event) => onChange(event.target.value)}
       >
@@ -183,6 +202,7 @@ const CaseValueInput = ({
     return (
       <input
         aria-label={`${field.label || field.name} 값`}
+        disabled={disabled}
         value={(Array.isArray(value) ? value : []).join(", ")}
         onChange={(event) =>
           onChange(event.target.value.split(",").map((item) => item.trim()).filter(Boolean))
@@ -194,6 +214,7 @@ const CaseValueInput = ({
     return (
       <textarea
         aria-label={`${field.label || field.name} 값`}
+        disabled={disabled}
         value={String(value ?? "")}
         onChange={(event) => onChange(event.target.value)}
       />
@@ -206,6 +227,7 @@ const CaseValueInput = ({
     <input
       aria-label={`${field.label || field.name} 값`}
       type={inputType}
+      disabled={disabled}
       value={String(value ?? "")}
       onChange={(event) => onChange(event.target.value)}
     />
@@ -227,27 +249,26 @@ const FormAutomationContent = (): ReactElement => {
   const [draftUrl, setDraftUrl] = useState(activeTab?.currentPageUrl || targetUrl);
   const [editingTabId, setEditingTabId] = useState<string | null>(null);
   const [editingTabName, setEditingTabName] = useState("");
+  const [newSessionIdentity, setNewSessionIdentity] = useState<BrowserIdentity>("chrome");
   const [draggedTabId, setDraggedTabId] = useState<string | null>(null);
   const [dragOverTab, setDragOverTab] = useState<{ id: string; placeAfter: boolean } | null>(null);
   const [focusMode, setFocusMode] = useState(false);
   const [inspectorWidth, setInspectorWidth] = useStoredState("checkly-form-inspector-width", 420);
   const [networkListHeight, setNetworkListHeight] = useStoredState("checkly-form-network-list-height", 305);
+  const [caseListHeight, setCaseListHeight] = useStoredState<number | null>("checkly-form-case-list-height", null);
+  const [caseListHeightPreview, setCaseListHeightPreview] = useState<number | null>(null);
   const [discoveredFields, setDiscoveredFields] = useState<DetectedField[]>([]);
-  const [discoveryStatus, setDiscoveryStatus] = useState("현재 화면의 폼과 검색 필드를 자동으로 찾습니다.");
   const [savedCases, setSavedCases] = useStoredState<AutofillCase[]>("checkly-form-saved-cases", []);
   const [selectedCaseId, setSelectedCaseId] = useState("");
   const [caseFilter, setCaseFilter] = useState<"all" | "success" | "failure">("all");
   const [caseDraftName, setCaseDraftName] = useState("");
   const [caseDraftKind, setCaseDraftKind] = useState<"success" | "failure">("success");
   const [caseDraftFields, setCaseDraftFields] = useState<Record<string, FieldValue>>({});
-  const [drawerTab, setDrawerTab] = useState<"network" | "cases" | "storage" | "override">("network");
+  const [caseDraftExcludedFields, setCaseDraftExcludedFields] = useState<string[]>([]);
+  const [drawerTab, setDrawerTab] = useState<"network" | "cases" | "override">("network");
   const [networkEvents, setNetworkEvents] = useState<NetworkEvent[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<NetworkEvent | null>(null);
   const [networkFilter, setNetworkFilter] = useState<"all" | "errors">("all");
-  const [storageBucket, setStorageBucket] = useState<"localStorage" | "sessionStorage" | "cookies">("localStorage");
-  const [storageQuery, setStorageQuery] = useState("");
-  const [storageBusy, setStorageBusy] = useState(false);
-  const [storageSnapshot, setStorageSnapshot] = useState<StorageSnapshot>(EMPTY_STORAGE_SNAPSHOT);
   const [overrides, setOverrides] = useStoredState<OverrideRule[]>("checkly-form-overrides", []);
   const [selectedOverrideId, setSelectedOverrideId] = useState("");
   const [overrideBodyText, setOverrideBodyText] = useState("{}");
@@ -341,29 +362,22 @@ const FormAutomationContent = (): ReactElement => {
   const discoverFields = useCallback(async (selectDefault = false) => {
     const webview = activeWebview();
     if (!webview?.executeJavaScript) {
-      setDiscoveryStatus("필드 자동 감지는 Electron 앱에서 사용할 수 있습니다.");
+      if (selectDefault) showToast("필드 자동 감지는 Electron 앱에서 사용할 수 있습니다.");
       return [];
     }
-    setDiscoveryStatus("현재 화면에서 name, 라벨과 검색 영역을 읽는 중입니다.");
     try {
       const fields = await webview.executeJavaScript(discoverFieldsScript) as DetectedField[];
       setDiscoveredFields(fields);
-      const searchCount = fields.filter((field) => field.context === "search").length;
-      setDiscoveryStatus(
-        fields.length
-          ? `${fields.length}개 필드를 감지했습니다.${searchCount ? ` 검색 조건 ${searchCount}개가 포함됩니다.` : ""} 케이스를 누르면 즉시 입력됩니다.`
-          : "현재 화면에서 입력 가능한 폼 또는 검색 필드를 찾지 못했습니다.",
-      );
       if (selectDefault && fields.length) {
         // Delayed page discovery must not replace a case the user just selected.
         setSelectedCaseId(current => current || detectedCases(fields)[0]?.id || "");
       }
       return fields;
     } catch (error) {
-      setDiscoveryStatus(`필드 감지 실패: ${error instanceof Error ? error.message : String(error)}`);
+      if (selectDefault) showToast(`필드 감지 실패: ${error instanceof Error ? error.message : String(error)}`);
       return [];
     }
-  }, []);
+  }, [showToast]);
 
   const switchBrowserTab = useCallback((tabId: string) => {
     const tab = browserTabsRef.current.find((item) => item.id === tabId);
@@ -374,10 +388,9 @@ const FormAutomationContent = (): ReactElement => {
     setDraftUrl(url);
     setTargetUrl(url);
     setDiscoveredFields([]);
-    setDiscoveryStatus("현재 세션 화면의 폼과 검색 필드를 자동으로 찾습니다.");
   }, [setActiveTabId, setTargetUrl]);
 
-  const addBrowserTab = useCallback(() => {
+  const addBrowserTab = useCallback((browserIdentity: BrowserIdentity = "chrome") => {
     const items = browserTabsRef.current;
     if (items.length >= MAX_FORM_SESSIONS) {
       showToast(`로그인 세션은 최대 ${MAX_FORM_SESSIONS}개까지 열 수 있습니다.`);
@@ -388,6 +401,7 @@ const FormAutomationContent = (): ReactElement => {
     const next: BrowserSession = {
       id,
       name: `회원 세션 ${items.length + 1}`,
+      browserIdentity,
       url,
       currentPageUrl: url,
       state: "loading",
@@ -401,6 +415,18 @@ const FormAutomationContent = (): ReactElement => {
     setEditingTabName(next.name);
     setDiscoveredFields([]);
   }, [activeTab?.url, setActiveTabId, setBrowserTabs, setTargetUrl, showToast, targetUrl]);
+
+  const changeBrowserIdentity = (browserIdentity: BrowserIdentity) => {
+    updateBrowserTab(activeTab.id, { browserIdentity });
+    const webview = activeWebview();
+    if (!webview?.setUserAgent) return;
+    try {
+      webview.setUserAgent(browserUserAgent(browserIdentity, navigator.userAgent));
+      webview.reload();
+    } catch (error) {
+      showToast(`브라우저 식별 변경 실패: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
 
   const closeBrowserTab = (tabId: string) => {
     const items = browserTabsRef.current;
@@ -446,6 +472,11 @@ const FormAutomationContent = (): ReactElement => {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.code === "KeyR") {
+        event.preventDefault();
+        if (!event.repeat) activeWebview()?.reload();
+        return;
+      }
       if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
       if (event.shiftKey && event.key.toLowerCase() === "s") {
         event.preventDefault();
@@ -454,7 +485,7 @@ const FormAutomationContent = (): ReactElement => {
       }
       if (event.key.toLowerCase() === "t") {
         event.preventDefault();
-        addBrowserTab();
+        addBrowserTab(newSessionIdentity);
         return;
       }
       const index = Number(event.key) - 1;
@@ -465,7 +496,7 @@ const FormAutomationContent = (): ReactElement => {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [addBrowserTab, startCapture, switchBrowserTab]);
+  }, [addBrowserTab, newSessionIdentity, startCapture, switchBrowserTab]);
 
   const tabIds = browserTabs.map((item) => item.id).join("|");
   useEffect(() => {
@@ -544,6 +575,10 @@ const FormAutomationContent = (): ReactElement => {
         void window.electronAPI?.saveFormAutomationSessionEvent?.(payload).catch(() => undefined);
       };
       const message = (event: Event & { channel?: string; args?: unknown[] }) => {
+        if (event.channel === "form-automation:reload-shortcut") {
+          if (isActive()) webview.reload();
+          return;
+        }
         if (event.channel === "form-automation:capture-shortcut") {
           void startCapture();
           return;
@@ -578,12 +613,6 @@ const FormAutomationContent = (): ReactElement => {
     event.browserSessionId ? event.browserSessionId === activeTab?.id : activeTab?.id === "default");
   const activeSelectedEvent = selectedEvent && activeNetworkEvents.some(event => event.id === selectedEvent.id) ? selectedEvent : null;
   const activeErrorCount = activeNetworkEvents.filter(isSessionError).length;
-  const storageIsCurrent = storageSnapshot.browserSessionId === activeTab?.id;
-  const storageTotal = storageIsCurrent
-    ? storageSnapshot.localStorage.items.length
-      + storageSnapshot.sessionStorage.items.length
-      + storageSnapshot.cookies.length
-    : 0;
 
   useEffect(() => {
     setNetworkEvents((items) => items.map((item) => (
@@ -592,29 +621,6 @@ const FormAutomationContent = (): ReactElement => {
         : item
     )));
   }, [openApi]);
-
-  const refreshBrowserStorage = useCallback(async () => {
-    const webview = activeWebview();
-    const sessionId = activeTabIdRef.current;
-    if (!webview?.executeJavaScript) {
-      showToast("세션 저장소는 Electron 앱에서 확인할 수 있습니다.");
-      return;
-    }
-    setStorageBusy(true);
-    try {
-      const snapshot = await webview.executeJavaScript(browserStorageScript) as Omit<StorageSnapshot, "browserSessionId">;
-      if (activeTabIdRef.current === sessionId)
-        setStorageSnapshot({ ...snapshot, browserSessionId: sessionId });
-    } catch (error) {
-      showToast(`세션 저장소를 읽지 못했습니다: ${error instanceof Error ? error.message : String(error)}`);
-    } finally {
-      if (activeTabIdRef.current === sessionId) setStorageBusy(false);
-    }
-  }, [showToast]);
-
-  useEffect(() => {
-    if (drawerTab === "storage") void refreshBrowserStorage();
-  }, [activeTab?.id, activeTab?.state, currentPageUrl, drawerTab, refreshBrowserStorage]);
 
   const copyText = async (text: string, successMessage: string) => {
     try {
@@ -625,12 +631,6 @@ const FormAutomationContent = (): ReactElement => {
     } catch (error) {
       showToast(`클립보드 복사 실패: ${error instanceof Error ? error.message : String(error)}`);
     }
-  };
-
-  const copyStorageItems = (items: StorageItem[], label: string) => {
-    if (!items.length) return;
-    const text = items.map((item) => `${item.key}:\n${item.value}`).join("\n\n");
-    void copyText(text, `${label} ${items.length}개를 클립보드에 복사했습니다.`);
   };
 
   const clearSessionLog = async () => {
@@ -833,6 +833,8 @@ const FormAutomationContent = (): ReactElement => {
   );
   const availableCases = [...autoCases, ...scopedCases];
   const selectedCase = availableCases.find((item) => item.id === selectedCaseId);
+  const draftIncludedFields = includedCaseFields(caseDraftFields, caseDraftExcludedFields);
+  const draftFieldCount = Object.keys(draftIncludedFields).length;
   const visibleCases = caseFilter === "all"
     ? availableCases
     : availableCases.filter((item) => item.kind === caseFilter);
@@ -852,7 +854,17 @@ const FormAutomationContent = (): ReactElement => {
     );
     setCaseDraftKind(selectedCase?.kind ?? "success");
     setCaseDraftFields(cloneFields(selectedCase?.fields));
-  }, [selectedCase?.id, JSON.stringify(selectedCase?.fields)]);
+    setCaseDraftExcludedFields(Array.isArray(selectedCase?.excludedFields) ? [...selectedCase.excludedFields] : []);
+  }, [selectedCase?.id, JSON.stringify(selectedCase?.fields), JSON.stringify(selectedCase?.excludedFields)]);
+
+  const selectCase = (item: AutofillCase) => {
+    if (item.id === selectedCaseId) return;
+    setSelectedCaseId(item.id);
+    setCaseDraftName(item.userSaved ? item.name : `${item.name} · 저장본`);
+    setCaseDraftKind(item.kind);
+    setCaseDraftFields(cloneFields(item.fields));
+    setCaseDraftExcludedFields(Array.isArray(item.excludedFields) ? [...item.excludedFields] : []);
+  };
 
   const saveCase = async () => {
     if (!selectedCase?.fieldMeta.length || !caseDraftName.trim()) {
@@ -871,6 +883,7 @@ const FormAutomationContent = (): ReactElement => {
       pageUrl: currentPageUrl,
       savedAt: new Date().toISOString(),
       fields: cloneFields(caseDraftFields),
+      excludedFields: caseDraftExcludedFields.filter((name) => Object.hasOwn(caseDraftFields, name)),
     };
     const saved = await setSavedCases((items) => items.some((item) => item.id === id)
       ? items.map((item) => item.id === id ? next : item)
@@ -897,28 +910,23 @@ const FormAutomationContent = (): ReactElement => {
     showToast("저장한 케이스를 삭제했습니다.");
   };
 
-  const autofill = async (caseOverride?: AutofillCase) => {
+  const autofill = async () => {
     const webview = activeWebview();
     if (!webview?.executeJavaScript) {
       showToast("폼·검색 자동 입력은 Electron 앱에서 사용할 수 있습니다.");
       return;
     }
-    let item = caseOverride ?? selectedCase;
-    if (!item || item.generated) {
-      const latestFields = await discoverFields(false);
-      const latestCases = detectedCases(latestFields);
-      item = latestCases.find((candidate) => candidate.id === item?.id)
-        ?? latestCases.find((candidate) => candidate.kind === item?.kind)
-        ?? latestCases[0];
-    }
-    if (!item) {
-      showToast("입력할 폼 또는 검색 필드를 찾지 못했습니다.");
+    if (!selectedCase) {
+      showToast("먼저 현재 화면의 케이스를 선택해 주세요.");
       return;
     }
-    setSelectedCaseId(item.id);
+    if (!draftFieldCount) {
+      showToast("입력할 필드를 하나 이상 선택해 주세요.");
+      return;
+    }
     try {
       webview.focus();
-      const result = await webview.executeJavaScript(fillFieldsScript(item.fields)) as FillResult;
+      const result = await webview.executeJavaScript(fillFieldsScript(draftIncludedFields)) as FillResult;
       const webContentsId = webview.getWebContentsId();
       for (const entry of result.richText) {
         await webview.executeJavaScript(focusRichTextScript(entry.key));
@@ -938,7 +946,7 @@ const FormAutomationContent = (): ReactElement => {
       }
       showToast(
         result.filled.length
-          ? `${item.name}: ${result.filled.length}개 필드에 값을 입력했습니다.${result.missing.length ? ` 미입력 ${result.missing.length}개` : ""}`
+          ? `${selectedCase.name}: ${result.filled.length}개 필드에 값을 입력했습니다.${result.missing.length ? ` 미입력 ${result.missing.length}개` : ""}`
           : `일치하는 필드가 없습니다: ${result.missing.join(", ")}`,
       );
     } catch (error) {
@@ -952,18 +960,13 @@ const FormAutomationContent = (): ReactElement => {
       showToast("입력값 초기화는 Electron 앱에서 사용할 수 있습니다.");
       return;
     }
-    let item = selectedCase;
-    if (!item || !Object.keys(item.fields).length) {
-      const latestFields = await discoverFields(false);
-      item = detectedCases(latestFields)[0];
-    }
-    if (!item) {
-      showToast("초기화할 폼 또는 검색 필드를 찾지 못했습니다.");
+    if (!draftFieldCount) {
+      showToast("초기화할 필드를 하나 이상 선택해 주세요.");
       return;
     }
     try {
       const result = await webview.executeJavaScript(
-        clearFieldsScript(Object.keys(item.fields)),
+        clearFieldsScript(Object.keys(draftIncludedFields)),
       ) as { cleared: string[]; missing: string[] };
       showToast(
         result.cleared.length
@@ -1024,6 +1027,48 @@ const FormAutomationContent = (): ReactElement => {
     window.addEventListener("mouseup", stop);
   };
 
+  const caseListResizeBounds = (handle: HTMLDivElement) => {
+    const inspector = handle.closest(".fa-inspector");
+    const list = handle.previousElementSibling as HTMLElement | null;
+    const footer = inspector?.querySelector(".fa-inspector-footer");
+    const values = inspector?.querySelector(".fa-values");
+    if (!inspector || !list) return null;
+    const currentHeight = list.getBoundingClientRect().height;
+    const availableBelow = values?.getBoundingClientRect().height ??
+      Math.max(0, inspector.getBoundingClientRect().bottom - handle.getBoundingClientRect().bottom - (footer?.getBoundingClientRect().height ?? 0));
+    return { currentHeight, maximum: Math.max(48, currentHeight + availableBelow - (values ? 130 : 0)) };
+  };
+
+  const startCaseListResize = (event: MouseEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    const bounds = caseListResizeBounds(event.currentTarget);
+    if (!bounds) return;
+    event.preventDefault();
+    const startY = event.clientY;
+    const nextHeight = (clientY: number) => Math.round(Math.min(bounds.maximum, Math.max(48, bounds.currentHeight + clientY - startY)));
+    const resize = (moveEvent: globalThis.MouseEvent) => setCaseListHeightPreview(nextHeight(moveEvent.clientY));
+    const stop = (upEvent: globalThis.MouseEvent) => {
+      window.removeEventListener("mousemove", resize);
+      window.removeEventListener("mouseup", stop);
+      document.body.classList.remove("resizing-form-case-list");
+      void setCaseListHeight(nextHeight(upEvent.clientY));
+      setCaseListHeightPreview(null);
+    };
+    document.body.classList.add("resizing-form-case-list");
+    window.addEventListener("mousemove", resize);
+    window.addEventListener("mouseup", stop);
+  };
+
+  const resizeCaseListWithKeyboard = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
+    const bounds = caseListResizeBounds(event.currentTarget);
+    if (!bounds) return;
+    event.preventDefault();
+    const next = event.key === "Home" ? 48 : event.key === "End" ? bounds.maximum
+      : bounds.currentHeight + (event.key === "ArrowDown" ? 24 : -24);
+    void setCaseListHeight(Math.round(Math.min(bounds.maximum, Math.max(48, next))));
+  };
+
   const handleDrop = (event: DragEvent<HTMLDivElement>, targetId: string) => {
     event.preventDefault();
     const sourceId = event.dataTransfer.getData("text/plain") || draggedTabId;
@@ -1060,7 +1105,7 @@ const FormAutomationContent = (): ReactElement => {
             {openApi && <span className="fa-swagger-dot" aria-hidden="true" />}
             <MaterialIcon name="data_object" /> {openApi ? "Swagger 연결됨" : "Swagger 연결"}
           </button>
-          <button className="button button-primary fa-header-action" onClick={() => void autofill()}>
+          <button className="button button-primary fa-header-action" onClick={() => void autofill()} disabled={!draftFieldCount}>
             <MaterialIcon name="auto_fix_high" /> 선택 케이스 자동 입력
           </button>
         </div>
@@ -1121,7 +1166,7 @@ const FormAutomationContent = (): ReactElement => {
                         onDoubleClick={() => { setEditingTabId(tab.id); setEditingTabName(tab.name); }}
                       >
                         <span className="fa-session-number">{index + 1}</span>
-                        <span><strong>{tab.name}</strong><small>{urlHost(tab.currentPageUrl || tab.url)}</small></span>
+                        <span><strong>{tab.name}</strong><small>{BROWSER_IDENTITY_LABELS[tab.browserIdentity || "electron"]} · {urlHost(tab.currentPageUrl || tab.url)}</small></span>
                       </button>
                     )}
                     {editingTabId !== tab.id && (
@@ -1140,16 +1185,26 @@ const FormAutomationContent = (): ReactElement => {
                 );
               })}
             </div>
-            <button className="fa-session-add" onClick={addBrowserTab} disabled={browserTabs.length >= MAX_FORM_SESSIONS}>
-              <MaterialIcon name="add" /> 새 세션
-            </button>
+            <div className="fa-session-create">
+              <select
+                aria-label="새 세션 브라우저 식별"
+                title="브라우저 식별 정보만 변경합니다. 모든 웹뷰는 Chromium 엔진으로 동작합니다."
+                value={newSessionIdentity}
+                onChange={(event) => setNewSessionIdentity(event.target.value as BrowserIdentity)}
+              >
+                {Object.entries(BROWSER_IDENTITY_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select>
+              <button className="fa-session-add" onClick={() => addBrowserTab(newSessionIdentity)} disabled={browserTabs.length >= MAX_FORM_SESSIONS}>
+                <MaterialIcon name="add" /> 새 세션
+              </button>
+            </div>
           </div>
 
           <div className="fa-browser-toolbar">
             <div className="fa-browser-actions">
               <button disabled={!activeTab.history.back} onClick={() => activeWebview()?.goBack()} aria-label="뒤로가기"><MaterialIcon name="arrow_back" /></button>
               <button disabled={!activeTab.history.forward} onClick={() => activeWebview()?.goForward()} aria-label="앞으로가기"><MaterialIcon name="arrow_forward" /></button>
-              <button onClick={() => activeWebview()?.reload()} aria-label="새로고침"><MaterialIcon name={activeTab.state === "loading" ? "progress_activity" : "refresh"} /></button>
+              <button onClick={() => activeWebview()?.reload()} aria-label="새로고침" title="새로고침 (⌘R / Ctrl+R)"><MaterialIcon name={activeTab.state === "loading" ? "progress_activity" : "refresh"} /></button>
             </div>
             <form className="fa-address-bar" onSubmit={(event) => { event.preventDefault(); navigate(); }}>
               <MaterialIcon name="lock" />
@@ -1159,6 +1214,17 @@ const FormAutomationContent = (): ReactElement => {
             <span className={`fa-status ${activeTab.state}`}>
               {activeTab.state === "ready" ? "연결됨" : activeTab.state === "error" ? "연결 실패" : "로딩 중"}
             </span>
+            <label className="fa-browser-identity" title="브라우저 식별 정보만 변경합니다. 렌더링 엔진은 Chromium입니다.">
+              <span>UA</span>
+              <select
+                aria-label="현재 세션 브라우저 식별"
+                value={activeTab.browserIdentity || "electron"}
+                onChange={(event) => changeBrowserIdentity(event.target.value as BrowserIdentity)}
+              >
+                {Object.entries(BROWSER_IDENTITY_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select>
+            </label>
+            <span className="fa-browser-engine-note">Chromium 웹뷰</span>
             <div className="fa-zoom" aria-label="브라우저 화면 배율">
               <button aria-label="화면 축소" disabled={zoomPercent <= 50} onClick={() => setZoomPercent((value) => Math.max(50, value - 5))}><MaterialIcon name="remove" /></button>
               <button className="fa-zoom-value" title="100%로 초기화" onClick={() => setZoomPercent(100)}>{zoomPercent}%</button>
@@ -1178,6 +1244,7 @@ const FormAutomationContent = (): ReactElement => {
                 ref={webviewRefFor(tab.id)}
                 src={tab.url}
                 partition={browserSessionPartition(tab.id)}
+                useragent={browserUserAgent(tab.browserIdentity || "electron", navigator.userAgent)}
                 allowpopups={true}
               />
             ))}
@@ -1190,7 +1257,6 @@ const FormAutomationContent = (): ReactElement => {
           <div className="fa-inspector-tabs">
             <button className={drawerTab === "network" ? `active${activeErrorCount ? " has-error" : ""}` : ""} onClick={() => setDrawerTab("network")}><MaterialIcon name="lan" /> 네트워크 <b>{activeErrorCount || activeNetworkEvents.length}</b></button>
             <button className={drawerTab === "cases" ? "active" : ""} onClick={() => { setDrawerTab("cases"); if (!discoveredFields.length) void discoverFields(true); }}><MaterialIcon name="auto_awesome" /> 자동 입력 <b>{availableCases.length}</b></button>
-            <button className={drawerTab === "storage" ? "active" : ""} onClick={() => setDrawerTab("storage")}><MaterialIcon name="database" /> 저장소 <b>{storageTotal}</b></button>
             <button className={drawerTab === "override" ? "active" : ""} onClick={() => setDrawerTab("override")}><MaterialIcon name="tune" /> 오버라이드 <b>{overrides.filter((item) => item.enabled).length}</b></button>
           </div>
           {drawerTab === "network" ? (
@@ -1208,19 +1274,6 @@ const FormAutomationContent = (): ReactElement => {
               listHeight={networkListHeight}
               onResizeList={startNetworkListResize}
               onResetListHeight={() => setNetworkListHeight(305)}
-            />
-          ) : drawerTab === "storage" ? (
-            <StoragePanel
-              activeSession={activeTab}
-              currentPageUrl={currentPageUrl}
-              snapshot={storageSnapshot}
-              busy={storageBusy}
-              bucket={storageBucket}
-              query={storageQuery}
-              onBucket={setStorageBucket}
-              onQuery={setStorageQuery}
-              onRefresh={() => void refreshBrowserStorage()}
-              onCopy={copyStorageItems}
             />
           ) : drawerTab === "override" ? (
             <OverridePanel
@@ -1248,7 +1301,6 @@ const FormAutomationContent = (): ReactElement => {
             <div><strong>폼·검색 자동 입력 케이스</strong><span>일반 입력, 라벨, 날짜 선택과 유효성 조건 감지</span></div>
             <button onClick={() => void discoverFields(true)}><MaterialIcon name="refresh" /> 다시 감지</button>
           </div>
-          <div className="fa-discovery-notice"><MaterialIcon name="auto_awesome" /><span>{discoveryStatus}</span></div>
           <div className="fa-case-scope">
             <MaterialIcon name="language" />
             <span><small>현재 화면</small><strong title={currentPageScope}>{pageScopeLabel(currentPageScope)}</strong></span>
@@ -1259,12 +1311,14 @@ const FormAutomationContent = (): ReactElement => {
             <button className={caseFilter === "success" ? "active success" : "success"} onClick={() => setCaseFilter("success")}>성공 <b>{counts.success}</b></button>
             <button className={caseFilter === "failure" ? "active failure" : "failure"} onClick={() => setCaseFilter("failure")}>실패 <b>{counts.failure}</b></button>
           </div>
-          <div className="fa-case-list">
+          <div className="fa-case-list" style={caseListHeightPreview !== null || caseListHeight !== null
+            ? { height: caseListHeightPreview ?? caseListHeight ?? undefined, maxHeight: "none" }
+            : undefined}>
             {visibleCases.length ? visibleCases.map((item) => (
               <button
                 key={item.id}
                 className={`fa-case-card ${item.kind}${item.generated ? " detected" : ""}${selectedCaseId === item.id ? " selected" : ""}`}
-                onClick={() => void autofill(item)}
+                onClick={() => selectCase(item)}
               >
                 <span className="fa-case-icon"><MaterialIcon name={item.kind === "success" ? "check_circle" : "error"} /></span>
                 <span><strong>{item.name}</strong><small>{item.screen} · {caseValueCount(item)}개 값</small></span>
@@ -1274,35 +1328,66 @@ const FormAutomationContent = (): ReactElement => {
               <div className="fa-case-empty"><MaterialIcon name="auto_awesome" /><strong>현재 화면에 자동 입력 케이스가 없습니다</strong><span>입력 화면을 연 뒤 다시 감지해 주세요.</span></div>
             )}
           </div>
+          <div
+            className="fa-case-list-resizer"
+            role="separator"
+            aria-orientation="horizontal"
+            aria-label="자동 입력 케이스 목록 높이 조절"
+            tabIndex={0}
+            title="위아래로 드래그해서 케이스 목록 높이 조절 · 더블클릭해서 초기화"
+            onMouseDown={startCaseListResize}
+            onKeyDown={resizeCaseListWithKeyboard}
+            onDoubleClick={() => { void setCaseListHeight(null); setCaseListHeightPreview(null); }}
+          ><MaterialIcon name="drag_handle" /></div>
 
           {selectedCase && (
             <div className="fa-values">
-              <div className="fa-values-title"><strong>케이스 입력값 편집</strong><span>{selectedCase.fieldMeta.length}개</span></div>
+              <div className="fa-values-title"><strong>케이스 입력값 편집</strong><span>{selectedCase.fieldMeta.length}개 중 {draftFieldCount}개 입력</span></div>
               <div className="fa-case-meta">
                 <label><span>케이스 제목</span><input maxLength={80} value={caseDraftName} onChange={(event) => setCaseDraftName(event.target.value)} /></label>
                 <label><span>케이스 유형</span><select value={caseDraftKind} onChange={(event) => setCaseDraftKind(event.target.value as "success" | "failure")}><option value="success">성공 · 정상값</option><option value="failure">실패 · 오류값</option></select></label>
               </div>
+              <div className="fa-field-selection-tools">
+                <span>체크 해제한 필드는 변경하지 않습니다.</span>
+                <div>
+                  <button type="button" onClick={() => setCaseDraftExcludedFields([])} disabled={draftFieldCount === selectedCase.fieldMeta.length}>전체 선택</button>
+                  <button type="button" onClick={() => setCaseDraftExcludedFields(selectedCase.fieldMeta.map((field) => field.name))} disabled={!draftFieldCount}>전체 해제</button>
+                </div>
+              </div>
               {selectedCase.fieldMeta.map((field) => (
-                <div className="fa-value-row" key={field.name}>
-                  <span><strong>{field.label || field.name}{field.required ? " *" : ""}</strong><code>{field.name}</code></span>
-                  <CaseValueInput
-                    field={field}
-                    value={caseDraftFields[field.name]}
-                    onChange={(value) => setCaseDraftFields((current) => ({ ...current, [field.name]: value }))}
+                <div className={`fa-value-row${caseDraftExcludedFields.includes(field.name) ? " is-excluded" : ""}`} key={field.name}>
+                  <input
+                    className="fa-value-include"
+                    type="checkbox"
+                    aria-label={`${field.label || field.name} 자동 입력`}
+                    title={`${field.label || field.name} 자동 입력 여부`}
+                    checked={!caseDraftExcludedFields.includes(field.name)}
+                    onChange={(event) => setCaseDraftExcludedFields((current) => event.target.checked
+                      ? current.filter((name) => name !== field.name)
+                      : [...current, field.name])}
                   />
+                  <span className="fa-field-info"><strong>{field.label || field.name}{field.required ? " *" : ""}</strong><code>{field.name}</code></span>
+                  <div className="fa-value-control">
+                    <CaseValueInput
+                      field={field}
+                      value={caseDraftFields[field.name]}
+                      disabled={caseDraftExcludedFields.includes(field.name)}
+                      onChange={(value) => setCaseDraftFields((current) => ({ ...current, [field.name]: value }))}
+                    />
+                  </div>
                 </div>
               ))}
               <div className="fa-values-actions">
                 {selectedCase.userSaved && <button className="danger" onClick={deleteCase}><MaterialIcon name="delete" /> 삭제</button>}
-                <button onClick={() => { setCaseDraftName(selectedCase.userSaved ? selectedCase.name : `${selectedCase.name} · 저장본`); setCaseDraftKind(selectedCase.kind); setCaseDraftFields(cloneFields(selectedCase.fields)); }}><MaterialIcon name="restore" /> 원본 복구</button>
+                <button onClick={() => { setCaseDraftName(selectedCase.userSaved ? selectedCase.name : `${selectedCase.name} · 저장본`); setCaseDraftKind(selectedCase.kind); setCaseDraftFields(cloneFields(selectedCase.fields)); setCaseDraftExcludedFields(Array.isArray(selectedCase.excludedFields) ? [...selectedCase.excludedFields] : []); }}><MaterialIcon name="restore" /> 원본 복구</button>
                 <button className="save" onClick={saveCase}><MaterialIcon name="save" /> {selectedCase.userSaved ? "수정값 저장" : "새 케이스로 저장"}</button>
               </div>
             </div>
           )}
 
           <div className="fa-inspector-footer">
-            <button className="primary" onClick={() => void autofill()}><MaterialIcon name="auto_fix_high" /> 선택 데이터 다시 입력</button>
-            <button onClick={() => void clearAutofill()}><MaterialIcon name="restart_alt" /> 현재 입력값 초기화</button>
+            <button className="primary" onClick={() => void autofill()} disabled={!draftFieldCount}><MaterialIcon name="auto_fix_high" /> 선택한 {draftFieldCount}개 필드 입력</button>
+            <button onClick={() => void clearAutofill()} disabled={!draftFieldCount}><MaterialIcon name="restart_alt" /> 선택 필드 초기화</button>
             <button onClick={() => void createCaseFromCurrentPage()}><MaterialIcon name="add" /> 현재 화면 케이스 만들기</button>
           </div>
             </>

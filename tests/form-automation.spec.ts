@@ -36,7 +36,7 @@ test("opens the isolated form automation tab", async ({ page }) => {
   await expect(page.getByRole("button", { name: "화면 캡처" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Swagger 연결" })).toBeVisible();
   await expect(page.getByRole("button", { name: /네트워크/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /저장소/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /저장소/ })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /오버라이드/ })).toBeVisible();
   await expect(page.getByRole("button", { name: "화면 축소" })).toBeVisible();
   await expect(page.getByRole("button", { name: "80%" })).toBeVisible();

@@ -5,7 +5,7 @@
 | `checkly-form-target-url` | userData 파일 | 최근 대상 URL |
 | `checkly-form-browser-sessions` | userData 파일 | 세션 이름·주소·순서 |
 | `checkly-form-active-session` | userData 파일 | 현재 선택한 브라우저 세션 |
-| `checkly-form-saved-cases` | userData 파일 | 화면 범위별 사용자 케이스 |
+| `checkly-form-saved-cases` | userData 파일 | 화면 범위별 사용자 케이스와 입력 제외 필드 이름(`excludedFields`) |
 | `checkly-form-inspector-width` | userData 파일 | 검사 패널 너비 |
 | `checkly-form-network-list-height` | userData 파일 | 네트워크 요청 목록 높이 |
 | `checkly-form-overrides` | userData 파일 | 응답 오버라이드 규칙 |
@@ -17,7 +17,7 @@
 | `form-automation:attach-fixture` | preload→main | file input에 accept별 fixture 첨부 |
 | `form-automation:capture-page` | preload→main | 현재 웹뷰 전체 페이지 캡처 |
 | `form-automation:copy-image` | preload→main | 주석 이미지 PNG 클립보드 복사 |
-| `form-automation:copy-text` | preload→main | 네트워크·저장소 내용 클립보드 복사 |
+| `form-automation:copy-text` | preload→main | 네트워크 내용 클립보드 복사 |
 | `form-automation:save-session-event` | preload→main | 네트워크·페이지 오류 JSONL 기록 |
 | `form-automation:read-session-events` | preload→main | 최근 기록 복원 |
 | `form-automation:clear-session-events` | preload→main | 전용 LIVE QA 기록 삭제 |

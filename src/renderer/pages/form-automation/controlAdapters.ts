@@ -59,13 +59,21 @@ export const controlAdapters = `
       keyEvent(element, 'ArrowDown');
     }
     for (let attempt = 0; attempt < 20; attempt += 1) {
-      if (choiceList(element)?.querySelector('[role="option"]') && element.getAttribute('aria-expanded') === 'true') return true;
+      const list = choiceList(element);
+      if (list && visible(list) && list.querySelector('[role="option"]')) return true;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    // Some button-backed selects ignore synthetic arrow keys but respond to a click.
+    element.click();
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const list = choiceList(element);
+      if (list && visible(list) && list.querySelector('[role="option"]')) return true;
       await new Promise((resolve) => setTimeout(resolve, 20));
     }
     return false;
   };
   const closeChoice = async (element) => {
-    keyEvent(element, 'Escape');
+    if (element.getAttribute('aria-expanded') === 'true' || (choiceList(element) && visible(choiceList(element)))) keyEvent(element, 'Escape');
     // Ark restores input focus on the next animation frame after closing.
     // Finish that restoration before opening another library's popup.
     await new Promise((resolve) => {
@@ -103,14 +111,23 @@ export const controlAdapters = `
     }
     return Array.from(result.values());
   };
-  const activateChoiceOption = async (element, value) => {
+  const activateChoiceOption = async (element, target) => {
     if (!await openChoice(element)) return false;
+    const matches = (option) => option && !option.disabled && (option.value === target.value || option.label === target.label);
+    const visibleRecords = optionRecords(element);
+    const visibleOption = Array.from(choiceList(element)?.querySelectorAll('[role="option"]') || []).find((candidate, index) => matches(visibleRecords[index]));
+    if (visibleOption) {
+      visibleOption.click();
+      await settle();
+      const selected = choiceSelectFor(element)?.selectedOptions;
+      if (selected && Array.from(selected).some((option) => option.value === target.value)) return true;
+      if (element.getAttribute('aria-expanded') !== 'true' && !choiceMultiple(element)) return true;
+    }
     const visited = new Set();
     for (let attempt = 0; attempt < 200; attempt += 1) {
       const active = activeOption(element);
       const option = optionRecords(element).find((record) => record.id === active?.id);
-      if (option?.value === value) {
-        if (option.disabled) return false;
+      if (matches(option)) {
         keyEvent(element, 'Enter'); await settle(); return true;
       }
       const id = active?.id;
@@ -129,7 +146,7 @@ export const controlAdapters = `
     if (targets.some((option) => !option)) { await closeChoice(element); return false; }
     const desired = targets.map((option) => option.value);
     const select = choiceSelectFor(element);
-    if (select) {
+    if (select && element instanceof HTMLSelectElement) {
       if (select.multiple) Array.from(select.options).forEach((option) => { option.selected = desired.includes(option.value); });
       else nativeSet(select, 'value', desired[0] || '');
       select.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
@@ -145,7 +162,7 @@ export const controlAdapters = `
       clear.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 })); clear.click(); await settle();
     } else {
       const changes = multiple ? options.filter((option) => option.selected !== desired.includes(option.value)) : targets.filter((option) => !option.selected);
-      for (const option of changes) if (!await activateChoiceOption(element, option.value)) { await closeChoice(element); return false; }
+      for (const option of changes) if (!await activateChoiceOption(element, option)) { await closeChoice(element); return false; }
     }
     const finalOptions = await collectChoiceOptions(element);
     const selected = finalOptions.filter((option) => option.selected).map((option) => option.value).sort();

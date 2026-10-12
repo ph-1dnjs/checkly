@@ -42,10 +42,11 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
   const scenarioState = useScenarioState({ route, showToast });
   const runOrchestration = useRunOrchestration({ showToast, setRoute });
 
-  // Cmd/Ctrl+R은 실행화면 단축키(Cmd/Ctrl+P)와 겹치지 않도록 새로고침 전용으로 둔다.
+  // 폼 자동 완성에서는 현재 웹뷰만 새로고침하고, 다른 화면에서는 앱을 새로고침한다.
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (
+        route === "form-automation" ||
         !(event.metaKey || event.ctrlKey) ||
         event.shiftKey ||
         event.altKey ||
@@ -57,7 +58,7 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [route]);
 
   const {
     scenario,
