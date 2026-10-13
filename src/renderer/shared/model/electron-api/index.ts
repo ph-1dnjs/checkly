@@ -3,7 +3,7 @@ import type { ApiTestingBridge } from "../../../../app/api-testing/shared/worksp
 import type { AuthBridge } from "./auth";
 import type { FormAutomationApi } from "./form-automation";
 import type { QaApi } from "./qa";
-import type { ScenarioFileApi } from "./scenario-file";
+import type { WebScenarioBridge } from "../../../../app/ipc/web-scenario/types";
 import type { UpdateApi } from "./update";
 
 export {};
@@ -13,8 +13,9 @@ export type ElectronAPI = {
   apiTesting: ApiTestingBridge;
   auth: AuthBridge;
   windowSettings: WindowSettingsBridge;
+  webScenarios: WebScenarioBridge;
+  selectUploadFile: () => Promise<string | null>;
 } & UpdateApi &
-  ScenarioFileApi &
   QaApi &
   FormAutomationApi;
 

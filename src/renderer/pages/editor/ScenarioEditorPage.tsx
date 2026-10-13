@@ -1,4 +1,4 @@
-import { useRef, useState, type MouseEvent } from "react";
+import { useRef, useState, type ReactNode, type MouseEvent } from "react";
 import {
   actionLabel,
   actionText,
@@ -10,10 +10,6 @@ import {
 } from "../../shared/model/scenario";
 import { ActionTag } from "../../shared/ui/ActionTag";
 import { Button } from "../../shared/ui/Button";
-import {
-  ScenarioFileList,
-  type ScenarioFileEntry,
-} from "../../entities/scenario-folder";
 import { DuplicateScenarioModal } from "./DuplicateScenarioModal";
 
 type Device = "mobile" | "tablet" | "desktop";
@@ -28,12 +24,8 @@ type Props = {
   mode: "text" | "marker";
   scenario: Scenario;
   sourceMarkdown: string;
-  scenarioFilePath: string | null;
-  files: ScenarioFileEntry[];
-  fileCache: Record<string, Scenario[]>;
-  pickedCountByFile: Record<string, number>;
-  onOpenFile: (filePath: string) => void;
-  onChooseFolder: () => void;
+  sidebar: ReactNode;
+  baseUrl: string;
   previews: Scenario[];
   markerScenarioId: string;
   selectedId: string;
@@ -68,12 +60,8 @@ export const ScenarioEditorPage = ({
   mode,
   scenario,
   sourceMarkdown,
-  scenarioFilePath,
-  files,
-  fileCache,
-  pickedCountByFile,
-  onOpenFile,
-  onChooseFolder,
+  sidebar,
+  baseUrl,
   previews,
   markerScenarioId,
   selectedId,
@@ -186,14 +174,7 @@ export const ScenarioEditorPage = ({
     <>
     {mode === "text" ? (
       <div className="ws-editor">
-        <ScenarioFileList
-          files={files}
-          fileCache={fileCache}
-          activePath={scenarioFilePath}
-          pickedCountByFile={pickedCountByFile}
-          onSelect={onOpenFile}
-          onChooseFolder={onChooseFolder}
-        />
+        {sidebar}
         <section className="ws-editor-source">
           <div className="ws-col-label">
             <span>MARKDOWN</span>
@@ -462,7 +443,7 @@ export const ScenarioEditorPage = ({
               <webview
                 ref={targetFrameRef}
                 className="extract-target"
-                src={scenario.url}
+                src={(() => { try { return baseUrl ? new URL(scenario.url || "/", baseUrl).href : "about:blank"; } catch { return "about:blank"; } })()}
                 aria-label="시나리오 대상 페이지"
               />
               <div className="extract-fallback">

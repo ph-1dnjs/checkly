@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { separateUploadPaths, restoreUploadPaths } from "../../shared/model/scenario-upload-paths";
+import type { WebScenarioRecord } from "../../../app/ipc/web-scenario/types";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   markerColor,
   parseMarkdown,
@@ -47,6 +49,13 @@ const applyPositions = (
       : step;
   }),
 });
+const serializePositions = (store: MarkerPositionStore): string => JSON.stringify(
+  Object.fromEntries(Object.entries(store).sort(([a], [b]) => a.localeCompare(b)).map(([key, items]) => [key,
+    items.map(item => ({ action: item.action, target: item.target, value: item.value,
+      prompt: item.prompt, condition: item.condition, waitSeconds: item.waitSeconds,
+      occurrence: item.occurrence, x: item.x, y: item.y, color: item.color })),
+  ])),
+);
 const scenarioToMarkdown = (scenario: Scenario): string =>
   [
     `# 시나리오: ${scenario.title}`,
@@ -93,19 +102,29 @@ const replaceScenarioMarkdown = (
 };
 
 type UseScenarioStateOptions = {
+  projectId?: string;
+  baseUrl: string;
   route: Route;
   showToast: (message: string) => void;
 };
 
 export const useScenarioState = ({
+  projectId,
+  baseUrl,
   route,
   showToast,
 }: UseScenarioStateOptions) => {
+  const enabled = Boolean(projectId);
   const [scenario, setScenario] = useState(emptyScenario);
   const [sourceMarkdown, setSourceMarkdown] = useState(initialMarkdown);
   const [savedMarkdown, setSavedMarkdown] = useState(initialMarkdown);
   const [markerScenarioId, setMarkerScenarioId] = useState("");
-  const [scenarioFilePath, setScenarioFilePath] = useState<string | null>(null);
+  const [records, setRecords] = useState<WebScenarioRecord[]>([]);
+  const [activeRecord, setActiveRecord] = useState<WebScenarioRecord | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const saving = useRef(false);
+  const [savedPositions, setSavedPositions] = useState("{}");
   const [editorMode, setEditorMode] = useState<"text" | "marker">("text");
   const [selectedId, setSelectedId] = useState("3");
   const [editingMarker, setEditingMarker] = useState<Step | null>(null);
@@ -114,7 +133,7 @@ export const useScenarioState = ({
   const [markersVisible, setMarkersVisible] = useState(true);
   const [saveBeforeReturning, setSaveBeforeReturning] = useState(false);
   const [positionStore, setPositionStore] = useState<MarkerPositionStore>({});
-  const [positionsLoaded, setPositionsLoaded] = useState(false);
+
 
   const updateSteps = (steps: Step[]) =>
     setScenario((current) => ({
@@ -122,79 +141,63 @@ export const useScenarioState = ({
       steps: steps.map((step, index) => ({ ...step, id: String(index + 1) })),
     }));
 
+  const uploadKey = (id: string) => `web-scenario-uploads:${projectId}:${id}`;
+  const readRecords = async () => (await window.electronAPI.webScenarios.list()).map(record => {
+    const paths = JSON.parse(localStorage.getItem(uploadKey(record.id)) ?? "[]");
+    return restoreUploadPaths(record, paths);
+  });
+  const reportError = (error: unknown) => showToast(error instanceof Error ? error.message : "시나리오 요청을 처리하지 못했습니다.");
+  const refreshRecords = async (reloadActive = false) => {
+    if (!enabled || saving.current) return;
+    setLoading(true);
+    try {
+      const items = await readRecords();
+      setRecords(items);
+      if (reloadActive && activeRecord) {
+        const record = items.find(item => item.id === activeRecord.id);
+        if (record) applyRecord(record);
+        else clearRecord();
+      }
+    }
+    catch (error) { reportError(error); }
+    finally { setLoading(false); }
+  };
   useEffect(() => {
-    Promise.all([
-      window.electronAPI.loadScenarioMarkdown(),
-      window.electronAPI.loadMarkerPositions(),
-    ])
-      .then(([markdown, raw]) => {
-        const store = JSON.parse(raw ?? "{}") as MarkerPositionStore;
-        setPositionStore(store);
-        if (markdown) {
-          setSourceMarkdown(markdown);
-          setSavedMarkdown(markdown);
-          const first = parseMarkdown(markdown)[0];
-          if (first) {
-            setScenario(applyPositions(first, store));
-            setMarkerScenarioId(first.id);
-          }
-        }
-      })
-      .catch(() => showToast("저장된 시나리오를 불러오지 못했습니다."))
-      .finally(() => setPositionsLoaded(true));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (!enabled) return;
+    let alive = true;
+    setLoading(true);
+    void readRecords().then(items => {
+      if (alive) setRecords(items);
+    }).catch(error => { if (alive) reportError(error); })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [enabled]);
+
+  const currentPositions = useMemo(() => ({
+    ...positionStore,
+    ...(scenario.title ? { [positionKey(scenario)]: scenario.steps.flatMap(step =>
+      step.x === undefined || step.y === undefined ? [] : [{
+        action: step.action, target: step.target, value: step.value,
+        prompt: step.prompt, condition: step.condition, waitSeconds: step.waitSeconds,
+        occurrence: step.occurrence, x: step.x, y: step.y, color: step.color,
+      }]) } : {}),
+  }), [positionStore, scenario]);
 
   useEffect(() => {
-    if (!positionsLoaded) return;
-    setPositionStore((store) => ({
-      ...store,
-      [positionKey(scenario)]: scenario.steps.flatMap((step) =>
-        step.x === undefined || step.y === undefined
-          ? []
-          : [
-              {
-                action: step.action,
-                target: step.target,
-                value: step.value,
-                prompt: step.prompt,
-                condition: step.condition,
-                waitSeconds: step.waitSeconds,
-                occurrence: step.occurrence,
-                x: step.x,
-                y: step.y,
-                color: step.color,
-              },
-            ],
-      ),
-    }));
-  }, [scenario, positionsLoaded]);
-
-  useEffect(() => {
-    if (!positionsLoaded) return;
-    void window.electronAPI
-      .saveMarkerPositions(JSON.stringify(positionStore))
-      .catch(() => showToast("마커 위치를 저장하지 못했습니다."));
+    if (route !== "editor" || editorMode !== "marker" || !baseUrl) return;
+    let url: string;
+    try { url = new URL(scenario.url || "/", baseUrl).href; } catch { return; }
+    let alive = true;
+    const inspected = scenario;
+    void window.electronAPI.inspectScenario({ ...inspected, url }).then(matches => {
+      if (!alive) return;
+      setScenario(current => current !== inspected ? current : ({ ...current,
+        steps: current.steps.map(step => ({ ...step, connected: matches.some(match => match.id === step.id && match.connected) })),
+      }));
+    }).catch(() => { if (alive) showToast("대상 페이지를 확인하지 못했습니다."); });
+    return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [positionStore, positionsLoaded]);
-
-  useEffect(() => {
-    if (route !== "editor" || editorMode !== "marker") return;
-    void window.electronAPI
-      .inspectScenario(scenario)
-      .then((matches) =>
-        updateSteps(
-          scenario.steps.map((step) => ({
-            ...step,
-            connected: matches.some(
-              (match) => match.id === step.id && match.connected,
-            ),
-          })),
-        ),
-      )
-      .catch(() => showToast("대상 페이지를 확인하지 못했습니다."));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [route, editorMode]);
+  }, [route, editorMode, baseUrl]);
 
   const previews = useMemo(
     () => parseMarkdown(sourceMarkdown),
@@ -205,77 +208,115 @@ export const useScenarioState = ({
       (item) => item.id === scenario.id,
     );
     return savedScenario
-      ? applyPositions(savedScenario, positionStore)
+      ? applyPositions(savedScenario, currentPositions)
       : scenario;
-  }, [positionStore, scenario, sourceMarkdown]);
+  }, [currentPositions, scenario, sourceMarkdown]);
   const executableScenarios = useMemo(
-    () => previews.map((item) => applyPositions(item, positionStore)),
-    [positionStore, previews],
+    () => previews.map((item) => applyPositions(item, currentPositions)),
+    [currentPositions, previews],
   );
 
   const markerDialog = pendingMarker ?? editingMarker;
 
   const updateSource = (markdown: string) => {
+    setPositionStore(currentPositions);
     setSourceMarkdown(markdown);
     const next = parseMarkdown(markdown)[0];
     if (next) {
-      const positioned = applyPositions(next, positionStore);
+      const positioned = applyPositions(next, currentPositions);
       setScenario(positioned);
       setMarkerScenarioId(positioned.id);
       setSelectedId(positioned.steps[0]?.id ?? "");
     }
   };
 
-  const importScenario = async () => {
-    const imported = await window.electronAPI.importScenarioFile();
-    if (!imported) return;
-    updateSource(imported.markdown);
-    setScenarioFilePath(imported.filePath);
-    await window.electronAPI.saveScenarioMarkdown(imported.markdown);
-    setSavedMarkdown(imported.markdown);
-    showToast("시나리오를 불러왔습니다.");
+  const openRecord = (id: string) => {
+    if (saving.current) return;
+    const record = records.find(item => item.id === id);
+    if (!record) return;
+    applyRecord(record);
   };
-
-  // 폴더 목록에서 고른 파일을 편집기로 연다. 이후 저장은 이 파일에 쓴다.
-  const openScenarioFile = async (filePath: string) => {
-    const opened = await window.electronAPI.openScenarioFile(filePath);
-    if (!opened) {
-      showToast("시나리오 파일을 열지 못했습니다.");
-      return;
-    }
-    updateSource(opened.markdown);
-    setScenarioFilePath(opened.filePath);
-    await window.electronAPI.saveScenarioMarkdown(opened.markdown);
-    setSavedMarkdown(opened.markdown);
+  const applyRecord = (record: WebScenarioRecord) => {
+    const store = JSON.parse(record.positions) as MarkerPositionStore;
+    const first = parseMarkdown(record.markdown)[0] ?? emptyScenario;
+    setActiveRecord(record);
+    setSourceMarkdown(record.markdown);
+    setSavedMarkdown(record.markdown);
+    setPositionStore(store);
+    setSavedPositions(serializePositions(store));
+    setScenario(applyPositions(first, store));
+    setMarkerScenarioId(first.id);
+    setSelectedId(first.steps[0]?.id ?? "");
+    setEditorMode("text");
+    closeMarkerDialog();
+    setIsAddingMarker(false);
   };
-
-  const writeScenarioFile = async (
-    write: (markdown: string) => Promise<string | null>,
-  ): Promise<boolean> => {
+  const newRecord = () => {
+    if (saving.current) return;
+    setActiveRecord(null);
+    setPositionStore({});
+    setSavedPositions("{}");
+    setSavedMarkdown("");
+    setSourceMarkdown("# 시나리오: 새 시나리오\nurl: /\n\n");
+    const first = parseMarkdown("# 시나리오: 새 시나리오\nurl: /")[0];
+    setScenario(first);
+    setMarkerScenarioId(first.id);
+    setSelectedId("");
+    setIsAddingMarker(false);
+    setEditorMode("text");
+    closeMarkerDialog();
+  };
+  const saveRecord = async (markdown = editorMode === "marker" ? replaceScenarioMarkdown(sourceMarkdown, scenario) : sourceMarkdown) => {
+    if (!enabled || saving.current || loading) return false;
+    const parsed = parseMarkdown(markdown);
+    if (!parsed.length) { showToast("저장할 시나리오를 작성하세요."); return false; }
+    const positions = serializePositions(Object.fromEntries(parsed.map(item => [positionKey(item), currentPositions[positionKey(item)] ?? []])));
+    saving.current = true;
+    setBusy(true);
     try {
-      const filePath = await write(sourceMarkdown);
-      if (!filePath) return false;
-      setScenarioFilePath(filePath);
-      await window.electronAPI.saveScenarioMarkdown(sourceMarkdown);
-      setSavedMarkdown(sourceMarkdown);
+      const shared = separateUploadPaths(markdown, positions);
+      const saved = await window.electronAPI.webScenarios.save({
+        id: activeRecord?.id, expectedUpdatedAt: activeRecord?.updatedAt,
+        title: parsed[0].title, markdown: shared.markdown, positions: shared.positions,
+      });
+      const record = restoreUploadPaths(saved, shared.paths);
+      setActiveRecord(record);
+      localStorage.setItem(uploadKey(saved.id), JSON.stringify(shared.paths));
+      setRecords(items => [record, ...items.filter(item => item.id !== record.id)]);
+      setSourceMarkdown(current => current === sourceMarkdown ? markdown : current);
+      setSavedMarkdown(markdown);
+      setSavedPositions(positions);
+      setPositionStore(JSON.parse(positions));
       showToast("시나리오를 저장했습니다.");
       return true;
-    } catch {
-      showToast("시나리오를 저장하지 못했습니다.");
-      return false;
-    }
+    } catch (error) { reportError(error); return false; }
+    finally { saving.current = false; setBusy(false); }
   };
-
-  const saveScenarioFile = () =>
-    writeScenarioFile(
-      scenarioFilePath
-        ? window.electronAPI.saveImportedScenarioFile
-        : window.electronAPI.exportScenarioFile,
-    );
-
-  // 새로 저장하기: 항상 저장 위치를 다시 고른다.
-  const saveScenarioFileAs = () =>
-    writeScenarioFile(window.electronAPI.exportScenarioFile);
+  const clearRecord = () => {
+    setActiveRecord(null);
+    setScenario(emptyScenario);
+    setSourceMarkdown("");
+    setSavedMarkdown("");
+    setPositionStore({});
+    setSavedPositions("{}");
+    setEditorMode("text");
+    setMarkerScenarioId("");
+    setSelectedId("");
+    closeMarkerDialog();
+  };
+  const deleteRecord = async () => {
+    if (!activeRecord || saving.current) return;
+    saving.current = true;
+    setBusy(true);
+    try {
+      await window.electronAPI.webScenarios.remove(activeRecord.id, activeRecord.updatedAt);
+      localStorage.removeItem(uploadKey(activeRecord.id));
+      setRecords(items => items.filter(item => item.id !== activeRecord.id));
+      clearRecord();
+      showToast("시나리오를 삭제했습니다.");
+    } catch (error) { reportError(error); }
+    finally { saving.current = false; setBusy(false); }
+  };
 
   // 실행 화면으로 넘어가기 직전 편집기 상태를 Markdown에 반영하고,
   // 지금 편집 중인 시나리오를 포함한 실행 가능한 시나리오 배열을 만든다.
@@ -343,16 +384,8 @@ export const useScenarioState = ({
 
   const saveMarkerEditsAndReturn = async () => {
     const markdown = replaceScenarioMarkdown(sourceMarkdown, scenario);
-    updateSource(markdown);
-    try {
-      await window.electronAPI.saveScenarioMarkdown(markdown);
-      if (scenarioFilePath)
-        await window.electronAPI.saveImportedScenarioFile(markdown);
-      setSavedMarkdown(markdown);
-      showToast("시나리오를 저장했습니다.");
-    } catch {
-      showToast("시나리오를 저장하지 못했습니다.");
-    } finally {
+    if (await saveRecord(markdown)) {
+      setSourceMarkdown(markdown);
       setSaveBeforeReturning(false);
       setEditorMode("text");
     }
@@ -364,7 +397,8 @@ export const useScenarioState = ({
       (item) => item.id === id,
     );
     if (!nextScenario) return;
-    const positioned = applyPositions(nextScenario, positionStore);
+    const positioned = applyPositions(nextScenario, currentPositions);
+    setPositionStore(currentPositions);
     setSourceMarkdown(nextMarkdown);
     setScenario(positioned);
     setMarkerScenarioId(id);
@@ -428,8 +462,8 @@ export const useScenarioState = ({
     scenario,
     setScenario,
     sourceMarkdown,
-    isDirty: sourceMarkdown !== savedMarkdown,
-    scenarioFilePath,
+    isDirty: sourceMarkdown !== savedMarkdown || (editorMode === "marker" && replaceScenarioMarkdown(sourceMarkdown, scenario) !== savedMarkdown) || serializePositions(Object.fromEntries(parseMarkdown(sourceMarkdown).map(item => [positionKey(item), currentPositions[positionKey(item)] ?? []]))) !== savedPositions,
+    records, activeRecord, loading, busy, refreshRecords, openRecord, newRecord, saveRecord, deleteRecord,
     markerScenarioId,
     editorMode,
     setEditorMode,
@@ -450,10 +484,6 @@ export const useScenarioState = ({
     markerDialog,
     updateSteps,
     updateSource,
-    importScenario,
-    openScenarioFile,
-    saveScenarioFile,
-    saveScenarioFileAs,
     commitEditorRunSnapshot,
     placeMarker,
     updateMarker,

@@ -33,7 +33,7 @@ BrowserWindow는 `contextIsolation: true`, `nodeIntegration: false`로 생성됩
 | --- | --- | --- |
 | `src/app` | Electron main 진입점: 창 생성, 앱 lifecycle, 도메인 목록 조립 | `main.ts`, `paths.ts` |
 | `src/app/preload.ts` | 도메인 bridge를 `window.electronAPI`로 조립 | `preload.ts` |
-| `src/app/ipc/<도메인>` | main의 도메인별 IPC 등록(`index.ts`), preload 노출(`bridge.ts`), 서비스 구현 | `qa/`, `scenario-file/`, `form-automation/`, `update/`, `window-settings/` |
+| `src/app/ipc/<도메인>` | main의 도메인별 IPC 등록(`index.ts`), preload 노출(`bridge.ts`), 서비스 구현 | `qa/`, `web-scenario/`, `form-automation/`, `update/`, `window-settings/` |
 | `src/renderer/app` | 화면 조립 (App.tsx는 훅을 조합만 함) | `App.tsx` |
 | `src/renderer/app/hooks` | App의 상태·부수효과를 관심사별로 분리한 훅 | `useNavigation.ts`, `useScenarioState.ts`, `useRunOrchestration.ts` |
 | `src/renderer/pages` | 화면 단위 UI | dashboard, editor, picker, run, settings |
@@ -54,7 +54,7 @@ BrowserWindow는 `contextIsolation: true`, `nodeIntegration: false`로 생성됩
 | `qa` | `reports.ts` | 실행 리포트(JSON/HTML) 작성 | `qaTypes` |
 | `qa` | `video.ts` | 실행 영상 디렉터리 규칙, ffmpeg 병합, 다운로드 | `qaTypes` (순환 없음) |
 | `qa` | `qaExecution.ts` | Playwright 대상 탐색·시나리오 실행·수동 단계 제어 | `reports`, `video`, `qaTypes` |
-| `scenario-file` | `fileStorage.ts` | 시나리오 Markdown·마커 위치·시나리오 폴더 저장, 업로드 파일 선택 dialog | 독립 |
+| `web-scenario` | `store.ts` | 팀 DB 시나리오 본문·마커 CRUD, 충돌 검사, 업로드 파일 선택 dialog | `auth/client` |
 | `form-automation` | `formAutomation.ts`, `formAutomationReport.ts`, `webview.ts` | 캡처·클립보드·로그·HTTP·fixture, XLSX 리포트, webview·popup 보안 설정 | `paths.ts` |
 | `update` | `update.ts` | electron-updater 연동, 자동 업데이트 설정 저장 | 의존 없음 |
 | `window-settings` | `windowSettings.ts` | 창 해상도·시작 시 최대화 설정 | 의존 없음 |
@@ -87,11 +87,11 @@ Route = dashboard | editor | picker | run | settings
 
 | 상태 | 위치 | 수명 |
 | --- | --- | --- |
-| 현재 Markdown·선택 시나리오·마커 편집 | `App` | 앱 실행 중 + 일부 파일 저장 |
+| 현재 Markdown·선택 시나리오·마커 편집 | `App` | 앱 실행 중 + 명시적 DB 저장 |
 | 화면 route·편집 모드·모달 | `App` 또는 각 페이지 | 메모리 |
 | 실행 큐·진행률·로그·미리보기 | `App` | 메모리 |
 | 최근 실행 5개·통과/실패 요약 | `App` | 메모리, 재시작 시 초기화 |
-| 선택 폴더 파일·선택 집합 | `ScenarioPickerPage` | 화면 컴포넌트 수명 |
+| DB 목록·선택 집합 | `useScenarioState` / `App` | 로그인 세션 수명 |
 | 설정 토글 | `SettingsPage` | 화면 컴포넌트 수명 |
 | 마커 대화상자 로컬 UI·viewport | `ScenarioEditorPage` | 화면 컴포넌트 수명 |
 
@@ -101,20 +101,18 @@ main 프로세스는 Electron `app.getPath('userData')` 아래에 앱 데이터�
 
 | 데이터 | 경로 | 형식 | 복원 여부 |
 | --- | --- | --- | --- |
-| 기본 시나리오 원문 | `userData/scenarios.md` | Markdown | 앱 시작 시 첫 시나리오 복원 |
-| 마커 좌표·표시 정보 | `userData/marker-positions.json` | JSON | 제목+URL과 단계 속성으로 재결합 |
-| 최근 선택 폴더 | `userData/scenario-folder.json` | JSON | 선택 화면 진입 시 목록 재조회 |
 | 폼 자동 입력 케이스·세션·설정 | `userData/form-automation-state.json` | 버전 지정 JSON + `.bak` | 화면 진입 시 복원, 기존 localStorage 최초 이전 |
 | 실행 리포트 | `userData/reports/run-{timestamp}/` | JSON + HTML | 생성만 하며 앱 내 목록 복원은 없음 |
 | 임시 녹화 | `userData/videos/temporary/` | WebM | 실행 후 runs로 이동 |
 | 실행 영상 | `userData/videos/runs/` | WebM | 다운로드·병합 원본, 앱 내 과거 목록 복원은 없음 |
 
-기존 `tests/app.spec.ts`는 localStorage fallback을 기대하지만 renderer의 기준 저장소는 main 프로세스의 `scenarios.md`입니다. 빈 원문·복제 테스트는 테스트 내부에서 electronAPI mock을 주입합니다. mock 기반 UI 검증과 실제 native 저장 검증을 구분합니다.
+웹 시나리오는 `web_scenarios`에 본문과 마커를 함께 저장한다. 비로그인 시 DB 요청 없이 로그인 안내를 표시한다. `scenarios.md`, `marker-positions.json`, `scenario-folder.json`은 더 이상 읽거나 쓰지 않으며 기존 파일은 삭제하지 않는다. 화면 테스트는 auth/DB IPC mock으로 검증하고 실제 RLS는 로컬 Supabase 통합 테스트로 분리한다.
 
 ## 시나리오 데이터 흐름
 
 ```text
-Markdown
+web_scenarios (Supabase, 로그인한 프로젝트)
+  → Markdown
   → parseMarkdown
     → Scenario[]
       → applyPositions(title + URL, marker store)
@@ -152,7 +150,7 @@ Markdown
 
 ## 편집·실행 정책의 기준 문서
 
-원문과 좌표는 독립적으로 저장하며 두 파일의 일관성을 보장하는 트랜잭션은 없습니다. 같은 실행 묶음은 BrowserContext를 공유하고, 최근 실행 기록·캡처는 메모리, 리포트·영상은 디스크에 남습니다. 상세 저장 순서·보존 범위·오류 제한은 [편집 저장 정책](../04-pages/020-scenario-editor/03-api.md), [실행 저장 정책](../04-pages/040-scenario-run/03-api.md), [실행 예외](../04-pages/040-scenario-run/04-edge-cases.md)를 기준으로 확인합니다.
+원문과 좌표는 `web_scenarios` 한 행으로 함께 저장합니다. 수정·삭제는 읽은 `updated_at` 조건을 사용해 충돌을 감지합니다. 같은 실행 묶음은 BrowserContext를 공유하고, 최근 실행 기록·캡처는 메모리, 리포트·영상은 디스크에 남습니다. 상세 저장 순서·보존 범위·오류 제한은 [편집 저장 정책](../04-pages/020-scenario-editor/03-api.md), [실행 저장 정책](../04-pages/040-scenario-run/03-api.md), [실행 예외](../04-pages/040-scenario-run/04-edge-cases.md)를 기준으로 확인합니다.
 
 ## 빌드 경계
 

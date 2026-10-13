@@ -16,6 +16,8 @@ export type AuthStubOptions = {
   signOutNotice?: string
   /** 설정 PROJECT의 "비밀값도 팀에 공유"용으로 apiTesting bridge의 팀 설정 두 메서드만 둔다. */
   teamSettings?: boolean
+  webScenarioConflict?: boolean
+  webScenarioOffline?: boolean
 }
 
 export const owner: AuthSession = {
@@ -189,11 +191,28 @@ export async function installAuthStub(page: Page, options: AuthStubOptions) {
       value: {
         ...(options.enabled === 'missing' ? {} : { auth }),
         ...(options.teamSettings ? { apiTesting } : {}),
-        loadScenarioMarkdown: async () => null,
-        loadMarkerPositions: async () => null,
-        saveMarkerPositions: async () => undefined,
-        listScenarioFolder: async () => ({ folderPath: null, files: [] }),
-        readScenarioFile: async () => null,
+        webScenarios: {
+          list: async () => {
+            record('webScenarios.list', null)
+            if (options.webScenarioOffline) throw new Error('서버에 연결할 수 없습니다. 잠시 후 다시 시도하세요.')
+            return JSON.parse(store.getItem('web-scenarios') ?? '[]')
+          },
+          save: async (input: any) => {
+            record('webScenarios.save', input)
+            if (options.webScenarioConflict && input.id) throw new Error('다른 팀원이 먼저 수정했습니다. 새로 불러온 뒤 다시 저장하세요.')
+            const rows = JSON.parse(store.getItem('web-scenarios') ?? '[]')
+            const row = { ...input, id: input.id ?? crypto.randomUUID(), updatedAt: new Date().toISOString(), createdBy: 'minsu', updatedBy: 'minsu' }
+            store.setItem('web-scenarios', JSON.stringify([row, ...rows.filter((item: any) => item.id !== row.id)]))
+            return row
+          },
+          remove: async (id: string, version: string) => {
+            record('webScenarios.remove', { id, version })
+            if (options.webScenarioConflict) throw new Error('다른 팀원이 먼저 수정했습니다. 새로 불러온 뒤 다시 저장하세요.')
+            const rows = JSON.parse(store.getItem('web-scenarios') ?? '[]')
+            store.setItem('web-scenarios', JSON.stringify(rows.filter((item: any) => item.id !== id)))
+          },
+        },
+        inspectScenario: async () => [],
         onManualInputRequired: off,
         onManualControlRequired: off,
         onManualResultRequired: off,

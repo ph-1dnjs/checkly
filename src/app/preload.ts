@@ -3,7 +3,7 @@ import { apiTestingBridge } from './api-testing/bridge'
 import { authBridge } from './ipc/auth/bridge'
 import { formAutomationBridge } from './ipc/form-automation/bridge'
 import { qaBridge } from './ipc/qa/bridge'
-import { scenarioFileBridge } from './ipc/scenario-file/bridge'
+import { webScenarioBridge, selectUploadFile } from './ipc/web-scenario/bridge'
 import { updateBridge } from './ipc/update/bridge'
 import { windowSettingsBridge } from './ipc/window-settings/bridge'
 
@@ -15,7 +15,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   auth: authBridge,
   windowSettings: windowSettingsBridge,
   ...updateBridge,
-  ...scenarioFileBridge,
+  webScenarios: webScenarioBridge,
+  selectUploadFile,
   ...qaBridge,
   ...formAutomationBridge,
 })

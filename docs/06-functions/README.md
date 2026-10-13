@@ -62,10 +62,8 @@ Then `주문 목록` 텍스트가 보인다 [대기 10초]
 
 | 함수 | 부수 효과 |
 | --- | --- |
-| `load/saveScenarioMarkdown` | `userData/scenarios.md` |
-| `import/export/saveImportedScenarioFile` | native dialog와 외부 Markdown |
-| `load/saveMarkerPositions` | `marker-positions.json` |
-| `list/chooseScenarioFolder` | 폴더 경로 저장, Markdown 수정 시각 정렬 |
+| `WebScenarioStore.list/save/remove` | 프로젝트 DB CRUD, 수정·삭제 버전 충돌 검사 |
+| `separateUploadPaths/restoreUploadPaths` | 업로드 경로를 DB 본문에서 분리하고 프로젝트·문서별 개인 localStorage로 보관 |
 | `writeRunReport` | escaped HTML과 JSON 생성 |
 | `mergeRunVideos` | runs 경로의 WebM만 ffmpeg concat |
 

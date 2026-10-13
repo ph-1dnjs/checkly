@@ -22,10 +22,11 @@ type Props = {
   // 편집(텍스트) 액션
   isDirty: boolean;
   onSave: () => Promise<boolean>;
-  onSaveAs: () => Promise<boolean>;
-  onImport: () => void;
+  busy: boolean;
+  canDelete: boolean;
+  onDelete: () => void;
   // 대상 선택 액션
-  onReloadFolder: () => void;
+  onRefresh: () => void;
 };
 
 const SAVED_FLASH_MS = 1400;
@@ -44,37 +45,18 @@ export const ScenarioWorkspaceHeaderExtra = ({
   pickedCount,
   isDirty,
   onSave,
-  onSaveAs,
-  onImport,
-  onReloadFolder,
+  busy,
+  canDelete,
+  onDelete,
+  onRefresh,
 }: Props) => {
   const editTab = route === "editor";
   const live = running || awaiting;
-  const [saveMenuOpen, setSaveMenuOpen] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
-  const saveRef = useRef<HTMLDivElement>(null);
   const flashTimer = useRef<number | undefined>(undefined);
 
   useEffect(() => () => window.clearTimeout(flashTimer.current), []);
-  useEffect(() => {
-    if (!saveMenuOpen) return;
-    const outside = (event: Event) => {
-      if (event.target instanceof Node && !saveRef.current?.contains(event.target))
-        setSaveMenuOpen(false);
-    };
-    const escape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setSaveMenuOpen(false);
-    };
-    document.addEventListener("pointerdown", outside);
-    document.addEventListener("keydown", escape);
-    return () => {
-      document.removeEventListener("pointerdown", outside);
-      document.removeEventListener("keydown", escape);
-    };
-  }, [saveMenuOpen]);
-
   const runSave = async (save: () => Promise<boolean>) => {
-    setSaveMenuOpen(false);
     if (!(await save())) return;
     setSavedFlash(true);
     window.clearTimeout(flashTimer.current);
@@ -165,44 +147,16 @@ export const ScenarioWorkspaceHeaderExtra = ({
         {route === "editor" && editorMode === "text" && (
           <>
             {isDirty && <span className="ws-unsaved">UNSAVED</span>}
-            <div className="ws-save" ref={saveRef}>
-              <Button className="ws-save-main" onClick={() => void runSave(onSave)}>
-                {savedFlash ? "저장됨" : "저장"}
-              </Button>
-              <Button
-                className="ws-save-toggle"
-                aria-label="저장 옵션"
-                aria-haspopup="menu"
-                aria-expanded={saveMenuOpen}
-                onClick={() => setSaveMenuOpen((open) => !open)}
-              >
-                <svg width="9" height="9" viewBox="0 0 10 10" fill="none" aria-hidden="true">
-                  <path
-                    d="M2 3.5 5 6.5 8 3.5"
-                    stroke="currentColor"
-                    strokeWidth="1.4"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </Button>
-              {saveMenuOpen && (
-                <div className="ws-save-menu" role="menu">
-                  <Button role="menuitem" onClick={() => void runSave(onSaveAs)}>
-                    새로 저장하기<span>⇧⌘S</span>
-                  </Button>
-                </div>
-              )}
-            </div>
-            <Button className="ws-action" onClick={onImport}>
-              불러오기
+            <Button className="ws-save-main" disabled={busy} onClick={() => void runSave(onSave)}>
+              {busy ? "저장 중…" : savedFlash ? "저장됨" : "저장"}
             </Button>
+            <Button className="ws-action" disabled={busy || !canDelete} onClick={onDelete}>삭제</Button>
           </>
         )}
         {route === "picker" && (
           <>
-            <Button className="ws-action" onClick={onReloadFolder}>
-              불러오기
+            <Button className="ws-action" onClick={onRefresh}>
+              새로고침
             </Button>
             <Button className="ws-action" onClick={() => onNavigate("editor")}>
               <span className="msi" aria-hidden="true">edit</span>

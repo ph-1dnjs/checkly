@@ -12,7 +12,7 @@ import { apiTestingDomain } from "./api-testing";
 import { authDomain } from "./ipc/auth";
 import { formAutomationDomain } from "./ipc/form-automation";
 import { qaDomain } from "./ipc/qa";
-import { scenarioFileDomain } from "./ipc/scenario-file";
+import { webScenarioDomain } from "./ipc/web-scenario";
 import { updateDomain } from "./ipc/update";
 import { loadInitialWindowOptions, windowSettingsDomain } from "./ipc/window-settings";
 
@@ -28,7 +28,7 @@ const domains: MainDomain[] = [
   authDomain,
   formAutomationDomain,
   qaDomain,
-  scenarioFileDomain,
+  webScenarioDomain,
   updateDomain,
   windowSettingsDomain,
 ];

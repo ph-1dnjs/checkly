@@ -1,3 +1,5 @@
+> 2026-10-13 저장 방식 변경: 웹 시나리오는 DB 전용이다. 이 문서의 기존 파일·폴더 저장 관련 서술은 [현재 저장 정책](04-pages/020-scenario-editor/03-api.md)과 [선택 화면](04-pages/030-scenario-picker/README.md)으로 대체한다.
+
 # Checkly: 시나리오 기반 QA 자동화 ‘체키’
 
 ## 시나리오 편집·실행 기획서
@@ -288,7 +290,7 @@ Then `주문 목록` 텍스트가 보인다 [대기 10초]
 | 원문·저장·마커 반영·복제 | [useScenarioState.ts](../src/renderer/app/hooks/useScenarioState.ts) |
 | 복제 대화상자·값·제목 | [DuplicateScenarioModal.tsx](../src/renderer/pages/editor/DuplicateScenarioModal.tsx), [scenario-duplication.ts](../src/renderer/shared/model/scenario-duplication.ts) |
 | 시나리오 문법·데이터 | [scenario.ts](../src/renderer/shared/model/scenario.ts) |
-| 파일·폴더 선택 | [ScenarioPickerPage.tsx](../src/renderer/pages/picker/ScenarioPickerPage.tsx), [fileStorage.ts](../src/app/ipc/scenario-file/fileStorage.ts) |
+| DB 문서 선택 | [ScenarioPickerPage.tsx](../src/renderer/pages/picker/ScenarioPickerPage.tsx), [store.ts](../src/app/ipc/web-scenario/store.ts) |
 | 화면 연결·저장 복귀·전역 수동 판정 | [App.tsx](../src/renderer/app/App.tsx) |
 | 실행 큐·취소·기록·세션·재실행 | [useRunOrchestration.ts](../src/renderer/app/hooks/useRunOrchestration.ts) |
 | 실행 화면·수동 조작·결과 표시 | [RunPage.tsx](../src/renderer/pages/run/RunPage.tsx) |
