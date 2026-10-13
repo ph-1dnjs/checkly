@@ -117,10 +117,6 @@ export const formatClock = (seconds: number): string =>
   `${Math.floor(seconds / 60)}:${String(Math.max(0, Math.round(seconds)) % 60).padStart(2, "0")}`;
 export const markerColor = (index: number): string =>
   `hsl(${Math.round((index * 137.508 + 19) % 360)} 72% 48%)`;
-export const defaultMarkerPosition = (index: number) => ({
-  x: [78, 50, 50, 85, 87][index] ?? 50,
-  y: [20, 43, 58, 58, 84][index] ?? 50,
-});
 
 const unquoteMarkdownValue = (value: string) =>
   value.trim().replace(/^`([\s\S]*)`$/, "$1");

@@ -2,7 +2,6 @@ import { useRef, useState, type ReactNode, type MouseEvent } from "react";
 import {
   actionLabel,
   actionText,
-  defaultMarkerPosition,
   markerColor,
   type Action,
   type Scenario,
@@ -461,28 +460,24 @@ export const ScenarioEditorPage = ({
                 />
               )}
               {markersVisible && scenario.steps.map((step, index) => {
-                const position =
-                  step.x === undefined || step.y === undefined
-                    ? defaultMarkerPosition(index)
-                    : { x: step.x, y: step.y };
+                if (step.x === undefined || step.y === undefined) return null;
+                const position = { x: step.x, y: step.y };
                 return (
-                  step.connected && (
-                    <Button
-                      key={step.id}
-                      className={
-                        "extract-pin" + (selectedId === step.id ? " selected" : "")
-                      }
-                      style={{
-                        left: `${position.x}%`,
-                        top: `${position.y}%`,
-                        backgroundColor: step.color ?? markerColor(index),
-                      }}
-                      onClick={() => onSelectStep(step.id)}
-                      aria-label={`${step.id}번 ${step.target} 마커`}
-                    >
-                      {step.id}
-                    </Button>
-                  )
+                  <Button
+                    key={step.id}
+                    className={
+                      "extract-pin" + (selectedId === step.id ? " selected" : "")
+                    }
+                    style={{
+                      left: `${position.x}%`,
+                      top: `${position.y}%`,
+                      backgroundColor: step.color ?? markerColor(index),
+                    }}
+                    onClick={() => onSelectStep(step.id)}
+                    aria-label={`${step.id}번 ${step.target} 마커`}
+                  >
+                    {step.id}
+                  </Button>
                 );
               })}
             </div>

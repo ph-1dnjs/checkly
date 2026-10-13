@@ -26,29 +26,34 @@ const positionKey = (scenario: Scenario) =>
 const applyPositions = (
   scenario: Scenario,
   store: MarkerPositionStore,
-): Scenario => ({
-  ...scenario,
-  steps: scenario.steps.map((step) => {
-    const position = store[positionKey(scenario)]?.find(
-      (item) =>
-        item.action === step.action &&
-        item.target === step.target &&
-        item.value === step.value &&
-        item.prompt === step.prompt &&
-        item.condition === step.condition &&
-        item.waitSeconds === step.waitSeconds,
-    );
-    return position
-      ? {
-          ...step,
-          occurrence: position.occurrence,
-          x: position.x,
-          y: position.y,
-          color: position.color,
-        }
-      : step;
-  }),
-});
+): Scenario => {
+  const positions = [...(store[positionKey(scenario)] ?? [])];
+  return {
+    ...scenario,
+    steps: scenario.steps.map((step) => {
+      const positionIndex = positions.findIndex(
+        (item) =>
+          item.action === step.action &&
+          item.target === step.target &&
+          item.value === step.value &&
+          item.prompt === step.prompt &&
+          item.condition === step.condition &&
+          item.waitSeconds === step.waitSeconds &&
+          (item.occurrence ?? 1) === (step.occurrence ?? 1),
+      );
+      const position = positionIndex < 0 ? undefined : positions.splice(positionIndex, 1)[0];
+      return position
+        ? {
+            ...step,
+            occurrence: position.occurrence,
+            x: position.x,
+            y: position.y,
+            color: position.color,
+          }
+        : step;
+    }),
+  };
+};
 const serializePositions = (store: MarkerPositionStore): string => JSON.stringify(
   Object.fromEntries(Object.entries(store).sort(([a], [b]) => a.localeCompare(b)).map(([key, items]) => [key,
     items.map(item => ({ action: item.action, target: item.target, value: item.value,
