@@ -288,6 +288,7 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
         {route === "picker" && (
           <ScenarioPickerPage
             records={records}
+            loading={loading}
             pickedKeys={pickedKeys}
             onPick={setPickedKeys}
             onOpenEditor={() => setRoute("editor")}
