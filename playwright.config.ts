@@ -2,6 +2,7 @@ import { defineConfig, devices } from '@playwright/test'
 
 export default defineConfig({
   testDir: './tests',
+  testMatch: '**/*.spec.ts',
   // tests/auth·tests/supabase는 node:test 파일이다.
   testIgnore: ['**/api-testing/**', '**/auth/**', '**/supabase/**'],
   use: {
