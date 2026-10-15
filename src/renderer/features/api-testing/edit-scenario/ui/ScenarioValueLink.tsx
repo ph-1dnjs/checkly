@@ -6,6 +6,7 @@ import { requestValueFields, responseValueOptions } from "../model/value-link-mo
 import type { ApiCatalog, ApiOperation, ApiScenarioResult } from "../../../../../app/api-testing/shared/workspace";
 import { connectValue, type RequestArea } from "../model/scenario-builder-model";
 import { responseFields } from "../../../../entities/api-testing";
+import { Modal } from "../../../../shared/ui/Modal";
 
 // `expect` set: the picked value becomes that check's expected value instead of a request field.
 export type ScenarioValueTarget = { area: RequestArea; name: string; expect?: number };
@@ -113,12 +114,6 @@ export function ScenarioValueLink({ scenario, targetIndex, target, catalogs, bin
   const resetSelection = () => { setPointer(null); setHeader(""); setError(""); };
 
   useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
-
-  useEffect(() => {
     if (from === initialSource || (from >= 0 && from < targetIndex)) return;
     setFrom(initialSource);
     resetSelection();
@@ -133,8 +128,7 @@ export function ScenarioValueLink({ scenario, targetIndex, target, catalogs, bin
     }
   };
 
-  return <div className="api-value-modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
-    <section className="api-value-modal api-scenario-value-modal" role="dialog" aria-modal="true" aria-label={`${target.name} 값 연결`} onMouseDown={event => event.stopPropagation()}>
+  return <Modal backdropClassName="api-value-modal-backdrop" className="api-value-modal api-scenario-value-modal" label={`${target.name} 값 연결`} onClose={onClose}>
       <header>
         <div><p className="api-value-modal-kicker">값 연결</p><h2>{target.name} 값 연결</h2><small>{targetIndex + 1}단계 · {target.expect !== undefined ? "검증 기대값" : `${target.area} · 요청값`}</small></div>
         <button type="button" aria-label="값 연결 닫기" onClick={onClose}>×</button>
@@ -178,6 +172,5 @@ export function ScenarioValueLink({ scenario, targetIndex, target, catalogs, bin
       {error && <p role="alert" className="api-field-menu-error">{error}</p>}
       {/* Stays in view while the JSON above scrolls: what is picked, and the button to use it. */}
       <footer className="api-value-link-footer">{ready && <span className="api-value-selection-summary"><span>선택</span><code>{sourceStepLabel(scenario, from, catalogs, bindings)} · {source === "response" ? responseArea === "header" ? `헤더 ${header}` : `응답 ${pointerLabel(pointer ?? "")}` : `요청 ${requestArea} ${pointerLabel(pointer ?? "")}`}</code></span>}<button type="button" onClick={onClose}>{previousSourceSteps.length > 0 ? "취소" : "닫기"}</button>{previousSourceSteps.length > 0 && <button type="button" className="api-primary" disabled={!ready || from < 0} onClick={apply}>이 값으로 연결</button>}</footer>
-    </section>
-  </div>;
+  </Modal>;
 }

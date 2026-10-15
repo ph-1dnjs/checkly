@@ -11,6 +11,7 @@ import { type RequestField, type VerificationOperator, type FieldState, suggeste
 import { type ResponseBadge } from "../model/step-response-model";
 import { ResponseGlobalNameField, ResponsePicker } from "./StepResponseViews";
 import { RequestBodyEditor, ValueActionModal, ScenarioInputSettingsModal } from "./StepValueModals";
+import { Modal } from "../../../../shared/ui/Modal";
 
 export function findStepOperation(scenario: Scenario, index: number, catalogs: Record<string, ApiCatalog | null>, bindings: Record<string, string>) {
   const step = scenario.steps[index];
@@ -105,12 +106,6 @@ export function SimpleStep({ scenario, index, catalogs, bindings, scope, bridge,
     setGlobalName("");
     setError("");
   };
-  useEffect(() => {
-    if (responsePointer === null) return;
-    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") closeResponseModal(); };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [responsePointer]);
   const fields: RequestField[] = (requestOperation?.parameters ?? []).filter(p => ["path", "query", "header", "cookie"].includes(p.location)).map(p => ({ name: p.name, area: (p.location === "path" ? "pathParams" : p.location === "header" ? "headers" : p.location === "cookie" ? "cookies" : "query") as RequestArea, type: p.type, required: p.required, description: p.description, example: p.example }));
   const body = objectValue(requestOperation?.bodySchema);
   for (const [name, schema] of Object.entries(objectValue(body.properties))) fields.push({ name, area: "body", type: objectValue(schema).type ?? "string", required: requestOperation?.bodyRequired === true && (body.required ?? []).includes(name), description: typeof objectValue(schema).description === "string" ? objectValue(schema).description : undefined, example: objectValue(schema).example ?? objectValue(schema).default });
@@ -292,8 +287,7 @@ export function SimpleStep({ scenario, index, catalogs, bindings, scope, bridge,
     })()}
     <header className="api-simple-section-heading"><h3>응답</h3></header>
     <ResponsePicker operation={operation} spec={spec} actionLabel="설정" selectedPointer={responsePointer} showPreview={false} badges={responseBadges} onSelect={pointer => { setResponsePointer(pointer); setAction(null); setVerificationPointer(pointer); setGlobalName(existingGlobalExtraction(pointer)?.target.slice("globals.".length) || responseGlobalNameSuggestions(operation, pointer)[0]?.name || "response"); setError(""); }} />
-    {responsePointer !== null && <div className="api-value-modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) closeResponseModal(); }}>
-      <section className="api-value-modal api-response-action-modal" role="dialog" aria-modal="true" aria-label="응답값 사용 설정" onMouseDown={event => event.stopPropagation()}>
+    {responsePointer !== null && <Modal backdropClassName="api-value-modal-backdrop" className="api-value-modal api-response-action-modal" label="응답값 사용 설정" onClose={closeResponseModal}>
         <header>
           <div><p className="api-value-modal-kicker">응답값 사용</p><h2>{responsePointer || "전체 응답"}</h2><small>{index + 1}단계 · 응답 JSON</small></div>
           <button type="button" aria-label="응답값 설정 닫기" onClick={closeResponseModal}>×</button>
@@ -334,8 +328,7 @@ export function SimpleStep({ scenario, index, catalogs, bindings, scope, bridge,
         </section>}
         {error && <p className="api-field-menu-error" role="alert">{error}</p>}
         <footer><button type="button" onClick={closeResponseModal}>닫기</button></footer>
-      </section>
-    </div>}
+    </Modal>}
     <header className="api-simple-section-heading"><h3>검증</h3><button type="button" onClick={() => { setNewExpectation((step.expect ?? []).length); updateExpectations([...(step.expect ?? []), { source: "status", operator: "equals" }]); }}>+ HTTP 상태 검증</button></header>
     <p className="api-field-help">상태 검증이 없으면 2xx 응답이면 통과합니다. 201·404처럼 특정 코드를 기대할 때만 상태 검증을 추가하세요. 값 검증은 응답 항목의 ‘설정’에서 추가합니다.</p>
     {(step.expect ?? []).map((expectation, n) => {

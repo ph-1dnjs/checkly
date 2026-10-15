@@ -49,7 +49,14 @@
 
 편집·실행 상태의 실제 소유자는 App에서 호출하는 `useScenarioState`와 `useRunOrchestration`입니다. 저장·수동 단계·실행 보존 정책은 [편집](../04-pages/020-scenario-editor/README.md)과 [실행](../04-pages/040-scenario-run/README.md) 문서를 기준으로 확인합니다.
 
+## 공용 UI
+
+### Modal
+
+`shared/ui/Modal.tsx`는 배경 클릭·Escape 닫기, 내부 클릭의 전파 방지와 dialog 접근성 속성을 담당합니다. 열린 동안만 마운트하고 `label`, `onClose`, 배경·본문 CSS 클래스와 `children`을 전달합니다. 제목·닫기 버튼·폼·저장 동작은 사용하는 화면에서 구성합니다.
+
+API 편집의 API 교체, 요청값 설정, 실행 중 입력 설정, 이전 단계 값 연결, 응답값 사용 설정 모달에서 재사용합니다. 기존 CSS와 DOM 구조를 유지하며, 별도의 제출·닫기 제한이 있는 모달은 기존 구현을 유지합니다.
+
 ## 타입 경계
 
 renderer는 `shared/model/scenario.ts`의 공통 타입을 사용합니다. main에는 별도 구조 타입이 있으므로 필드를 추가할 때 두 경계를 함께 갱신합니다.
-

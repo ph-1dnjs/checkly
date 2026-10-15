@@ -5,6 +5,7 @@ import { DraftInput, DraftTextarea } from "../../../../shared/ui/DraftFields";
 import { type RequestField, type FieldState, suggestedInputName, isStructuredRequestField, requestFieldValueMatches, templateVariable, jsonText } from "../model/step-request-model";
 import { jsonValueType } from "../model/step-response-model";
 import { useGlobalValuesVisible } from "../../../../entities/api-testing";
+import { Modal } from "../../../../shared/ui/Modal";
 
 export function RequestBodyEditor({ operation, step, update, bodyFields, renderField }: {
   operation: ApiOperation;
@@ -129,11 +130,6 @@ export function ValueActionModal({ index, field, current, state, globalNames, ha
   const linked = state !== undefined && state.kind !== "cookie";
   const [directText, setDirectText] = useState(() => linked || current === undefined ? "" : typeof current === "string" ? current : jsonText(current));
   const [directError, setDirectError] = useState("");
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
   const applyDirectValue = () => {
     if (!directText.trim()) { onDirect(undefined); return; }
     if (field.type === "string" || !["number", "integer", "boolean", "object", "array"].includes(field.type)) { onDirect(directText); return; }
@@ -146,8 +142,7 @@ export function ValueActionModal({ index, field, current, state, globalNames, ha
   };
   const structured = isStructuredRequestField(field);
   const directPlaceholder = field.type === "string" ? "값 입력" : field.type === "object" ? '{\n  "key": "value"\n}' : field.type === "array" ? '[\n  "value"\n]' : `${field.type} 값`;
-  return <div className="api-value-modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
-    <section className="api-value-modal api-value-action-modal" role="dialog" aria-modal="true" aria-label={`${field.name} 값 설정`} onMouseDown={event => event.stopPropagation()}>
+  return <Modal backdropClassName="api-value-modal-backdrop" className="api-value-modal api-value-action-modal" label={`${field.name} 값 설정`} onClose={onClose}>
       <header>
         <div><p className="api-value-modal-kicker">값 설정</p><h2>{field.name} 값 연결</h2><small>{index + 1}단계 · {field.area} · {field.type}</small></div>
         <button type="button" aria-label="값 설정 닫기" onClick={onClose}>×</button>
@@ -176,8 +171,7 @@ export function ValueActionModal({ index, field, current, state, globalNames, ha
         <button type="button" className={hasUserInput ? "api-value-modal-option is-active" : "api-value-modal-option"} onClick={onUserInput}><strong>{hasUserInput ? "실행 중 입력 설정" : "실행 중 입력으로 받기"}</strong><small>{hasUserInput ? "안내 문구·형식·필수 여부 수정" : "이 API 직전에 값을 입력받음"}</small></button>
       </div>
       <footer><button type="button" onClick={onClose}>닫기</button></footer>
-    </section>
-  </div>;
+  </Modal>;
 }
 
 export function ScenarioInputSettingsModal({ index, field, userInput, onChange, onRemove, onClose }: {
@@ -188,13 +182,7 @@ export function ScenarioInputSettingsModal({ index, field, userInput, onChange, 
   onRemove: () => void;
   onClose: () => void;
 }) {
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
-  return <div className="api-value-modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
-    <section className="api-value-modal api-input-settings-modal" role="dialog" aria-modal="true" aria-label={`${field.name} 실행 중 입력 설정`} onMouseDown={event => event.stopPropagation()}>
+  return <Modal backdropClassName="api-value-modal-backdrop" className="api-value-modal api-input-settings-modal" label={`${field.name} 실행 중 입력 설정`} onClose={onClose}>
       <header>
         <div><p className="api-value-modal-kicker">실행 중 입력</p><h2>{field.name} 입력 설정</h2><small>{index + 1}단계 · {field.area} · {field.type}</small></div>
         <button type="button" aria-label="실행 중 입력 설정 닫기" onClick={onClose}>×</button>
@@ -206,6 +194,5 @@ export function ScenarioInputSettingsModal({ index, field, userInput, onChange, 
         <label className="api-check-row api-input-required"><input type="checkbox" checked={userInput.required} onChange={event => onChange({ required: event.target.checked })} />필수 입력 (비우면 실행 중단)</label>
       </div>
             <footer><button type="button" className="api-danger-action" onClick={onRemove}>실행 중 입력 해제</button><button type="button" className="api-primary" onClick={onClose}>완료</button></footer>
-    </section>
-  </div>;
+  </Modal>;
 }

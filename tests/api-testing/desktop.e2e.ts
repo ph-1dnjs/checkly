@@ -852,6 +852,18 @@ process.stdin.on("data", chunk => {
     await expect(restored.getByText("명세에 없는 API입니다", { exact: false })).toBeVisible();
     await restored.getByRole("button", { name: "2단계 API 바꾸기", exact: true }).click();
     const replaceDialog = restored.getByRole("dialog", { name: "2단계 API 바꾸기" });
+    // Shared modal: content interaction stays open; backdrop, Escape and close dismiss it.
+    await replaceDialog.getByLabel("바꿀 API 검색").click();
+    await expect(replaceDialog).toBeVisible();
+    await restored.locator(".api-value-modal-backdrop").click({ position: { x: 2, y: 2 } });
+    await expect(replaceDialog).toHaveCount(0);
+    await restored.getByRole("button", { name: "2단계 API 바꾸기", exact: true }).click();
+    await restored.keyboard.press("Escape");
+    await expect(replaceDialog).toHaveCount(0);
+    await restored.getByRole("button", { name: "2단계 API 바꾸기", exact: true }).click();
+    await replaceDialog.getByRole("button", { name: "API 바꾸기 닫기", exact: true }).click();
+    await expect(replaceDialog).toHaveCount(0);
+    await restored.getByRole("button", { name: "2단계 API 바꾸기", exact: true }).click();
     await replaceDialog.getByLabel("바꿀 API 검색").fill("products");
     await replaceDialog.getByRole("button", { name: /\/products\/\{id\}/ }).click();
     await expect(restored.getByText("명세에 없는 API입니다", { exact: false })).toHaveCount(0);
