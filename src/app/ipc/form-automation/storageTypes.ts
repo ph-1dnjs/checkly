@@ -9,6 +9,8 @@ export const FORM_AUTOMATION_STORAGE_KEYS = [
   "checkly-form-overrides",
   "checkly-form-openapi",
   "checkly-form-browser-zoom",
+  "checkly-form-browser-viewport",
+  "checkly-form-browser-landscape",
 ] as const;
 
 export type FormAutomationStorageKey = typeof FORM_AUTOMATION_STORAGE_KEYS[number];

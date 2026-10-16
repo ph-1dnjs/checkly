@@ -87,6 +87,13 @@ type FillResult = {
 };
 
 const DEFAULT_URL = "https://example.com";
+const VIEWPORT_PRESETS = [
+  { id: "desktop", label: "데스크톱 · 화면에 맞춤", width: 0, height: 0 },
+  { id: "mobile-small", label: "모바일 · 375 × 667", width: 375, height: 667 },
+  { id: "mobile", label: "모바일 · 390 × 844", width: 390, height: 844 },
+  { id: "mobile-large", label: "모바일 · 412 × 915", width: 412, height: 915 },
+  { id: "tablet", label: "태블릿 · 768 × 1024", width: 768, height: 1024 },
+];
 
 const MaterialIcon = ({ name }: { name: string }): ReactElement => (
   <span className="msi" aria-hidden="true">{name}</span>
@@ -280,6 +287,12 @@ const FormAutomationContent = (): ReactElement => {
   const [capture, setCapture] = useState<ScreenshotCapture | null>(null);
   const [captureBusy, setCaptureBusy] = useState(false);
   const [zoomPercent, setZoomPercent] = useStoredState("checkly-form-browser-zoom", 80);
+  const [viewportId, setViewportId] = useStoredState("checkly-form-browser-viewport", "desktop");
+  const [landscape, setLandscape] = useStoredState("checkly-form-browser-landscape", false);
+  const viewport = VIEWPORT_PRESETS.find((item) => item.id === viewportId) ?? VIEWPORT_PRESETS[0];
+  const viewportWidth = landscape ? viewport.height : viewport.width;
+  const viewportHeight = landscape ? viewport.width : viewport.height;
+  const zoomFactor = Math.min(1.25, Math.max(0.5, Number(zoomPercent) / 100));
   const [toast, setToast] = useState("");
   const webviewRefs = useRef(new Map<string, WebviewElement>());
   const refCallbacks = useRef(new Map<string, (node: HTMLElement | null) => void>());
@@ -504,11 +517,11 @@ const FormAutomationContent = (): ReactElement => {
 
   const tabIds = browserTabs.map((item) => item.id).join("|");
   useEffect(() => {
-    const factor = Math.min(1.25, Math.max(0.5, Number(zoomPercent) / 100));
+    const factor = viewport.width ? 1 : zoomFactor;
     for (const webview of webviewRefs.current.values()) {
       try { webview.setZoomFactor(factor); } catch { /* Electron 웹뷰 준비 전 */ }
     }
-  }, [tabIds, zoomPercent]);
+  }, [tabIds, viewport.width, zoomFactor]);
 
   useEffect(() => {
     const cleanups: Array<() => void> = [];
@@ -554,7 +567,7 @@ const FormAutomationContent = (): ReactElement => {
       const documentReady = () => {
         discoveryScope = "";
         if (isActive()) setDiscoveredFields([]);
-        try { webview.setZoomFactor(Math.min(1.25, Math.max(0.5, Number(zoomPercent) / 100))); } catch { /* 웹뷰 준비 전 */ }
+        try { webview.setZoomFactor(viewport.width ? 1 : zoomFactor); } catch { /* 웹뷰 준비 전 */ }
         sendGuestConfig();
         ready();
       };
@@ -626,7 +639,7 @@ const FormAutomationContent = (): ReactElement => {
       });
     }
     return () => cleanups.forEach((cleanup) => cleanup());
-  }, [discoverFields, recordGuestNetworkEvent, sendGuestConfig, setTargetUrl, startCapture, tabIds, updateBrowserTab, zoomPercent]);
+  }, [discoverFields, recordGuestNetworkEvent, sendGuestConfig, setTargetUrl, startCapture, tabIds, updateBrowserTab, viewport.width, zoomFactor]);
 
   const currentPageUrl = activeTab?.currentPageUrl || activeTab?.url || targetUrl;
   const currentPageScope = pageScopeFromUrl(currentPageUrl);
@@ -1263,20 +1276,40 @@ const FormAutomationContent = (): ReactElement => {
             </button>
           </div>
 
-          <div className="fa-browser-surface">
-            {browserTabs.map((tab) => (
-              <webview
-                className={`fa-webview${tab.id === activeTab.id ? " active" : ""}`}
-                key={tab.id}
-                ref={webviewRefFor(tab.id)}
-                src={tab.url}
-                partition={browserSessionPartition(tab.id)}
-                useragent={browserUserAgent(tab.browserIdentity || "electron", navigator.userAgent)}
-                // React types declare a boolean, but React omits true for this DOM attribute.
-                // Electron requires the attribute to be present, so emit an empty string.
-                allowpopups={"" as unknown as boolean}
-              />
-            ))}
+          <div className="fa-viewport-toolbar">
+            <label>
+              <MaterialIcon name={viewport.width ? "smartphone" : "desktop_windows"} />
+              <select aria-label="미리보기 화면 크기" value={viewport.id} onChange={(event) => setViewportId(event.target.value)}>
+                {VIEWPORT_PRESETS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+              </select>
+            </label>
+            {Boolean(viewport.width) && <>
+              <button type="button" aria-label="가로·세로 전환" title="가로·세로 전환" onClick={() => setLandscape((value) => !value)}>
+                <MaterialIcon name="screen_rotation" />
+              </button>
+              <span className="fa-viewport-size">{viewportWidth} × {viewportHeight}</span>
+            </>}
+            <span className="fa-viewport-note">{viewport.width ? "반응형 화면 확인" : "브라우저 영역에 맞춰 표시"}</span>
+          </div>
+
+          <div className={`fa-browser-surface${viewport.width ? " responsive" : ""}`}>
+            {/* Scale the preview outside the guest to preserve its exact CSS viewport. */}
+            <div className="fa-viewport-frame" style={viewport.width ? { width: viewportWidth * zoomFactor, height: viewportHeight * zoomFactor } : undefined}>
+              {browserTabs.map((tab) => (
+                <webview
+                  className={`fa-webview${tab.id === activeTab.id ? " active" : ""}`}
+                  style={viewport.width ? { width: viewportWidth, height: viewportHeight, transform: `scale(${zoomFactor})`, transformOrigin: "top left" } : undefined}
+                  key={tab.id}
+                  ref={webviewRefFor(tab.id)}
+                  src={tab.url}
+                  partition={browserSessionPartition(tab.id)}
+                  useragent={browserUserAgent(tab.browserIdentity || "electron", navigator.userAgent)}
+                  // React types declare a boolean, but React omits true for this DOM attribute.
+                  // Electron requires the attribute to be present, so emit an empty string.
+                  allowpopups={"" as unknown as boolean}
+                />
+              ))}
+            </div>
           </div>
         </section>
 

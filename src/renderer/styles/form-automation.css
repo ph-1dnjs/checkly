@@ -112,6 +112,18 @@
 .fa-zoom .msi { font-size:14px; }
 .fa-zoom .fa-zoom-value { width:42px; color:#17607f; font:10px D2Coding,ui-monospace,monospace; }
 .fa-browser-surface { position:relative; flex:1; min-height:0; background:#f0f3f5; }
+.fa-viewport-toolbar { display:flex; flex:none; align-items:center; gap:8px; min-height:36px; padding:4px 10px; border-bottom:1px solid #e4e7ea; background:#fafbfc; }
+.fa-viewport-toolbar label { display:flex; align-items:center; gap:6px; color:#5a646e; }
+.fa-viewport-toolbar .msi { font-size:16px; }
+.fa-viewport-toolbar select { max-width:210px; height:26px; padding:0 6px; border:1px solid #d8dde2; border-radius:4px; background:#fff; color:#3d4650; font-size:10px; cursor:pointer; }
+.fa-viewport-toolbar button { display:grid; flex:none; width:26px; height:26px; place-items:center; padding:0; border:1px solid #d8dde2; border-radius:4px; background:#fff; color:#5a646e; cursor:pointer; }
+.fa-viewport-toolbar button:hover { background:#f5f7f8; }
+.fa-viewport-size { flex:none; color:#3d4650; font:10px D2Coding,ui-monospace,monospace; }
+.fa-viewport-note { margin-left:auto; color:#8a939c; font-size:9px; white-space:nowrap; }
+.fa-viewport-frame { position:absolute; inset:0; }
+.fa-browser-surface.responsive { overflow:auto; padding:16px; }
+.fa-browser-surface.responsive .fa-viewport-frame { position:relative; inset:auto; margin:0 auto; outline:1px solid #d8dde2; background:#fff; }
+@media(max-width:600px) { .fa-viewport-note { display:none; } }
 .fa-webview { position:absolute; inset:0; display:none; width:100%; height:100%; border:0; background:#fff; }
 .fa-webview.active { display:flex; }
 
