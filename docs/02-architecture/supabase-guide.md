@@ -103,6 +103,29 @@ const off = window.electronAPI.auth.onSessionChange(s => { /* 로그인·로그�
 
 ## 6. 테스트
 
+### 웹 시나리오 SQL을 SQL Editor에서 수동 적용할 때
+
+먼저 SQL Editor가 의도한 Supabase 프로젝트인지 확인한다. 저장소의 팀 배포 대상 프로젝트 ID는 `aphxwkthjgoyrfnoljjh`다. `42P01: relation "public.projects" does not exist`는 공통 스키마부터 없는 상태이므로 웹 시나리오 SQL만으로 해결되지 않는다.
+
+신규 DB라면 아래 마이그레이션 전체를 파일명 순서대로 적용한다.
+
+1. `20261007000000_common_project.sql`
+2. `20261007000100_project_settings.sql`
+3. `20261007000200_api_testing.sql`
+4. `20261009000000_api_share_secrets.sql`
+5. `20261009000200_api_authorship.sql`
+6. `20261013000000_web_scenarios.sql`
+7. `20261014000000_web_scenario_runs.sql`
+
+앞의 기존 마이그레이션 5개는 반복 실행용이 아니다. 이미 사용 중인 DB에서는 미적용 파일만 적용한다. SQL Editor의 수동 실행은 CLI 마이그레이션 이력을 자동 등록하지 않으므로 이후 Actions·CLI 배포 전 실제 적용 내역과 이력을 맞춰야 한다. 신규 Supabase 프로젝트에서 앱의 프로젝트 생성·가입까지 사용하려면 Edge Functions 배포와 앱 접속 환경 설정도 필요하다.
+
+공통 프로젝트 테이블과 함수가 이미 설치된 팀 DB에서 다음 파일 전체를 순서대로 실행한다.
+
+1. [`20261013000000_web_scenarios.sql`](../../supabase/migrations/20261013000000_web_scenarios.sql): 문서 테이블 `web_scenarios`와 작성 정보·RLS 생성.
+2. [`20261014000000_web_scenario_runs.sql`](../../supabase/migrations/20261014000000_web_scenario_runs.sql): 시나리오·단계·실행 결과 테이블과 저장 RPC 생성.
+
+두 번째 파일에서 `42P01: relation "public.web_scenarios" does not exist`가 나오면 첫 번째 파일이 해당 DB에 적용되지 않은 상태다. 첫 번째 파일을 실행한 뒤 두 번째 파일을 다시 실행한다. 두 파일 모두 반복 적용할 수 있다. CLI와 Actions는 파일명 순서대로 적용하지만 SQL Editor는 선행 파일을 자동 실행하지 않는다.
+
 - Supabase 연동 테스트는 로컬 Supabase가 없으면 건너뛰게 쓴다(CI에는 Supabase가 없다). 예: `tests/auth/auth-supabase.test.ts`, `tests/api-testing/team-store.test.ts`.
 - 키는 실행 중에 `supabase status -o env`에서 읽는다. 파일에 적지 않는다.
 - 렌더러 화면 테스트는 `tests/fixtures/auth-stub.ts`로 `window.electronAPI.auth`를 흉내 낸다.
@@ -119,6 +142,7 @@ const off = window.electronAPI.auth.onSessionChange(s => { /* 로그인·로그�
 - [x] 웹 시나리오 본문·마커를 `web_scenarios`에 함께 저장. 영상·리포트·환경 선택은 로컬. `20261013000000_web_scenarios.sql` 추가(클라우드 적용은 별도 확인 필요).
 - [x] 공통 `web` 엔드포인트·환경 선택 연결. 상대 경로의 기준 주소로 사용하며 개인 선택은 프로젝트별 localStorage에 저장.
 - [x] `useScenarioState`의 기존 파일·좌표 로드 호출 제거. 로그인 후 DB 목록만 조회하고 실패 시 한국어 오류를 표시한다.
+- [x] 시나리오·단계 정규화, UUID 마커, 소프트 삭제, 실행 스냅샷·단계 결과 저장·기록 복원 연결. `20261014000000_web_scenario_runs.sql` 추가.
 - [ ] 새 웹 시나리오 마이그레이션을 팀 클라우드에 적용하고 실제 계정으로 CRUD·RLS·충돌 검증 (현재 로컬 Docker/Supabase 미실행).
 
 ### 폼 자동 완성 (담당: 팀원)

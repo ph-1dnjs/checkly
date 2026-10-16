@@ -163,7 +163,7 @@ npx tsx --test tests/auth/*.test.ts
 
 | 구분 | 데이터 |
 | --- | --- |
-| DB | `web_scenarios`: 문서 ID, 제목, Markdown 본문, 마커 JSON, 작성·수정자 및 시각. 본문과 좌표는 한 행으로 원자적 저장 |
+| DB | `web_scenarios`: 문서 본문·작성 정보. `web_scenario_items`·`web_scenario_steps`: 시나리오 UUID·코드·순서와 단계·마커. `web_runs`·`web_run_scenario_results`·`web_run_step_results`: 실행 환경·스냅샷·단계 결과 |
 | 로컬 | 영상, `report.html`, 프로젝트별 웹 엔드포인트·환경 선택. 폴더 연결과 파일 읽기·쓰기 기능은 제거 |
 | 환경 | 선택한 환경의 `web` 엔드포인트 주소를 상대 경로의 기준으로 씀 (새 기능) |
 
@@ -200,7 +200,7 @@ API 테스트 테이블 (`20261007000200_api_testing.sql`, `20261009000000_api_s
 
 공통 규칙
 - 토큰·비밀번호 같은 값은 `{{globals.이름}}` 변수로 빼고, 실제 값은 각자 로컬에 둔다. DB에 저장된 값은 평문이다. 예외: API 테스트의 `비밀값도 팀에 공유`(기본 켬)가 켜져 있으면 Try it out 입력값의 비밀값과 문서 계정을 DB에 평문으로 둔다(개발용 계정 전제, 운영 계정을 쓰는 프로젝트는 끈다).
-- 실행 기록은 DB에 저장하지 않는다. 웹 시나리오는 각자 PC의 `reports/`·영상, API 테스트는 화면 세션 동안의 마지막 실행과 직접 저장한 스위트 HTML 리포트만 둔다.
+- 웹 시나리오 실행 기록은 `web_runs`·`web_run_scenario_results`·`web_run_step_results`에 팀 공유한다(2026-10-14 결정). 영상·HTML 파일·단계 이미지는 각 PC에 남긴다. API 테스트는 기존 화면 세션의 마지막 실행과 직접 저장한 스위트 HTML 리포트를 유지한다.
 
 ## 열린 질문
 
