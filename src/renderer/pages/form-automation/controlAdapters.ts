@@ -93,9 +93,10 @@ export const controlAdapters = `
     return { value, label, disabled: option.getAttribute('aria-disabled') === 'true' || option.hasAttribute('data-disabled') || disabledVisual, selected: option.getAttribute('aria-selected') === 'true', id: option.id };
   });
   const activeOption = (element) => document.getElementById(element.getAttribute('aria-activedescendant') || '');
-  const collectChoiceOptions = async (element) => {
+  const collectChoiceOptions = async (element, allowInteraction = true) => {
     const select = choiceSelectFor(element);
     if (select) return Array.from(select.options).filter((option) => option.value !== '').map((option) => ({ value: option.value, label: String(option.textContent || '').trim(), disabled: option.disabled, selected: option.selected }));
+    if (!allowInteraction) return optionRecords(element);
     if (!await openChoice(element)) return [];
     const result = new Map(); const visited = new Set();
     for (let attempt = 0; attempt < 200; attempt += 1) {

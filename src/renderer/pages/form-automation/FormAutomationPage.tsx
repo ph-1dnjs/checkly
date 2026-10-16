@@ -11,6 +11,7 @@ import {
 import {
   clearFieldsScript,
   discoverFieldsScript,
+  passiveDiscoverFieldsScript,
   fillFieldsScript,
   focusRichTextScript,
   selectDateRangeScript,
@@ -359,14 +360,15 @@ const FormAutomationContent = (): ReactElement => {
     return refCallbacks.current.get(tabId)!;
   };
 
-  const discoverFields = useCallback(async (selectDefault = false) => {
+  const discoverFields = useCallback(async (selectDefault = false, interactive = true) => {
     const webview = activeWebview();
     if (!webview?.executeJavaScript) {
       if (selectDefault) showToast("필드 자동 감지는 Electron 앱에서 사용할 수 있습니다.");
       return [];
     }
     try {
-      const fields = await webview.executeJavaScript(discoverFieldsScript) as DetectedField[];
+      const fields = await webview.executeJavaScript(interactive ? discoverFieldsScript : passiveDiscoverFieldsScript) as DetectedField[];
+      if (webview !== activeWebview()) return fields;
       setDiscoveredFields(fields);
       if (selectDefault && fields.length) {
         // Delayed page discovery must not replace a case the user just selected.
@@ -512,6 +514,7 @@ const FormAutomationContent = (): ReactElement => {
       const webview = webviewRefs.current.get(tabId);
       if (!webview) continue;
       let discoveryTimer = 0;
+      let discoveryScope = "";
       const sessionForTab = () => browserTabsRef.current.find((item) => item.id === tabId)
         ?? defaultBrowserSession(browserTabsRef.current[0]?.url || DEFAULT_URL);
       const isActive = () => activeTabIdRef.current === tabId;
@@ -524,23 +527,38 @@ const FormAutomationContent = (): ReactElement => {
           updateBrowserTab(tabId, { history: { back: false, forward: false } });
         }
       };
+      const scheduleDiscovery = (url: string) => {
+        // Field layout follows the route, not debounced search parameters.
+        let scope = url.split("?")[0];
+        try {
+          const page = new URL(url);
+          scope = `${page.origin}${page.pathname}${page.hash}`;
+        } catch { /* 주소 파싱 전에는 경로 문자열 사용 */ }
+        if (!isActive() || scope === discoveryScope) return;
+        discoveryScope = scope;
+        window.clearTimeout(discoveryTimer);
+        discoveryTimer = window.setTimeout(() => void discoverFields(true, false), 350);
+      };
       const ready = () => {
         const url = currentWebviewUrl(webview, sessionForTab().url);
         updateBrowserTab(tabId, { state: "ready", currentPageUrl: url });
-        try { webview.setZoomFactor(Math.min(1.25, Math.max(0.5, Number(zoomPercent) / 100))); } catch { /* 웹뷰 준비 전 */ }
-        sendGuestConfig();
         updateHistory();
         if (isActive()) {
           setDraftUrl(url);
           setTargetUrl(url);
-          window.clearTimeout(discoveryTimer);
-          discoveryTimer = window.setTimeout(() => void discoverFields(true), 350);
+          scheduleDiscovery(url);
         }
+      };
+      const documentReady = () => {
+        discoveryScope = "";
+        if (isActive()) setDiscoveredFields([]);
+        try { webview.setZoomFactor(Math.min(1.25, Math.max(0.5, Number(zoomPercent) / 100))); } catch { /* 웹뷰 준비 전 */ }
+        sendGuestConfig();
+        ready();
       };
       const loading = () => {
         loadStartedAtRef.current.set(tabId, Date.now());
         updateBrowserTab(tabId, { state: "loading" });
-        if (isActive()) setDiscoveredFields([]);
       };
       const failed = () => updateBrowserTab(tabId, { state: "error" });
       const navigated = (event: Event & { url?: string }) => {
@@ -552,6 +570,7 @@ const FormAutomationContent = (): ReactElement => {
         if (isActive()) {
           setDraftUrl(url);
           setTargetUrl(url);
+          if (event.type === "did-navigate-in-page") scheduleDiscovery(url);
         }
         const owner = sessionForTab();
         const payload: NetworkEvent = {
@@ -586,7 +605,7 @@ const FormAutomationContent = (): ReactElement => {
         if (event.channel === "form-automation:network-event")
           recordGuestNetworkEvent(event.args?.[0] as Omit<NetworkEvent, "id">, sessionForTab());
       };
-      webview.addEventListener("dom-ready", ready);
+      webview.addEventListener("dom-ready", documentReady);
       webview.addEventListener("did-stop-loading", ready);
       webview.addEventListener("did-start-loading", loading);
       webview.addEventListener("did-fail-load", failed);
@@ -595,7 +614,7 @@ const FormAutomationContent = (): ReactElement => {
       webview.addEventListener("ipc-message", message as EventListener);
       cleanups.push(() => {
         window.clearTimeout(discoveryTimer);
-        webview.removeEventListener("dom-ready", ready);
+        webview.removeEventListener("dom-ready", documentReady);
         webview.removeEventListener("did-stop-loading", ready);
         webview.removeEventListener("did-start-loading", loading);
         webview.removeEventListener("did-fail-load", failed);
@@ -858,12 +877,15 @@ const FormAutomationContent = (): ReactElement => {
   }, [selectedCase?.id, JSON.stringify(selectedCase?.fields), JSON.stringify(selectedCase?.excludedFields)]);
 
   const selectCase = (item: AutofillCase) => {
-    if (item.id === selectedCaseId) return;
-    setSelectedCaseId(item.id);
-    setCaseDraftName(item.userSaved ? item.name : `${item.name} · 저장본`);
-    setCaseDraftKind(item.kind);
-    setCaseDraftFields(cloneFields(item.fields));
-    setCaseDraftExcludedFields(Array.isArray(item.excludedFields) ? [...item.excludedFields] : []);
+    if (item.id !== selectedCaseId) {
+      setSelectedCaseId(item.id);
+      setCaseDraftName(item.userSaved ? item.name : `${item.name} · 저장본`);
+      setCaseDraftKind(item.kind);
+      setCaseDraftFields(cloneFields(item.fields));
+      setCaseDraftExcludedFields(Array.isArray(item.excludedFields) ? [...item.excludedFields] : []);
+    }
+    // Pass the clicked case directly; React has not committed the new draft yet.
+    void autofill(item);
   };
 
   const saveCase = async () => {
@@ -910,23 +932,27 @@ const FormAutomationContent = (): ReactElement => {
     showToast("저장한 케이스를 삭제했습니다.");
   };
 
-  const autofill = async () => {
+  const autofill = async (caseOverride?: AutofillCase) => {
+    const item = caseOverride ?? selectedCase;
+    const fields = caseOverride && caseOverride.id !== selectedCaseId
+      ? includedCaseFields(caseOverride.fields, caseOverride.excludedFields)
+      : draftIncludedFields;
     const webview = activeWebview();
     if (!webview?.executeJavaScript) {
       showToast("폼·검색 자동 입력은 Electron 앱에서 사용할 수 있습니다.");
       return;
     }
-    if (!selectedCase) {
+    if (!item) {
       showToast("먼저 현재 화면의 케이스를 선택해 주세요.");
       return;
     }
-    if (!draftFieldCount) {
+    if (!Object.keys(fields).length) {
       showToast("입력할 필드를 하나 이상 선택해 주세요.");
       return;
     }
     try {
       webview.focus();
-      const result = await webview.executeJavaScript(fillFieldsScript(draftIncludedFields)) as FillResult;
+      const result = await webview.executeJavaScript(fillFieldsScript(fields)) as FillResult;
       const webContentsId = webview.getWebContentsId();
       for (const entry of result.richText) {
         await webview.executeJavaScript(focusRichTextScript(entry.key));
@@ -946,7 +972,7 @@ const FormAutomationContent = (): ReactElement => {
       }
       showToast(
         result.filled.length
-          ? `${selectedCase.name}: ${result.filled.length}개 필드에 값을 입력했습니다.${result.missing.length ? ` 미입력 ${result.missing.length}개` : ""}`
+          ? `${item.name}: ${result.filled.length}개 필드에 값을 입력했습니다.${result.missing.length ? ` 미입력 ${result.missing.length}개` : ""}`
           : `일치하는 필드가 없습니다: ${result.missing.join(", ")}`,
       );
     } catch (error) {
@@ -1245,7 +1271,9 @@ const FormAutomationContent = (): ReactElement => {
                 src={tab.url}
                 partition={browserSessionPartition(tab.id)}
                 useragent={browserUserAgent(tab.browserIdentity || "electron", navigator.userAgent)}
-                allowpopups={true}
+                // React types declare a boolean, but React omits true for this DOM attribute.
+                // Electron requires the attribute to be present, so emit an empty string.
+                allowpopups={"" as unknown as boolean}
               />
             ))}
           </div>

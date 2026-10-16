@@ -61,7 +61,8 @@ const checkboxRuntime = `
   };
 `;
 
-export const discoverFieldsScript = `(async () => {
+const discoveryScript = (interactive: boolean): string => `(async () => {
+  const interactive = ${interactive};
   ${visibleRuntime}
   ${checkboxRuntime}
   ${controlAdapters}
@@ -150,8 +151,8 @@ export const discoverFieldsScript = `(async () => {
     element.setAttribute('data-qa-autofill-name', fieldName);
     element.setAttribute('data-qa-autofill-type', type);
     const existing = groups.get(fieldName);
-    const choiceOptions = choice ? await collectChoiceOptions(element) : [];
-    if (choice) await closeChoice(element);
+    const choiceOptions = choice ? await collectChoiceOptions(element, interactive) : [];
+    if (choice && interactive) await closeChoice(element);
     const options = type === 'radio' || checkbox
       ? [{ value: type === 'radio' ? radioValue(element) : checkboxValue(element), label: clean(element.closest('label')?.textContent || element.getAttribute('aria-label') || element.value), disabled: element.disabled }]
       : choice ? choiceOptions.map(({ value, label, disabled }) => ({ value, label, disabled }))
@@ -181,6 +182,10 @@ export const discoverFieldsScript = `(async () => {
   }
   return Array.from(groups.values());
 })()`;
+
+export const discoverFieldsScript = discoveryScript(true);
+// Background detection reads mounted controls without opening popups or changing focus.
+export const passiveDiscoverFieldsScript = discoveryScript(false);
 
 export const fillFieldsScript = (fields: Record<string, FieldValue>): string => `(async () => {
   const fields = ${JSON.stringify(fields)};
