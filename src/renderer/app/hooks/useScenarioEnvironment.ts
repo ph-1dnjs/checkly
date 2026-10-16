@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { ProjectSettings } from "../../../app/ipc/auth/types";
 import type { Scenario } from "../../shared/model/scenario";
 
+/** 환경만 개인별로 고르고, 웹 엔드포인트는 시나리오 본문의 `endpoint:` ID로 설정의 주소와 연결한다. */
 export const useScenarioEnvironment = (projectId: string | undefined, showToast: (message: string) => void) => {
   const [settings, setSettings] = useState<ProjectSettings>({ endpoints: [], environments: [], urls: [] });
   const key = `web-scenario-environment:${projectId}`;
@@ -15,19 +16,29 @@ export const useScenarioEnvironment = (projectId: string | undefined, showToast:
   };
   useEffect(() => { void refresh(); }, [projectId]);
   const endpoints = settings.endpoints.filter(item => item.kind === "web");
-  const endpointId = endpoints.some(item => item.id === selection.endpointId) ? selection.endpointId : endpoints[0]?.id ?? "";
+  const defaultEndpointId = endpoints[0]?.id ?? "";
   const environmentId = settings.environments.some(item => item.id === selection.environmentId) ? selection.environmentId : settings.environments[0]?.id ?? "";
-  const baseUrl = settings.urls.find(item => item.endpointId === endpointId && item.environmentId === environmentId)?.baseUrl ?? "";
-  const select = (next: { endpointId?: string; environmentId?: string }) => {
-    const value = { endpointId, environmentId, ...next };
-    setSelection(value);
-    localStorage.setItem(key, JSON.stringify(value));
+  // `endpoint:`가 없는 이전 문서는 첫 웹 엔드포인트를 쓴다. 지워진 ID는 주소 없음으로 본다.
+  const endpointFor = (endpointId?: string) => endpointId ? endpoints.find(item => item.id === endpointId) : endpoints[0];
+  const baseUrlFor = (endpointId?: string) => {
+    const endpoint = endpointFor(endpointId);
+    return settings.urls.find(item => item.endpointId === endpoint?.id && item.environmentId === environmentId)?.baseUrl ?? "";
+  };
+  const select = (next: { environmentId: string }) => {
+    setSelection(next);
+    localStorage.setItem(key, JSON.stringify(next));
   };
   const resolve = (items: Scenario[]): Scenario[] | null => {
-    if (!baseUrl) { showToast("설정에서 웹 엔드포인트와 선택한 환경의 주소를 넣어 주세요."); return null; }
+    const missing = items.find(item => !baseUrlFor(item.endpointId));
+    if (missing) {
+      showToast(endpointFor(missing.endpointId)
+        ? `'${missing.title}'의 웹 엔드포인트에 선택한 환경의 주소를 설정에서 넣어 주세요.`
+        : `'${missing.title}'의 웹 엔드포인트를 설정에서 찾을 수 없습니다. 시나리오의 엔드포인트를 다시 선택하세요.`);
+      return null;
+    }
     try {
-      return items.map(item => ({ ...item, url: new URL(item.url || "/", baseUrl).href }));
-    } catch { showToast("시나리오 경로 또는 설정의 웹 주소를 확인하세요."); return null; }
+      return items.map(item => ({ ...item, url: new URL(item.url || "/", baseUrlFor(item.endpointId)).href }));
+    } catch { showToast("설정의 웹 주소를 확인하세요."); return null; }
   };
-  return { endpoints, environments: settings.environments, endpointId, environmentId, baseUrl, select, resolve, refresh };
+  return { endpoints, environments: settings.environments, defaultEndpointId, environmentId, baseUrlFor, select, resolve, refresh };
 };

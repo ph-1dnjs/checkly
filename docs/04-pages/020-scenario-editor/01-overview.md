@@ -8,13 +8,13 @@
 
 textarea 변경마다 `updateSource`가 원문과 미리보기를 갱신하고 첫 시나리오를 선택합니다. 파싱 결과가 없으면 원문은 비지만 기존 현재 시나리오 객체는 남을 수 있습니다. `UNSAVED`는 `sourceMarkdown !== savedMarkdown`일 때만 표시하므로 아직 원문에 반영하지 않은 마커 편집을 모두 감지하지 않습니다.
 
-미리보기는 시나리오 수·단계 수·URL·액션을 표시하고 각 블록을 접거나 펼칩니다. 원문 미리보기는 파서가 만든 connected 값(expectText=false, 나머지=true)을 사용하며 inspect 결과를 반영하지 않습니다. `connected` 표시는 실제 실행 성공을 보증하지 않습니다.
+미리보기는 시나리오 수·단계 수·웹 엔드포인트 이름·액션을 표시하고 각 블록을 접거나 펼칩니다. 원문 미리보기는 파서가 만든 connected 값(expectText=false, 나머지=true)을 사용하며 inspect 결과를 반영하지 않습니다. `connected` 표시는 실제 실행 성공을 보증하지 않습니다.
 
 ## Markdown 계약
 
 ```markdown
 # 시나리오: 주문 조회
-url: https://example.com
+endpoint: 2f1c3c9e-6a55-4d8f-9d6a-1b2c3d4e5f60
 tag: regression
 
 Given `/orders` 페이지로 이동한다
@@ -27,7 +27,7 @@ Then `주문 목록` 텍스트가 보인다 [대기 10초]
 | --- | --- |
 | 블록 경계 | 줄 시작의 `#`~`### 시나리오:` 또는 `Scenario:`; 공백뿐인 블록 제외 |
 | 제목 | 한국어 제목 패턴에서 추출. 영문 `Scenario:`는 분리되지만 제목은 `시나리오 N`으로 대체 |
-| URL/태그 | 소문자 `url:`, `tag:`에서 추출. URL 누락은 `""`, 태그 누락은 undefined |
+| 엔드포인트/태그 | 소문자 `endpoint:`(설정의 웹 엔드포인트 ID), `tag:`에서 추출. 누락은 undefined이며 엔드포인트 누락은 첫 웹 엔드포인트로 해석. 이전 문서의 `url:`은 저장 시 이동 단계로 바뀜 |
 | 단계 | Given/When/Then/And/But/If로 시작하는 줄만 인식, 접두사 대소문자 무시 |
 | ID | 시나리오는 블록 순서의 `scenario-0`부터, 단계는 문자열 `"1"`부터 재생성 |
 | 조건 | `` 화면에 `텍스트`가 있는 경우 ``는 보이는 텍스트 조건. 빈 조건은 실행 시 조건 없음 |

@@ -5,6 +5,20 @@ import { parseMarkdown } from '../../src/app/ipc/web-scenario/scenario';
 import { stepOutcomes } from '../../src/renderer/shared/report/run-report';
 
 const markdown = '# 시나리오: 로그인\nurl: /login\nGiven `로그인` 클릭\nAnd `로그인` 클릭';
+const current = markdown.replace('url: /login', 'endpoint: 2f1c3c9e-6a55-4d8f-9d6a-1b2c3d4e5f60');
+
+test('legacy url line becomes a goto step and endpoint id is kept in the body', () => {
+  const migrated = normalizeDocument(markdown, '{}');
+  assert.doesNotMatch(migrated.markdown, /^url:/m);
+  assert.deepEqual(migrated.scenarios[0].steps.map(step => [step.action, step.target]), [['goto', '/login'], ['click', '로그인'], ['click', '로그인']]);
+  assert.equal(migrated.scenarios[0].url, '');
+  const root = normalizeDocument('# 시나리오: 홈\nurl: /\nGiven `로그인` 클릭', '{}');
+  assert.deepEqual(root.scenarios[0].steps.map(step => step.action), ['click']);
+  const linked = normalizeDocument(current, '{}');
+  assert.match(linked.markdown, /^endpoint: 2f1c3c9e-6a55-4d8f-9d6a-1b2c3d4e5f60$/m);
+  assert.equal(linked.scenarios[0].endpointId, '2f1c3c9e-6a55-4d8f-9d6a-1b2c3d4e5f60');
+  assert.equal(linked.scenarios[0].steps.length, 2);
+});
 test('legacy repeated markers receive distinct UUIDs and retain their coordinates', () => {
   const first = normalizeDocument(markdown, JSON.stringify({ '로그인\n/login': [
     { action: 'click', target: '로그인', x: 12.3, y: 24 }, { action: 'click', target: '로그인', x: 65, y: 72 },
@@ -13,31 +27,33 @@ test('legacy repeated markers receive distinct UUIDs and retain their coordinate
   const scenario = first.scenarios[0];
   assert.ok(isUuid(scenario.id));
   assert.notEqual(scenario.id, other.scenarios[0].id);
-  assert.notEqual(scenario.steps[0].databaseId, scenario.steps[1].databaseId);
-  assert.deepEqual(scenario.steps.map(step => step.x), [12.3, 65]);
-  assert.equal(scenario.steps[0].markerViewport, 'desktop');
+  assert.notEqual(scenario.steps[1].databaseId, scenario.steps[2].databaseId);
+  assert.deepEqual(scenario.steps.map(step => step.x), [undefined, 12.3, 65]);
+  assert.equal(scenario.steps[1].markerViewport, 'desktop');
+  assert.equal(scenario.steps[1].markerPageUrl, '/login');
   const saved = normalizeDocument(first.markdown, first.positions);
   assert.deepEqual(saved, first);
-  assert.equal(parseMarkdown(first.markdown)[0].steps[0].target, '로그인');
+  assert.equal(parseMarkdown(first.markdown)[0].steps[1].target, '로그인');
 });
 
-test('editing title, URL, target and reordering steps retains markers by UUID', () => {
+test('editing title, target and reordering steps retains markers by UUID', () => {
   const first = normalizeDocument(markdown, JSON.stringify({ '로그인\n/login': [
     { action: 'click', target: '로그인', x: 10, y: 20, markerViewport: 'mobile', markerPageUrl: 'https://example.com/login' },
     { action: 'click', target: '로그인', x: 70, y: 80 },
   ] }));
-  const lines = first.markdown.replace('시나리오: 로그인', '시나리오: 수정').replace('/login', '/changed').split('\n');
-  const actions = lines.filter(line => /^(Given|And)/.test(line)).reverse().map(line => line.replace('`로그인`', '`새 버튼`'));
-  const edited = lines.filter(line => !/^(Given|And)/.test(line)).concat(actions).join('\n');
+  const lines = first.markdown.replace('시나리오: 로그인', '시나리오: 수정').split('\n');
+  const clicks = (line: string) => /^(Given|And) `로그인`/.test(line);
+  const actions = lines.filter(clicks).reverse().map(line => line.replace('`로그인`', '`새 버튼`'));
+  const edited = lines.filter(line => !clicks(line)).concat(actions).join('\n');
   const changed = normalizeDocument(edited, first.positions).scenarios[0];
   assert.equal(changed.id, first.scenarios[0].id);
-  assert.deepEqual(changed.steps.map(step => step.x), [70, 10]);
-  assert.equal(changed.steps[1].markerViewport, 'mobile');
-  assert.equal(changed.steps[1].markerPageUrl, 'https://example.com/login');
+  assert.deepEqual(changed.steps.map(step => step.x), [undefined, 70, 10]);
+  assert.equal(changed.steps[2].markerViewport, 'mobile');
+  assert.equal(changed.steps[2].markerPageUrl, 'https://example.com/login');
 });
 
 test('reports use recorded skipped and not_run outcomes instead of guessing', () => {
-  const scenario = normalizeDocument(markdown, '{}').scenarios[0];
+  const scenario = normalizeDocument(current, '{}').scenarios[0];
   assert.deepEqual(stepOutcomes({ scenario, status: 'passed', stepResults: [
     { stepNo: 1, status: 'skipped', elapsedMs: 25 }, { stepNo: 2, status: 'passed', elapsedMs: 40 },
   ] }), ['skipped', 'passed']);
@@ -79,6 +95,6 @@ test('copying a saved document into a new document renews scenario and step UUID
   const first = normalizeDocument(markdown, JSON.stringify({ '로그인\n/login': [{ action: 'click', target: '로그인', x: 10, y: 20 }] }));
   const copy = normalizeDocument(first.markdown, first.positions, true);
   assert.notEqual(copy.scenarios[0].id, first.scenarios[0].id);
-  assert.notEqual(copy.scenarios[0].steps[0].databaseId, first.scenarios[0].steps[0].databaseId);
-  assert.equal(copy.scenarios[0].steps[0].x, 10);
+  assert.notEqual(copy.scenarios[0].steps[1].databaseId, first.scenarios[0].steps[1].databaseId);
+  assert.equal(copy.scenarios[0].steps[1].x, 10);
 });

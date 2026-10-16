@@ -24,7 +24,10 @@ type Props = {
   scenario: Scenario;
   sourceMarkdown: string;
   sidebar: ReactNode;
+  /** 현재 시나리오의 엔드포인트와 선택한 환경으로 해석한 기준 주소. */
   baseUrl: string;
+  webEndpoints: Array<{ id: string; name: string }>;
+  defaultEndpointId: string;
   previews: Scenario[];
   markerScenarioId: string;
   selectedId: string;
@@ -61,6 +64,8 @@ export const ScenarioEditorPage = ({
   sourceMarkdown,
   sidebar,
   baseUrl,
+  webEndpoints,
+  defaultEndpointId,
   previews,
   markerScenarioId,
   selectedId,
@@ -164,7 +169,7 @@ export const ScenarioEditorPage = ({
     } catch {
       // 웹뷰가 아직 로드되지 않았거나 접근할 수 없는 경우 직접 입력으로 이어집니다.
     }
-    onPlaceMarker({ x, y, ...marker, markerViewport: device, markerPageUrl: targetFrameRef.current?.getURL?.() || scenario.url });
+    onPlaceMarker({ x, y, ...marker, markerViewport: device, markerPageUrl: targetFrameRef.current?.getURL?.() || baseUrl });
   };
 
   const lineCount = sourceMarkdown.split("\n").length;
@@ -236,7 +241,7 @@ export const ScenarioEditorPage = ({
                     <b>{String(index + 1).padStart(2, "0")}</b>
                     <div>
                       <h2>{preview.title}</h2>
-                      <p>{preview.url}</p>
+                      <p>{webEndpoints.find((item) => item.id === (preview.endpointId ?? defaultEndpointId))?.name ?? "웹 엔드포인트 없음"}</p>
                     </div>
                     <span className="ws-preview-count">{preview.steps.length}개 단계</span>
                     <Button
@@ -304,13 +309,23 @@ export const ScenarioEditorPage = ({
           </div>
           <div className="extract-url">
             <span className="extract-url-dot" />
-            <input
-              value={scenario.url}
+            <select
+              value={scenario.endpointId ?? defaultEndpointId}
               onChange={(event) =>
-                onScenarioChange({ ...scenario, url: event.target.value })
+                onScenarioChange({ ...scenario, endpointId: event.target.value })
               }
-              aria-label="대상 URL"
-            />
+              aria-label="웹 엔드포인트"
+            >
+              {scenario.endpointId && !webEndpoints.some((item) => item.id === scenario.endpointId) && (
+                <option value={scenario.endpointId}>(설정에 없는 엔드포인트)</option>
+              )}
+              {webEndpoints.map((item) => (
+                <option key={item.id} value={item.id}>{item.name}</option>
+              ))}
+            </select>
+            <span className="extract-url-base" title={baseUrl || undefined}>
+              {baseUrl || "설정에서 이 엔드포인트의 환경별 주소를 넣어 주세요."}
+            </span>
           </div>
           <div className="extract-devices">
             {DEVICES.map((d) => (

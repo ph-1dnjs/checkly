@@ -17,11 +17,13 @@
 
 위치: `src/app/ipc/web-scenario/scenario.ts` (renderer 모델에서 재노출)
 
-`#~### 시나리오:` 또는 `Scenario:`에서 블록을 나누고 `url:`, `tag:`와 Given/When/Then/And/But/If 단계를 읽습니다. URL이 없으면 빈 문자열을 사용합니다. 공백뿐인 블록은 제외하지만 비어 있지 않은 임의 블록은 시나리오로 해석할 수 있으며 엄격한 유효성 검증은 하지 않습니다.
+`#~### 시나리오:` 또는 `Scenario:`에서 블록을 나누고 `endpoint:`(설정의 웹 엔드포인트 ID), `tag:`와 Given/When/Then/And/But/If 단계를 읽습니다. 이전 문서의 `url:`은 `Scenario.url`로만 읽고 없으면 빈 문자열입니다. `Scenario.url`은 실행 직전 `endpoint:`와 선택한 환경으로 해석한 시작 주소를 담습니다.
+
+`migrateLegacyUrl`(같은 파일)은 블록의 `url:` 줄을 지우고, 경로가 `/`가 아니면 첫 단계 앞에 `` Given `경로` 페이지로 이동한다 ``를 넣습니다. renderer의 저장 전 식별(`identifyMarkdown`)과 main의 `normalizeDocument`가 사용합니다. 공백뿐인 블록은 제외하지만 비어 있지 않은 임의 블록은 시나리오로 해석할 수 있으며 엄격한 유효성 검증은 하지 않습니다.
 
 ```markdown
 # 시나리오: 주문 조회
-url: https://example.com
+endpoint: 2f1c3c9e-6a55-4d8f-9d6a-1b2c3d4e5f60
 tag: regression
 
 Given `/orders` 페이지로 이동한다

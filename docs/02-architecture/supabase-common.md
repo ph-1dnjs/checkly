@@ -163,9 +163,9 @@ npx tsx --test tests/auth/*.test.ts
 
 | 구분 | 데이터 |
 | --- | --- |
-| DB | `web_scenarios`: 문서 본문·작성 정보. `web_scenario_items`·`web_scenario_steps`: 시나리오 UUID·코드·순서와 단계·마커. `web_runs`·`web_run_scenario_results`·`web_run_step_results`: 실행 환경·스냅샷·단계 결과 |
-| 로컬 | 영상, `report.html`, 프로젝트별 웹 엔드포인트·환경 선택. 폴더 연결과 파일 읽기·쓰기 기능은 제거 |
-| 환경 | 선택한 환경의 `web` 엔드포인트 주소를 상대 경로의 기준으로 씀 (새 기능) |
+| DB | `web_scenarios`: 문서 본문·작성 정보. `web_scenario_items`·`web_scenario_steps`: 시나리오 UUID·코드·순서·웹 엔드포인트(`endpoint_id`)와 단계·마커. `web_runs`·`web_run_scenario_results`·`web_run_step_results`: 실행 환경·스냅샷·단계 결과 |
+| 로컬 | 영상, `report.html`, 프로젝트별 환경 선택. 폴더 연결과 파일 읽기·쓰기 기능은 제거 |
+| 환경 | 시나리오 본문의 `endpoint:` ID × 선택한 환경의 주소를 시작 주소로 씀 |
 
 ### 2. 폼 자동 완성 (담당: 팀원)
 

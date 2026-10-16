@@ -3,7 +3,7 @@ import { actionLabel, type Action } from "./action";
 export { actionLabel, type Action } from "./action";
 
 import type { Scenario, Step } from "../../../app/ipc/web-scenario/scenario";
-export { parseMarkdown, splitScenarioBlocks } from "../../../app/ipc/web-scenario/scenario";
+export { migrateLegacyUrl, parseMarkdown, splitScenarioBlocks } from "../../../app/ipc/web-scenario/scenario";
 export type { Scenario, Step } from "../../../app/ipc/web-scenario/scenario";
 
 export type MarkerPosition = Pick<

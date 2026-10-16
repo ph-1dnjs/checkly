@@ -20,7 +20,7 @@
 
 비로그인 상태는 로그인 안내만 표시한다. 기존 폴더 연결·시나리오 파일 불러오기·내보내기·다른 이름 저장 IPC는 삭제됐다. 기존 사용자 파일은 삭제·이전하지 않는다. 영상·실행 리포트는 계속 로컬에 남는다.
 
-선택한 웹 엔드포인트·환경은 `web-scenario-environment:<projectId>` localStorage에 개인별 저장한다. 상대 `url:`은 선택한 기준 주소로 해석하고 절대 URL은 유지한다. 주소 미설정이면 실행을 차단하고 설정 안내를 표시한다.
+선택한 환경은 `web-scenario-environment:<projectId>` localStorage에 개인별 저장한다. 웹 엔드포인트는 개인 선택이 아니라 시나리오 본문의 `endpoint:` ID로 정하며, 화면 추출 모드 상단의 `웹 엔드포인트` 선택이 이 값을 바꾼다. 실행·화면 추출은 `endpoint:` × 선택한 환경의 설정 주소를 시작 주소로 쓴다. `endpoint:`가 없으면 첫 웹 엔드포인트를 쓰고, 설정에서 지워진 ID이거나 주소가 없으면 실행을 차단하고 안내를 표시한다. DB의 `web_scenario_items.endpoint_id`에는 같은 프로젝트의 웹 엔드포인트일 때만 연결되고 아니면 null이다.
 
 업로드 단계의 PC 파일 경로는 공유 전 빈 값으로 분리한다. 원래 값은 `web-scenario-uploads:<projectId>:<documentId>` localStorage에 저장해 같은 PC에서 복원하며 다른 PC에서는 파일을 다시 선택해야 한다. 파일 자체를 업로드하거나 복사하지 않는다.
 

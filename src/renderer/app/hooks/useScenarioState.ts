@@ -3,6 +3,7 @@ import type { WebScenarioRecord } from "../../../app/ipc/web-scenario/types";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   markerColor,
+  migrateLegacyUrl,
   parseMarkdown,
   splitScenarioBlocks,
   emptyScenario,
@@ -22,8 +23,10 @@ import {
 
 const initialMarkdown = "";
 const isUuid = (id: string) => /^[a-f0-9-]{36}$/i.test(id);
-const identifyMarkdown = (markdown: string, previous: Scenario[] = []): string => {
+const identifyMarkdown = (source: string, previous: Scenario[] = []): string => {
+  const markdown = splitScenarioBlocks(source).map(migrateLegacyUrl).join("\n\n");
   const parsed = parseMarkdown(markdown);
+  const usedStepIds = new Set<string>();
   return splitScenarioBlocks(markdown).map((block, index) => {
     const item = parsed[index];
     const prior = previous.find(scenario => scenario.id === item.id) ?? previous[index];
@@ -35,7 +38,9 @@ const identifyMarkdown = (markdown: string, previous: Scenario[] = []): string =
     return lines.map(line => {
       if (!/^(Given|When|Then|And|But|If)\s+/i.test(line.trim())) return line;
       const step = item.steps[stepIndex];
-      const stepId = step.databaseId ?? prior?.steps[stepIndex]?.databaseId ?? crypto.randomUUID();
+      const candidate = step.databaseId ?? prior?.steps[stepIndex]?.databaseId;
+      const stepId = candidate && !usedStepIds.has(candidate) ? candidate : crypto.randomUUID();
+      usedStepIds.add(stepId);
       stepIndex += 1;
       return `${line.replace(/\s*<!-- step:[a-f0-9-]{36} -->/, "")} <!-- step:${stepId} -->`;
     }).join("\n");
@@ -89,7 +94,9 @@ const scenarioToMarkdown = (scenario: Scenario): string =>
     `# 시나리오: ${scenario.title}`,
     ...(isUuid(scenario.id) ? [`id: ${scenario.id}`] : []),
     ...(scenario.code ? [`code: ${scenario.code}`] : []),
-    `url: ${scenario.url}`,
+    ...(scenario.endpointId ? [`endpoint: ${scenario.endpointId}`] : []),
+    // 이전 문서의 경로는 저장 시 이동 단계로 바뀌므로 그때까지만 유지한다.
+    ...(scenario.url ? [`url: ${scenario.url}`] : []),
     ...(scenario.tag ? [`tag: ${scenario.tag}`] : []),
     "",
     ...scenario.steps.map((step, index) => {
@@ -133,14 +140,17 @@ const replaceScenarioMarkdown = (
 
 type UseScenarioStateOptions = {
   projectId?: string;
-  baseUrl: string;
+  /** 시나리오의 `endpoint:` ID를 선택한 환경의 기준 주소로 바꾼다. */
+  resolveBaseUrl: (endpointId?: string) => string;
+  defaultEndpointId: string;
   route: Route;
   showToast: (message: string) => void;
 };
 
 export const useScenarioState = ({
   projectId,
-  baseUrl,
+  resolveBaseUrl,
+  defaultEndpointId,
   route,
   showToast,
 }: UseScenarioStateOptions) => {
@@ -163,6 +173,7 @@ export const useScenarioState = ({
   const [markersVisible, setMarkersVisible] = useState(true);
   const [saveBeforeReturning, setSaveBeforeReturning] = useState(false);
   const [positionStore, setPositionStore] = useState<MarkerPositionStore>({});
+  const baseUrl = resolveBaseUrl(scenario.endpointId);
 
 
   const updateSteps = (steps: Step[]) =>
@@ -292,7 +303,7 @@ export const useScenarioState = ({
     setPositionStore({});
     setSavedPositions("{}");
     setSavedMarkdown("");
-    const markdown = identifyMarkdown("# 시나리오: 새 시나리오\nurl: /\n\n");
+    const markdown = identifyMarkdown(`# 시나리오: 새 시나리오${defaultEndpointId ? `\nendpoint: ${defaultEndpointId}` : ""}\n\n`);
     setSourceMarkdown(markdown);
     const first = parseMarkdown(markdown)[0];
     setScenario(first);

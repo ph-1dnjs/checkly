@@ -40,7 +40,7 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
     showToast,
   } = useNavigation();
   const environment = useScenarioEnvironment(account?.session.projectId, showToast);
-  const scenarioState = useScenarioState({ projectId: account?.session.projectId, route, showToast, baseUrl: environment.baseUrl });
+  const scenarioState = useScenarioState({ projectId: account?.session.projectId, route, showToast, resolveBaseUrl: environment.baseUrlFor, defaultEndpointId: environment.defaultEndpointId });
   const [pickedKeys, setPickedKeys] = useState<Set<string>>(new Set());
   const [confirmDelete, setConfirmDelete] = useState(false);
   const runOrchestration = useRunOrchestration({ showToast, setRoute, projectId: account?.session.projectId });
@@ -238,13 +238,10 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
             }
           >
             <div className="scenario-environment">
-              <label>웹 엔드포인트 <select aria-label="웹 엔드포인트" value={environment.endpointId} onChange={event => environment.select({ endpointId: event.target.value })}>
-                {environment.endpoints.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
-              </select></label>
               <label>환경 <select aria-label="시나리오 환경" value={environment.environmentId} onChange={event => environment.select({ environmentId: event.target.value })}>
                 {environment.environments.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
               </select></label>
-              {!environment.baseUrl && <span>설정에서 웹 엔드포인트와 환경별 주소를 넣어 주세요.</span>}
+              {!environment.endpoints.length && <span>설정에서 웹 엔드포인트와 환경별 주소를 넣어 주세요.</span>}
             </div>
             <div className="ws-page">
         {route === "editor" && (
@@ -252,7 +249,9 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
             mode={editorMode}
             scenario={scenario}
             sourceMarkdown={sourceMarkdown}
-            baseUrl={environment.baseUrl}
+            baseUrl={environment.baseUrlFor(scenario.endpointId)}
+            webEndpoints={environment.endpoints}
+            defaultEndpointId={environment.defaultEndpointId}
             sidebar={<ScenarioList records={records} activeId={activeRecord?.id ?? null} loading={loading} busy={busy}
               onSelect={requestOpenRecord} onNew={() => requestOpenRecord("new")} onRefresh={() => requestOpenRecord("refresh")} />}
             previews={previews}

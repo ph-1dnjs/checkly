@@ -20,6 +20,8 @@
 .extract-url-dot { width:6px; height:6px; flex:none; background:#1e7a4a; }
 .extract-url input { flex:1 1 auto; min-width:0; border:0; background:transparent; padding:0; font-family:D2Coding,ui-monospace,monospace; font-size:12px; color:#3d4650; }
 .extract-url input:focus,.extract-url input:focus-visible { outline:0; }
+.extract-url select { flex:none; max-width:160px; height:22px; border:0; background:transparent; font-size:12px; color:#14181c; cursor:pointer; }
+.extract-url-base { flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-family:D2Coding,ui-monospace,monospace; font-size:12px; color:#66707a; }
 
 .extract-devices { flex:none; display:flex; border:1px solid #e3e7ea; }
 .extract-devices button { width:32px; height:26px; display:grid; place-items:center; border:0; background:#fff; color:#66707a; cursor:pointer; transition:background 120ms ease; }

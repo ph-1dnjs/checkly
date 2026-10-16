@@ -129,7 +129,7 @@ const stepSchema = z.object({
   x: z.number().min(0).max(100).optional(), y: z.number().min(0).max(100).optional(), color: z.string().optional(),
   markerViewport: z.enum(['mobile','tablet','desktop']).optional(), markerPageUrl: z.string().optional(),
 }).transform(step => step.action === 'fileUpload' ? { ...step, value: '' } : step);
-const scenarioSchema = z.object({ id: z.uuid(), title: z.string(), url: z.string(), tag: z.string().optional(), code: z.string().optional(), sortOrder: z.number().optional(), steps: z.array(stepSchema) });
+const scenarioSchema = z.object({ id: z.uuid(), title: z.string(), endpointId: z.string().optional(), url: z.string(), tag: z.string().optional(), code: z.string().optional(), sortOrder: z.number().optional(), steps: z.array(stepSchema) });
 const runSchema = z.object({
   id: z.uuid(), trigger: z.enum(['editor','picker','rerun','single']), status: z.enum(['passed','failed','cancelled']),
   passed: z.number().int().nonnegative(), failed: z.number().int().nonnegative(), startedAt: z.iso.datetime(), ranAt: z.iso.datetime(),

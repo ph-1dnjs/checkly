@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { authCalls, installAuthStub, owner } from './fixtures/auth-stub'
 
-const markdown = '# 시나리오: 팀 로그인\nurl: /login\n\nGiven `로그인` 클릭'
+const markdown = '# 시나리오: 팀 로그인\nendpoint: e-web\n\nGiven `로그인` 클릭'
 const editor = async (page: import('@playwright/test').Page) => {
   await page.goto('/')
   await page.getByRole('button', { name: '시나리오 · 편집과 실행' }).click()
@@ -109,18 +109,22 @@ test('marker edits save together with the body and use the chosen environment', 
   // JSONB가 키 순서를 바꿔 돌려줘도 수정 전 상태는 깨끗하고 좌표는 유지되어야 한다.
   await page.evaluate(() => {
     const rows = JSON.parse(sessionStorage.getItem('web-scenarios')!)
-    rows[0].positions = JSON.stringify({ '팀 로그인\n/login': [{ y: 20, x: 10, target: '로그인', action: 'click' }] })
+    const id = rows[0].markdown.match(/^id: (.+)$/m)[1]
+    rows[0].positions = JSON.stringify({ [id]: [{ y: 20, x: 10, target: '로그인', action: 'click' }] })
     sessionStorage.setItem('web-scenarios', JSON.stringify(rows))
   })
   await page.locator('.scenario-files').getByRole('button', { name: '새로고침' }).click()
   await expect(page.getByText('UNSAVED', { exact: true })).toHaveCount(0)
   await page.getByLabel('시나리오 환경').selectOption('v-stg')
   await page.getByRole('button', { name: '화면 추출', exact: true }).click()
-  await expect(page.locator('webview')).toHaveAttribute('src', 'https://stg.app.com/login')
-  await page.getByLabel('대상 URL').fill('/updated')
+  await expect(page.locator('webview')).toHaveAttribute('src', 'https://stg.app.com/')
+  await expect(page.getByLabel('웹 엔드포인트')).toHaveValue('e-web')
+  await expect(page.locator('.extract-url-base')).toHaveText('https://stg.app.com')
+  await expect(page.getByLabel('대상 URL')).toHaveCount(0)
   await page.getByRole('button', { name: '텍스트', exact: true }).click()
   await page.getByRole('button', { name: '저장 후 돌아가기' }).click()
-  await expect(source).toHaveValue(/url: \/updated/)
+  await expect(source).toHaveValue(/endpoint: e-web/)
+  await expect(source).not.toHaveValue(/^url:/m)
   await expect(page.getByText('UNSAVED', { exact: true })).toHaveCount(0)
   const saves = (await authCalls(page)).filter(([name]) => name === 'webScenarios.save')
   expect(saves).toHaveLength(2)
@@ -133,7 +137,7 @@ test('shared DB list preserves selections across documents and shows the existin
   await installAuthStub(page, { enabled: true, session: owner })
   await editor(page)
   const source = page.getByRole('textbox', { name: '시나리오 Markdown 원본' })
-  await source.fill(markdown + '\n\n# 시나리오: 로그아웃\nurl: /logout\n\nGiven `로그아웃` 클릭')
+  await source.fill(markdown + '\n\n# 시나리오: 로그아웃\nendpoint: e-web\n\nGiven `로그아웃` 클릭')
   await page.getByRole('button', { name: '저장', exact: true }).click()
   await expect(page.getByText('UNSAVED', { exact: true })).toHaveCount(0)
   await page.getByRole('button', { name: '새 시나리오', exact: true }).click()
@@ -160,4 +164,18 @@ test('shared DB list preserves selections across documents and shows the existin
   await expect(list).toBeVisible()
   await list.getByRole('button', { name: /프로필/ }).click()
   await expect(page.locator('.picker-scenario-name')).toHaveText('프로필')
+})
+
+test('scenario header has no global web endpoint picker and legacy url becomes a goto step on save', async ({ page }) => {
+  await installAuthStub(page, { enabled: true, session: owner })
+  await editor(page)
+  await expect(page.locator('.scenario-environment').getByLabel('웹 엔드포인트')).toHaveCount(0)
+  await page.getByRole('button', { name: '새 시나리오', exact: true }).click()
+  const source = page.getByRole('textbox', { name: '시나리오 Markdown 원본' })
+  await expect(source).toHaveValue(/endpoint: e-web/)
+  await source.fill('# 시나리오: 이전 문서\nurl: /login\n\nGiven `로그인` 클릭')
+  await page.getByRole('button', { name: '저장', exact: true }).click()
+  await expect(page.getByText('UNSAVED', { exact: true })).toHaveCount(0)
+  await expect(source).not.toHaveValue(/^url:/m)
+  await expect(source).toHaveValue(/Given `\/login` 페이지로 이동한다[^\n]*\nGiven `로그인` 클릭/)
 })

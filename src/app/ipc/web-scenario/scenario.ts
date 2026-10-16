@@ -24,6 +24,9 @@ export type Scenario = {
   code?: string;
   sortOrder?: number;
   title: string;
+  /** 설정(엔드포인트 × 환경)의 웹 엔드포인트 ID. 본문에는 `endpoint:`로 저장한다. */
+  endpointId?: string;
+  /** 실행 시 해석한 시작 주소. 본문에는 저장하지 않는다(이전 문서의 `url:`만 읽는다). */
   url: string;
   steps: Step[];
   tag?: string;
@@ -37,6 +40,24 @@ export const splitScenarioBlocks = (markdown: string): string[] =>
     // 편집 중에는 Enter/Delete로 공백 줄만 남는 중간 상태가 생길 수 있다.
     // 이 상태는 시나리오 블록이 아니므로 파싱/교체 대상에서 제외한다.
     .filter((block) => block.trim());
+
+const STEP_LINE = /^(Given|When|Then|And|But|If)\s+/i;
+
+/** 이전 문서의 `url:` 줄을 없앤다. 경로가 `/`가 아니면 첫 단계 앞에 같은 주소로 이동하는 단계를 넣어 동작을 유지한다. */
+export const migrateLegacyUrl = (block: string): string => {
+  const lines = block.split("\n");
+  const index = lines.findIndex((line) => line.trim().startsWith("url:"));
+  if (index < 0) return block;
+  const url = lines[index].trim().slice(4).trim();
+  lines.splice(index, 1);
+  if (url && url !== "/") {
+    const first = lines.findIndex((line) => STEP_LINE.test(line.trim()));
+    const step = `Given \`${url}\` 페이지로 이동한다`;
+    if (first < 0) lines.push(step);
+    else lines.splice(first, 0, step);
+  }
+  return lines.join("\n");
+};
 
 // 저장된 id: UUID를 우선 사용한다. 이전 문서에는 source + 블록 순서로 임시 ID를 만든다.
 export const parseMarkdown = (markdown: string, source?: string): Scenario[] =>
@@ -54,6 +75,11 @@ export const parseMarkdown = (markdown: string, source?: string): Scenario[] =>
           .find((line) => line.startsWith("url:"))
           ?.slice(4)
           .trim() || "";
+      const endpointId =
+        lines
+          .find((line) => line.startsWith("endpoint:"))
+          ?.slice(9)
+          .trim() || undefined;
       const tag =
         lines
           .find((line) => line.startsWith("tag:"))
@@ -213,7 +239,7 @@ export const parseMarkdown = (markdown: string, source?: string): Scenario[] =>
       const databaseId = lines.find(line => line.startsWith("id:"))?.slice(3).trim();
       const code = lines.find(line => line.startsWith("code:"))?.slice(5).trim();
       const id = databaseId || (source ? `${source}::scenario-${index}` : `scenario-${index}`);
-      return { id, code, sortOrder: index, title, url, tag, steps };
+      return { id, code, sortOrder: index, title, endpointId, url, tag, steps };
     });
 
 export type ScenarioRunResult = {
