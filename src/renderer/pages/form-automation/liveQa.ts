@@ -1,3 +1,6 @@
+import { isNextInternalNetworkEvent } from "../../../app/ipc/form-automation/networkFilter";
+export { isNextInternalNetworkEvent } from "../../../app/ipc/form-automation/networkFilter";
+
 export type JsonValue = unknown;
 
 export type ContractResult = {
@@ -17,6 +20,8 @@ export type NetworkEvent = {
   status?: number;
   requestBody?: JsonValue;
   responseBody?: JsonValue;
+  responseContentType?: string;
+  nextInternal?: boolean;
   elapsed?: number;
   overridden?: boolean;
   error?: string;
@@ -33,7 +38,7 @@ export type NetworkEvent = {
 export const mergeNetworkEvents = (current: NetworkEvent[], saved: NetworkEvent[]): NetworkEvent[] => {
   const events = new Map<string, NetworkEvent>();
   for (const event of [...current, ...saved]) {
-    if (!events.has(event.id)) events.set(event.id, event);
+    if (!isNextInternalNetworkEvent(event) && !events.has(event.id)) events.set(event.id, event);
   }
   return [...events.values()]
     .sort((a, b) => (Date.parse(b.at) || 0) - (Date.parse(a.at) || 0))

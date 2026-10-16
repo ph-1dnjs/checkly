@@ -47,6 +47,7 @@ import {
   apiEventClipboardText,
   contractForEvent,
   isSessionError,
+  isNextInternalNetworkEvent,
   mergeNetworkEvents,
   normalizedEndpointPath,
   overrideResponseSchema,
@@ -323,6 +324,7 @@ const FormAutomationContent = (): ReactElement => {
     eventPayload: Omit<NetworkEvent, "id">,
     browserSession: BrowserSession,
   ) => {
+    if (isNextInternalNetworkEvent(eventPayload)) return;
     const payload: NetworkEvent = {
       ...eventPayload,
       id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,

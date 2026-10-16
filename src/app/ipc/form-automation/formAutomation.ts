@@ -10,6 +10,7 @@ import {
 import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createFormAutomationWorkbook } from "./formAutomationReport";
+import { isNextInternalNetworkEvent } from "./networkFilter";
 
 export type FormAutomationTextInput = {
   webContentsId: number;
@@ -38,6 +39,7 @@ const sessionLogPath = () =>
 export const appendFormAutomationSessionEvent = async (
   payload: Record<string, unknown>,
 ): Promise<boolean> => {
+  if (isNextInternalNetworkEvent(payload)) return true;
   await mkdir(path.dirname(sessionLogPath()), { recursive: true });
   await appendFile(sessionLogPath(), `${JSON.stringify(payload)}\n`, "utf8");
   return true;
@@ -46,15 +48,16 @@ export const appendFormAutomationSessionEvent = async (
 export const readFormAutomationSessionEvents = async (limit = 1000) => {
   try {
     const text = await readFile(sessionLogPath(), "utf8");
-    return text
-      .split("\n")
-      .filter(Boolean)
-      .slice(-Math.min(Math.max(Number(limit) || 1000, 1), 5000))
-      .reverse()
-      .flatMap((line) => {
-        try { return [JSON.parse(line) as Record<string, unknown>]; }
-        catch { return []; }
-      });
+    const lines = text.split("\n");
+    const maximum = Math.min(Math.max(Number(limit) || 1000, 1), 5000);
+    const events: Record<string, unknown>[] = [];
+    for (let index = lines.length - 1; index >= 0 && events.length < maximum; index -= 1) {
+      try {
+        const event = JSON.parse(lines[index]) as Record<string, unknown>;
+        if (event && typeof event === "object" && !isNextInternalNetworkEvent(event)) events.push(event);
+      } catch { /* Skip empty or incomplete records. */ }
+    }
+    return events;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
     throw error;
