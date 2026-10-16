@@ -1,5 +1,8 @@
 import { type MouseEvent, type ReactElement, type ReactNode } from "react";
 import { browserSessionPartition, type BrowserSession } from "./model";
+import type { NetworkSpec } from "./networkSpec";
+import type { SharedOpenApiSource } from "./sharedOpenApi";
+import { NetworkRequestDetail } from "./NetworkRequestDetail";
 import {
   isSessionError,
   readableStorageValue,
@@ -29,6 +32,14 @@ const Status = ({ tone = "neutral", children }: { tone?: string; children: React
 export const NetworkPanel = ({
   events,
   selectedEvent,
+  spec,
+  specLoading,
+  specSources = [],
+  specErrors = [],
+  selectedSpecSource = "",
+  onSpecSource,
+  onRefreshSpec,
+  onCopyUrl,
   filter,
   activeSessionName,
   onSelect,
@@ -43,6 +54,14 @@ export const NetworkPanel = ({
 }: {
   events: NetworkEvent[];
   selectedEvent: NetworkEvent | null;
+  spec?: NetworkSpec;
+  specLoading?: boolean;
+  specSources?: SharedOpenApiSource[];
+  specErrors?: string[];
+  selectedSpecSource?: string;
+  onSpecSource?: (source: string) => void;
+  onRefreshSpec?: () => void;
+  onCopyUrl: (url: string) => void;
   filter: "all" | "errors";
   activeSessionName: string;
   onSelect: (event: NetworkEvent) => void;
@@ -94,25 +113,25 @@ export const NetworkPanel = ({
         onMouseDown={onResizeList}
         onDoubleClick={onResetListHeight}
       ><MaterialIcon name="drag_handle" /></div>
-      {selectedEvent && (
-        <div className={`fa-request-detail${isSessionError(selectedEvent) ? " error" : ""}`}>
-          <div className="fa-detail-title">
-            <strong>{isSessionError(selectedEvent) ? "오류 상세" : selectedEvent.type === "navigation" ? "페이지 활동" : "계약 검사"}</strong>
-            <div>
-              {["fetch", "xhr"].includes(selectedEvent.type) && <button onClick={onCopy}><MaterialIcon name="content_copy" /> API 스펙 복사</button>}
-              <Status tone={isSessionError(selectedEvent) ? "danger" : selectedEvent.contract?.tone}>{selectedEvent.category === "page" ? "페이지 오류" : selectedEvent.type === "navigation" ? "페이지 이동" : selectedEvent.contract?.label || "스펙 미연결"}</Status>
-            </div>
-          </div>
-          <p>{selectedEvent.error || selectedEvent.contract?.detail}</p>
-          <dl>
-            <div><dt>발생 시각</dt><dd>{new Date(selectedEvent.at).toLocaleString("ko-KR")}</dd></div>
-            <div><dt>상태</dt><dd>{selectedEvent.category === "page" || selectedEvent.type === "navigation" ? selectedEvent.type : `${selectedEvent.status || "Network error"} · ${selectedEvent.elapsed ?? "-"}ms`}</dd></div>
-            <div><dt>페이지</dt><dd>{selectedEvent.pageUrl || selectedEvent.url}</dd></div>
-          </dl>
-          {["fetch", "xhr"].includes(selectedEvent.type) && <button className="fa-create-override" onClick={onCreateOverride}><MaterialIcon name="tune" /> 이 응답으로 오버라이드 만들기</button>}
-          <details><summary>기술 정보 보기</summary><pre>{stringify({ error: selectedEvent.error, source: selectedEvent.source, line: selectedEvent.line, stack: selectedEvent.stack, request: selectedEvent.requestBody, response: selectedEvent.responseBody })}</pre></details>
-        </div>
-      )}
+      {selectedEvent && (["fetch", "xhr"].includes(selectedEvent.type) ? <NetworkRequestDetail
+        key={selectedEvent.id}
+        event={selectedEvent}
+        spec={spec}
+        specLoading={specLoading}
+        specSources={specSources}
+        specErrors={specErrors}
+        selectedSpecSource={selectedSpecSource}
+        onSpecSource={onSpecSource}
+        onRefreshSpec={onRefreshSpec}
+        onCopy={onCopy}
+        onCopyUrl={onCopyUrl}
+        onCreateOverride={onCreateOverride}
+      /> : <div className={`fa-request-detail${isSessionError(selectedEvent) ? " error" : ""}`}>
+        <div className="fa-detail-title"><strong>{selectedEvent.type === "navigation" ? "페이지 활동" : "오류 상세"}</strong><Status tone={isSessionError(selectedEvent) ? "danger" : "neutral"}>{selectedEvent.type === "navigation" ? "페이지 이동" : "페이지 오류"}</Status></div>
+        <p>{selectedEvent.error || selectedEvent.contract?.detail}</p>
+        <dl><div><dt>발생 시각</dt><dd>{new Date(selectedEvent.at).toLocaleString("ko-KR")}</dd></div><div><dt>페이지</dt><dd>{selectedEvent.pageUrl || selectedEvent.url}</dd></div></dl>
+        <details><summary>기술 정보 보기</summary><pre>{stringify({ error: selectedEvent.error, source: selectedEvent.source, line: selectedEvent.line, stack: selectedEvent.stack })}</pre></details>
+      </div>)}
     </>
   );
 };

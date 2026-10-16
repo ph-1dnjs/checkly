@@ -5,6 +5,7 @@ import { z } from "zod";
 import { httpUrl, specSourceSchema } from "../shared/workspace";
 import type { ApiScope, ApiSpecSync } from "../shared/workspace";
 import { ApiWorkspace, scopeSchema } from "./workspace";
+import { fetchOpenApiSource } from "./openapi-source";
 
 type SecretStorage = { available(): boolean; encrypt(value: string): string; decrypt(value: string): string };
 const storedSchema = z.object({ url: httpUrl.optional(), username: z.string().optional(), encrypted: z.string().optional(), lastAttemptAt: z.string().optional(), lastSuccessAt: z.string().optional(), status: z.enum(["success", "failed"]).optional() }).strict();
@@ -92,21 +93,7 @@ export class SpecSync {
           try { encrypted = this.secrets.encrypt(auth.password); }
           catch { throw new Error("계정을 안전하게 암호화하지 못했습니다"); }
         }
-        let response: Response;
-        try { response = await fetch(source.url, { headers: auth ? { Authorization: `Basic ${Buffer.from(`${auth.username}:${auth.password}`, "utf8").toString("base64")}` } : undefined, signal: AbortSignal.timeout(30_000), redirect: "error" }); }
-        catch { throw new Error("명세 URL에 연결할 수 없습니다. 직접 JSON/YAML 주소를 확인하세요"); }
-        if (!response.ok) {
-          await response.body?.cancel();
-          throw new Error([401,403].includes(response.status) ? `명세 인증 실패: HTTP ${response.status}. 문서용 아이디·비밀번호와 접근 권한을 확인하세요` : `명세 가져오기 실패: HTTP ${response.status}${response.status === 404 ? ". 명세 주소를 확인하세요" : ""}`);
-        }
-        if (!response.body) throw new Error("명세 응답이 비어 있습니다");
-        const reader = response.body.getReader();
-        const chunks: Uint8Array[] = []; let size = 0;
-        try { while (true) { const chunk = await reader.read(); if (chunk.done) break; size += chunk.value.length; if (size > 5_000_000) throw new Error("명세는 5MB 이하만 지원합니다"); chunks.push(chunk.value); } }
-        finally { await reader.cancel().catch(() => undefined); }
-        const text = Buffer.concat(chunks).toString("utf8");
-        // A Swagger UI page instead of the document it shows: the usual mistake, said plainly.
-        if (/^\s*</.test(text)) throw new Error("명세 대신 웹 페이지(HTML)를 받았습니다. Swagger 화면 주소가 아니라 /v3/api-docs 같은 JSON·YAML 명세 주소를 넣으세요");
+        const text = await fetchOpenApiSource(source.url, auth ? { Authorization: `Basic ${Buffer.from(`${auth.username}:${auth.password}`).toString("base64")}` } : {});
         catalog = await this.workspace.importSpec(scope, text);
         await this.save(scope, { url: source.url, username: auth?.username, encrypted, lastAttemptAt: attempt, lastSuccessAt: catalog.importedAt, status: "success" });
       } catch (e) {

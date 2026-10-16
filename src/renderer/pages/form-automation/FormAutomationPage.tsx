@@ -40,12 +40,13 @@ import {
 } from "./model";
 import { PageHeader } from "../../shared/ui/PageLayout";
 import { NetworkPanel, OverridePanel } from "./InspectorPanels";
-import { OpenApiDialog } from "./OpenApiDialog";
+import { useSharedOpenApi } from "./useSharedOpenApi";
+import { contractForSharedEvent, matchSharedOpenApi } from "./sharedOpenApi";
+import { specForNetworkEvent } from "./networkSpec";
 import { ScreenshotEditor, type ScreenshotCapture } from "./ScreenshotEditor";
 import { FormAutomationStorageProvider, useStoredState } from "./StoredState";
 import {
   apiEventClipboardText,
-  contractForEvent,
   isSessionError,
   isNextInternalNetworkEvent,
   mergeNetworkEvents,
@@ -54,7 +55,6 @@ import {
   safeJson,
   stringify,
   type NetworkEvent,
-  type OpenApiDocument,
   type OverrideRule,
 } from "./liveQa";
 
@@ -275,8 +275,8 @@ const FormAutomationContent = (): ReactElement => {
   const [selectedOverrideId, setSelectedOverrideId] = useState("");
   const [overrideBodyText, setOverrideBodyText] = useState("{}");
   const [overrideEditorMode, setOverrideEditorMode] = useState<"fields" | "json">("fields");
-  const [openApi, setOpenApi] = useStoredState<OpenApiDocument | null>("checkly-form-openapi", null);
-  const [openApiDialog, setOpenApiDialog] = useState(false);
+  const sharedOpenApi = useSharedOpenApi();
+  const [eventSpecSources, setEventSpecSources] = useState<Record<string, string>>({});
   const [capture, setCapture] = useState<ScreenshotCapture | null>(null);
   const [captureBusy, setCaptureBusy] = useState(false);
   const [zoomPercent, setZoomPercent] = useStoredState("checkly-form-browser-zoom", 80);
@@ -331,7 +331,7 @@ const FormAutomationContent = (): ReactElement => {
       browserSessionId: browserSession.id,
       browserSessionName: browserSession.name,
       contract: ["fetch", "xhr"].includes(eventPayload.type)
-        ? contractForEvent(openApi, { ...eventPayload, id: "contract-check" } as NetworkEvent)
+        ? contractForSharedEvent(sharedOpenApi.sources, { ...eventPayload, id: "contract-check" } as NetworkEvent)
         : {
           tone: "danger",
           label: "페이지 오류",
@@ -342,7 +342,7 @@ const FormAutomationContent = (): ReactElement => {
     void window.electronAPI?.saveFormAutomationSessionEvent?.(payload).catch(() => undefined);
     if (activeTabIdRef.current === browserSession.id)
       setSelectedEvent((current) => current || payload);
-  }, [openApi]);
+  }, [sharedOpenApi.sources]);
 
   useEffect(() => {
     void window.electronAPI?.readFormAutomationSessionEvents?.(1000)
@@ -630,18 +630,13 @@ const FormAutomationContent = (): ReactElement => {
 
   const currentPageUrl = activeTab?.currentPageUrl || activeTab?.url || targetUrl;
   const currentPageScope = pageScopeFromUrl(currentPageUrl);
-  const activeNetworkEvents = networkEvents.filter((event) =>
-    event.browserSessionId ? event.browserSessionId === activeTab?.id : activeTab?.id === "default");
-  const activeSelectedEvent = selectedEvent && activeNetworkEvents.some(event => event.id === selectedEvent.id) ? selectedEvent : null;
+  const activeNetworkEvents = useMemo(() => networkEvents
+    .filter((event) => event.browserSessionId ? event.browserSessionId === activeTab?.id : activeTab?.id === "default")
+    .map(event => ["fetch", "xhr"].includes(event.type)
+      ? { ...event, contract: contractForSharedEvent(sharedOpenApi.sources, event, eventSpecSources[event.id]) } : event),
+  [networkEvents, activeTab?.id, sharedOpenApi.sources, eventSpecSources]);
+  const activeSelectedEvent = activeNetworkEvents.find(event => event.id === selectedEvent?.id) ?? null;
   const activeErrorCount = activeNetworkEvents.filter(isSessionError).length;
-
-  useEffect(() => {
-    setNetworkEvents((items) => items.map((item) => (
-      ["fetch", "xhr"].includes(item.type)
-        ? { ...item, contract: contractForEvent(openApi, item) }
-        : item
-    )));
-  }, [openApi]);
 
   const copyText = async (text: string, successMessage: string) => {
     try {
@@ -671,10 +666,10 @@ const FormAutomationContent = (): ReactElement => {
   };
 
   const copyApiEvent = () => {
-    if (!selectedEvent) return;
+    if (!activeSelectedEvent) return;
     void copyText(
-      apiEventClipboardText(selectedEvent, targetUrl),
-      isSessionError(selectedEvent)
+      apiEventClipboardText(activeSelectedEvent, targetUrl),
+      isSessionError(activeSelectedEvent)
         ? "API 오류 내용을 클립보드에 복사했습니다."
         : "API 요청·응답 스펙을 클립보드에 복사했습니다.",
     );
@@ -691,7 +686,15 @@ const FormAutomationContent = (): ReactElement => {
   };
 
   const selectedOverride = overrides.find((item) => item.id === selectedOverrideId) ?? overrides[0];
-  const selectedOverrideSchema = overrideResponseSchema(openApi, selectedOverride);
+  let overrideSourceUrl = "";
+  if (selectedOverride) {
+    try { overrideSourceUrl = new URL(selectedOverride.sourceUrl || selectedOverride.match, currentPageUrl).href; }
+    catch { /* A malformed rule or an about:blank guest has no matching document. */ }
+  }
+  const overrideSpec = matchSharedOpenApi(sharedOpenApi.sources, overrideSourceUrl, selectedOverride?.method);
+  const openApi = overrideSpec?.source.document ?? null;
+  const selectedOverrideSchema = overrideResponseSchema(openApi,
+    selectedOverride && overrideSpec ? { ...selectedOverride, sourceUrl: overrideSpec.url } : selectedOverride);
   const parsedOverrideBody = safeJson(overrideBodyText);
   const latestOverrideEvent = selectedOverride
     ? activeNetworkEvents.find((event) =>
@@ -1129,10 +1132,6 @@ const FormAutomationContent = (): ReactElement => {
             <MaterialIcon name="photo_camera" /> {captureBusy ? "캡처 중…" : "화면 캡처"}
             {!captureBusy && <span className="fa-shortcut-hint" aria-hidden="true">⌘/Ctrl ⇧ S</span>}
           </button>
-          <button className="button fa-header-action secondary" onClick={() => setOpenApiDialog(true)}>
-            {openApi && <span className="fa-swagger-dot" aria-hidden="true" />}
-            <MaterialIcon name="data_object" /> {openApi ? "Swagger 연결됨" : "Swagger 연결"}
-          </button>
           <button className="button button-primary fa-header-action" onClick={() => void autofill()} disabled={!draftFieldCount}>
             <MaterialIcon name="auto_fix_high" /> 선택 케이스 자동 입력
           </button>
@@ -1293,6 +1292,14 @@ const FormAutomationContent = (): ReactElement => {
             <NetworkPanel
               events={activeNetworkEvents}
               selectedEvent={activeSelectedEvent}
+              spec={activeSelectedEvent ? specForNetworkEvent(sharedOpenApi.sources, activeSelectedEvent, eventSpecSources[activeSelectedEvent.id]) : undefined}
+              specLoading={sharedOpenApi.loading}
+              specSources={sharedOpenApi.sources}
+              specErrors={sharedOpenApi.errors}
+              selectedSpecSource={activeSelectedEvent ? eventSpecSources[activeSelectedEvent.id] || "" : ""}
+              onSpecSource={source => { if (activeSelectedEvent) setEventSpecSources(current => ({ ...current, [activeSelectedEvent.id]: source })); }}
+              onRefreshSpec={sharedOpenApi.refresh}
+              onCopyUrl={url => { void copyText(url, "요청 URL을 복사했습니다."); }}
               filter={networkFilter}
               activeSessionName={activeTab.name}
               onSelect={setSelectedEvent}
@@ -1425,7 +1432,6 @@ const FormAutomationContent = (): ReactElement => {
         </aside>
       </div>
       {toast && <div className="toast"><span className="toast-dot" />{toast}</div>}
-      {openApiDialog && <OpenApiDialog document={openApi} onApply={setOpenApi} onClose={() => setOpenApiDialog(false)} />}
       {capture && <ScreenshotEditor capture={capture} onCancel={() => setCapture(null)} onCopy={copyCapture} />}
     </div>
   );
