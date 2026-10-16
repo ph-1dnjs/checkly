@@ -15,7 +15,7 @@
 
 ## `parseMarkdown`
 
-위치: `src/renderer/shared/model/scenario.ts`
+위치: `src/app/ipc/web-scenario/scenario.ts` (renderer 모델에서 재노출)
 
 `#~### 시나리오:` 또는 `Scenario:`에서 블록을 나누고 `url:`, `tag:`와 Given/When/Then/And/But/If 단계를 읽습니다. URL이 없으면 빈 문자열을 사용합니다. 공백뿐인 블록은 제외하지만 비어 있지 않은 임의 블록은 시나리오로 해석할 수 있으며 엄격한 유효성 검증은 하지 않습니다.
 
@@ -52,7 +52,7 @@ Then `주문 목록` 텍스트가 보인다 [대기 10초]
 | `estimateDurationSeconds` | goto 3초, manualFill 15초, 수동 제어/판정 300초, 나머지 기본 1초 |
 | `formatDuration`, `formatClock` | 시간 표시 |
 | `markerColor`, `defaultMarkerPosition` | pin 색·기본 좌표 |
-| `applyPositions` | 제목+URL과 단계 속성으로 저장 marker 결합 |
+| `applyPositions` | 시나리오 UUID·단계 databaseId로 저장 marker 결합. 이전 문서에 한해서 필드 매칭 허용 |
 | `scenarioToMarkdown` | Scenario를 표준 문법으로 직렬화 |
 | `replaceScenarioMarkdown` | 한 블록만 원문에서 교체 |
 
@@ -96,3 +96,5 @@ click occurrence는 1부터 시작합니다. iframe은 클릭 탐색에 포함�
 
 throw된 단계 오류는 `실행 실패: {message}` 로그와 failed status로 정규화합니다. 리포트 저장까지 실패하면 IPC가 reject될 수 있습니다. 조건은 기본 1초 또는 waitSeconds 동안 기다린 뒤 skip하며, 각 단계의 대기 의미·수동 timeout·취소 한계는 [실행 정책](../04-pages/040-scenario-run/01-overview.md)과 [예외 처리](../04-pages/040-scenario-run/04-edge-cases.md)를 봅니다.
 
+
+`normalizeDocument`는 기존 DB 문서에 시나리오·단계 UUID와 코드를 부여하고 Markdown 메타데이터와 마커를 정규화한다. `recordRun`은 실행 스냅샷을 기록하고 팀 DB 저장을 호출한다. 실제 단계 결과로 조건 미충족과 미실행을 구분한다.

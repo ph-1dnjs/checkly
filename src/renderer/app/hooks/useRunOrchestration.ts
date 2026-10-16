@@ -37,6 +37,7 @@ export type RunTimelineEntry = {
 type UseRunOrchestrationOptions = {
   showToast: (message: string) => void;
   setRoute: (route: Route) => void;
+  projectId?: string;
 };
 
 const SESSION_PROMPT_STORAGE_KEY = "checkly:keepSessionPromptAnswer";
@@ -54,6 +55,7 @@ const readSessionPromptAnswer = (): SessionPromptAnswer => {
 export const useRunOrchestration = ({
   showToast,
   setRoute,
+  projectId,
 }: UseRunOrchestrationOptions) => {
   const [manual, setManual] = useState<Step | null>(null);
   const [manualControl, setManualControl] = useState<
@@ -109,6 +111,7 @@ export const useRunOrchestration = ({
   const [sessionPromptPending, setSessionPromptPending] = useState<{
     scenarios: Scenario[];
     background: boolean;
+    trigger: NonNullable<RunRecord["trigger"]>;
   } | null>(null);
   const [runTimeline, setRunTimeline] = useState<RunTimelineEntry[]>([]);
   const [stackPaused, setStackPaused] = useState(false);
@@ -128,6 +131,31 @@ export const useRunOrchestration = ({
   const runVideoPaths = useRef<string[]>([]);
   const runVideoScenario = useRef<Scenario | null>(null);
   const runProgressRef = useRef<RunProgress>(runProgress);
+  const viewportRef = useRef({ width: 2560, height: 1440 });
+  const setViewport = async (size: { width: number; height: number }) => {
+    await window.electronAPI.setQaViewport(size);
+    viewportRef.current = size;
+  };
+  useEffect(() => {
+    setRunHistory([]);
+    setRunSummary({ total: 0, passed: 0, failed: 0 });
+    if (!projectId) return;
+    let alive = true;
+    void window.electronAPI.webScenarios.listRuns().then(records => {
+      if (!alive) return;
+      const restored = records.map(record => {
+        const paths = JSON.parse(localStorage.getItem(`web-run-uploads:${projectId}:${record.id}`) ?? "{}") as Record<string, string>;
+        const results = record.results.map(result => ({ ...result, scenario: { ...result.scenario,
+          steps: result.scenario.steps.map(step => step.action === "fileUpload" ? { ...step, value: paths[`${result.scenario.id}:${step.databaseId ?? step.id}`] ?? "" } : step),
+        } }));
+        return { ...record, results, scenarios: results.map(result => result.scenario) };
+      });
+      setRunHistory(restored);
+      setRunSummary({ total: restored.length, passed: restored.filter(record => record.status === "passed").length,
+        failed: restored.filter(record => record.status === "failed").length });
+    }).catch(error => { if (alive) showToast(error instanceof Error ? error.message : "실행 기록을 불러오지 못했습니다."); });
+    return () => { alive = false; };
+  }, [projectId]);
 
   useEffect(
     () =>
@@ -225,16 +253,25 @@ export const useRunOrchestration = ({
       )
     : 0;
 
-  const recordRun = (
+  const recordRun = async (
     completed: Scenario[],
     passed: number,
     failed: number,
     results: ScenarioRunResult[],
     startedAt: string,
+    trigger: NonNullable<RunRecord["trigger"]> = "picker",
+    cancelled = false,
+    viewport = viewportRef.current,
+    sessionKept = keepSessionRef.current,
   ) => {
-    const status: "passed" | "failed" = failed ? "failed" : "passed";
+    const status = cancelled ? "cancelled" : failed ? "failed" : "passed";
+    results = completed.map(scenario => results.find(result => result.scenario.id === scenario.id) ?? {
+      scenario, status: "cancelled", message: "실행이 취소되어 시작하지 않았습니다.",
+      stepResults: scenario.steps.map((_, index) => ({ stepNo: index + 1, status: "not_run", elapsedMs: 0 })),
+    });
     const record: RunRecord = {
-      id: `${Date.now()}`,
+      id: crypto.randomUUID(),
+      trigger, sessionKept, viewport, browser: "chromium",
       scenarios: completed,
       status,
       passed,
@@ -245,14 +282,22 @@ export const useRunOrchestration = ({
     };
     setLastRunRecord(record);
     setRunHistory((history) => {
-      const nextHistory = [record, ...history].slice(0, 5);
-      setRunSummary((summary) => ({
-        total: summary.total + 1,
-        passed: summary.passed + Number(status === "passed"),
-        failed: summary.failed + Number(status === "failed"),
-      }));
+      const nextHistory = [record, ...history].slice(0, 50);
+      setRunSummary({ total: nextHistory.length,
+        passed: nextHistory.filter(item => item.status === "passed").length,
+        failed: nextHistory.filter(item => item.status === "failed").length,
+      });
       return nextHistory;
     });
+    if (projectId) {
+      try {
+        const paths = Object.fromEntries(record.scenarios.flatMap(scenario => scenario.steps.filter(step => step.action === "fileUpload").map(step => [`${scenario.id}:${step.databaseId ?? step.id}`, step.value ?? ""])));
+        localStorage.setItem(`web-run-uploads:${projectId}:${record.id}`, JSON.stringify(paths));
+        await window.electronAPI.webScenarios.saveRun(record);
+      } catch (error) {
+        showToast(`실행 기록을 DB에 저장하지 못했습니다. ${error instanceof Error ? error.message : "다시 시도하세요."}`);
+      }
+    }
   };
 
   const pushTimelineEntry = (scenario: Scenario): number => {
@@ -291,8 +336,12 @@ export const useRunOrchestration = ({
     setRunTimeline(next);
   };
 
-  const startRun = (scenarios: Scenario[], background = false) => {
-    const toRun = scenarios;
+  const startRun = (scenarios: Scenario[], background = false, trigger: NonNullable<RunRecord["trigger"]> = "picker") => {
+    const toRun = structuredClone(scenarios).map(scenario => ({ ...scenario,
+      id: /^[a-f0-9-]{36}$/i.test(scenario.id) ? scenario.id : crypto.randomUUID(),
+    }));
+    const batchViewport = { ...viewportRef.current };
+    const batchSessionKept = keepSessionRef.current;
     const includesManualControl = toRun.some((item) =>
       item.steps.some((step) => step.action === "manualControl"),
     );
@@ -396,9 +445,7 @@ export const useRunOrchestration = ({
               scenario: runScenario,
               status: result.status,
               failedStepIndex:
-                result.status === "failed"
-                  ? runProgressRef.current.current
-                  : undefined,
+                result.status === "failed" ? result.failedStepIndex : undefined,
               message:
                 result.status === "failed"
                   ? result.log[result.log.length - 1]
@@ -406,6 +453,7 @@ export const useRunOrchestration = ({
               startedAt: new Date(attemptStartedAt).toISOString(),
               elapsedSeconds: attemptElapsed,
               log: result.log,
+              stepResults: result.stepResults ?? runScenario.steps.map((_, index) => ({ stepNo: index + 1, status: "not_run", elapsedMs: 0 })),
             };
             collected.push(entry);
             setLiveResults((r) => [...r, entry]);
@@ -430,6 +478,8 @@ export const useRunOrchestration = ({
             const entry: ScenarioRunResult = {
               scenario: runScenario,
               status: "cancelled",
+              startedAt: new Date(attemptStartedAt).toISOString(), elapsedSeconds: attemptElapsed, log: result.log,
+              stepResults: result.stepResults ?? runScenario.steps.map((_, index) => ({ stepNo: index + 1, status: "not_run", elapsedMs: 0 })),
             };
             collected.push(entry);
             setLiveResults((r) => [...r, entry]);
@@ -450,6 +500,7 @@ export const useRunOrchestration = ({
             message: error instanceof Error ? error.message : String(error),
             startedAt: new Date(attemptStartedAt).toISOString(),
             elapsedSeconds: Math.round((Date.now() - attemptStartedAt) / 1000),
+            stepResults: runScenario.steps.map((_, index) => ({ stepNo: index + 1, status: "not_run", elapsedMs: 0 })),
           };
           collected.push(entry);
           setLiveResults((r) => [...r, entry]);
@@ -471,6 +522,7 @@ export const useRunOrchestration = ({
           if (entry?.status === "queued") removeTimelineEntry(seq);
         }
       }
+      await recordRun(toRun, passed, failed, collected, batchStartedAt, trigger, cancelled, batchViewport, batchSessionKept);
       if (!keepSessionRef.current) {
         await window.electronAPI.finishQaWorker(workerId);
         if (sessionWorkerId.current === workerId) sessionWorkerId.current = null;
@@ -478,7 +530,6 @@ export const useRunOrchestration = ({
       activeWorkerId.current = null;
       if (sequence === runSequence.current) {
         if (!cancelled) {
-          recordRun(toRun, passed, failed, collected, batchStartedAt);
           try {
             const videoPath = await window.electronAPI.mergeRunVideos(
               runVideoPaths.current,
@@ -506,7 +557,8 @@ export const useRunOrchestration = ({
 
   // 실행 전에 "세션 유지" 여부를 한 번 묻는다. "다시 묻지 않기"로 답하기 전까지는
   // 실행마다 다시 물어보고, 답하기 전에는 startRun을 보류한다.
-  const beginRuns = (scenarios: Scenario[], background = false) => {
+  const beginRuns = (scenarios: Scenario[], background = false, trigger: NonNullable<RunRecord["trigger"]> = "picker") => {
+    if (running) return;
     if (!scenarios.length) {
       setRunValidationError(
         "실행할 시나리오가 없습니다. 편집기에서 시나리오를 작성하거나 시나리오 선택 화면에서 파일을 불러와 주세요.",
@@ -514,10 +566,10 @@ export const useRunOrchestration = ({
       return;
     }
     if (!sessionPromptDismissed) {
-      setSessionPromptPending({ scenarios, background });
+      setSessionPromptPending({ scenarios, background, trigger });
       return;
     }
-    startRun(scenarios, background);
+    startRun(scenarios, background, trigger);
   };
 
   // keep: 눌린 버튼("세션 유지" vs "닫기")에 따른 값. dontAskAgain: 체크박스 값으로,
@@ -537,7 +589,7 @@ export const useRunOrchestration = ({
     }
     const pending = sessionPromptPending;
     setSessionPromptPending(null);
-    if (pending) startRun(pending.scenarios, pending.background);
+    if (pending) startRun(pending.scenarios, pending.background, pending.trigger);
   };
 
   // 완료된 배치의 runQueue·liveResults를 그대로 둔 채, 선택한 시나리오 하나만
@@ -551,7 +603,11 @@ export const useRunOrchestration = ({
     activeWorkerId.current = workerId;
     if (keepSessionRef.current) setSessionActive(true);
     updateTimelineEntry(seq, { status: "running" });
+    scenario = structuredClone(scenario);
+    if (!/^[a-f0-9-]{36}$/i.test(scenario.id)) scenario.id = crypto.randomUUID();
     const attemptStartedAt = Date.now();
+    const attemptViewport = { ...viewportRef.current };
+    const attemptSessionKept = keepSessionRef.current;
     setRunning(true);
     runCancelled.current = false;
     setRunningScenario(scenario);
@@ -581,16 +637,17 @@ export const useRunOrchestration = ({
           `[재실행] ${scenario.title} ${result.status === "passed" ? "통과" : result.status === "cancelled" ? "취소" : "실패"}`,
         ]);
         if (result.status === "cancelled") {
-          entry = { scenario, status: "cancelled" };
+          entry = { scenario, status: "cancelled", log: result.log, stepResults: result.stepResults };
           cancelled = true;
           finalStatus = "cancelled";
         } else {
           entry = {
             scenario,
             status: result.status as "passed" | "failed",
+            log: result.log, stepResults: result.stepResults,
             failedStepIndex:
               result.status === "failed"
-                ? runProgressRef.current.current
+                ? result.failedStepIndex
                 : undefined,
             message:
               result.status === "failed"
@@ -612,6 +669,10 @@ export const useRunOrchestration = ({
           `[재실행] ${scenario.title} 실행 실패`,
         ]);
       }
+      entry.startedAt = new Date(attemptStartedAt).toISOString();
+      entry.elapsedSeconds = Math.round((Date.now() - attemptStartedAt) / 1000);
+      entry.stepResults ??= scenario.steps.map((_, index) => ({ stepNo: index + 1, status: "not_run", elapsedMs: 0 }));
+      await recordRun([scenario], Number(entry.status === "passed"), Number(entry.status === "failed"), [entry], entry.startedAt, "single", cancelled, attemptViewport, attemptSessionKept);
       const skipped = skipSeqRef.current === seq;
       if (skipped) skipSeqRef.current = null;
       if (skipped) {
@@ -726,16 +787,13 @@ export const useRunOrchestration = ({
 
   const cancelRuns = () => {
     runCancelled.current = true;
-    runSequence.current += 1;
     void window.electronAPI.cancelQa();
     // qa:cancel은 workerId와 무관하게 현재 브라우저를 즉시 닫으므로
     // 유지 중이던 세션도 함께 종료된 것으로 반영한다.
     sessionWorkerId.current = null;
     setSessionActive(false);
-    setRunning(false);
-    // runSequence를 앞당겼기 때문에 startRun/rerunScenario의 완료 처리가
-    // sequence 불일치로 건너뛰어질 수 있다. 현재 "running"으로 남아 있는
-    // 대기열 항목을 여기서 직접 취소 처리해 유령 카드로 남지 않게 한다.
+    // 실행기의 취소 응답을 기다려 단계 결과와 취소 기록을 저장한다.
+    // 대기열에는 취소 상태를 즉시 표시한다.
     const runningEntry = runTimelineRef.current.find(
       (entry) => entry.status === "running",
     );
@@ -870,6 +928,7 @@ export const useRunOrchestration = ({
     runProgressPercent,
     scenarioProgressPercent,
     beginRuns,
+    setViewport,
     cancelRuns,
     popoutViewport,
     submitManualInput,

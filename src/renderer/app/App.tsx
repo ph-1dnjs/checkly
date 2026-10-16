@@ -43,7 +43,7 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
   const scenarioState = useScenarioState({ projectId: account?.session.projectId, route, showToast, baseUrl: environment.baseUrl });
   const [pickedKeys, setPickedKeys] = useState<Set<string>>(new Set());
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const runOrchestration = useRunOrchestration({ showToast, setRoute });
+  const runOrchestration = useRunOrchestration({ showToast, setRoute, projectId: account?.session.projectId });
 
   // 폼 자동 완성에서는 현재 웹뷰만 새로고침하고, 다른 화면에서는 앱을 새로고침한다.
   useEffect(() => {
@@ -163,12 +163,12 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
     downloadFullRunVideo,
   } = runOrchestration;
 
-  const runScenarios = (items: typeof executableScenarios) => {
+  const runScenarios = (items: typeof executableScenarios, trigger: "editor" | "picker" = "picker") => {
     if (!account) { showToast("웹 시나리오를 사용하려면 로그인해 주세요."); return; }
     const resolved = environment.resolve(items);
-    if (resolved) beginRuns(resolved);
+    if (resolved) beginRuns(resolved, false, trigger);
   };
-  const runEditorContent = () => runScenarios(commitEditorRunSnapshot());
+  const runEditorContent = () => runScenarios(commitEditorRunSnapshot(), "editor");
   const inWorkspace = isScenarioWorkspaceRoute(route);
   const awaitingManual = Boolean(manual || manualControl || manualResult);
   const pickedScenarios = records.flatMap(recordScenarios).filter(item => pickedKeys.has(item.id));
@@ -334,7 +334,7 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
               void window.electronAPI.controlManualBrowser(event)
             }
             onSetViewport={(width, height) =>
-              void window.electronAPI.setQaViewport({ width, height })
+              void runOrchestration.setViewport({ width, height })
             }
             onCompleteManualControl={completeManualControl}
             onFailManualControl={failManualControl}
@@ -361,7 +361,12 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
         onOpenReport={setReportRecord}
         onRerun={(scenarios) => {
           setOpenRunRecord(null);
-          beginRuns(scenarios);
+          const record = openRunRecord;
+          void (async () => {
+            if (record?.viewport) await runOrchestration.setViewport(record.viewport);
+            if (record?.sessionKept !== undefined) runOrchestration.setKeepSession(record.sessionKept);
+            beginRuns(scenarios, false, "rerun");
+          })().catch(error => showToast(error instanceof Error ? error.message : "재실행 환경을 설정하지 못했습니다."));
         }}
       />
       <RunReportViewer

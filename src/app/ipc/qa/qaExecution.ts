@@ -1,3 +1,4 @@
+import type { RunStepResult } from "../web-scenario/scenario";
 import { app, type BrowserWindow } from "electron";
 import { mkdir, rename } from "node:fs/promises";
 import path from "node:path";
@@ -427,8 +428,22 @@ export const executeScenario = async (
   scenario: QaScenario,
   owner: BrowserWindow,
   options: QaRunOptions = {},
-): Promise<{ status: string; log: string[]; reportPath?: string }> => {
+): Promise<{ status: string; log: string[]; reportPath?: string; stepResults: RunStepResult[]; failedStepIndex?: number }> => {
   const log: string[] = [];
+  const stepResults: RunStepResult[] = scenario.steps.map((_, index) => ({ stepNo: index + 1, status: "not_run", elapsedMs: 0 }));
+  let activeIndex: number | undefined;
+  let stepStartedAt = 0;
+  const resultDetails = (status: string, messages: string[]) => {
+    const current = activeIndex === undefined ? undefined : stepResults[activeIndex];
+    if (current?.status === "not_run") {
+      current.elapsedMs = Date.now() - stepStartedAt;
+      if (status === "failed") {
+        current.status = "failed";
+        current.errorMessage = messages[messages.length - 1];
+      }
+    }
+    return { stepResults, failedStepIndex: status === "failed" ? activeIndex : undefined };
+  };
   let browser: Browser | undefined;
   let context: BrowserContext | undefined;
   let page: Page | undefined;
@@ -476,6 +491,7 @@ export const executeScenario = async (
     if (run.cancelled)
       return {
         status: "cancelled",
+        ...resultDetails("cancelled", log),
         log: ["실행이 취소되었습니다."],
         reportPath: await writeRunReport(scenario, "cancelled", [
           "실행이 취소되었습니다.",
@@ -556,10 +572,13 @@ export const executeScenario = async (
     }
     for (const [index, step] of scenario.steps.entries()) {
       activeStep = step;
+      activeIndex = index;
+      stepStartedAt = Date.now();
       if (run.cancelled) {
         const finalLog = [...log, "실행이 취소되었습니다."];
         return {
           status: "cancelled",
+          ...resultDetails("cancelled", log),
           log: finalLog,
           reportPath: await writeRunReport(scenario, "cancelled", finalLog),
         };
@@ -577,6 +596,8 @@ export const executeScenario = async (
         log.push(
           `${readableStep(step)} — 조건 '${step.condition}' 미충족으로 건너뜀`,
         );
+        stepResults[index].status = "skipped";
+        stepResults[index].elapsedMs = Date.now() - stepStartedAt;
         await captureStep(step);
         owner.webContents.send("qa:progress", {
           current: index + 1,
@@ -618,6 +639,7 @@ export const executeScenario = async (
           const finalLog = [...log, "실행이 취소되었습니다."];
           return {
             status: "cancelled",
+            ...resultDetails("cancelled", log),
             log: finalLog,
             reportPath: await writeRunReport(scenario, "cancelled", finalLog),
           };
@@ -651,16 +673,20 @@ export const executeScenario = async (
           const finalLog = [...log, "실행이 취소되었습니다."];
           return {
             status: "cancelled",
+            ...resultDetails("cancelled", log),
             log: finalLog,
             reportPath: await writeRunReport(scenario, "cancelled", finalLog),
           };
         }
+        stepResults[index].manualVerdict = result.status === "failed" ? "failed" : "passed";
+        stepResults[index].manualReason = result.reason;
         if (result.status === "failed") {
           const reason =
             result.reason?.trim() || "진행자가 실패로 판정했습니다.";
           const finalLog = [...log, `${readableStep(step)} — 실패: ${reason}`];
           return {
             status: "failed",
+            ...resultDetails("failed", finalLog),
             log: finalLog,
             reportPath: await writeRunReport(scenario, "failed", finalLog),
           };
@@ -693,16 +719,20 @@ export const executeScenario = async (
           const finalLog = [...log, "실행이 취소되었습니다."];
           return {
             status: "cancelled",
+            ...resultDetails("cancelled", log),
             log: finalLog,
             reportPath: await writeRunReport(scenario, "cancelled", finalLog),
           };
         }
+        stepResults[index].manualVerdict = result.status === "failed" ? "failed" : "passed";
+        stepResults[index].manualReason = result.reason;
         if (result.status === "failed") {
           const reason =
             result.reason?.trim() || "진행자가 실패로 판정했습니다.";
           const finalLog = [...log, `${readableStep(step)} — 실패: ${reason}`];
           return {
             status: "failed",
+            ...resultDetails("failed", finalLog),
             log: finalLog,
             reportPath: await writeRunReport(scenario, "failed", finalLog),
           };
@@ -760,6 +790,8 @@ export const executeScenario = async (
         step.action !== "manualResult"
       )
         log.push(`${readableStep(step)} — 완료`);
+      stepResults[index].status = "passed";
+      stepResults[index].elapsedMs = Date.now() - stepStartedAt;
       await captureStep(step);
       owner.webContents.send("qa:progress", {
         current: index + 1,
@@ -769,6 +801,7 @@ export const executeScenario = async (
     }
     return {
       status: "passed",
+      ...resultDetails("passed", log),
       log,
       reportPath: await writeRunReport(scenario, "passed", log),
     };
@@ -792,12 +825,13 @@ export const executeScenario = async (
     }
     const finalLog = [
       ...log,
-      `실행 실패: ${error instanceof Error ? error.message : String(error)}`,
+      `실행 ${run.cancelled ? "취소" : "실패"}: ${error instanceof Error ? error.message : String(error)}`,
     ];
     return {
-      status: "failed",
+      status: run.cancelled ? "cancelled" : "failed",
+      ...resultDetails(run.cancelled ? "cancelled" : "failed", finalLog),
       log: finalLog,
-      reportPath: await writeRunReport(scenario, "failed", finalLog),
+      reportPath: await writeRunReport(scenario, run.cancelled ? "cancelled" : "failed", finalLog),
     };
   } finally {
     activeRun = null;

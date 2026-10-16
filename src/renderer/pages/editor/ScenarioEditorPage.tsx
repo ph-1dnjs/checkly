@@ -38,7 +38,7 @@ type Props = {
   onScenarioChange: (scenario: Scenario) => void;
   onBeginMarkerPlacement: () => void;
   onToggleMarkersVisible: () => void;
-  onPlaceMarker: (position: { x: number; y: number; target: string; action: Action }) => void;
+  onPlaceMarker: (position: { x: number; y: number; target: string; action: Action; markerViewport?: Step["markerViewport"]; markerPageUrl?: string }) => void;
   onDeleteLast: () => void;
   onClearSteps: () => void;
   onSelectStep: (id: string) => void;
@@ -164,7 +164,7 @@ export const ScenarioEditorPage = ({
     } catch {
       // 웹뷰가 아직 로드되지 않았거나 접근할 수 없는 경우 직접 입력으로 이어집니다.
     }
-    onPlaceMarker({ x, y, ...marker });
+    onPlaceMarker({ x, y, ...marker, markerViewport: device, markerPageUrl: targetFrameRef.current?.getURL?.() || scenario.url });
   };
 
   const lineCount = sourceMarkdown.split("\n").length;
@@ -460,7 +460,7 @@ export const ScenarioEditorPage = ({
                 />
               )}
               {markersVisible && scenario.steps.map((step, index) => {
-                if (step.x === undefined || step.y === undefined) return null;
+                if (step.x === undefined || step.y === undefined || (step.markerViewport && step.markerViewport !== device)) return null;
                 const position = { x: step.x, y: step.y };
                 return (
                   <Button

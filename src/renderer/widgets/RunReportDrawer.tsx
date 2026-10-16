@@ -1,3 +1,4 @@
+import { stepOutcomes } from "../shared/report/run-report";
 import { Button } from "../shared/ui/Button";
 import {
   estimateDurationSeconds,
@@ -77,7 +78,7 @@ export const RunReportDrawer = ({
                     color: result.status === "passed" ? "#33806C" : "#C1543F",
                   }}
                 >
-                  {result.status === "passed" ? "✓" : "!"}
+                  {result.status === "passed" ? "✓" : result.status === "cancelled" ? "취소" : "!"}
                 </div>
                 <strong>{result.scenario.title}</strong>
                 <span>{formatSeconds(estimateDurationSeconds(result.scenario))}</span>
@@ -86,20 +87,16 @@ export const RunReportDrawer = ({
                 {result.scenario.steps.map((step, index) => (
                   <i
                     key={step.id}
-                    className={
-                      result.status === "failed" &&
-                      result.failedStepIndex !== undefined &&
-                      index >= result.failedStepIndex
-                        ? "failed"
-                        : ""
-                    }
+                    className={stepOutcomes(result)[index] === "failed" ? "failed" : ""}
+                    title={`${index + 1}단계: ${stepOutcomes(result)[index]}`}
+                    style={stepOutcomes(result)[index] === "skipped" || stepOutcomes(result)[index] === "not_run" ? { opacity: 0.3 } : undefined}
                   />
                 ))}
               </div>
               {result.status === "failed" && (
                 <div className="run-report-fail">
                   <div>
-                    STEP {(result.failedStepIndex ?? 0) + 1} FAILED
+                    {result.failedStepIndex === undefined ? "실행 준비 FAILED" : `STEP ${result.failedStepIndex + 1} FAILED`}
                   </div>
                   <div>{result.message}</div>
                 </div>

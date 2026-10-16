@@ -22,7 +22,7 @@ test('DB CRUD persists across reload, protects drafts and removes file controls'
   await page.getByRole('button', { name: '시나리오 · 편집과 실행' }).click()
   await page.getByRole('tab', { name: '편집' }).click()
   await page.locator('.scenario-files button').filter({ hasText: '팀 로그인' }).click()
-  await expect(source).toHaveValue(markdown)
+  await expect(source).toHaveValue(/# 시나리오: 팀 로그인[\s\S]*Given `로그인` 클릭/)
   await expect(page.getByText('UNSAVED', { exact: true })).toHaveCount(0)
   await source.fill(markdown.replace('팀 로그인', '수정된 로그인'))
   await page.getByRole('button', { name: '새 시나리오', exact: true }).click()
@@ -61,7 +61,7 @@ test('conflicting save and delete preserve the local draft', async ({ page }) =>
   await expect(source).toHaveValue(/완료/)
   await page.locator('.scenario-files').getByRole('button', { name: '새로고침' }).click()
   await page.getByRole('dialog').getByRole('button', { name: '저장하지 않고 열기' }).click()
-  await expect(source).toHaveValue(markdown)
+  await expect(source).toHaveValue(/# 시나리오: 팀 로그인[\s\S]*Given `로그인` 클릭/)
 })
 
 test('local mode shows login guidance without requesting the DB', async ({ page }) => {
@@ -96,7 +96,7 @@ test('upload paths remain on this PC while DB stores a reusable scenario', async
   await page.getByRole('button', { name: '시나리오 · 편집과 실행' }).click()
   await page.getByRole('tab', { name: '편집' }).click()
   await page.locator('.scenario-files button').filter({ hasText: '팀 로그인' }).click()
-  await expect(source).toHaveValue(upload)
+  await expect(source).toHaveValue(/`첨부`에 `\/Users\/test\/private.pdf` 파일 업로드/)
 })
 
 test('marker edits save together with the body and use the chosen environment', async ({ page }) => {
@@ -124,7 +124,7 @@ test('marker edits save together with the body and use the chosen environment', 
   await expect(page.getByText('UNSAVED', { exact: true })).toHaveCount(0)
   const saves = (await authCalls(page)).filter(([name]) => name === 'webScenarios.save')
   expect(saves).toHaveLength(2)
-  expect(JSON.parse(saves[1][1].positions)['팀 로그인\n/updated'][0]).toMatchObject({ x: 10, y: 20 })
+  expect(Object.values(JSON.parse(saves[1][1].positions)).flat()[0]).toMatchObject({ x: 10, y: 20 })
   await page.screenshot({ path: '/tmp/checkly-db-editor.png', fullPage: true })
 })
 

@@ -348,11 +348,12 @@ export const RunPage = ({
     const steps = item.steps.map((step, index) => {
       const failedAt =
         finished?.status === "failed" ? (finished.failedStepIndex ?? 0) : null;
-      const passed = finished
+      const outcome = finished?.stepResults?.find(result => result.stepNo === index + 1)?.status;
+      const passed = outcome ? outcome === "passed" : finished
         ? finished.status === "passed" ||
           (failedAt !== null && index < failedAt)
         : isCurrentScenario && index < runProgress.current;
-      const failed = failedAt !== null && index === failedAt;
+      const failed = outcome ? outcome === "failed" : failedAt !== null && index === failedAt;
       const isRunning =
         !finished &&
         running &&
@@ -402,7 +403,7 @@ export const RunPage = ({
     const groupState = finished
       ? finished.status === "failed"
         ? "fail"
-        : "pass"
+        : finished.status === "passed" ? "pass" : "pend"
       : isCurrentScenario && running
         ? "run"
         : "pend";

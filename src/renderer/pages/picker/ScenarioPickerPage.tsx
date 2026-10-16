@@ -16,12 +16,15 @@ type Props = {
 };
 export const recordScenarios = (record: WebScenarioRecord): Scenario[] => {
   const positions = JSON.parse(record.positions) as MarkerPositionStore;
-  return parseMarkdown(record.markdown, record.id).map(scenario => ({ ...scenario,
-    steps: scenario.steps.map(step => ({ ...step, ...positions[`${scenario.title}\n${scenario.url}`]?.find(item =>
-      item.action === step.action && item.target === step.target && item.value === step.value &&
-      item.prompt === step.prompt && item.condition === step.condition && item.waitSeconds === step.waitSeconds),
-    })),
-  }));
+  return parseMarkdown(record.markdown, record.id).map(scenario => {
+    const points = [...(positions[scenario.id] ?? positions[`${scenario.title}\n${scenario.url}`] ?? [])];
+    return { ...scenario, steps: scenario.steps.map(step => {
+      const index = points.findIndex(item => item.databaseId && step.databaseId ? item.databaseId === step.databaseId :
+        item.action === step.action && item.target === step.target && item.value === step.value &&
+        item.prompt === step.prompt && item.condition === step.condition && item.waitSeconds === step.waitSeconds && (item.occurrence ?? 1) === (step.occurrence ?? 1));
+      return { ...step, ...(index < 0 ? undefined : points.splice(index, 1)[0]), id: step.id };
+    }) };
+  });
 };
 export const ScenarioPickerPage = ({ records, loading, pickedKeys, onPick, onOpenEditor, onRun }: Props) => {
   const [activeId, setActiveId] = useState<string | null>(null);

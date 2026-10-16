@@ -90,7 +90,7 @@ Route = dashboard | editor | picker | run | settings
 | 현재 Markdown·선택 시나리오·마커 편집 | `App` | 앱 실행 중 + 명시적 DB 저장 |
 | 화면 route·편집 모드·모달 | `App` 또는 각 페이지 | 메모리 |
 | 실행 큐·진행률·로그·미리보기 | `App` | 메모리 |
-| 최근 실행 5개·통과/실패 요약 | `App` | 메모리, 재시작 시 초기화 |
+| 최근 실행 50개·통과/실패 요약 | `App` | 메모리 + 로그인 시 팀 DB에서 복원 |
 | DB 목록·선택 집합 | `useScenarioState` / `App` | 로그인 세션 수명 |
 | 설정 토글 | `SettingsPage` | 화면 컴포넌트 수명 |
 | 마커 대화상자 로컬 UI·viewport | `ScenarioEditorPage` | 화면 컴포넌트 수명 |
@@ -106,7 +106,7 @@ main 프로세스는 Electron `app.getPath('userData')` 아래에 앱 데이터�
 | 임시 녹화 | `userData/videos/temporary/` | WebM | 실행 후 runs로 이동 |
 | 실행 영상 | `userData/videos/runs/` | WebM | 다운로드·병합 원본, 앱 내 과거 목록 복원은 없음 |
 
-웹 시나리오는 `web_scenarios`에 본문과 마커를 함께 저장한다. 비로그인 시 DB 요청 없이 로그인 안내를 표시한다. `scenarios.md`, `marker-positions.json`, `scenario-folder.json`은 더 이상 읽거나 쓰지 않으며 기존 파일은 삭제하지 않는다. 화면 테스트는 auth/DB IPC mock으로 검증하고 실제 RLS는 로컬 Supabase 통합 테스트로 분리한다.
+웹 시나리오는 `web_scenarios` 문서와 `web_scenario_items`·`web_scenario_steps` 정규화 행을 RPC 한 트랜잭션으로 저장한다. 마커는 단계 UUID·좌표·viewport·페이지 URL로 복원한다. `web_runs`·시나리오 결과·단계 결과에 실행 기록을 저장하며 최근 50개를 로그인 후 복원한다. 비로그인 시 DB 요청 없이 로그인 안내를 표시한다. `scenarios.md`, `marker-positions.json`, `scenario-folder.json`은 더 이상 읽거나 쓰지 않으며 기존 파일은 삭제하지 않는다. 화면 테스트는 auth/DB IPC mock으로 검증하고 실제 RLS는 로컬 Supabase 통합 테스트로 분리한다.
 
 ## 시나리오 데이터 흐름
 
@@ -115,7 +115,7 @@ web_scenarios (Supabase, 로그인한 프로젝트)
   → Markdown
   → parseMarkdown
     → Scenario[]
-      → applyPositions(title + URL, marker store)
+      → applyPositions(scenario UUID + step databaseId, marker store)
         → 편집/선택/실행 UI
           → runQa(Scenario, workerId)
             → executeScenario
@@ -135,7 +135,7 @@ web_scenarios (Supabase, 로그인한 프로젝트)
 5. 자동 단계는 main에서 실행하고, 수동 단계는 이벤트로 렌더러의 응답을 기다립니다.
 6. 시나리오마다 결과·리포트·영상이 생성됩니다.
 7. 큐가 끝나면 worker를 닫고 ffmpeg로 수집된 영상을 이어 붙입니다.
-8. 취소되지 않은 묶음은 최근 실행 기록에 추가됩니다.
+8. 성공·실패·취소 묶음은 실행 환경·스냅샷·단계 결과와 함께 팀 DB에 저장됩니다. 개별 재실행도 별도 묶음으로 저장합니다.
 
 한 시나리오가 실패해도 다중 실행 큐는 다음 시나리오를 계속 실행합니다. 명시적 취소만 큐를 중단합니다.
 

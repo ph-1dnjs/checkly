@@ -8,6 +8,8 @@ const call = async <T>(method: string, ...args: unknown[]): Promise<T> => {
   return result.value
 }
 export const webScenarioBridge: WebScenarioBridge = {
+  listRuns: () => call('listRuns'),
+  saveRun: record => call('saveRun', record),
   list: () => call('list'),
   save: input => call('save', input),
   remove: (id, version) => call('remove', id, version),

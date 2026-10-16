@@ -192,6 +192,15 @@ export async function installAuthStub(page: Page, options: AuthStubOptions) {
         ...(options.enabled === 'missing' ? {} : { auth }),
         ...(options.teamSettings ? { apiTesting } : {}),
         webScenarios: {
+          listRuns: async () => {
+            record('webScenarios.listRuns', null)
+            return JSON.parse(store.getItem('web-runs') ?? '[]')
+          },
+          saveRun: async (input: any) => {
+            record('webScenarios.saveRun', input)
+            const rows = JSON.parse(store.getItem('web-runs') ?? '[]')
+            store.setItem('web-runs', JSON.stringify([input, ...rows]))
+          },
           list: async () => {
             record('webScenarios.list', null)
             if (options.webScenarioOffline) throw new Error('서버에 연결할 수 없습니다. 잠시 후 다시 시도하세요.')
@@ -201,7 +210,16 @@ export async function installAuthStub(page: Page, options: AuthStubOptions) {
             record('webScenarios.save', input)
             if (options.webScenarioConflict && input.id) throw new Error('다른 팀원이 먼저 수정했습니다. 새로 불러온 뒤 다시 저장하세요.')
             const rows = JSON.parse(store.getItem('web-scenarios') ?? '[]')
-            const row = { ...input, id: input.id ?? crypto.randomUUID(), updatedAt: new Date().toISOString(), createdBy: 'minsu', updatedBy: 'minsu' }
+            const identities = new Map<string, string>()
+            if (!input.id) {
+              for (const match of input.markdown.matchAll(/(?:^id: |<!-- step:)([a-f0-9-]{36})/gm)) identities.set(match[1], crypto.randomUUID())
+            }
+            const markdown = input.markdown.replace(/(^id: |<!-- step:)([a-f0-9-]{36})/gm,
+              (_match: string, prefix: string, id: string) => prefix + (identities.get(id) ?? id))
+            const positions = JSON.stringify(Object.fromEntries(Object.entries(JSON.parse(input.positions)).map(([id, points]) => [
+              identities.get(id) ?? id, (points as any[]).map(point => ({ ...point, databaseId: identities.get(point.databaseId) ?? point.databaseId })),
+            ])))
+            const row = { ...input, markdown, positions, id: input.id ?? crypto.randomUUID(), updatedAt: new Date().toISOString(), createdBy: 'minsu', updatedBy: 'minsu' }
             store.setItem('web-scenarios', JSON.stringify([row, ...rows.filter((item: any) => item.id !== row.id)]))
             return row
           },

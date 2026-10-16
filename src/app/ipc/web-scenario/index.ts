@@ -3,6 +3,7 @@ import type { MainDomain } from "../domain";
 import { getCurrentSession, getSupabase } from "../auth/client";
 import { AuthFailure, MESSAGES, toUserMessage } from "../auth/errors";
 import { WebScenarioStore } from "./store";
+import type { RunRecord } from "./scenario";
 import type { WebScenarioInput } from "./types";
 
 export const webScenarioDomain: MainDomain = {
@@ -18,6 +19,8 @@ export const webScenarioDomain: MainDomain = {
         } catch (error) { return { ok: false, message: toUserMessage(error) }; }
       });
     };
+    handle("listRuns", store => store.listRuns());
+    handle("saveRun", (store, record: RunRecord) => store.saveRun(record));
     handle("list", store => store.list());
     handle("save", (store, input: WebScenarioInput) => store.save(input));
     handle("remove", (store, id: string, version: string) => store.remove(id, version));

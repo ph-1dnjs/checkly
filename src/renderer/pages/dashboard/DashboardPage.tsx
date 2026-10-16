@@ -17,7 +17,9 @@ type Props = {
 const TAPE_HEIGHTS = [20, 26, 30, 23, 28];
 
 const durationOf = (record: RunRecord) =>
-  record.scenarios.reduce(
+  record.results.every(result => result.elapsedSeconds !== undefined)
+    ? record.results.reduce((total, result) => total + (result.elapsedSeconds ?? 0), 0)
+    : record.scenarios.reduce(
     (total, item) => total + estimateDurationSeconds(item),
     0,
   );
@@ -105,7 +107,7 @@ export const DashboardPage = ({
                 key={index}
                 className={`dash-tape-bar${bad ? " failed" : ""}`}
                 style={{ height: `${bad ? 12 : TAPE_HEIGHTS[index % TAPE_HEIGHTS.length]}px` }}
-                title={record ? (bad ? "실패" : "통과") : "기록 없음"}
+                title={record ? (record.status === "cancelled" ? "취소" : bad ? "실패" : "통과") : "기록 없음"}
               />
             ))}
           </div>
@@ -144,7 +146,7 @@ export const DashboardPage = ({
                     : (record.scenarios[0]?.title ?? "시나리오 실행")}
                 </div>
                 <div className="dash-row-subtitle">
-                  {record.scenarios.map((scenario) => scenario.title).join(" · ")}
+                  {record.status === "cancelled" ? "취소 · " : ""}{record.scenarios.map((scenario) => scenario.title).join(" · ")}
                 </div>
               </div>
               <div
@@ -167,7 +169,7 @@ export const DashboardPage = ({
       ) : (
         <div className="dash-empty">
           <strong>아직 실행 기록이 없습니다.</strong>
-          <p>시나리오를 실행하면 최근 5개의 기록이 여기에 저장됩니다.</p>
+          <p>시나리오를 실행하면 최근 50개의 기록이 여기에 저장됩니다.</p>
           <Button variant="secondary" onClick={onOpenRun}>
             실행 화면으로 이동
           </Button>

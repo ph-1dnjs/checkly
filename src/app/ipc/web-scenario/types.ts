@@ -1,3 +1,4 @@
+import type { RunRecord } from "./scenario";
 export type WebScenarioRecord = {
   id: string;
   title: string;
@@ -15,6 +16,8 @@ export type WebScenarioInput = {
   positions: string;
 };
 export type WebScenarioBridge = {
+  listRuns(): Promise<RunRecord[]>;
+  saveRun(record: RunRecord): Promise<void>;
   list(): Promise<WebScenarioRecord[]>;
   save(input: WebScenarioInput): Promise<WebScenarioRecord>;
   remove(id: string, expectedUpdatedAt: string): Promise<void>;

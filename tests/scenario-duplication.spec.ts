@@ -25,7 +25,7 @@ test('duplicates multiple cases with defaults, tags and unique names', async ({ 
   await dialog.getByRole('button', { name: '2개 복제', exact: true }).click()
   await expect(dialog).toHaveCount(0)
   const source = page.getByRole('textbox', { name: '시나리오 Markdown 원본' })
-  await expect(source).toHaveValue([
+  await expect.poll(async () => (await source.inputValue()).replace(/^(id|code):.*\n/gm, '').replace(/ <!-- step:[a-f0-9-]{36} -->/g, '')).toBe([
     '# 시나리오: 로그인',
     'url: https://example.com',
     'tag: 인증',

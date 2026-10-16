@@ -21,30 +21,53 @@ import {
 } from "../../shared/model/scenario-duplication";
 
 const initialMarkdown = "";
+const isUuid = (id: string) => /^[a-f0-9-]{36}$/i.test(id);
+const identifyMarkdown = (markdown: string, previous: Scenario[] = []): string => {
+  const parsed = parseMarkdown(markdown);
+  return splitScenarioBlocks(markdown).map((block, index) => {
+    const item = parsed[index];
+    const prior = previous.find(scenario => scenario.id === item.id) ?? previous[index];
+    const id = isUuid(item.id) ? item.id : prior && isUuid(prior.id) ? prior.id : crypto.randomUUID();
+    const code = item.code ?? prior?.code ?? `TC_${index + 1}`;
+    let stepIndex = 0;
+    const lines = block.trim().split("\n").filter(line => !/^\s*(id|code):/.test(line));
+    lines.splice(1, 0, `id: ${id}`, `code: ${code}`);
+    return lines.map(line => {
+      if (!/^(Given|When|Then|And|But|If)\s+/i.test(line.trim())) return line;
+      const step = item.steps[stepIndex];
+      const stepId = step.databaseId ?? prior?.steps[stepIndex]?.databaseId ?? crypto.randomUUID();
+      stepIndex += 1;
+      return `${line.replace(/\s*<!-- step:[a-f0-9-]{36} -->/, "")} <!-- step:${stepId} -->`;
+    }).join("\n");
+  }).join("\n\n");
+};
 const positionKey = (scenario: Scenario) =>
-  `${scenario.title}\n${scenario.url}`;
+  scenario.id;
 const applyPositions = (
   scenario: Scenario,
   store: MarkerPositionStore,
 ): Scenario => {
-  const positions = [...(store[positionKey(scenario)] ?? [])];
+  const positions = [...(store[positionKey(scenario)] ?? store[`${scenario.title}\n${scenario.url}`] ?? [])];
   return {
     ...scenario,
     steps: scenario.steps.map((step) => {
       const positionIndex = positions.findIndex(
         (item) =>
+          (item.databaseId && step.databaseId ? item.databaseId === step.databaseId :
           item.action === step.action &&
           item.target === step.target &&
           item.value === step.value &&
           item.prompt === step.prompt &&
           item.condition === step.condition &&
           item.waitSeconds === step.waitSeconds &&
-          (item.occurrence ?? 1) === (step.occurrence ?? 1),
+          (item.occurrence ?? 1) === (step.occurrence ?? 1)),
       );
       const position = positionIndex < 0 ? undefined : positions.splice(positionIndex, 1)[0];
       return position
         ? {
             ...step,
+            markerViewport: position.markerViewport,
+            markerPageUrl: position.markerPageUrl,
             occurrence: position.occurrence,
             x: position.x,
             y: position.y,
@@ -56,7 +79,7 @@ const applyPositions = (
 };
 const serializePositions = (store: MarkerPositionStore): string => JSON.stringify(
   Object.fromEntries(Object.entries(store).sort(([a], [b]) => a.localeCompare(b)).map(([key, items]) => [key,
-    items.map(item => ({ action: item.action, target: item.target, value: item.value,
+    items.map(item => ({ databaseId: item.databaseId, markerViewport: item.markerViewport, markerPageUrl: item.markerPageUrl, action: item.action, target: item.target, value: item.value,
       prompt: item.prompt, condition: item.condition, waitSeconds: item.waitSeconds,
       occurrence: item.occurrence, x: item.x, y: item.y, color: item.color })),
   ])),
@@ -64,6 +87,8 @@ const serializePositions = (store: MarkerPositionStore): string => JSON.stringif
 const scenarioToMarkdown = (scenario: Scenario): string =>
   [
     `# 시나리오: ${scenario.title}`,
+    ...(isUuid(scenario.id) ? [`id: ${scenario.id}`] : []),
+    ...(scenario.code ? [`code: ${scenario.code}`] : []),
     `url: ${scenario.url}`,
     ...(scenario.tag ? [`tag: ${scenario.tag}`] : []),
     "",
@@ -88,7 +113,7 @@ const scenarioToMarkdown = (scenario: Scenario): string =>
                       : step.action === "expectText"
                         ? `\`${step.target}\` 텍스트가 보인다${step.waitSeconds ? ` [대기 ${step.waitSeconds}초]` : ""}`
                         : `\`${step.target}\`${step.occurrence && step.occurrence > 1 ? ` [${step.occurrence}번째]` : ""} 클릭${step.waitSeconds ? ` [대기 ${step.waitSeconds}초]` : ""}`;
-      return `${prefix} ${step.condition ? `화면에 \`${step.condition}\`가 있는 경우 ` : ""}${action}`;
+      return `${prefix} ${step.condition ? `화면에 \`${step.condition}\`가 있는 경우 ` : ""}${action}${step.waitSeconds && step.action !== "click" && step.action !== "expectText" ? ` [대기 ${step.waitSeconds}초]` : ""}${step.databaseId ? ` <!-- step:${step.databaseId} -->` : ""}`;
     }),
   ].join("\n");
 const replaceScenarioMarkdown = (
@@ -143,7 +168,7 @@ export const useScenarioState = ({
   const updateSteps = (steps: Step[]) =>
     setScenario((current) => ({
       ...current,
-      steps: steps.map((step, index) => ({ ...step, id: String(index + 1) })),
+      steps: steps.map((step, index) => ({ ...step, databaseId: step.databaseId ?? crypto.randomUUID(), id: String(index + 1) })),
     }));
 
   const uploadKey = (id: string) => `web-scenario-uploads:${projectId}:${id}`;
@@ -182,6 +207,7 @@ export const useScenarioState = ({
     ...positionStore,
     ...(scenario.title ? { [positionKey(scenario)]: scenario.steps.flatMap(step =>
       step.x === undefined || step.y === undefined ? [] : [{
+        databaseId: step.databaseId, markerViewport: step.markerViewport, markerPageUrl: step.markerPageUrl,
         action: step.action, target: step.target, value: step.value,
         prompt: step.prompt, condition: step.condition, waitSeconds: step.waitSeconds,
         occurrence: step.occurrence, x: step.x, y: step.y, color: step.color,
@@ -242,8 +268,12 @@ export const useScenarioState = ({
     applyRecord(record);
   };
   const applyRecord = (record: WebScenarioRecord) => {
-    const store = JSON.parse(record.positions) as MarkerPositionStore;
-    const first = parseMarkdown(record.markdown)[0] ?? emptyScenario;
+    const original = JSON.parse(record.positions) as MarkerPositionStore;
+    const parsed = parseMarkdown(record.markdown);
+    const store = Object.fromEntries(parsed.map(item => [item.id,
+      applyPositions(item, original).steps.filter(step => step.x !== undefined && step.y !== undefined),
+    ]));
+    const first = parsed[0] ?? emptyScenario;
     setActiveRecord(record);
     setSourceMarkdown(record.markdown);
     setSavedMarkdown(record.markdown);
@@ -262,8 +292,9 @@ export const useScenarioState = ({
     setPositionStore({});
     setSavedPositions("{}");
     setSavedMarkdown("");
-    setSourceMarkdown("# 시나리오: 새 시나리오\nurl: /\n\n");
-    const first = parseMarkdown("# 시나리오: 새 시나리오\nurl: /")[0];
+    const markdown = identifyMarkdown("# 시나리오: 새 시나리오\nurl: /\n\n");
+    setSourceMarkdown(markdown);
+    const first = parseMarkdown(markdown)[0];
     setScenario(first);
     setMarkerScenarioId(first.id);
     setSelectedId("");
@@ -275,7 +306,9 @@ export const useScenarioState = ({
     if (!enabled || saving.current || loading) return false;
     const parsed = parseMarkdown(markdown);
     if (!parsed.length) { showToast("저장할 시나리오를 작성하세요."); return false; }
-    const positions = serializePositions(Object.fromEntries(parsed.map(item => [positionKey(item), currentPositions[positionKey(item)] ?? []])));
+    markdown = identifyMarkdown(markdown, previews);
+    const identified = parseMarkdown(markdown);
+    const positions = serializePositions(Object.fromEntries(identified.map((item, index) => [positionKey(item), currentPositions[positionKey(parsed[index])] ?? []])));
     saving.current = true;
     setBusy(true);
     try {
@@ -288,10 +321,16 @@ export const useScenarioState = ({
       setActiveRecord(record);
       localStorage.setItem(uploadKey(saved.id), JSON.stringify(shared.paths));
       setRecords(items => [record, ...items.filter(item => item.id !== record.id)]);
-      setSourceMarkdown(current => current === sourceMarkdown ? markdown : current);
-      setSavedMarkdown(markdown);
-      setSavedPositions(positions);
-      setPositionStore(JSON.parse(positions));
+      setSourceMarkdown(current => current === sourceMarkdown ? record.markdown : current);
+      setSavedMarkdown(record.markdown);
+      setSavedPositions(serializePositions(JSON.parse(record.positions)));
+      setPositionStore(JSON.parse(record.positions));
+      const savedScenarios = parseMarkdown(record.markdown);
+      const currentScenario = savedScenarios.find(item => item.id === scenario.id) ?? savedScenarios[parsed.findIndex(item => item.id === scenario.id)] ?? savedScenarios[0];
+      if (currentScenario) {
+        setScenario(applyPositions(currentScenario, JSON.parse(record.positions)));
+        setMarkerScenarioId(currentScenario.id);
+      }
       showToast("시나리오를 저장했습니다.");
       return true;
     } catch (error) { reportError(error); return false; }
@@ -333,7 +372,7 @@ export const useScenarioState = ({
     const scenarios = parseMarkdown(markdown).map((item) =>
       editorMode === "marker" && item.id === scenario.id
         ? scenario
-        : applyPositions(item, positionStore),
+        : applyPositions(item, currentPositions),
     );
     setSourceMarkdown(markdown);
     return scenarios;
@@ -344,15 +383,22 @@ export const useScenarioState = ({
     y,
     target,
     action,
+    markerViewport,
+    markerPageUrl,
   }: {
     x: number;
     y: number;
     target: string;
     action: Action;
+    markerViewport?: Step["markerViewport"];
+    markerPageUrl?: string;
   }) => {
     const index = scenario.steps.length;
     setPendingMarker({
       id: String(index + 1),
+      databaseId: crypto.randomUUID(),
+      markerViewport,
+      markerPageUrl,
       action,
       target,
       connected: true,
@@ -390,7 +436,6 @@ export const useScenarioState = ({
   const saveMarkerEditsAndReturn = async () => {
     const markdown = replaceScenarioMarkdown(sourceMarkdown, scenario);
     if (await saveRecord(markdown)) {
-      setSourceMarkdown(markdown);
       setSaveBeforeReturning(false);
       setEditorMode("text");
     }
@@ -448,13 +493,14 @@ export const useScenarioState = ({
       usedTitles.push(title);
       const steps = target.steps.map((step) => {
         const kind = EDITABLE_VALUE_KIND[step.action];
-        if (!kind) return step;
+        if (!kind) return { ...step, databaseId: crypto.randomUUID() };
         const value = values[step.id]?.trim() || defaults[step.id] || "";
-        return applyEditableValue(step, kind, value);
+        return { ...applyEditableValue(step, kind, value), databaseId: crypto.randomUUID() };
       });
       return scenarioToMarkdown({
         ...target,
-        id: "",
+        id: crypto.randomUUID(),
+        code: `TC_${usedTitles.length}`,
         title,
         steps,
       });

@@ -6,7 +6,7 @@
 
 | 함수 / IPC | 요청 | 응답·효과 |
 | --- | --- | --- |
-| runQa / `qa:start` | QaScenario, `{preview?,workerId?}` | `{status,log,reportPath?}`; 한 시나리오 종료까지 대기 |
+| runQa / `qa:start` | QaScenario, `{preview?,workerId?}` | `{status,log,reportPath?,stepResults,failedStepIndex?}`; 한 시나리오 종료까지 대기 |
 | finishQaWorker / `qa:finish-worker` | workerId | ID가 일치하는 worker 종료; 없거나 다른 ID면 무시 |
 | cancelQa / `qa:cancel` | 없음 | 취소 표시·수동 대기 해제·worker 종료 |
 | submitManualInput / `qa:manual-input` | string | 대기 중인 입력 Promise 해결 |
@@ -41,8 +41,8 @@ QaScenario는 id/title/url/steps, QaStep은 id/action/target 및 value/required/
 | 데이터 | 위치·형식 | 기록·복원·삭제 정책 |
 | --- | --- | --- |
 | 실행 큐·로그·결과·수동 입력 | React 메모리 | 앱 재시작 복원 없음 |
-| 최근 실행 | runHistory 최대 5개 | 시나리오 스냅샷, status, passed/failed, ranAt, results 저장. 메모리만 |
-| 요약 | runSummary | 취소되지 않은 묶음의 누적 total/passed/failed; 재시작 초기화 |
+| 최근 실행 | Supabase `web_runs`·`web_run_scenario_results`·`web_run_step_results` | 성공·실패·취소·개별 재실행 모두 저장. 로그인 후 최근 50개 복원 |
+| 요약 | runSummary | 복원한 최근 기록의 total/passed/failed |
 | 단계 이미지/실시간 이미지 | React의 data URL | 다음 실행에서 초기화. 디스크 이미지 파일로 저장하지 않음 |
 | 리포트 | `userData/reports/run-{Date.now()}/report.json`, `report.html` | 시나리오별 생성; 자동 삭제·과거 목록 복원 없음 |
 | 임시 영상 | `userData/videos/temporary/` | 컨텍스트의 녹화 파일 생성 위치 |
@@ -59,3 +59,13 @@ userData는 Electron 런타임 경로입니다. JSON 리포트 필드는 `runId,
 manualFill의 제출 문자열은 명시적으로 실행 로그·리포트에 추가하지 않습니다. 그러나 화면 캡처·녹화에는 입력 후 화면이 포함될 수 있고, locator 오류 메시지나 사용자 실패 사유에 대한 별도 비밀값 마스킹도 없습니다. “수동 입력값을 어느 산출물에도 남기지 않는다”는 보장은 없습니다.
 
 미리보기 비활성화는 녹화 비활성화가 아닙니다. manualControl도 녹화 컨텍스트를 사용합니다. 원래 Page 영상만 이동·수집하고 팝업별 영상은 별도로 수집하지 않습니다. 임시 영상의 포괄 정리, 리포트/영상 보존기한, 저장 용량 제한·자동 삭제·암호화는 이 경로에 구현되어 있지 않습니다.
+
+## 팀 실행 기록
+
+`webScenarios.saveRun(record)` / `web-scenario:saveRun`은 `save_web_run` RPC로 묶음·시나리오 결과·단계 결과를 원자적으로 저장한다. `listRuns()` / `web-scenario:listRuns`는 같은 프로젝트의 최근 50개를 시작 시각 역순으로 조회한다. main에서 로그인·세션 변경과 입력을 검증하고 프로젝트 RLS를 적용한다.
+
+실행 시작 시 배열을 복사하여 편집 상태와 분리한다. 트리거는 editor/picker/rerun/single, 환경은 Chromium·viewport·세션 유지 여부다. 결과의 `scenario_snapshot`은 URL을 해석한 당시의 시나리오와 단계 전체를 보존한다. 저장하지 않은 시나리오도 스냅샷은 남기며 이 경우 scenario FK는 null이다. 기록 재실행은 스냅샷과 기록된 viewport·세션 설정을 사용한다.
+
+단계 결과는 passed/failed/skipped(조건 미충족)/not_run으로 저장한다. 실제 시간·오류·수동 판정·실패 사유를 기록하고 리포트에도 반영한다. 실패 단계는 실행기의 실제 index로 전달하며 기본 URL 접속 실패는 단계 실패로 추정하지 않는다. 취소 응답을 기다려 기록을 저장하고, 시작하지 않은 시나리오도 cancelled/not_run 결과를 남긴다.
+
+업로드 경로는 공유 스냅샷에서 비우며 `web-run-uploads:<projectId>:<runId>` localStorage에서 같은 PC에만 복원한다. 영상·단계 이미지·기존 HTML 파일은 DB에 올리지 않는다. DB 저장 실패는 토스트로 알리고 현재 메모리 기록은 유지한다. 종료 전 완료되지 않은 실행은 DB 기록으로 복원되지 않는다.
