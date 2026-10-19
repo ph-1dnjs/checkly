@@ -1,9 +1,16 @@
 import { contextBridge, ipcRenderer, webFrame } from "electron";
 import { isNextInternalNetworkEvent } from "./ipc/form-automation/networkFilter";
 
+// Only accepts recorder events; no auth, filesystem or raw IPC API reaches the tested site.
+contextBridge.exposeInMainWorld("__CHECKLY_SESSION_BRIDGE__", {
+  emit: (key: string, batch: unknown) => ipcRenderer.send("live-session:events", key, batch),
+});
+
 contextBridge.exposeInMainWorld("__CHECKLY_FORM_AUTOMATION__", {
-  emitNetwork: (payload: unknown) =>
-    ipcRenderer.sendToHost("form-automation:network-event", payload),
+  emitNetwork: (payload: unknown) => {
+    ipcRenderer.sendToHost("form-automation:network-event", payload);
+    ipcRenderer.send("live-session:failure", payload);
+  },
 });
 
 window.addEventListener("keydown", (event) => {

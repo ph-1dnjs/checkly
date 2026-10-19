@@ -5,6 +5,7 @@ import type { FormAutomationApi } from "./form-automation";
 import type { QaApi } from "./qa";
 import type { ScenarioFileApi } from "./scenario-file";
 import type { UpdateApi } from "./update";
+import type { LiveSessionBridge } from "./live-session";
 
 export {};
 
@@ -13,6 +14,7 @@ export type ElectronAPI = {
   apiTesting: ApiTestingBridge;
   auth: AuthBridge;
   windowSettings: WindowSettingsBridge;
+  liveSession: LiveSessionBridge;
 } & UpdateApi &
   ScenarioFileApi &
   QaApi &

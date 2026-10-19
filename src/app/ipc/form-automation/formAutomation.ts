@@ -11,6 +11,7 @@ import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createFormAutomationWorkbook } from "./formAutomationReport";
 import { isNextInternalNetworkEvent } from "./networkFilter";
+import { failureTrigger } from "../live-session/failure";
 
 export type FormAutomationTextInput = {
   webContentsId: number;
@@ -48,6 +49,7 @@ export const appendFormAutomationSessionEvent = async (
   payload: Record<string, unknown>,
 ): Promise<boolean> => {
   if (isNextInternalNetworkEvent(payload)) return true;
+  if (!failureTrigger(payload)) return true;
   await mkdir(path.dirname(sessionLogPath()), { recursive: true });
   await appendFile(sessionLogPath(), `${JSON.stringify(payload)}\n`, "utf8");
   return true;

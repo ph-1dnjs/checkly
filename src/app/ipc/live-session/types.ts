@@ -1,0 +1,30 @@
+export type ReplayEvent = { type: number; timestamp: number; data: unknown };
+export type RecordingBatch = { documentId: string; url: string; title: string; events: ReplayEvent[] };
+export type LiveSession = {
+  id: string;
+  title: string;
+  url: string;
+  source: "browser" | "scenario";
+  startedAt: number;
+  endedAt?: number;
+  status: "recording" | "saved" | "interrupted" | "error";
+  eventCount: number;
+  bytes: number;
+  error?: string;
+  trigger?: { type: string; at: number; url: string; status?: number; logId?: string };
+  captureStartAt?: number;
+  captureEndAt?: number;
+  team?: { projectId: string; userId: string };
+  syncStatus?: "pending" | "uploaded" | "error";
+  syncError?: string;
+  browserSessionId?: string;
+};
+export type SessionDocument = { id: string; url: string; title: string; events: ReplayEvent[] };
+export type SessionRecording = { session: LiveSession; documents: SessionDocument[] };
+export type LiveSessionSnapshot = { sessions: LiveSession[]; active: LiveSession[]; mode?: "local" | "team"; error?: string };
+export type LiveSessionBridge = {
+  list: () => Promise<LiveSessionSnapshot>;
+  read: (id: string) => Promise<SessionRecording>;
+  remove: (id: string) => Promise<void>;
+  onChanged: (callback: () => void) => () => void;
+};

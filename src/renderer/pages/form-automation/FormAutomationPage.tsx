@@ -1,3 +1,4 @@
+import { SessionRecordingsDialog } from "./SessionRecordingsDialog";
 import {
   useCallback,
   useEffect,
@@ -290,6 +291,8 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
   const [eventSpecSources, setEventSpecSources] = useState<Record<string, string>>({});
   const [capture, setCapture] = useState<ScreenshotCapture | null>(null);
   const [captureBusy, setCaptureBusy] = useState(false);
+  const [recordingsOpen, setRecordingsOpen] = useState(false);
+  const closeRecordings = useCallback(() => setRecordingsOpen(false), []);
   const [zoomPercent, setZoomPercent] = useStoredState("checkly-form-browser-zoom", 80);
   const [viewportId, setViewportId] = useStoredState("checkly-form-browser-viewport", "desktop");
   const [landscape, setLandscape] = useStoredState("checkly-form-browser-landscape", false);
@@ -1138,6 +1141,8 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
     <div className="form-automation-page">
       <PageHeader icon="dynamic_form" title="폼 자동 완성" className="form-automation-header">
         <div className="fa-header-actions">
+          <span className="ls-auto-recording">오류 전 10초 · 후 5초 저장</span>
+          <button className="button fa-header-action secondary" onClick={() => setRecordingsOpen(true)}><MaterialIcon name="history" /> 브라우저 기록</button>
           <button className="button fa-header-action secondary" onClick={onNative}><MaterialIcon name="smartphone" /> 모바일 앱</button>
           <button
             className="button fa-header-action secondary"
@@ -1470,6 +1475,7 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
         </aside>
       </div>
       {toast && <div className="toast"><span className="toast-dot" />{toast}</div>}
+      {recordingsOpen && <SessionRecordingsDialog onClose={closeRecordings} />}
       {capture && <ScreenshotEditor capture={capture} onCancel={() => setCapture(null)} onCopy={copyCapture} />}
     </div>
   );

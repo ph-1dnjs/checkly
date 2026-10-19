@@ -2,6 +2,7 @@ import { contextBridge } from 'electron'
 import { apiTestingBridge } from './api-testing/bridge'
 import { authBridge } from './ipc/auth/bridge'
 import { formAutomationBridge } from './ipc/form-automation/bridge'
+import { liveSessionBridge } from './ipc/live-session/bridge'
 import { qaBridge } from './ipc/qa/bridge'
 import { scenarioFileBridge } from './ipc/scenario-file/bridge'
 import { updateBridge } from './ipc/update/bridge'
@@ -14,6 +15,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   apiTesting: apiTestingBridge,
   auth: authBridge,
   windowSettings: windowSettingsBridge,
+  liveSession: liveSessionBridge,
   ...updateBridge,
   ...scenarioFileBridge,
   ...qaBridge,

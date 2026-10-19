@@ -1,5 +1,6 @@
 import { session, type BrowserWindow, type WebContents } from "electron";
 import { electronOutPath } from "../../paths";
+import { attachReplayGuest } from "../live-session/service";
 
 const formAutomationSessions = new Set<ReturnType<typeof session.fromPartition>>();
 const webviewPreloadPath = (): string =>
@@ -41,6 +42,7 @@ const configureFormAutomationPopups = (
   contents.on("did-create-window", (childWindow) => {
     childWindow.setMenuBarVisibility(false);
     const childContents = childWindow.webContents;
+    attachReplayGuest(childContents, ownerWindow.webContents, contents);
     const blockUnsafeNavigation = (event: Electron.Event, url: string) => {
       if (!safeWebUrl(url, true)) event.preventDefault();
     };
@@ -66,6 +68,7 @@ export const attachFormAutomationWebviews = (mainWindow: BrowserWindow): void =>
 
   mainWindow.webContents.on("did-attach-webview", (_event, guestContents) => {
     if (!formAutomationSessions.has(guestContents.session)) return;
+    attachReplayGuest(guestContents, mainWindow.webContents);
     configureFormAutomationPopups(guestContents, mainWindow);
   });
 };

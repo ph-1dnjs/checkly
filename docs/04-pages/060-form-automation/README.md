@@ -26,3 +26,7 @@
 
 
 웹뷰 preload는 main의 import 경로로 로드되지 않고 파일 경로로 실행되므로 `tsconfig.electron.json`의 별도 빌드 진입점에 포함해야 합니다. `npm run build` 뒤 `dist-electron/formAutomationWebviewPreload.js`가 생성되어야 API·페이지 오류 수집과 오버라이드가 작동합니다.
+
+## 브라우저 자동 기록
+
+폼 자동 완성의 테스트 브라우저는 오류 전후 5초를 자동 기록한다. 팀 로그인 시 API·이동 로그를 DB에 보내고 오류 기록만 비공개 Storage에 공유하며, 로그아웃 상태에서는 로컬에 저장한다. 헤더의 **브라우저 기록**에서 저장된 화면을 재생한다. 기록 창을 열어도 브라우저와 수집은 계속된다. [저장·재생 문서](recording/README.md)를 참고한다.
