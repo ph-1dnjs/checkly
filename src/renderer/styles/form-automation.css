@@ -14,6 +14,25 @@
   color:#14181c;
   background:#fff;
 }
+.fa-native-workbench { display:grid; grid-template-columns:minmax(350px,1fr) minmax(420px,0.9fr); flex:1; min-height:0; overflow:hidden; padding-bottom:90px; }
+.fa-native-device { display:flex; flex-direction:column; min-height:0; min-width:0; border-right:1px solid #e4e7ea; }
+.fa-native-toolbar { display:flex; align-items:center; gap:7px; padding:8px 10px; border-bottom:1px solid #e4e7ea; flex-wrap:wrap; }
+.fa-native-toolbar select,.fa-native-toolbar input { flex:1; min-width:100px; height:30px; padding:0 6px; border:1px solid #d8dde2; border-radius:4px; background:#fff; font-size:12px; }
+.fa-native-toolbar button,.fa-native-error button { height:30px; padding:0 9px; border:1px solid #d8dde2; border-radius:4px; background:#fff; color:#3d4650; font-size:12px; cursor:pointer; }
+.fa-native-toolbar button.primary { background:#1f63ae; border-color:#1f63ae; color:#fff; }
+.fa-native-toolbar button:disabled { opacity:.45; cursor:default; }
+.fa-native-toolbar span { color:#5a646e; font-size:11px; }
+.fa-native-screen { display:flex; flex:1; min-height:0; align-items:center; justify-content:center; padding:12px; overflow:hidden; background:repeating-linear-gradient(135deg,#fafbfc 0 8px,#f4f6f8 8px 16px); }
+.fa-native-screen img { display:block; max-height:100%; max-width:100%; width:auto; height:auto; object-fit:contain; touch-action:none; user-select:none; cursor:crosshair; box-shadow:0 0 0 1px #d8dde2; }
+.fa-native-screen img:focus { outline:2px solid #3d8ce0; outline-offset:3px; }
+.fa-native-empty { text-align:center; color:#5a646e; font-size:12px; line-height:1.7; }
+.fa-native-empty>.msi { display:block; font-size:40px; color:#8a939c; margin-bottom:12px; }
+.fa-native-empty strong { display:block; color:#14181c; font-size:15px; }
+.fa-native-error { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 12px; background:#fdf6f5; border-bottom:1px solid #e9c4c0; color:#b32318; font-size:12px; white-space:pre-wrap; overflow-wrap:anywhere; max-height:130px; overflow:auto; flex:none; }
+.fa-native-inspector { overflow:auto; }
+.fa-native-help { padding:10px 12px; border-bottom:1px solid #e4e7ea; color:#5a646e; font-size:12px; line-height:1.6; }
+.fa-native-help summary { cursor:pointer; color:#1f63ae; }
+.fa-native-help p { margin:8px 0 0; }
 /* 헤더는 공통 PageHeader(48px). 액션은 오른쪽에 28px 버튼으로 붙인다. */
 .form-automation-header .fa-header-actions { display:flex; align-items:center; justify-content:flex-end; gap:8px; min-width:0; margin-left:auto; overflow-x:auto; scrollbar-width:none; }
 .fa-header-action { display:flex; align-items:center; justify-content:center; gap:6px; flex:none; height:28px; min-height:28px; padding:0 12px; border-radius:4px; font-size:12px; white-space:nowrap; }

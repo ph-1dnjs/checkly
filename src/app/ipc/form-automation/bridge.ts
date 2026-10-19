@@ -1,7 +1,23 @@
 import { ipcRenderer } from 'electron'
 import type { FormAutomationStorageKey, FormAutomationStoredState, FormAutomationStoredValues } from './storageTypes'
+import type { NativeInspectorSnapshot, NativeOverride, SimulatorApp, SimulatorDevice, SimulatorFrame, SimulatorInput, SimulatorStatus } from './nativeInspectorTypes'
+import { subscribe } from '../subscribe'
 
 export const formAutomationBridge = {
+  saveReactNativeModule: (): Promise<string | null> => ipcRenderer.invoke('form-automation:native-save-module'),
+  simulatorDevices: (): Promise<SimulatorDevice[]> => ipcRenderer.invoke('form-automation:simulator-devices'),
+  simulatorApps: (udid: string): Promise<SimulatorApp[]> => ipcRenderer.invoke('form-automation:simulator-apps', udid),
+  simulatorStatus: (): Promise<SimulatorStatus> => ipcRenderer.invoke('form-automation:simulator-status'),
+  connectSimulator: (udid: string): Promise<SimulatorStatus> => ipcRenderer.invoke('form-automation:simulator-connect', udid),
+  disconnectSimulator: (): Promise<void> => ipcRenderer.invoke('form-automation:simulator-disconnect'),
+  launchSimulatorApp: (udid: string, bundleId: string, restart = false): Promise<void> => ipcRenderer.invoke('form-automation:simulator-launch', udid, bundleId, restart),
+  simulatorInput: (udid: string, input: SimulatorInput): Promise<void> => ipcRenderer.invoke('form-automation:simulator-input', udid, input),
+  onSimulatorFrame: (callback: (frame: SimulatorFrame) => void) => subscribe('form-automation:simulator-frame', callback),
+  nativeInspectorSnapshot: (): Promise<NativeInspectorSnapshot> => ipcRenderer.invoke('form-automation:native-snapshot'),
+  startNativeInspector: (rules: NativeOverride[]): Promise<NativeInspectorSnapshot> => ipcRenderer.invoke('form-automation:native-start', rules),
+  stopNativeInspector: (): Promise<void> => ipcRenderer.invoke('form-automation:native-stop'),
+  setNativeInspectorRules: (rules: NativeOverride[]): Promise<void> => ipcRenderer.invoke('form-automation:native-rules', rules),
+  clearNativeInspectorEvents: (): Promise<void> => ipcRenderer.invoke('form-automation:native-clear'),
   loadFormAutomationState: (legacy: FormAutomationStoredValues): Promise<FormAutomationStoredState> =>
     ipcRenderer.invoke('form-automation:load-state', legacy),
   setFormAutomationState: (key: FormAutomationStorageKey, value: unknown): Promise<void> =>

@@ -38,6 +38,7 @@
     "files": [
       "dist/**",
       "dist-electron/**",
+      "integrations/react-native/checkly.js",
       "package.json"
     ],
     "asarUnpack": [

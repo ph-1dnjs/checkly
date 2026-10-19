@@ -36,6 +36,14 @@ type FormAutomationRequestInput = {
 const sessionLogPath = () =>
   path.join(app.getPath("userData"), "form-automation-session-events.jsonl");
 
+export const saveReactNativeModule = async (): Promise<string | null> => {
+  const result = await dialog.showSaveDialog({ title: "React Native 프로젝트에 연결 모듈 저장", defaultPath: "checkly.js", filters: [{ name: "JavaScript", extensions: ["js"] }] });
+  if (result.canceled || !result.filePath) return null;
+  const source = await readFile(path.join(app.getAppPath(), "integrations", "react-native", "checkly.js"), "utf8");
+  await writeFile(result.filePath, source, "utf8");
+  return result.filePath;
+};
+
 export const appendFormAutomationSessionEvent = async (
   payload: Record<string, unknown>,
 ): Promise<boolean> => {

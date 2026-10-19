@@ -45,6 +45,7 @@ import { contractForSharedEvent, matchSharedOpenApi } from "./sharedOpenApi";
 import { specForNetworkEvent } from "./networkSpec";
 import { ScreenshotEditor, type ScreenshotCapture } from "./ScreenshotEditor";
 import { FormAutomationStorageProvider, useStoredState } from "./StoredState";
+import { NativeInspectorPage } from "./NativeInspectorPage";
 import {
   apiEventClipboardText,
   isSessionError,
@@ -243,11 +244,14 @@ const CaseValueInput = ({
   );
 };
 
-export const FormAutomationPage = (): ReactElement => (
-  <FormAutomationStorageProvider><FormAutomationContent /></FormAutomationStorageProvider>
-);
+export const FormAutomationPage = (): ReactElement => {
+  const [native, setNative] = useState(false);
+  return <FormAutomationStorageProvider>{native
+    ? <NativeInspectorPage onBack={() => setNative(false)} />
+    : <FormAutomationContent onNative={() => setNative(true)} />}</FormAutomationStorageProvider>;
+};
 
-const FormAutomationContent = (): ReactElement => {
+const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactElement => {
   const [targetUrl, setTargetUrl] = useStoredState("checkly-form-target-url", DEFAULT_URL);
   const [browserTabs, setBrowserTabs] = useStoredState<BrowserSession[]>(
     "checkly-form-browser-sessions",
@@ -1134,6 +1138,7 @@ const FormAutomationContent = (): ReactElement => {
     <div className="form-automation-page">
       <PageHeader icon="dynamic_form" title="폼 자동 완성" className="form-automation-header">
         <div className="fa-header-actions">
+          <button className="button fa-header-action secondary" onClick={onNative}><MaterialIcon name="smartphone" /> 모바일 앱</button>
           <button
             className="button fa-header-action secondary"
             disabled={captureBusy}
