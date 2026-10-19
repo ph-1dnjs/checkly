@@ -438,8 +438,8 @@ body.resizing-form-timeline webview { pointer-events:none; }
 .fa-override-actions .msi { font-size:14px; }
 
 /* Screenshot annotation */
-.fa-capture-editor { position:fixed; z-index:200; inset:0; display:grid; place-items:center; overflow:hidden; padding:76px 18px 18px; background:#101418; }
-.fa-capture-editor>canvas { display:block; max-width:100%; max-height:100%; background:#fff; box-shadow:0 0 0 1px rgba(255,255,255,.15); cursor:crosshair; touch-action:none; }
+.fa-capture-editor { position:fixed; z-index:200; inset:0; display:grid; grid-template-rows:minmax(0,1fr); place-items:center; overflow:hidden; padding:76px 18px 18px; background:#101418; }
+.fa-capture-editor>canvas { display:block; min-width:0; min-height:0; width:auto; height:auto; max-width:calc(100vw - 36px); max-height:calc(100vh - 94px); background:#fff; box-shadow:0 0 0 1px rgba(255,255,255,.15); cursor:crosshair; touch-action:none; }
 .fa-capture-toolbar { position:absolute; z-index:2; top:12px; left:12px; right:12px; display:flex; align-items:center; gap:7px; min-height:52px; padding:7px 9px; border:1px solid #4a535b; background:#26323a; color:#fff; box-shadow:0 8px 28px rgba(0,0,0,.35); }
 .fa-capture-title { display:flex; min-width:185px; align-items:center; gap:7px; }
 .fa-capture-title>.msi { color:#72c8e9; font-size:19px; }
