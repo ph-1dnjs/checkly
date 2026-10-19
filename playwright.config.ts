@@ -2,8 +2,8 @@ import { defineConfig, devices } from '@playwright/test'
 
 export default defineConfig({
   testDir: './tests',
-  // tests/auth·tests/supabase는 node:test 파일이다.
-  testIgnore: ['**/api-testing/**', '**/auth/**', '**/supabase/**'],
+  // Node test suites run through their own package scripts, not Playwright.
+  testIgnore: ['**/api-testing/**', '**/auth/**', '**/supabase/**', '**/mobile-inspector/**', '**/run-report.test.ts'],
   use: {
     baseURL: 'http://127.0.0.1:4173',
     trace: 'on-first-retry'

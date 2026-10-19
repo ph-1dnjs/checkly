@@ -20,6 +20,7 @@
     "test:ui": "playwright test --ui",
     "test:api": "tsx --test tests/api-testing/*.test.ts",
     "test:report": "tsx --test tests/run-report.test.ts",
+    "test:mobile": "tsx --test tests/mobile-inspector/*.test.ts",
     "test:api:desktop": "npm run build && tsx tests/api-testing/desktop.e2e.ts",
     "test:supabase": "tsx --test tests/supabase/*.test.ts",
     "storybook": "storybook dev -p 6006",
