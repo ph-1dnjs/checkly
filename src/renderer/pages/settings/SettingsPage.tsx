@@ -1,50 +1,72 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "../../shared/ui/Button";
-import { Toggle } from "./Toggle";
 import { WindowSettingsSection } from "./WindowSettingsSection";
 import type { Scenario } from "../../shared/model/scenario";
 import type { UpdateStatus } from "../../shared/model/update";
 import checklyMark from "../../assets/checkly-mark.png";
-import type { AuthAccount } from "../auth/model";
+import { copyText, type AuthAccount } from "../auth/model";
 import { AccountCard } from "./AccountCard";
+import { AccountSection } from "./AccountSection";
+import { EndpointSettings } from "./EndpointSettings";
+import { SettingRow, SettingsSection, Switch, useOpenSections, type SectionId } from "./SettingsSection";
 import { TeamProjectSettings } from "./TeamProjectSettings";
 import { useProjectInfo } from "./useProjectInfo";
 
-// account는 팀 프로젝트가 켜져 있고 로그인했을 때만 있다. 없으면 예전 설정 화면 그대로다.
+// account는 팀 프로젝트가 켜져 있고 로그인했을 때만 있다. 없으면 팀 섹션 대신 예전 프로젝트 행을 보여준다.
 type Props = { scenario: Scenario; account?: AuthAccount | null };
 
 const RELEASES_URL = "https://github.com/ph-1dnjs/checkly/releases/latest";
+const UNQUARANTINE = "xattr -cr /Applications/Checkly.app";
 const isMac = navigator.userAgent.includes("Mac");
+
+const TEAM_SECTIONS: SectionId[] = ["account", "team", "endpoints", "run", "app"];
+const LOCAL_SECTIONS: SectionId[] = ["project", "run", "app"];
 
 const updateStatusLabel = (status: UpdateStatus): string => {
   switch (status.state) {
     case "checking":
-      return "새 버전을 확인하는 중입니다";
+      return "확인 중";
     case "available":
-      return `새 버전 ${status.version}을(를) 내려받는 중입니다`;
-    case "not-available":
-      return "최신 버전을 사용 중입니다";
+      return `새 버전 ${status.version} 내려받는 중`;
     case "downloading":
-      return `새 버전을 내려받는 중입니다 (${status.percent}%)`;
+      return `내려받는 중 (${status.percent}%)`;
     case "downloaded":
-      return `새 버전 ${status.version} 설치 준비가 끝났습니다`;
+      return `새 버전 ${status.version} 설치 준비 완료`;
     case "error":
-      return `업데이트 확인에 실패했습니다: ${status.message}`;
+      return `업데이트 확인 실패: ${status.message}`;
     default:
-      return "";
+      return "최신 버전";
+  }
+};
+
+const updateTone = (status: UpdateStatus): { icon: string; tone: string } => {
+  switch (status.state) {
+    case "checking":
+    case "available":
+    case "downloading":
+      return { icon: "progress_activity", tone: "busy" };
+    case "downloaded":
+      return { icon: "download_done", tone: "info" };
+    case "error":
+      return { icon: "error", tone: "fail" };
+    default:
+      return { icon: "check_circle", tone: "pass" };
   }
 };
 
 export const SettingsPage = ({ scenario, account }: Props) => {
   const project = useProjectInfo(account);
+  const sections = useOpenSections(account ? TEAM_SECTIONS : LOCAL_SECTIONS);
   const [keepVideo, setKeepVideo] = useState(true);
   const [notifyFail, setNotifyFail] = useState(true);
-  const [notifySlack, setNotifySlack] = useState(false);
   const [appVersion, setAppVersion] = useState("");
   const [autoCheck, setAutoCheck] = useState(true);
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({
     state: "idle",
   });
+  const [macHelp, setMacHelp] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const copiedTimer = useRef<number | undefined>(undefined);
 
   useEffect(() => {
     void window.electronAPI.getAppVersion().then(setAppVersion);
@@ -52,7 +74,11 @@ export const SettingsPage = ({ scenario, account }: Props) => {
       setAutoCheck(settings.autoCheck),
     );
     void window.electronAPI.getUpdateStatus().then(setUpdateStatus);
-    return window.electronAPI.onUpdateStatus(setUpdateStatus);
+    const unsubscribe = window.electronAPI.onUpdateStatus(setUpdateStatus);
+    return () => {
+      unsubscribe();
+      window.clearTimeout(copiedTimer.current);
+    };
   }, []);
 
   const toggleAutoCheck = () => {
@@ -68,144 +94,139 @@ export const SettingsPage = ({ scenario, account }: Props) => {
     void window.electronAPI.checkForUpdates().then(setUpdateStatus);
   };
 
+  const copyCommand = async () => {
+    if (!(await copyText(UNQUARANTINE))) return;
+    setCopied(true);
+    window.clearTimeout(copiedTimer.current);
+    copiedTimer.current = window.setTimeout(() => setCopied(false), 1400);
+  };
+
+  const section = (id: SectionId, icon: string, title: string) => ({
+    icon,
+    title,
+    open: sections.isOpen(id),
+    onToggle: () => sections.toggle(id),
+  });
+  const version = appVersion ? `v${appVersion}` : "—";
+  const update = updateTone(updateStatus);
+  const updating = updateStatus.state === "checking" || updateStatus.state === "downloading";
+
   return (
     <div className="settings-scroll">
-      <div className="settings-page">
-        <h1>설정</h1>
+      <div className="settings-shell" data-screen-label="설정">
+        <h1 className="settings-title">설정</h1>
 
         {account && <AccountCard account={account} project={project} />}
 
-        <div className="settings-group">
-          <div className="settings-group-label">
-            <span>UPDATE</span>
-            <i />
-          </div>
-          <div className="settings-row">
-            <div>
-              <div className="settings-row-label">현재 버전</div>
-              <div className="settings-row-hint">
-                {updateStatus.state === "idle" || updateStatus.state === "not-available"
-                  ? "최신 버전입니다"
-                  : updateStatusLabel(updateStatus)}
-              </div>
-            </div>
-            <div className="settings-row-value">
-              v{appVersion || "—"}
-              {updateStatus.state === "downloaded" ? (
-                <Button
-                  variant="primary"
-                  onClick={() => void window.electronAPI.installUpdate()}
-                >
+        <div className="settings-toolbar">
+          <Button
+            variant="ghost"
+            iconOnly
+            className="settings-fold-all"
+            aria-label={sections.allOpen ? "모두 접기" : "모두 펼치기"}
+            title={sections.allOpen ? "모두 접기" : "모두 펼치기"}
+            onClick={sections.toggleAll}
+          >
+            <span className="msi" aria-hidden="true">{sections.allOpen ? "unfold_less" : "unfold_more"}</span>
+          </Button>
+        </div>
+
+        {account ? (
+          <>
+            <SettingsSection {...section("account", "person", "내 계정")}>
+              <AccountSection account={account} />
+            </SettingsSection>
+            <SettingsSection {...section("team", "group", "팀 프로젝트")}>
+              <TeamProjectSettings account={account} project={project} />
+            </SettingsSection>
+            <SettingsSection {...section("endpoints", "dns", "엔드포인트")}>
+              <EndpointSettings account={account} />
+            </SettingsSection>
+          </>
+        ) : (
+          <SettingsSection {...section("project", "folder", "프로젝트")}>
+            <SettingRow label="기본 URL">
+              <span className="setting-mono">{scenario.url || "—"}</span>
+            </SettingRow>
+            <SettingRow label="환경">
+              <span className="setting-mono">dev</span>
+            </SettingRow>
+          </SettingsSection>
+        )}
+
+        <SettingsSection {...section("run", "play_circle", "실행·알림")}>
+          <SettingRow label="기본 브라우저" action={<span className="setting-muted small">다른 브라우저 준비 중</span>}>
+            <span className="setting-mono">Chromium</span>
+          </SettingRow>
+          <SettingRow
+            label="실행 영상 보관"
+            action={<Switch label="실행 영상 보관" on={keepVideo} onToggle={() => setKeepVideo((value) => !value)} />}
+          >
+            <span className="setting-hint">실패한 실행은 30일간 보관</span>
+          </SettingRow>
+          <SettingRow
+            label="실패 시 알림"
+            action={<Switch label="실패 시 알림" on={notifyFail} onToggle={() => setNotifyFail((value) => !value)} />}
+          />
+          <SettingRow label="Slack 연동" disabled action={<Switch label="Slack 연동" on={false} disabled onToggle={() => undefined} />}>
+            <span className="setting-hint">준비 중</span>
+          </SettingRow>
+        </SettingsSection>
+
+        <SettingsSection {...section("app", "computer", "앱")}>
+          <SettingRow
+            label="현재 버전"
+            action={
+              updateStatus.state === "downloaded" ? (
+                <Button variant="primary" className="setting-chip" onClick={() => void window.electronAPI.installUpdate()}>
                   재시작하여 설치
                 </Button>
               ) : (
-                <Button
-                  variant="default"
-                  disabled={updateStatus.state === "checking" || updateStatus.state === "downloading"}
-                  onClick={checkNow}
-                >
-                  {updateStatus.state === "checking" ? "확인 중…" : "지금 확인"}
+                <Button variant="secondary" className="setting-chip" disabled={updating} onClick={checkNow}>
+                  {updateStatus.state === "checking" ? "확인 중…" : "업데이트 확인"}
                 </Button>
-              )}
-            </div>
-          </div>
-          <Toggle
-            label="자동 업데이트 확인"
-            hint="앱을 실행하는 동안 주기적으로 새 버전을 확인합니다"
-            on={autoCheck}
-            onToggle={toggleAutoCheck}
-          />
-          <div className="settings-row">
-            <div>
-              <div className="settings-row-label">다운로드</div>
-              <div className="settings-row-hint">
-                최신 설치 파일을 GitHub Releases에서 내려받습니다
-                {isMac
-                  ? " · 아직 서명되지 않아 실행 시 \"손상되었기 때문에 열 수 없습니다\"가 뜨면 터미널에서 xattr -cr /Applications/Checkly.app 실행 후 다시 여세요"
-                  : ""}
-              </div>
-            </div>
-            <div className="settings-row-value">
-              <a
-                className="button"
-                href={RELEASES_URL}
-                target="_blank"
-                rel="noreferrer"
-              >
-                다운로드 페이지 열기
+              )
+            }
+          >
+            <span className="setting-version">
+              <span className="setting-mono">{version}</span>
+              <span className="setting-update" data-tone={update.tone} aria-live="polite">
+                <span className="msi" aria-hidden="true">{update.icon}</span>
+                {updateStatusLabel(updateStatus)}
+              </span>
+            </span>
+          </SettingRow>
+          <SettingRow label="자동 업데이트 확인" action={<Switch label="자동 업데이트 확인" on={autoCheck} onToggle={toggleAutoCheck} />} />
+          <WindowSettingsSection />
+          <SettingRow
+            label="설치 파일"
+            action={
+              <a className="setting-chip" href={RELEASES_URL} target="_blank" rel="noreferrer">
+                GitHub Releases
+                <span className="msi muted" aria-hidden="true">open_in_new</span>
               </a>
-            </div>
-          </div>
-        </div>
-
-        <WindowSettingsSection />
-
-        {account ? (
-          <TeamProjectSettings account={account} project={project} />
-        ) : (
-          <div className="settings-group">
-            <div className="settings-group-label">
-              <span>PROJECT</span>
-              <i />
-            </div>
-            <div className="settings-row">
-              <div>
-                <div className="settings-row-label">기본 URL</div>
-                <div className="settings-row-hint">실행 시 상대 경로의 기준</div>
+            }
+          >
+            {isMac && (
+              <Button className="setting-disclosure" aria-expanded={macHelp} onClick={() => setMacHelp((value) => !value)}>
+                <span className="msi" aria-hidden="true">{macHelp ? "expand_more" : "chevron_right"}</span>
+                macOS "손상됨" 오류가 뜰 때
+              </Button>
+            )}
+          </SettingRow>
+          {isMac && macHelp && (
+            <div className="setting-row-note setting-command-help">
+              <span>터미널에서 실행한 뒤 다시 여세요</span>
+              <div className="setting-command">
+                <code>{UNQUARANTINE}</code>
+                <Button variant="ghost" onClick={() => void copyCommand()} aria-label={copied ? "명령어 복사됨" : "명령어 복사"}>
+                  <span className="msi" aria-hidden="true">{copied ? "check" : "content_copy"}</span>
+                  {copied ? "복사됨" : "복사"}
+                </Button>
               </div>
-              <div className="settings-row-value">{scenario.url || "—"}</div>
             </div>
-            <div className="settings-row">
-              <div>
-                <div className="settings-row-label">환경</div>
-                <div className="settings-row-hint">dev / staging / prod</div>
-              </div>
-              <div className="settings-row-value">dev</div>
-            </div>
-          </div>
-        )}
-
-        <div className="settings-group">
-          <div className="settings-group-label">
-            <span>RUN DEFAULTS</span>
-            <i />
-          </div>
-          <div className="settings-row">
-            <div>
-              <div className="settings-row-label">기본 브라우저</div>
-              <div className="settings-row-hint">새 실행에 적용됩니다</div>
-            </div>
-            <div className="settings-row-value">
-              Chromium
-              <Button variant="default">변경</Button>
-            </div>
-          </div>
-          <Toggle
-            label="실행 영상 보관"
-            hint="실패한 실행은 30일간 보관"
-            on={keepVideo}
-            onToggle={() => setKeepVideo((value) => !value)}
-          />
-        </div>
-
-        <div className="settings-group">
-          <div className="settings-group-label">
-            <span>NOTIFICATIONS</span>
-            <i />
-          </div>
-          <Toggle
-            label="실패 시 알림"
-            hint="실행 종료 후 즉시 전송"
-            on={notifyFail}
-            onToggle={() => setNotifyFail((value) => !value)}
-          />
-          <Toggle
-            label="Slack 연동"
-            hint="#qa-alerts 채널"
-            on={notifySlack}
-            onToggle={() => setNotifySlack((value) => !value)}
-          />
-        </div>
+          )}
+        </SettingsSection>
 
         <div className="settings-brand-footer">
           <img src={checklyMark} alt="Checkly 마크" />
@@ -213,6 +234,7 @@ export const SettingsPage = ({ scenario, account }: Props) => {
             Check<span>ly</span>
           </div>
           <div className="settings-brand-tagline">반복되는 확인을 대신 맡습니다</div>
+          <div className="settings-brand-version">{version}</div>
         </div>
       </div>
     </div>

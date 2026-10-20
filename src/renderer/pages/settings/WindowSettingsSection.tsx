@@ -1,8 +1,8 @@
 import { useEffect, useState, type ChangeEvent } from "react";
-import { Toggle } from "./Toggle";
+import { SettingRow, Switch } from "./SettingsSection";
 import type { ResolutionPreset } from "../../shared/model/windowSettings";
 
-// 설정 화면의 "WINDOW" 그룹. 상태와 로직을 이 파일 안에서 전부 책임지므로,
+// 설정 "앱" 섹션의 창 행(화면 꽉 채우기·창 크기). 상태와 로직을 이 파일 안에서 전부 책임지므로,
 // 이 기능을 바꿀 때 SettingsPage.tsx는 건드릴 필요가 없다.
 export const WindowSettingsSection = () => {
   const [fillScreenOnStartup, setFillScreenOnStartup] = useState(false);
@@ -34,42 +34,36 @@ export const WindowSettingsSection = () => {
   };
 
   return (
-    <div className="settings-group">
-      <div className="settings-group-label">
-        <span>WINDOW</span>
-        <i />
-      </div>
-      <Toggle
+    <>
+      <SettingRow
         label="화면 꽉 채우기"
-        hint="앱을 실행할 때 창(타이틀바·작업표시줄 유지)을 화면 크기에 맞춰 최대화합니다. 전체화면 모드는 아닙니다"
-        on={fillScreenOnStartup}
-        onToggle={toggleFillScreenOnStartup}
-      />
-      <div className="settings-row">
-        <div>
-          <div className="settings-row-label">창 해상도</div>
-          <div className="settings-row-hint">
-            화면 꽉 채우기가 꺼져 있을 때 적용되는 창 크기입니다
-          </div>
-        </div>
-        <div className="settings-row-value">
-          <select
-            aria-label="창 해상도"
-            value={`${resolution.width}x${resolution.height}`}
-            disabled={fillScreenOnStartup}
-            onChange={changeResolution}
-          >
-            {resolutionPresets.map((preset) => (
-              <option
-                key={`${preset.width}x${preset.height}`}
-                value={`${preset.width}x${preset.height}`}
-              >
-                {preset.label}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
-    </div>
+        action={<Switch label="화면 꽉 채우기" on={fillScreenOnStartup} onToggle={toggleFillScreenOnStartup} />}
+      >
+        <span className="setting-hint">실행할 때 창을 화면 크기에 맞춰 최대화합니다(전체화면 아님)</span>
+      </SettingRow>
+      <SettingRow
+        label="창 크기"
+        disabled={fillScreenOnStartup}
+        action={
+          <span className="setting-select">
+            <select
+              aria-label="창 크기"
+              value={`${resolution.width}x${resolution.height}`}
+              disabled={fillScreenOnStartup}
+              onChange={changeResolution}
+            >
+              {resolutionPresets.map((preset) => (
+                <option key={`${preset.width}x${preset.height}`} value={`${preset.width}x${preset.height}`}>
+                  {preset.label}
+                </option>
+              ))}
+            </select>
+            <span className="msi" aria-hidden="true">expand_more</span>
+          </span>
+        }
+      >
+        {fillScreenOnStartup && <span className="setting-hint warn">꽉 채우기가 켜져 있어 적용되지 않습니다</span>}
+      </SettingRow>
+    </>
   );
 };

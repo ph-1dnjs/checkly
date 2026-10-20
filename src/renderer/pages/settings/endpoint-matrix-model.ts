@@ -139,3 +139,9 @@ export const addEnvironment = (draft: MatrixDraft): [MatrixDraft, string] => {
   const id = newId();
   return [{ ...draft, environments: [...draft.environments, { id, name: "", position: draft.environments.length }] }, id];
 };
+
+/** API 서버의 스웨거 주소를 따로 적지 않으면 기본 주소 뒤에 붙이는 경로. */
+export const swaggerUrl = (baseUrl: string) => `${baseUrl.trim().replace(/\/+$/, "")}/v3/api-docs`;
+
+/** 목록에 보이는 짧은 주소: 프로토콜과 끝 슬래시를 뺀다. */
+export const displayHost = (url: string) => url.trim().replace(/^https?:\/\//i, "").replace(/\/+$/, "");

@@ -41,6 +41,41 @@ export const SettingsDialog = ({ eyebrow, title, description, onClose, onSubmit,
   );
 };
 
+type SheetProps = {
+  title: string;
+  onClose: () => void;
+  onSubmit?: (event: FormEvent) => void;
+  children: ReactNode;
+  /** 없으면 아래 버튼 줄을 그리지 않는다(멤버 목록). */
+  footer?: ReactNode;
+};
+
+/** 설정 v10의 작은 창(닉네임·비밀번호 변경, 멤버 목록): 제목 줄 + 닫기, 내용, 회색 버튼 줄. */
+export const SettingsSheet = ({ title, onClose, onSubmit, children, footer }: SheetProps) => {
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
+  return (
+    <div className="settings-sheet-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <form className="settings-sheet" role="dialog" aria-modal="true" aria-label={title} onSubmit={onSubmit ?? ((event) => event.preventDefault())} noValidate>
+        <div className="settings-sheet-head">
+          <span>{title}</span>
+          <Button variant="ghost" iconOnly className="settings-sheet-close" aria-label="닫기" onClick={onClose}>
+            <span className="msi" aria-hidden="true">close</span>
+          </Button>
+        </div>
+        <div className="settings-sheet-body">{children}</div>
+        {footer && <div className="settings-sheet-actions">{footer}</div>}
+      </form>
+    </div>
+  );
+};
+
 type ConfirmProps = {
   eyebrow: string;
   title: string;
@@ -78,7 +113,7 @@ export const ConfirmDialog = ({ eyebrow, title, description, confirmLabel, dange
       onSubmit={submit}
       footer={
         <>
-          <Button variant="default" className="settings-dialog-push" onClick={onClose}>
+          <Button variant="secondary" className="settings-dialog-push" onClick={onClose}>
             취소
           </Button>
           <Button type="submit" variant={danger ? "danger" : "primary"} disabled={busy} aria-busy={busy} autoFocus>
