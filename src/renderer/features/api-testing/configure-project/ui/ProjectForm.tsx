@@ -4,6 +4,8 @@ import { Icon } from "../../../../shared/ui/Icon";
 import { DeleteAction } from "../../../../entities/api-testing";
 import { ProjectAiSettings } from "./ProjectAiSettings";
 
+import { Button } from "../../../../shared/ui/Button";
+import { Input } from "../../../../shared/ui/Input";
 export function ProjectForm({ initial, bridge, team = false, focusBackendFolders = false, onSave, onCancel, onDelete, onExport, onImport }: {
   initial?: ApiProject; bridge: ApiTestingBridge; onSave: (project: ApiProject, settings?: ApiAiChatSettings) => Promise<void>; onCancel: () => void; onDelete?: () => Promise<void>;
   /**
@@ -81,23 +83,23 @@ export function ProjectForm({ initial, bridge, team = false, focusBackendFolders
     try { await onSave(parsed.data, settings); } catch (e) { setError((e as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, "")); } finally { setSaving(false); }
   }}>
     <header className="api-project-form-heading">
-      <button type="button" className="api-project-back" disabled={saving} onClick={leave}>← 돌아가기</button>
+      <Button variant="ghost" className="api-project-back" disabled={saving} onClick={leave}>← 돌아가기</Button>
       <h2>{initial ? "프로젝트 설정" : "새 API 프로젝트"}</h2>
       <p>서버마다 API 명세를 등록하고, 실행할 때 고른 환경의 기본 주소로 호출합니다.</p>
       {team && <p className="api-field-help">팀 프로젝트 설정입니다. 저장하면 팀원 모두에게 바로 반영되고, 환경은 웹 시나리오·폼 자동 완성과 같이 씁니다. 비워 둔 주소는 미설정으로 저장됩니다.</p>}
-      {!initial && onImport && <div className="api-project-import"><span>공유받은 프로젝트 파일이 있으면 직접 만들지 않고 가져올 수 있습니다.</span><button type="button" disabled={saving} onClick={() => void runFileAction(onImport)}>파일에서 가져오기</button></div>}
+      {!initial && onImport && <div className="api-project-import"><span>공유받은 프로젝트 파일이 있으면 직접 만들지 않고 가져올 수 있습니다.</span><Button variant="secondary" disabled={saving} onClick={() => void runFileAction(onImport)}>파일에서 가져오기</Button></div>}
     </header>
     <fieldset disabled={saving}>
-      <label className="api-project-field">{team ? "팀 프로젝트" : "프로젝트 이름"}<input required readOnly={team} title={team ? "팀 프로젝트 코드는 바꿀 수 없습니다" : undefined} value={draft.name} onChange={e => setDraft({ ...draft, name: e.target.value })} placeholder="예: 쇼핑몰 QA" /></label>
+      <label className="api-project-field">{team ? "팀 프로젝트" : "프로젝트 이름"}<Input required readOnly={team} title={team ? "팀 프로젝트 코드는 바꿀 수 없습니다" : undefined} value={draft.name} onChange={e => setDraft({ ...draft, name: e.target.value })} placeholder="예: 쇼핑몰 QA" /></label>
 
       <section className="api-project-section" aria-labelledby="api-project-servers">
         <h3 id="api-project-servers">API 서버</h3>
         <p className="api-field-help">백엔드·인증 서버처럼 명세가 따로 있는 서버마다 하나씩 둡니다.</p>
         <ul className="api-project-rows">{draft.servers.map((server, index) => <li key={server.id}>
-          <input aria-label={`서버 ${index + 1} 이름`} required placeholder="예: 백엔드" value={server.name} onChange={e => setServerName(server.id, e.target.value)} />
-          <button type="button" className="api-project-remove" disabled={draft.servers.length === 1} title={draft.servers.length === 1 ? "서버는 최소 1개 필요합니다" : `${server.name || "새 서버"} 서버 제거`} aria-label={`${server.name || "새 서버"} 서버 제거`} onClick={() => removeServer(server.id)}><Icon name="close" size={16} /></button>
+          <Input aria-label={`서버 ${index + 1} 이름`} required placeholder="예: 백엔드" value={server.name} onChange={e => setServerName(server.id, e.target.value)} />
+          <Button variant="ghost" iconOnly className="api-project-remove" disabled={draft.servers.length === 1} title={draft.servers.length === 1 ? "서버는 최소 1개 필요합니다" : `${server.name || "새 서버"} 서버 제거`} aria-label={`${server.name || "새 서버"} 서버 제거`} onClick={() => removeServer(server.id)}><Icon name="close" size={16} /></Button>
         </li>)}</ul>
-        <button type="button" className="api-compose-link" onClick={addServer}>+ 서버 추가</button>
+        <Button className="api-compose-link" onClick={addServer}>+ 서버 추가</Button>
       </section>
 
       <section className="api-project-section" aria-labelledby="api-project-environments">
@@ -106,12 +108,12 @@ export function ProjectForm({ initial, bridge, team = false, focusBackendFolders
         <div className="api-env-table" role="table" aria-label="환경별 기본 주소" style={columns}>
           <div className="api-env-row api-env-head" role="row"><span role="columnheader">환경</span>{draft.servers.map(server => <span role="columnheader" key={server.id}>{server.name || "새 서버"}</span>)}<span role="columnheader" aria-label="제거" /></div>
           {draft.environments.map(env => <div className="api-env-row" role="row" key={env.id}>
-            <input role="cell" aria-label="환경 이름" required placeholder="dev" value={env.name} onChange={e => setEnvironment(env.id, { name: e.target.value })} />
-            {draft.servers.map(server => <input role="cell" key={server.id} type="url" required={!team} aria-label={`${env.name || "새 환경"} ${server.name || "새 서버"} 기본 주소`} placeholder={team ? "미설정" : "https://api.example.com"} value={env.baseUrls[server.id] ?? ""} onChange={e => setEnvironment(env.id, { baseUrls: { ...env.baseUrls, [server.id]: e.target.value } })} />)}
-            <button type="button" className="api-project-remove" disabled={draft.environments.length === 1} title={draft.environments.length === 1 ? "환경은 최소 1개 필요합니다" : `${env.name || "새 환경"} 환경 제거`} aria-label={`${env.name || "새 환경"} 환경 제거`} onClick={() => setDraft({ ...draft, environments: draft.environments.filter(e => e.id !== env.id) })}><Icon name="close" size={16} /></button>
+            <Input role="cell" aria-label="환경 이름" required placeholder="dev" value={env.name} onChange={e => setEnvironment(env.id, { name: e.target.value })} />
+            {draft.servers.map(server => <Input role="cell" key={server.id} type="url" required={!team} aria-label={`${env.name || "새 환경"} ${server.name || "새 서버"} 기본 주소`} placeholder={team ? "미설정" : "https://api.example.com"} value={env.baseUrls[server.id] ?? ""} onChange={e => setEnvironment(env.id, { baseUrls: { ...env.baseUrls, [server.id]: e.target.value } })} />)}
+            <Button variant="ghost" iconOnly className="api-project-remove" disabled={draft.environments.length === 1} title={draft.environments.length === 1 ? "환경은 최소 1개 필요합니다" : `${env.name || "새 환경"} 환경 제거`} aria-label={`${env.name || "새 환경"} 환경 제거`} onClick={() => setDraft({ ...draft, environments: draft.environments.filter(e => e.id !== env.id) })}><Icon name="close" size={16} /></Button>
           </div>)}
         </div>
-        <button type="button" className="api-compose-link" onClick={addEnvironment}>+ 환경 추가</button>
+        <Button className="api-compose-link" onClick={addEnvironment}>+ 환경 추가</Button>
       </section>
 
       {!!removed.length && <label className="api-project-removal" key={removed.join(",")}><input type="checkbox" required /><span><strong>{removed.join(", ")}</strong>을(를) 저장할 때 삭제합니다. {team ? "팀 프로젝트에서 지워지므로 팀원 모두에게 반영되고, 환경을 지우면 그 환경의 웹 주소도 함께 지워집니다. " : ""}관련 API 명세·저장 계정·인증 연결도 지워지고, 환경을 지우면 그 환경의 전역변수도 삭제됩니다. 시나리오가 쓰는 서버·환경은 저장 단계에서 거부됩니다. 확인했습니다.</span></label>}
@@ -121,20 +123,20 @@ export function ProjectForm({ initial, bridge, team = false, focusBackendFolders
     </fieldset>
     <footer className="api-project-form-footer">
       {initial && onExport && <span className="api-project-export">
-        <button type="button" disabled={saving} title="설정·시나리오·스위트·명세 주소를 적힌 그대로 파일로 저장합니다. 전역변수·저장된 계정·쿠키는 넣지 않으니, 비밀값은 시나리오에 직접 적지 말고 전역변수로 쓰세요." onClick={() => void runFileAction(async () => setExported(await onExport()))}>프로젝트 내보내기</button>
-        {onImport && <button type="button" disabled={saving} title={team ? "공유받은 프로젝트 파일에서 팀 프로젝트에 없는 서버·환경·시나리오·스위트만 추가합니다. 있는 것은 바꾸지 않습니다" : "공유받은 프로젝트 파일로 이 프로젝트를 업데이트하거나 새 프로젝트로 추가합니다"} onClick={() => void runFileAction(onImport)}>가져오기</button>}
+        <Button variant="secondary" disabled={saving} title="설정·시나리오·스위트·명세 주소를 적힌 그대로 파일로 저장합니다. 전역변수·저장된 계정·쿠키는 넣지 않으니, 비밀값은 시나리오에 직접 적지 말고 전역변수로 쓰세요." onClick={() => void runFileAction(async () => setExported(await onExport()))}>프로젝트 내보내기</Button>
+        {onImport && <Button variant="secondary" disabled={saving} title={team ? "공유받은 프로젝트 파일에서 팀 프로젝트에 없는 서버·환경·시나리오·스위트만 추가합니다. 있는 것은 바꾸지 않습니다" : "공유받은 프로젝트 파일로 이 프로젝트를 업데이트하거나 새 프로젝트로 추가합니다"} onClick={() => void runFileAction(onImport)}>가져오기</Button>}
         {exported && <small role="status">{exported}</small>}
       </span>}
       {initial && onDelete && <DeleteAction label="프로젝트 삭제" disabled={saving} description={`‘${initial.name}’의 모든 서버·환경, API 명세, 시나리오·초안, 저장된 문서 계정과 전역변수를 삭제합니다. 실제 API 서버의 데이터는 삭제하지 않습니다.`} onDelete={onDelete} />}
-      <span className="api-project-form-actions"><button className="api-primary" disabled={saving || loadingAi}>{saving ? "저장 중…" : "프로젝트 저장"}</button></span>
+      <span className="api-project-form-actions"><Button variant="primary" disabled={saving || loadingAi}>{saving ? "저장 중…" : "프로젝트 저장"}</Button></span>
     </footer>
     {confirmLeave && <div className="api-confirm-dialog-backdrop">
       <section className="api-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="api-project-leave-title">
         <h2 id="api-project-leave-title">저장하지 않은 변경사항</h2>
         <p>프로젝트 설정을 바꾼 내용이 저장되지 않았습니다. 나가면 수정 내용이 사라집니다.</p>
         <div className="api-actions">
-          <button type="button" autoFocus onClick={() => setConfirmLeave(false)}>계속 수정</button>
-          <button type="button" className="api-danger-action" onClick={onCancel}>변경사항 버리고 나가기</button>
+          <Button variant="secondary" autoFocus onClick={() => setConfirmLeave(false)}>계속 수정</Button>
+          <Button variant="danger" onClick={onCancel}>변경사항 버리고 나가기</Button>
         </div>
       </section>
     </div>}

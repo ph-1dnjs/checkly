@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { searchesVisibleList, ServerTag } from "../../../../entities/api-testing";
 
+import { Button } from "../../../../shared/ui/Button";
+import { Input } from "../../../../shared/ui/Input";
 /** `unavailable` = listed like Swagger but not offered to the AI (e.g. non-JSON bodies Checkly cannot run yet). `server` is the server id. */
 export type PickableOperation = { id: string; server: string; method: string; path: string; summary: string; tags: string[]; unavailable?: string };
 
@@ -62,9 +64,9 @@ export function ApiPicker({ operations, servers, picked, disabled, onChange }: {
   });
   return <div className="api-tag-picker">
     <div className="api-tag-picker-tools">
-      <input type="search" aria-label="API 검색" placeholder={`${manyServers ? "서버·" : ""}태그·경로·제목으로 API ${usable}개 검색`} value={query} onChange={event => setQuery(event.target.value)} />
-      <button type="button" disabled={disabled || !visibleIds.length} onClick={() => toggle(visibleIds, true)}>{needle ? `검색 결과 ${visibleIds.length}개 선택` : "모두 선택"}</button>
-      <button type="button" disabled={disabled || !picked.length} onClick={() => onChange([])}>선택 해제</button>
+      <Input type="search" aria-label="API 검색" placeholder={`${manyServers ? "서버·" : ""}태그·경로·제목으로 API ${usable}개 검색`} value={query} onChange={event => setQuery(event.target.value)} />
+      <Button variant="secondary" disabled={disabled || !visibleIds.length} onClick={() => toggle(visibleIds, true)}>{needle ? `검색 결과 ${visibleIds.length}개 선택` : "모두 선택"}</Button>
+      <Button variant="secondary" disabled={disabled || !picked.length} onClick={() => onChange([])}>선택 해제</Button>
     </div>
     <p className="api-field-help">고르지 않으면 모든 API를 AI에게 줍니다. 테스트할 기능의 API만 고르면 AI가 더 정확해집니다.</p>
     <div className="api-picker-groups" data-scroll="light">

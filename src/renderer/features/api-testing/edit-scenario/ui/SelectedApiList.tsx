@@ -5,6 +5,7 @@ import { moveStep } from "../model/scenario-builder-model";
 import { SortableList } from "../../../../shared/ui/SortableList";
 import { ServerTag, usesManyServers } from "../../../../entities/api-testing";
 
+import { Button } from "../../../../shared/ui/Button";
 type Step = Scenario["steps"][number];
 
 export function SelectedApiList({ scenario, disabled, onChange, onLocate, getLabel = step => step.name ?? step.id, getOperation, serverNames = {} }: { /** Server id → name, shown per step when the scenario uses more than one. */ serverNames?: Record<string, string>; scenario: Scenario; disabled: boolean; onChange: (next: Scenario) => void; onLocate: (step: Step) => void; getLabel?: (step: Step) => string; getOperation?: (step: Step) => Pick<ApiOperation, "method" | "path"> | undefined }) {
@@ -26,11 +27,11 @@ export function SelectedApiList({ scenario, disabled, onChange, onLocate, getLab
       return <>
         <span className="api-selected-number">{position + 1}</span>
         <span className="api-selected-method">{method}</span>
-        <button type="button" className="api-selected-content" title="API 문서에서 위치 보기" aria-label={`${index + 1}단계 ${path} 문서로 이동`} onClick={() => onLocate(step)}>
+        <Button className="api-selected-content" title="API 문서에서 위치 보기" aria-label={`${index + 1}단계 ${path} 문서로 이동`} onClick={() => onLocate(step)}>
           <code className="api-selected-path">{path}</code>
           <span className="api-selected-description">{multiServer && <ServerTag server={step.server} names={serverNames} />}{getLabel(step)}</span>
-        </button>
-        <button type="button" className="api-selected-remove" disabled={disabled} title="단계 제거" aria-label={`${index + 1}단계 제거`} onClick={() => onChange({ ...scenario, steps: scenario.steps.filter(s => s.id !== step.id) })}><Icon name="close" size={16} /></button>
+        </Button>
+        <Button variant="ghost" iconOnly className="api-selected-remove" disabled={disabled} title="단계 제거" aria-label={`${index + 1}단계 제거`} onClick={() => onChange({ ...scenario, steps: scenario.steps.filter(s => s.id !== step.id) })}><Icon name="close" size={16} /></Button>
       </>;
     }} />;
 }

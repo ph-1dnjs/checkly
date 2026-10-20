@@ -1,3 +1,6 @@
+@layer vendor, controls-base, legacy, controls;
+
+@layer legacy {
 html:has(.api-diagram-dialog[open]) { overflow:hidden; }
 .api-context-value-actions { display:flex; align-items:center; gap:12px; margin-left:auto; flex:none; }
 /* Like Swagger's Authorize: only inputs where a new secret is typed (docs token, docs password) are masked. */
@@ -363,7 +366,7 @@ html:has(.api-diagram-dialog[open]) { overflow:hidden; }
 .api-field-menu { position:fixed; z-index:100; box-sizing:border-box; max-width:calc(100vw - 24px); max-height:min(480px,calc(100dvh - 24px)); overflow:auto; padding:12px; border:1px solid var(--ck-color-blue-line); border-radius:var(--ck-dim-radius-base); background:var(--ck-color-canvas); box-shadow:var(--ck-fx-shadow-float); }
 .api-field-menu > header { display:flex; align-items:center; justify-content:space-between; gap:10px; min-width:0; margin-bottom:10px; padding-bottom:8px; border-bottom:1px solid var(--api-border); }
 .api-field-menu > header strong { min-width:0; overflow-wrap:anywhere; }
-.api-field-menu > header button { border:0!important; padding:2px 6px!important; background:transparent!important; font-size:18px; }
+.api-field-menu > header button:not(.ck-btn) { border:0!important; padding:2px 6px!important; background:transparent!important; font-size:18px; }
 .api-field-menu > button { width:100%; text-align:left; white-space:normal; overflow-wrap:anywhere; }
 .api-field-menu > label select { width:100%; }
 .api-field-menu > label { margin:10px 0 0; }
@@ -412,7 +415,7 @@ html:has(.api-diagram-dialog[open]) { overflow:hidden; }
 .api-json-edit-brace { display:block; color:var(--api-ink); font-weight:700; }
 .api-json-edit-code > .api-json-field-list { gap:0; padding:0 0 0 18px; border:0; background:transparent; }
 .api-json-edit-code .api-json-field-row { grid-template-columns:max-content minmax(0,1fr) auto; align-items:center; gap:8px; padding:4px 0; border:0; }
-.api-testing-page button.api-json-request-key-token { padding:0; border:1px solid transparent; border-radius:var(--ck-dim-radius-base); background:transparent; color:var(--api-ink)!important; font:inherit; font-weight:700; cursor:pointer; }
+.api-testing-page button:not(.ck-btn).api-json-request-key-token { padding:0; border:1px solid transparent; border-radius:var(--ck-dim-radius-base); background:transparent; color:var(--api-ink)!important; font:inherit; font-weight:700; cursor:pointer; }
 .api-testing-page button.api-json-request-key-token:hover,.api-testing-page button.api-json-request-key-token[aria-pressed="true"] { border-color:var(--ck-color-blue-action); background:var(--ck-color-blue-tint); color:var(--ck-color-blue-action); }
 .api-json-edit-code .api-request-field-control { min-width:0; }
 .api-json-edit-code .api-request-field-control > .api-field-input-wrap > input { min-width:80px; }
@@ -507,7 +510,7 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 .api-value-modal > header > div { min-width:0; }
 .api-value-modal > header h2 { margin:0 0 4px; color:var(--api-ink); font-size:18px; overflow-wrap:anywhere; }
 .api-value-modal > header small { color:var(--api-muted); font-size:11px; }
-.api-value-modal > header > button { flex:none; border:0!important; background:transparent!important; color:var(--api-muted); font-size:20px; line-height:1; }
+.api-value-modal > header > button:not(.ck-btn) { flex:none; border:0!important; background:transparent!important; color:var(--api-muted); font-size:20px; line-height:1; }
 .api-value-modal-kicker { margin:0 0 5px; color:var(--api-primary); font-size:11px; font-weight:700; }
 .api-value-modal-note { margin:0; color:var(--api-muted); font-size:11px; line-height:1.6; overflow-wrap:anywhere; }
 .api-value-modal-note code { color:var(--api-primary); }
@@ -517,8 +520,8 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 .api-value-current { align-items:center; }
 .api-value-current > small { flex:none; color:var(--api-muted); font-size:10px; }
 .api-value-source-tabs { display:flex; gap:0; border-bottom:1px solid var(--api-border); }
-.api-value-source-tabs button { border:0!important; border-bottom:2px solid transparent!important; border-radius:0!important; background:transparent!important; color:var(--api-muted); font-weight:600; }
-.api-value-source-tabs button.selected { border-bottom-color:var(--api-primary)!important; color:var(--api-primary); }
+.api-value-source-tabs button:not(.ck-btn) { border:0!important; border-bottom:2px solid transparent!important; border-radius:0!important; background:transparent!important; color:var(--api-muted); font-weight:600; }
+.api-value-source-tabs button:not(.ck-btn).selected { border-bottom-color:var(--api-primary)!important; color:var(--api-primary); }
 .api-value-source-section { display:grid; gap:10px; min-width:0; }
 .api-value-source-section > label { margin:0; }
 .api-value-source-section > label select,.api-value-source-section > label input { width:100%; }
@@ -539,7 +542,7 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 .api-value-direct-editor textarea { min-height:76px; resize:vertical; }
 .api-value-direct-editor button { flex:none; white-space:nowrap; }
 .api-global-variable-option > header { display:flex; align-items:center; justify-content:space-between; gap:10px; }
-.api-global-variable-option > header button { flex:none; padding:4px 8px!important; color:var(--api-primary); white-space:nowrap; }
+.api-global-variable-option > header button:not(.ck-btn) { flex:none; padding:4px 8px!important; color:var(--api-primary); white-space:nowrap; }
 .api-global-variable-option > select { margin-top:3px; }
 .api-global-variable-form { display:grid; gap:8px; padding-top:4px; border-top:1px solid var(--api-border); }
 .api-global-variable-form > label { margin:0; }
@@ -547,8 +550,8 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 .api-global-variable-form .api-actions button { white-space:nowrap; }
 .api-global-name-quick-label { display:block; margin-top:8px; color:var(--api-muted); font-size:10px; font-weight:600; }
 .api-global-name-quick { display:flex; flex-wrap:wrap; gap:6px; margin-top:4px; }
-.api-global-name-quick button { display:inline-flex; align-items:baseline; gap:6px; padding:5px 8px!important; color:var(--api-primary)!important; text-align:left; }
-.api-global-name-quick button.is-selected { border-color:var(--ck-color-blue-line)!important; background:var(--ck-color-blue-tint)!important; }
+.api-global-name-quick button:not(.ck-btn) { display:inline-flex; align-items:baseline; gap:6px; padding:5px 8px!important; color:var(--api-primary)!important; text-align:left; }
+.api-global-name-quick button:not(.ck-btn).is-selected { border-color:var(--ck-color-blue-line)!important; background:var(--ck-color-blue-tint)!important; }
 .api-global-name-quick button strong { font-size:10px; }
 .api-global-name-quick button code { color:inherit; font-size:10px; overflow-wrap:anywhere; }
 .api-global-name-help { display:block; margin-top:5px; color:var(--api-muted); font-size:10px; line-height:1.5; }
@@ -663,7 +666,7 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 .api-sidebar-section-toggle .api-sidebar-chevron{margin-left:auto;transform:rotate(-90deg)}
 .api-sidebar-section-toggle[aria-expanded="true"] .api-sidebar-chevron{transform:none}
 .api-sidebar-section-toggle small{font-weight:400;white-space:nowrap}
-.api-columns aside button.api-sidebar-add{display:block;flex:none;width:auto;min-height:30px;padding:4px 7px;border:1px solid var(--api-border);background:var(--ck-color-canvas);white-space:nowrap;font-size:11px}
+.api-columns aside .ck-btn.api-sidebar-add{display:inline-flex;flex:none;width:auto}
 /* Sidebar tree: folders are disclosure rows with an indent guide, not nested boxes. */
 .api-sidebar-tree{display:grid;gap:1px;min-width:0}
 .api-sidebar-folder{min-width:0}
@@ -1195,7 +1198,7 @@ body.panel-resizing { cursor:col-resize; user-select:none; }
 .api-value-link-footer .api-value-selection-summary code { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 /* Same JSON colours as the step's response view: in the value link picker and the request body editor. */
 .api-testing-page :is(.api-value-json-picker, .api-json-edit-code) button.api-json-key-token,
-.api-testing-page .api-json-edit-code button.api-json-request-key-token { color:var(--ck-color-blue-action-hover)!important; }
+.api-testing-page .api-json-edit-code button:not(.ck-btn).api-json-request-key-token { color:var(--ck-color-blue-action-hover)!important; }
 .api-testing-page :is(.api-value-json-picker, .api-json-edit-code) .api-json-type-string { color:var(--ck-color-pass); }
 .api-testing-page :is(.api-value-json-picker, .api-json-edit-code) :is(.api-json-type-number, .api-json-type-integer) { color:var(--ck-color-wait-ink); }
 .api-testing-page :is(.api-value-json-picker, .api-json-edit-code) .api-json-type-boolean { color:var(--ck-color-blue-action); }
@@ -1726,3 +1729,5 @@ body.panel-resizing { cursor:col-resize; user-select:none; }
 .api-testing-page .api-compose-head-actions button:not(.swagger-ui *) { display:flex; align-items:center; gap:6px; height:28px; min-height:28px; padding:0 12px; font-size:12px; white-space:nowrap; }
 .api-compose-head-actions button:not(.api-primary) .app-icon { color:var(--ck-color-text-secondary); }
 .api-compose-toolbar:not(.page-layout-header *) .api-compose-head-actions { display:none; }
+
+}

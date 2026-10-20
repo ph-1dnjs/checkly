@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "../../../shared/ui/Icon";
 
+import { Button } from "../../../shared/ui/Button";
+import { Input } from "../../../shared/ui/Input";
 type Props = {
   groupPath: string[];
   existingGroupPaths: string[][];
@@ -68,14 +70,14 @@ export function SidebarMetadataFields({ groupPath, existingGroupPaths, disabled 
           {paths.map(path => <option value={pathKey(path)} key={pathKey(path)}>{pathLabel(path)}</option>)}
         </select>
         <div className="api-sidebar-popover-anchor" ref={folderRef}>
-          <button type="button" className="api-sidebar-add-button" disabled={disabled} aria-label="새 그룹 폴더 만들기" aria-expanded={creatingFolder} onClick={() => { setCreatingFolder(value => !value); setParentPath(groupPath); setFolderError(""); }}><Icon name="add" size={15} /><span>새 폴더</span></button>
+          <Button variant="secondary" className="api-sidebar-add-button" disabled={disabled} aria-label="새 그룹 폴더 만들기" aria-expanded={creatingFolder} onClick={() => { setCreatingFolder(value => !value); setParentPath(groupPath); setFolderError(""); }}><Icon name="add" size={15} /><span>새 폴더</span></Button>
           {creatingFolder && <div className="api-sidebar-popover api-sidebar-folder-create" role="group" aria-label="새 그룹 폴더 만들기">
             <label>상위 폴더<select value={pathKey(parentPath)} disabled={disabled} onChange={event => setParentPath(event.target.value ? JSON.parse(event.target.value) as string[] : [])}>
               <option value="">최상위</option>
               {paths.map(path => <option value={pathKey(path)} key={pathKey(path)}>{pathLabel(path)}</option>)}
             </select></label>
-            <label>폴더 이름<input value={folderName} disabled={disabled} maxLength={80} onChange={event => { setFolderName(event.target.value); setFolderError(""); }} onKeyDown={event => { if (event.key === "Enter" && !event.nativeEvent.isComposing) { event.preventDefault(); createFolder(); } }} placeholder="예: 승인" /></label>
-            <button type="button" disabled={disabled || !folderName.trim()} onClick={createFolder}>만들기</button>
+            <label>폴더 이름<Input value={folderName} disabled={disabled} maxLength={80} onChange={event => { setFolderName(event.target.value); setFolderError(""); }} onKeyDown={event => { if (event.key === "Enter" && !event.nativeEvent.isComposing) { event.preventDefault(); createFolder(); } }} placeholder="예: 승인" /></label>
+            <Button variant="secondary" disabled={disabled || !folderName.trim()} onClick={createFolder}>만들기</Button>
             {folderError && <small role="alert">{folderError}</small>}
           </div>}
         </div>

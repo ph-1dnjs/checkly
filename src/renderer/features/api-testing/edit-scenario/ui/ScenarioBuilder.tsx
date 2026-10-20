@@ -11,6 +11,8 @@ import { apiReference } from "../model/scenario-builder-model";
 import { globalOptions } from "../../../../entities/api-testing";
 import { configuredFields } from "../../../../entities/api-testing";
 
+import { Button } from "../../../../shared/ui/Button";
+import { Input } from "../../../../shared/ui/Input";
 function operationForStep(step: Step, catalogs: Record<string, ApiCatalog | null>, bindings: Record<string, string>) {
   const catalog = catalogs[bindings[step.server] ?? step.server];
   return catalog?.operations.find(operation => "operationId" in step.api
@@ -79,7 +81,7 @@ export function ScenarioBuilder({ bindings, project, scope, bridge, onApply, val
     onApply(stringifyScenario(parsed.data, true));
   }}>
     <fieldset disabled={saving} style={{ border:0, padding:0, margin:0 }}>
-    <label>시나리오 이름<input aria-label="시나리오 이름" required placeholder="예: 로그인 후 상품 조회" value={draft.name} onChange={e => setDraft({ ...draft, name: e.target.value })} /></label>
+    <label>시나리오 이름<Input aria-label="시나리오 이름" required placeholder="예: 로그인 후 상품 조회" value={draft.name} onChange={e => setDraft({ ...draft, name: e.target.value })} /></label>
     {metadata}
     <label>설명<textarea className="api-prose-input" aria-label="시나리오 설명" value={draft.description ?? ""} placeholder="이 시나리오가 확인하는 흐름을 적어 두세요" onChange={e => setDraft({ ...draft, description: e.target.value })} /></label>
     <label>기본 인증<select aria-label="시나리오 기본 인증" value={draft.auth ?? ""} onChange={e => setDraft({ ...draft, auth: e.target.value || undefined })}><option value="">없음</option>{authNames.map(name => <option key={name} value={`globals.${name}`}>전역변수 · {name}</option>)}</select></label>
@@ -90,9 +92,9 @@ export function ScenarioBuilder({ bindings, project, scope, bridge, onApply, val
       <summary className="api-step-summary" onClick={() => onStepFocus?.(step)}><span>{index + 1}</span><span className="api-selected-method">{method}</span><code>{path}</code><span className="api-step-summary-name">{usesManyServers(draft.steps) && <ServerTag server={step.server} names={serverNames} />}{missingApi(step) && <span className="api-step-missing" title="현재 명세에 이 API가 없습니다. 펼쳐서 API 바꾸기로 새 API를 연결하세요.">명세에 없음</span>}{step.name || operation?.summary || step.id}</span><small>{[["요청", configuredFields(draft, index).length], ["저장", step.extract.length], ["검증", step.expect?.length ?? 0]].filter(([, count]) => count).map(([label, count]) => `${label} ${count}`).join(" · ") || "설정 없음"}{step.auth ? ` · 인증 ${step.auth === "none" ? "없음" : step.auth.slice(8)}` : draft.auth ? ` · 인증 ${draft.auth.slice(8)}` : ""}</small></summary>
       {visitedSteps.has(step.id) && <div className="api-step-body">
       <div className="api-step-actions">
-        {operation?.description && <button type="button" className="api-step-description-toggle" aria-expanded={descriptionOpen.has(step.id)} onClick={() => setDescriptionOpen(previous => { const next = new Set(previous); if (next.has(step.id)) next.delete(step.id); else next.add(step.id); return next; })}>{descriptionOpen.has(step.id) ? "▾" : "▸"} API 설명</button>}
-        <button type="button" aria-label={`${index + 1}단계 API 바꾸기`} className={!catalogLoading && !operation ? "api-primary" : undefined} disabled={catalogLoading} onClick={() => setReplacing(index)}>API 바꾸기</button>
-        <button type="button" className="api-danger-action" aria-label={`${index + 1}단계 제거`} onClick={() => setDraft({ ...draft, steps: draft.steps.filter((_, i) => i !== index) })}>단계 제거</button>
+        {operation?.description && <Button className="api-step-description-toggle" aria-expanded={descriptionOpen.has(step.id)} onClick={() => setDescriptionOpen(previous => { const next = new Set(previous); if (next.has(step.id)) next.delete(step.id); else next.add(step.id); return next; })}>{descriptionOpen.has(step.id) ? "▾" : "▸"} API 설명</Button>}
+        <Button variant={!catalogLoading && !operation ? "primary" : "secondary"} aria-label={`${index + 1}단계 API 바꾸기`}  disabled={catalogLoading} onClick={() => setReplacing(index)}>API 바꾸기</Button>
+        <Button variant="danger" aria-label={`${index + 1}단계 제거`} onClick={() => setDraft({ ...draft, steps: draft.steps.filter((_, i) => i !== index) })}>단계 제거</Button>
       </div>
       {operation?.description && descriptionOpen.has(step.id) && <div className="api-step-description swagger-ui" aria-label="API 설명">{Markdown ? <Markdown source={operation.description} /> : <p style={{ whiteSpace: "pre-wrap" }}>{operation.description}</p>}</div>}
       <div className="api-step-auth">
@@ -114,6 +116,6 @@ export function ScenarioBuilder({ bindings, project, scope, bridge, onApply, val
     {error && <p role="alert" className="api-warning">{error}</p>}
     </fieldset>
     <details onToggle={event => setYamlOpen(event.currentTarget.open)}><summary>간단한 YAML 보기</summary>{yamlOpen && <YamlCode label="작성 중인 시나리오 YAML" source={stringifyScenario(draft, false, step => operationForStep(step, catalogs, bindings), Object.fromEntries(project.servers.map(server => [server.id, server.name])))} />}</details>
-    <footer className="api-actions"><button type="submit" className="api-primary" disabled={saving || !draft.steps.length}>{saving ? "검사·저장 중…" : "시나리오 검사·저장"}</button>{actions}</footer>
+    <footer className="api-actions"><Button variant="primary" type="submit" disabled={saving || !draft.steps.length}>{saving ? "검사·저장 중…" : "시나리오 검사·저장"}</Button>{actions}</footer>
   </form>;
 }

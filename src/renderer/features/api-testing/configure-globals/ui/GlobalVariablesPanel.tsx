@@ -3,6 +3,8 @@ import type { ApiCookie, ApiGlobal, ApiProjectScope, ApiTestingBridge } from "..
 import type { Json } from "../../../../../app/api-testing/shared/scenario";
 import { useGlobalValuesVisible } from "../../../../entities/api-testing";
 
+import { Button } from "../../../../shared/ui/Button";
+import { Input } from "../../../../shared/ui/Input";
 export function GlobalVariablesPanel({ scope, bridge, targetName = "", targetRequest = 0, onSaved }: { scope: ApiProjectScope; bridge: ApiTestingBridge; targetName?: string; targetRequest?: number; onSaved?: () => void }) {
   const [variables, setVariables] = useState<ApiGlobal[]>([]);
   const [name, setName] = useState("");
@@ -47,11 +49,11 @@ export function GlobalVariablesPanel({ scope, bridge, targetName = "", targetReq
     <p className="api-globals-note">이 프로젝트의 모든 API·시나리오가 함께 씁니다. <strong>앱을 끄면 초기화</strong>됩니다.</p>
     <header className="api-globals-section-heading"><h3>전역변수 <small aria-live="polite">{query.trim() ? `${visibleVariables.length}개 / ${variables.length}개` : `${variables.length}개`}</small></h3>
       <span className="api-globals-heading-actions">
-        {variables.length > 0 && <button type="button" aria-pressed={showValues} onClick={toggleValues}>{showValues ? "값 숨기기" : "값 보기"}</button>}
-        <button type="button" disabled={busy} onClick={() => openEditor({ name: "", value: "", type: "string", existing: false })}>+ 변수 추가</button>
+        {variables.length > 0 && <Button variant="secondary" aria-pressed={showValues} onClick={toggleValues}>{showValues ? "값 숨기기" : "값 보기"}</Button>}
+        <Button variant="secondary" disabled={busy} onClick={() => openEditor({ name: "", value: "", type: "string", existing: false })}>+ 변수 추가</Button>
       </span>
     </header>
-    {variables.length > 5 && <input className="api-global-search" aria-label="전역변수 검색" type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="이름으로 검색" />}
+    {variables.length > 5 && <Input className="api-global-search" aria-label="전역변수 검색" type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="이름으로 검색" />}
     {variables.length === 0 && <p className="api-globals-empty">저장된 변수가 없습니다.</p>}
     {variables.length > 0 && <div className={`api-global-list${showValues ? "" : " is-values-hidden"}`}>
       {variables.length > 0 && visibleVariables.length === 0 && <p>검색 결과가 없습니다.</p>}
@@ -59,8 +61,8 @@ export function GlobalVariablesPanel({ scope, bridge, targetName = "", targetReq
         <div className="api-global-meta"><code title={v.name}>{v.name}</code><small>{({ string: "문자열", number: "숫자", boolean: "불리언", object: "객체", array: "배열", null: "null" } as Record<string, string>)[v.type] ?? v.type}</small></div>
         <span className="api-global-value">{v.displayValue}</span>
         <div className="api-global-actions">
-          <button disabled={busy} onClick={() => openEditor({ name: v.name, value: v.displayValue, type: v.type === "string" ? "string" : "json", existing: true })}>수정</button>
-          <button disabled={busy} onClick={async () => { setBusy(true); try { await bridge.deleteGlobal(scope, v.name); await refresh(); } catch { setError("변수를 삭제하지 못했습니다"); } finally { setBusy(false); } }}>삭제</button>
+          <Button variant="secondary" disabled={busy} onClick={() => openEditor({ name: v.name, value: v.displayValue, type: v.type === "string" ? "string" : "json", existing: true })}>수정</Button>
+          <Button variant="secondary" disabled={busy} onClick={async () => { setBusy(true); try { await bridge.deleteGlobal(scope, v.name); await refresh(); } catch { setError("변수를 삭제하지 못했습니다"); } finally { setBusy(false); } }}>삭제</Button>
         </div>
       </div>)}
     </div>}
@@ -77,16 +79,16 @@ export function GlobalVariablesPanel({ scope, bridge, targetName = "", targetReq
         }}>
         <header><div><p className="api-input-kicker">전역변수</p><h2 id="api-global-modal-title">{editing.existing ? `${name} 수정` : "변수 추가"}</h2></div></header>
         <fieldset disabled={busy}><div className="api-global-form-grid">
-          <label>변수 이름<input aria-label="전역변수 이름" required autoFocus={editing.focus === "name"} pattern="[A-Za-z][A-Za-z0-9_]*" value={name} onChange={e => setName(e.target.value)} placeholder="accessToken" /></label>
+          <label>변수 이름<Input aria-label="전역변수 이름" required autoFocus={editing.focus === "name"} pattern="[A-Za-z][A-Za-z0-9_]*" value={name} onChange={e => setName(e.target.value)} placeholder="accessToken" /></label>
           <label>값 형식<select aria-label="전역변수 형식" value={type} onChange={e => setType(e.target.value)}><option value="string">문자열</option><option value="json">JSON · 숫자, 불리언, 객체, 배열</option></select></label>
-          <label className="api-global-form-value">값<input aria-label="전역변수 값" autoFocus={editing.focus === "value"} className={showValues ? undefined : "api-secret-input"} type="text" autoComplete="off" value={value} onChange={e => setValue(e.target.value)} /></label>
+          <label className="api-global-form-value">값<Input aria-label="전역변수 값" autoFocus={editing.focus === "value"} className={showValues ? undefined : "api-secret-input"} type="text" autoComplete="off" value={value} onChange={e => setValue(e.target.value)} /></label>
         </div></fieldset>
         {error && <p role="alert" className="api-warning">{error}</p>}
-        <footer className="api-actions"><button type="button" disabled={busy} onClick={closeEditor}>취소</button><button className="api-primary" disabled={busy}>전역변수 저장</button></footer>
+        <footer className="api-actions"><Button variant="secondary" disabled={busy} onClick={closeEditor}>취소</Button><Button variant="primary" disabled={busy}>전역변수 저장</Button></footer>
       </form>
     </div>}
     <section className="api-cookie-list" aria-label="세션 쿠키">
-      <header className="api-globals-section-heading"><h3>세션 쿠키 <small>{cookies.length}개</small></h3><button type="button" aria-label="쿠키 비우기" disabled={busy || !cookies.length} onClick={async () => { setBusy(true); setError(""); try { await bridge.clearCookies(scope); await refreshCookies(); } catch { setError("쿠키를 비우지 못했습니다. 실행 중에는 비울 수 없습니다."); } finally { setBusy(false); } }}>비우기</button></header>
+      <header className="api-globals-section-heading"><h3>세션 쿠키 <small>{cookies.length}개</small></h3><Button variant="secondary" aria-label="쿠키 비우기" disabled={busy || !cookies.length} onClick={async () => { setBusy(true); setError(""); try { await bridge.clearCookies(scope); await refreshCookies(); } catch { setError("쿠키를 비우지 못했습니다. 실행 중에는 비울 수 없습니다."); } finally { setBusy(false); } }}>비우기</Button></header>
       <p className="api-field-help">응답의 Set-Cookie를 다음 요청에 자동으로 보냅니다. 값은 표시하지 않습니다.</p>
       {cookies.length > 0 && <ul>{cookies.map(cookie => <li key={`${cookie.domain}${cookie.path}${cookie.name}`}><code>{cookie.name}</code><small>{cookie.domain}{cookie.path}</small></li>)}</ul>}
     </section>

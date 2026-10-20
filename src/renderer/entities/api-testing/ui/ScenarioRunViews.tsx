@@ -43,6 +43,7 @@ function RunChecks({ runStep, step, scenario }: { runStep: RunStep; step?: Scena
 import { runStatusName } from "../model/run-status";
 import { ServerTag, usesManyServers } from "./ServerTag";
 
+import { Button } from "../../../shared/ui/Button";
 export function operationForStep(step: Scenario["steps"][number], catalogs: Record<string, ApiCatalog | null>, bindings: Record<string, string>) {
   return catalogs[bindings[step.server] ?? step.server]?.operations.find(operation => "operationId" in step.api
     ? operation.operationId === step.api.operationId
@@ -136,8 +137,8 @@ export function ScenarioSteps({ preview, result, resultPreview, catalogs, bindin
     <header className="api-scn-steps-heading">
       <h3>단계</h3><span className="api-scn-steps-count">{steps.length}</span>
       <span className="api-scn-steps-meta">{meta}</span>
-      {running && onStop && <button type="button" className="api-scn-stop" onClick={onStop}>실행 중단</button>}
-      <button type="button" className="api-scn-text-button" disabled={!steps.length} onClick={() => setOpenSteps(allOpen ? new Set() : new Set(steps.map(step => step.id)))}>{allOpen ? "모두 접기" : "모두 펼치기"}</button>
+      {running && onStop && <Button variant="danger" className="api-scn-stop" onClick={onStop}>실행 중단</Button>}
+      <Button variant="ghost" className="api-scn-text-button" disabled={!steps.length} onClick={() => setOpenSteps(allOpen ? new Set() : new Set(steps.map(step => step.id)))}>{allOpen ? "모두 접기" : "모두 펼치기"}</Button>
     </header>
     {running && <div className="api-scn-progress" role="progressbar" aria-label="시나리오 실행 중"><span /></div>}
     <div ref={list} className="api-scn-step-list">
@@ -171,7 +172,7 @@ export function ScenarioSteps({ preview, result, resultPreview, catalogs, bindin
         const tabList: StepTab[] = showPayload ? ["settings", "request", "response"] : ["settings"];
         const bodyId = `api-scn-step-${index}`;
         return <div key={step.id} className={`api-scn-step${status ? ` is-${status}` : ""}${failed ? " is-problem" : ""}${open ? " is-open" : ""}`}>
-          <button type="button" className="api-scn-step-head" aria-expanded={open} aria-controls={bodyId} aria-label={`${index + 1}단계 ${name}`} title={called !== template ? `명세 경로 ${template}` : name} onClick={() => toggle(step.id)}>
+          <Button className="api-scn-step-head" aria-expanded={open} aria-controls={bodyId} aria-label={`${index + 1}단계 ${name}`} title={called !== template ? `명세 경로 ${template}` : name} onClick={() => toggle(step.id)}>
             <span className="api-scn-step-index">{index + 1}</span>
             <span className="api-method" data-method={method}>{method}</span>
             <span className="api-scn-step-main">
@@ -181,13 +182,13 @@ export function ScenarioSteps({ preview, result, resultPreview, catalogs, bindin
             {failed && <span className="api-scn-step-fail" title={runStep?.error}><span aria-hidden="true" />{status === "blocked" ? runStatusName(status) : "실패"}</span>}
             <span className="api-scn-step-meta">{metaText}</span>
             <Icon name="expand_more" size={18} className="api-scn-step-caret" />
-          </button>
+          </Button>
           <div id={bodyId} className="api-scn-step-body" hidden={!open}>
             {flowText && <p className="api-scn-step-flow">값 연결 <code>{flowText}</code></p>}
             {runStep?.error && <p className="api-warning">{runStep.error}</p>}
             {runStep && <RunChecks runStep={runStep} step={(resultPreview ?? preview).scenario.steps.find(candidate => candidate.id === runStep.id)} scenario={checksScenario} />}
             {skipped && <p className="api-run-payload-empty">앞 단계가 실패해 이 단계는 실행하지 않았습니다.</p>}
-            {tabList.length > 1 && <div className="api-scn-tabs" role="tablist" aria-label={`${index + 1}단계 보기`}>{tabList.map(item => <button key={item} type="button" role="tab" aria-selected={tab === item} onClick={() => setTabs(previous => ({ ...previous, [step.id]: item }))}>{stepTabLabels[item]}</button>)}</div>}
+            {tabList.length > 1 && <div className="api-scn-tabs" role="tablist" aria-label={`${index + 1}단계 보기`}>{tabList.map(item => <Button key={item} role="tab" aria-selected={tab === item} onClick={() => setTabs(previous => ({ ...previous, [step.id]: item }))}>{stepTabLabels[item]}</Button>)}</div>}
             <div className="api-scn-tab-panel api-step-summary-view" role={tabList.length > 1 ? "tabpanel" : undefined} hidden={tab !== "settings"}>
               <ScenarioStepSummary onConfigureGlobal={onConfigureGlobal} scenario={preview.scenario} stepIndex={index} operation={operation} catalog={catalogs[bindings[step.server] ?? step.server]} missingGlobals={missingGlobals} />
             </div>

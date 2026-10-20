@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { ApiStorageInfo } from "../../../../../app/api-testing/shared/workspace";
 
+import { Button } from "../../../../shared/ui/Button";
 type Importable = Extract<ApiStorageInfo, { mode: "team" }>["importable"];
 
 /**
@@ -21,12 +22,12 @@ export function LocalProjectImport({ projects, onImport, onClose }: {
         ? <select aria-label="가져올 로컬 프로젝트" value={projectId} disabled={busy} onChange={event => setProjectId(event.target.value)}>{projects.map(project => <option key={project.id} value={project.id}>{project.name}</option>)}</select>
         : <span>{picked.name}</span>}
       <small>시나리오 {picked.scenarios}개 · 스위트 {picked.suites}개</small>
-      <button type="button" className="api-primary" disabled={busy} onClick={async () => {
-        setBusy(true); setError("");
-        try { await onImport(projectId); }
-        catch (e) { setError((e as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, "")); setBusy(false); }
-      }}>{busy ? "가져오는 중…" : "가져오기"}</button>
-      <button type="button" disabled={busy} onClick={onClose}>닫기</button>
+      <Button variant="primary" disabled={busy} onClick={async () => {
+ setBusy(true); setError("");
+ try { await onImport(projectId); }
+ catch (e) { setError((e as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, "")); setBusy(false); }
+ }}>{busy ? "가져오는 중…" : "가져오기"}</Button>
+      <Button variant="secondary" disabled={busy} onClick={onClose}>닫기</Button>
     </span>
     {error && <p role="alert" className="api-warning">{error}</p>}
   </section>;

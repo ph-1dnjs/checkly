@@ -4,6 +4,7 @@ import type { ApiCatalog, ApiTestingBridge } from "../../../../../app/api-testin
 import { ScenarioStepSummary, ServerTag, usesManyServers } from "../../../../entities/api-testing";
 
 
+import { Button } from "../../../../shared/ui/Button";
 export function ScenarioSettingsSummary({ scenario, catalogs, projectId, bridge, onSelect, globalRevision, onConfigureGlobal, serverNames = {} }: { serverNames?: Record<string, string>; globalRevision: number; onConfigureGlobal: (name: string) => void; scenario: Scenario; catalogs: Record<string, ApiCatalog | null>; projectId: string; bridge: ApiTestingBridge; onSelect: (id: string) => void }) {
   const [globals, setGlobals] = useState<Set<string> | null>(null);
   // Narrow windows stack the summary above the editor: it starts folded so the editor keeps the height.
@@ -34,13 +35,13 @@ export function ScenarioSettingsSummary({ scenario, catalogs, projectId, bridge,
     }
   };
   // Wide windows always show it (the pane is resized instead); narrow ones fold it behind the toggle.
-  return <section className={`api-settings-summary${folded ? " is-folded" : ""}`} aria-labelledby="api-settings-summary-title"><h3 id="api-settings-summary-title" className="api-settings-summary-title">설정 요약</h3><button type="button" className="api-settings-summary-toggle" aria-expanded={!folded} onClick={() => setFolded(value => !value)}>설정 요약 {folded ? "보기" : "접기"}</button><div>
+  return <section className={`api-settings-summary${folded ? " is-folded" : ""}`} aria-labelledby="api-settings-summary-title"><h3 id="api-settings-summary-title" className="api-settings-summary-title">설정 요약</h3><Button className="api-settings-summary-toggle" aria-expanded={!folded} onClick={() => setFolded(value => !value)}>설정 요약 {folded ? "보기" : "접기"}</Button><div>
     {scenario.steps.map((step, index) => {
       const op = catalogs[step.server]?.operations.find(o => "operationId" in step.api ? o.operationId === step.api.operationId : o.path === step.api.path && o.method.toUpperCase() === step.api.method);
       const method = op?.method ?? ("method" in step.api ? step.api.method : "API");
       const path = op?.path ?? ("path" in step.api ? step.api.path : step.api.operationId);
       return <section key={step.id} className={`api-summary-card api-selected-${method.toLowerCase()}`}>
-        <button type="button" className="api-summary-heading" onClick={() => focus(step.id)}><span>{index + 1}</span><span className="api-method" data-method={method}>{method}</span><code>{path}</code>{usesManyServers(scenario.steps) && <ServerTag server={step.server} names={serverNames} />}</button>
+        <Button className="api-summary-heading" onClick={() => focus(step.id)}><span>{index + 1}</span><span className="api-method" data-method={method}>{method}</span><code>{path}</code>{usesManyServers(scenario.steps) && <ServerTag server={step.server} names={serverNames} />}</Button>
         <div className="api-summary-content"><ScenarioStepSummary onConfigureGlobal={onConfigureGlobal} scenario={scenario} stepIndex={index} operation={op} catalog={catalogs[step.server]} globals={globals} onSelect={focus} /></div>
       </section>;
     })}

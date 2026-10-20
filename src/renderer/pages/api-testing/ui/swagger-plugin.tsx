@@ -9,6 +9,7 @@ import { deepLinkQuiet, updateDeepLinkHash, withoutDeepLink } from "../lib/swagg
 import { explainApiSearch, highlightTerms, matchesApiSearch, parseApiSearch, type SearchableOperation } from "../../../entities/api-testing";
 import { mapValue, textValue, buildRequest, requestUrl, displayRequest, responseFromApi, responseFromError, tagNames } from "../lib/swagger-request";
 
+import { Button } from "../../../shared/ui/Button";
 export const submitMethods = ["get", "put", "post", "delete", "options", "head", "patch"];
 export function createSwaggerPlugin(options: {
   catalogRef: MutableRef<ApiCatalog | null>;
@@ -154,7 +155,7 @@ export function createSwaggerPlugin(options: {
         const description = textValue(mapValue(props.specSelectors?.info?.(), "description"));
         return <div className={`api-doc-info${open ? " is-open" : ""}`}>
           <Original {...props} />
-          {description.trim() && <button type="button" className="api-compose-link api-doc-info-toggle" aria-expanded={open} onClick={() => setOpen(value => !value)}>{open ? "설명 접기" : "설명 보기"}</button>}
+          {description.trim() && <Button className="api-compose-link api-doc-info-toggle" aria-expanded={open} onClick={() => setOpen(value => !value)}>{open ? "설명 접기" : "설명 보기"}</Button>}
         </div>;
       },
       parameters: (Original: SwaggerComponent) => function RememberedParameters(props: any) {
@@ -179,7 +180,7 @@ export function createSwaggerPlugin(options: {
           props.onResetClick?.([path, method]);
         };
         return <>
-          {props.tryItOutEnabled && remembered && !options.composingRef.current && <p className="api-doc-remembered" role="status">마지막으로 실행한 값을 채웠습니다. <span title="이름에 authorization · cookie · password · token · secret · api key · otp · credential · session 이 들어간 값">이름이 password·token 등인 값은 저장하지 않습니다.</span><button type="button" className="api-compose-link" onClick={forget}>기억한 값 지우기</button></p>}
+          {props.tryItOutEnabled && remembered && !options.composingRef.current && <p className="api-doc-remembered" role="status">마지막으로 실행한 값을 채웠습니다. <span title="이름에 authorization · cookie · password · token · secret · api key · otp · credential · session 이 들어간 값">이름이 password·token 등인 값은 저장하지 않습니다.</span><Button className="api-compose-link" onClick={forget}>기억한 값 지우기</Button></p>}
           <Original {...props} />
         </>;
       },
@@ -262,8 +263,8 @@ export function createSwaggerPlugin(options: {
           {count !== null && <span className={`api-doc-search-count${count ? "" : " empty"}`} role="status">{count ? `${count}개 API` : "맞는 API가 없습니다"}</span>}
           {/* Icon + label; the narrow composer shows the icon only. */}
           <div className="api-actions api-doc-controls">
-            <button type="button" aria-label="태그 모두 펼치기" title="태그 모두 펼치기" onClick={() => setTags(true)}><Icon name="unfold_more" size={16} /><span>태그 모두 펼치기</span></button>
-            <button type="button" aria-label="태그 모두 접기" title="태그 모두 접기" onClick={() => setTags(false)}><Icon name="unfold_less" size={16} /><span>태그 모두 접기</span></button>
+            <Button variant="secondary" aria-label="태그 모두 펼치기" title="태그 모두 펼치기" onClick={() => setTags(true)}><Icon name="unfold_more" size={16} /><span>태그 모두 펼치기</span></Button>
+            <Button variant="secondary" aria-label="태그 모두 접기" title="태그 모두 접기" onClick={() => setTags(false)}><Icon name="unfold_less" size={16} /><span>태그 모두 접기</span></Button>
           </div>
           {/* The servers row (where Swagger puts it) is hidden, the environment picks the base URL.
               The composer can't call APIs, so it has no use for Authorize. */}
@@ -301,7 +302,7 @@ export function createSwaggerPlugin(options: {
           <div className="modal-ux" role="dialog" aria-label="API 요청 인증">
             <div className="modal-dialog-ux"><div className="modal-ux-inner">
               <div className="modal-ux-header"><h3>API 요청 인증</h3>
-                <button ref={closeButton} className="api-auth-close" onClick={() => props.authActions.showDefinitions(false)} aria-label="인증 설정 닫기" title="닫기">×</button>
+                <Button variant="ghost" iconOnly ref={closeButton} className="api-auth-close" onClick={() => props.authActions.showDefinitions(false)} aria-label="인증 설정 닫기" title="닫기">×</Button>
               </div>
               <div className="modal-ux-content"><RequestAuthPanel scope={options.scopeRef.current} bridge={options.bridgeRef.current} /></div>
             </div></div>
@@ -388,8 +389,8 @@ export function createSwaggerPlugin(options: {
         const status = props.response?.get?.("status");
         return <div role="region" aria-label="API 응답">
           {status === 401 && <p className="api-auth-hint" role="note">{connected
-            ? <>연결한 토큰(<code>{connected}</code>)이 만료됐거나 맞지 않을 수 있습니다. <button type="button" className="api-compose-link" onClick={openAuthorize}>Authorize</button>에서 확인하세요.</>
-            : <>인증이 필요한 API입니다. <button type="button" className="api-compose-link" onClick={openAuthorize}>Authorize</button>에서 토큰을 연결하세요.</>}</p>}
+            ? <>연결한 토큰(<code>{connected}</code>)이 만료됐거나 맞지 않을 수 있습니다. <Button className="api-compose-link" onClick={openAuthorize}>Authorize</Button>에서 확인하세요.</>
+            : <>인증이 필요한 API입니다. <Button className="api-compose-link" onClick={openAuthorize}>Authorize</Button>에서 토큰을 연결하세요.</>}</p>}
           <Original {...props} />
         </div>;
       },

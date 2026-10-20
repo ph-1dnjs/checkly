@@ -2,6 +2,7 @@ import { Fragment, useMemo } from "react";
 import { Icon } from "../../../shared/ui/Icon";
 import { lastEditedText, type AuthoredItem } from "../lib/authorship";
 
+import { Button } from "../../../shared/ui/Button";
 export type ScenarioSidebarEntry = AuthoredItem & {
   id: string;
   name: string;
@@ -54,13 +55,13 @@ export function ScenarioSidebarTree<T extends ScenarioSidebarEntry>({ items, sel
   const renderRows = (folder: Folder<T>) => [...folder.items].sort((left, right) => left.name.localeCompare(right.name, "ko")).map(item => {
     // Team mode: who changed it last and when, as a second line.
     const edited = lastEditedText(item, now);
-    return <button type="button" key={item.id} disabled={disabled} className={`api-sidebar-entry${selectedId === item.id ? " selected" : ""}${reasons?.has(item.id) ? " has-reason" : ""}${edited ? " has-by" : ""}`} onClick={() => onSelect(item)}>
+    return <Button key={item.id} disabled={disabled} className={`api-sidebar-entry${selectedId === item.id ? " selected" : ""}${reasons?.has(item.id) ? " has-reason" : ""}${edited ? " has-by" : ""}`} onClick={() => onSelect(item)}>
       <strong>{item.name}</strong>
       {reasons?.has(item.id) && <small className="api-sidebar-entry-reason">검색 일치 · {reasons.get(item.id)}</small>}
       {warnings?.has(item.id) && <span className="api-sidebar-warning" role="img" aria-label={warnings.get(item.id)} title={warnings.get(item.id)} />}
       {item.draft && <span className="api-sidebar-entry-meta"><small className="api-sidebar-draft">초안</small></span>}
       {edited && <small className="api-sidebar-entry-by" title={item.updatedAt ? `${item.updatedBy} 수정 · ${new Date(item.updatedAt).toLocaleString()}` : undefined}>{edited}</small>}
-    </button>;
+    </Button>;
   });
   const renderFolder = (folder: Folder<T>, depth: number) => {
     const children = [...folder.children.values()].sort((left, right) => left.name.localeCompare(right.name, "ko"));

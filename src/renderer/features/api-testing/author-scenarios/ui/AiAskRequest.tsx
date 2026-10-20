@@ -3,6 +3,7 @@ import { aiFixFailures, aiFixResponse } from "../model/ai-fix";
 import { Icon } from "../../../../shared/ui/Icon";
 import type { ApiEnvironmentScope, ApiScenarioResult, ApiTestingBridge } from "../../../../../app/api-testing/shared/workspace";
 
+import { Button } from "../../../../shared/ui/Button";
 const errorText = (error: unknown) => (error as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, "");
 
 /** Where AI에게 요청 goes: a new light 바로 만들기, or the terminal conversation already open. */
@@ -10,7 +11,7 @@ export type AiAskTarget = "quick" | "terminal";
 
 /** The AI button on a saved scenario; `label` names it ("AI에게 요청", or "AI로 고치기" on a failed run). */
 export function AiAskButton({ label, disabled, primary = false, onClick }: { label: string; disabled: boolean; primary?: boolean; onClick: () => void }) {
-  return <button type="button" className={`api-ai-ask-open${primary ? " is-primary" : ""}`} aria-haspopup="dialog" disabled={disabled} onClick={onClick}><Icon name="auto_fix_high" size={15} />{label}</button>;
+  return <Button variant={primary ? "primary" : "secondary"} className={`api-ai-ask-open${primary ? " is-primary" : ""}`} aria-haspopup="dialog" disabled={disabled} onClick={onClick}><Icon name="auto_fix_high" size={15} />{label}</Button>;
 }
 
 /**
@@ -78,7 +79,7 @@ export function AiAskRequest({ scope, scenarioId, scenarioName, failedRun, inclu
       </fieldset>
       <p className="api-input-note">시나리오 YAML{withFailure ? `과 실패한 단계·상태 코드${withResponse ? ", 응답 앞부분(토큰·비밀번호 같은 값은 가림)" : ""}` : ""}, 적은 말만 AI에 보냅니다. 질문이면 답만 하고, 고친 결과는 AI 작성 도우미에서 확인하고 저장합니다.</p>
       {error && <p className="api-warning" role="alert">{error}</p>}
-      <footer className="api-actions"><button type="button" disabled={sending} onClick={onCancel}>취소</button><button type="submit" className="api-primary" disabled={sending || disabled || !ready}>{sending ? "보내는 중…" : "AI에 보내기"}</button></footer>
+      <footer className="api-actions"><Button variant="secondary" disabled={sending} onClick={onCancel}>취소</Button><Button variant="primary" type="submit" disabled={sending || disabled || !ready}>{sending ? "보내는 중…" : "AI에 보내기"}</Button></footer>
     </form>
   </div>;
 }

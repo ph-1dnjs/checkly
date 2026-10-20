@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { Button } from "../../../shared/ui/Button";
 /** Renders JSON.stringify(value, null, 2) layout with syntax spans (values shown as is, like Swagger). */
 function renderJson(value: unknown): ReactNode[] {
   const parts: ReactNode[] = [];
@@ -57,7 +58,7 @@ export function JsonCode({ value, copyable = true }: { value: unknown; copyable?
   };
 
   return <div className={`api-json-view${copyable ? "" : " api-json-view-no-copy"}`}>
-    {copyable && <button type="button" className="api-json-copy" data-state={copyState} aria-label={copyState === "copied" ? "복사됨" : copyState === "failed" ? "복사 실패" : "JSON 복사"} title={copyState === "copied" ? "복사됨" : copyState === "failed" ? "복사 실패" : "JSON 복사"} onClick={copy} />}
+    {copyable && <Button className="api-json-copy" data-state={copyState} aria-label={copyState === "copied" ? "복사됨" : copyState === "failed" ? "복사 실패" : "JSON 복사"} title={copyState === "copied" ? "복사됨" : copyState === "failed" ? "복사 실패" : "JSON 복사"} onClick={copy} />}
     <pre className="api-highlighted-json"><code>{renderJson(value)}</code></pre>
   </div>;
 }
