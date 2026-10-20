@@ -1,20 +1,26 @@
+/* 레이어 순서: vendor(라이브러리) < controls-base(공용 컨트롤 배치 기본값) < legacy(화면별 CSS) < controls(공용 Button·Input 크기·모양). */
+@layer vendor, controls-base, legacy, controls;
+/* 토큰(:root)과 폰트만 있어 layer 밖에 둔다. */
 @import "./foundations.css";
 @import url("https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20,400,0,0");
 @import url("https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800&display=swap");
-@import "./bottom-navigation.css";
-@import "./dashboard.css";
-@import "./scenario-picker.css";
-@import "./editor-workspace.css";
-@import "./markdown-preview.css";
-@import "./reference-theme.css";
-@import "./v6.css";
-@import "./settings.css";
-@import "./settings-account.css";
-@import "./auth.css";
-@import "./screen-extract.css";
-@import "./form-automation.css";
-@import "./page-layout.css";
-@import "./scenario-workspace.css";
+@import "./bottom-navigation.css" layer(legacy);
+@import "./dashboard.css" layer(legacy);
+@import "./scenario-picker.css" layer(legacy);
+@import "./editor-workspace.css" layer(legacy);
+@import "./markdown-preview.css" layer(legacy);
+@import "./reference-theme.css" layer(legacy);
+@import "./v6.css" layer(legacy);
+@import "./settings.css" layer(legacy);
+@import "./settings-account.css" layer(legacy);
+@import "./auth.css" layer(legacy);
+@import "./screen-extract.css" layer(legacy);
+@import "./form-automation.css" layer(legacy);
+@import "./page-layout.css" layer(legacy);
+@import "./scenario-workspace.css" layer(legacy);
+@import "./controls.css";
+
+@layer legacy {
 
 * {
   box-sizing: border-box;
@@ -139,4 +145,6 @@ body,
   .content {
     padding: 0;
   }
+}
+
 }
