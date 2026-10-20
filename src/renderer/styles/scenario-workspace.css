@@ -24,13 +24,11 @@
 
 .ws-actions { margin-left:auto; min-width:0; display:flex; align-items:center; gap:8px; }
 .ws-unsaved { flex:none; padding:1px 5px; border:1px solid #e0cfa4; border-radius:4px; background:#fdf7e9; color:#96690c; font-family:D2Coding,ui-monospace,monospace; font-size:9.5px; letter-spacing:.08em; }
-.ws-action { flex:none; height:28px; display:flex; align-items:center; gap:6px; padding:0 12px; border:1px solid #d8dde2; border-radius:4px; background:#fff; color:#14181c; font-size:12px; cursor:pointer; }
-.ws-action:hover { background:#f5f7f8; }
-.ws-action .msi { font-size:16px; color:#5a646e; }
+.ws-action { flex:none; }
 .ws-save { position:relative; flex:none; display:flex; height:28px; border:1px solid #d8dde2; border-radius:4px; }
-.ws-save-main { display:flex; align-items:center; padding:0 12px; border:0; border-radius:3px 0 0 3px; background:#fff; color:#14181c; font-size:12px; cursor:pointer; }
+.ws-save-main { flex:none; }
 .ws-save-toggle { width:24px; display:flex; align-items:center; justify-content:center; padding:0; border:0; border-left:1px solid #d8dde2; border-radius:0 3px 3px 0; background:#fff; color:#5b646c; cursor:pointer; }
-.ws-save-main:hover,.ws-save-toggle:hover { background:#f5f7f8; }
+.ws-save-toggle:hover { background:#f5f7f8; }
 .ws-save-menu { position:absolute; top:calc(100% + 4px); right:0; z-index:30; min-width:150px; padding:4px; border:1px solid #d8dde2; border-radius:5px; background:#fff; box-shadow:0 6px 18px rgba(20,30,40,.10); }
 .ws-save-menu button { width:100%; height:30px; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:0 10px; border:0; border-radius:3px; background:transparent; color:#14181c; font-size:12px; white-space:nowrap; cursor:pointer; }
 .ws-save-menu button:hover { background:#f5f7f8; }
@@ -74,8 +72,7 @@
 .ws-preview-row h2 { margin:0; overflow:hidden; color:#14181c; font-size:13px; font-weight:600; letter-spacing:-.01em; text-overflow:ellipsis; white-space:nowrap; }
 .ws-preview-row p { margin:0; padding-top:3px; overflow:hidden; color:#8a939c; font-family:D2Coding,ui-monospace,monospace; font-size:10.5px; text-overflow:ellipsis; white-space:nowrap; }
 .ws-preview-count { flex:none; color:#8a939c; font-size:11px; }
-.ws-preview-dup { flex:none; height:24px; display:flex; align-items:center; padding:0 8px; border:1px solid #d8dde2; border-radius:4px; background:#fff; color:#1f63ae; font-size:11px; cursor:pointer; }
-.ws-preview-dup:hover { background:#edf4fc; }
+.ws-preview-dup { flex:none; }
 .ws-preview-caret { flex:none; color:#a6aeb5; font-size:11px; }
 .ws-steps { margin:0; padding:0; list-style:none; border-top:1px solid #f3f5f7; background:#fcfdfe; }
 .ws-steps li { display:flex; align-items:center; gap:10px; height:30px; padding:0 14px; border-bottom:1px solid #f3f5f7; }
@@ -122,9 +119,8 @@
 .extract-marker-target { margin:0; font-size:12.5px; }
 .extract-marker-link { font-family:inherit; font-size:11px; font-weight:500; color:#2e7d4f; white-space:nowrap; }
 .extract-marker-link.unlinked { color:#b7791f; }
-.extract-marker-edit,.extract-marker-delete { display:flex; padding:0; color:#a6aeb5; }
-.extract-marker-edit:hover,.extract-marker-delete:hover { color:#14181c; }
-.extract-marker-edit .msi,.extract-marker-delete .msi { font-size:16px; }
+.extract-marker-edit { --ck-btn-ghost-fg:#a6aeb5; --ck-btn-ghost-hover-fg:#14181c; }
+.extract-marker-delete { --ck-btn-ghost-fg:#a6aeb5; --ck-btn-ghost-hover-fg:#b32318; }
 
 @media(max-width:1100px) { .ws-editor { grid-template-columns:220px minmax(0,1fr) minmax(0,1fr); } }
 @media(max-width:900px) {

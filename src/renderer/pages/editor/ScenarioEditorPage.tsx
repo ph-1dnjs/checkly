@@ -11,6 +11,7 @@ import { ActionTag } from "../../shared/ui/ActionTag";
 import { Button } from "../../shared/ui/Button";
 import { DuplicateScenarioModal } from "./DuplicateScenarioModal";
 
+import { Input } from "../../shared/ui/Input";
 type Device = "mobile" | "tablet" | "desktop";
 
 const DEVICES: Array<{ id: Device; label: string; w: string; h: string; frame: string }> = [
@@ -244,7 +245,7 @@ export const ScenarioEditorPage = ({
                       <p>{webEndpoints.find((item) => item.id === (preview.endpointId ?? defaultEndpointId))?.name ?? "웹 엔드포인트 없음"}</p>
                     </div>
                     <span className="ws-preview-count">{preview.steps.length}개 단계</span>
-                    <Button
+                    <Button variant="secondary"
                       className="ws-preview-dup"
                       title="값을 변경해 새 템플릿으로 복제합니다"
                       onClick={(event) => {
@@ -292,14 +293,14 @@ export const ScenarioEditorPage = ({
       <div className="extract-shell">
         <div className="extract-topbar">
           <div className="extract-navbtns">
-            <Button
+            <Button variant="ghost" iconOnly
               className="extract-navbtn"
               title="이전"
               onClick={() => targetFrameRef.current?.goBack()}
             >
               <span className="extract-chevron extract-chevron-back" />
             </Button>
-            <Button
+            <Button variant="ghost" iconOnly
               className="extract-navbtn"
               title="앞으로"
               onClick={() => targetFrameRef.current?.goForward()}
@@ -427,14 +428,14 @@ export const ScenarioEditorPage = ({
                   <span className={`extract-marker-link${step.connected ? "" : " unlinked"}`}>
                     {step.connected ? "연결됨" : "미연결"}
                   </span>
-                  <Button
+                  <Button variant="ghost" iconOnly
                     className="extract-marker-edit"
                     onClick={() => onEditStep(step)}
                     aria-label="단계 편집"
                   >
                     <span className="msi" aria-hidden="true">edit</span>
                   </Button>
-                  <Button
+                  <Button variant="ghost" iconOnly
                     className="extract-marker-delete"
                     onClick={() => onDeleteStep(step.id)}
                     aria-label="단계 삭제"
@@ -498,19 +499,19 @@ export const ScenarioEditorPage = ({
             </div>
             <div className="extract-pinmode">
               <strong>{isAddingMarker ? "위치 선택 중" : "핀 수정 중"}</strong>
-              <Button onClick={onBeginMarkerPlacement}>
+              <Button variant="ghost" onClick={onBeginMarkerPlacement}>
                 {isAddingMarker ? "다시 선택" : "마커 추가"}
               </Button>
-              <Button
+              <Button variant="ghost"
                 aria-pressed={markersVisible}
                 onClick={onToggleMarkersVisible}
               >
                 {markersVisible ? "마커 숨기기" : "마커 보이기"}
               </Button>
-              <Button onClick={onDeleteLast}>
+              <Button variant="ghost" onClick={onDeleteLast}>
                 마지막 삭제
               </Button>
-              <Button onClick={onClearSteps}>
+              <Button variant="ghost" onClick={onClearSteps}>
                 전체 초기화
               </Button>
             </div>
@@ -549,7 +550,7 @@ export const ScenarioEditorPage = ({
           </label>
           <label>
             라벨
-            <input
+            <Input
               autoFocus
               value={markerDialog.target}
               onChange={(event) =>
@@ -592,7 +593,7 @@ export const ScenarioEditorPage = ({
             {markerDialog.condition !== undefined && (
               <label className="execution-condition-input">
                 실행 조건
-                <input
+                <Input
                   value={markerDialog.condition}
                   onChange={(event) =>
                     onUpdateMarkerDialog({ condition: event.target.value })
@@ -616,7 +617,7 @@ export const ScenarioEditorPage = ({
               )}
               <label>
                 {markerDialog.action === "click" ? "클릭 대상 대기 시간 (초)" : "결과 확인 대기 시간 (초)"}
-                <input
+                <Input
                   type="number"
                   min="1"
                   value={markerDialog.waitSeconds ?? 10}
@@ -633,7 +634,7 @@ export const ScenarioEditorPage = ({
           {markerDialog.action === "click" && (
             <label>
               동일 대상 순서
-              <input
+              <Input
                 type="number"
                 min="1"
                 value={markerDialog.occurrence ?? 1}
@@ -656,7 +657,7 @@ export const ScenarioEditorPage = ({
             <label>
               {markerDialog.action === "fileUpload" ? "업로드할 파일" : markerDialog.action === "select" ? "선택할 값" : "값"}
               <div className={markerDialog.action === "fileUpload" ? "file-upload-value" : undefined}>
-                <input
+                <Input
                   value={markerDialog.value ?? ""}
                   onChange={(event) =>
                     onUpdateMarkerDialog({ value: event.target.value })
@@ -682,7 +683,7 @@ export const ScenarioEditorPage = ({
           {markerDialog.action === "manualFill" && (
             <label>
               안내 문구
-              <input
+              <Input
                 value={markerDialog.prompt ?? ""}
                 onChange={(event) =>
                   onUpdateMarkerDialog({
@@ -702,7 +703,7 @@ export const ScenarioEditorPage = ({
               </div>
               <label>
                 안내 문구
-                <input
+                <Input
                   value={markerDialog.prompt ?? ""}
                   onChange={(event) => onUpdateMarkerDialog({ prompt: event.target.value })}
                   placeholder="예: 나이스페이 테스트 결제를 완료한 뒤 계속을 누르세요"
@@ -718,7 +719,7 @@ export const ScenarioEditorPage = ({
               </div>
               <label>
                 안내 문구
-                <input
+                <Input
                   value={markerDialog.prompt ?? ""}
                   onChange={(event) => onUpdateMarkerDialog({ prompt: event.target.value })}
                   placeholder="예: 나이스페이 결제 후 결과를 선택해 주세요"

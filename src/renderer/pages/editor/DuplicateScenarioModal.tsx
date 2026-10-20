@@ -5,6 +5,7 @@ import { ActionTag } from "../../shared/ui/ActionTag";
 import { Button } from "../../shared/ui/Button";
 import "./duplicate-scenario.css";
 
+import { Input } from "../../shared/ui/Input";
 type Props = {
   scenario: Scenario;
   onDuplicate: (scenarioId: string, name: string, cases: Array<Record<string, string>>) => void;
@@ -63,7 +64,7 @@ export const DuplicateScenarioModal = ({ scenario, onDuplicate, onClose }: Props
 
         <label className="duplicate-name-field">
           복제본 이름
-          <input
+          <Input
             value={dupName}
             onChange={(event) => setDupName(event.target.value)}
             placeholder="예: 로그인 복제"
@@ -76,7 +77,7 @@ export const DuplicateScenarioModal = ({ scenario, onDuplicate, onClose }: Props
               <span>케이스별 값</span>
               <p>비워두면 원본 값을 그대로 사용합니다.</p>
             </div>
-            <Button
+            <Button variant="secondary"
               className="duplicate-add-case"
               title="케이스를 추가해 한 번에 여러 개를 복제합니다"
               onClick={addDupCase}
@@ -98,7 +99,7 @@ export const DuplicateScenarioModal = ({ scenario, onDuplicate, onClose }: Props
               </Button>
             ))}
             {dupCases.length > 1 && (
-              <Button
+              <Button variant="danger"
                 className="duplicate-remove-case"
                 onClick={removeDupCase}
               >
@@ -117,7 +118,7 @@ export const DuplicateScenarioModal = ({ scenario, onDuplicate, onClose }: Props
                   <ActionTag action={step.action} />
                   <span title={step.target}>{step.target}</span>
                   <em>{kind === "in" ? "입력" : "확인"}</em>
-                  <input
+                  <Input
                     value={value}
                     placeholder={editableValueDefault(step, kind)}
                     onChange={(event) => setDupValue(step.id, event.target.value)}

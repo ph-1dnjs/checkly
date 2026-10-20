@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import "../../styles/popover.css";
 
+import { Button } from "./Button";
 type Props = {
   label: string;
   children: ReactNode;
@@ -35,9 +36,9 @@ export function Popover({ label, children, disabled = false, openRequest = 0, cl
   }, [open]);
   useEffect(() => { if (disabled) setOpen(false); }, [disabled]);
   return <div className={["shared-popover", className].filter(Boolean).join(" ")} ref={root}>
-    <button type="button" ref={trigger} className={triggerClassName} disabled={disabled} aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? id : undefined} aria-label={triggerText === undefined ? undefined : label} onClick={() => setOpen(!open)}>{triggerText ?? label}</button>
+    <Button ref={trigger} className={triggerClassName} disabled={disabled} aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? id : undefined} aria-label={triggerText === undefined ? undefined : label} onClick={() => setOpen(!open)}>{triggerText ?? label}</Button>
     {open && <div id={id} ref={panel} role="dialog" aria-label={label} tabIndex={-1} className={["shared-popover-panel", panelClassName].filter(Boolean).join(" ")} data-scroll="light">
-      <button type="button" className="shared-popover-close" aria-label={`${label} 닫기`} onClick={() => { setOpen(false); trigger.current?.focus(); }}>×</button>
+      <Button className="shared-popover-close" aria-label={`${label} 닫기`} onClick={() => { setOpen(false); trigger.current?.focus(); }}>×</Button>
       {children}
     </div>}
   </div>;

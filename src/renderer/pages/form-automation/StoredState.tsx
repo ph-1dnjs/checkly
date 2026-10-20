@@ -14,6 +14,7 @@ import {
   type FormAutomationStoredValues,
 } from "../../../app/ipc/form-automation/storageTypes";
 
+import { Button } from "../../shared/ui/Button";
 const readLegacyValues = (): FormAutomationStoredValues => {
   const values: FormAutomationStoredValues = {};
   for (const key of FORM_AUTOMATION_STORAGE_KEYS) {
@@ -133,16 +134,16 @@ export function FormAutomationStorageProvider({ children }: { children: ReactNod
 
   const retry = () => { setLoadError(""); setSaveError(""); setCompatibilityMode(false); setStorage(null); setAttempt(value => value + 1); };
   if (!storage) return <div className="fa-discovery-notice" role={loadError ? "alert" : "status"}>
-    {loadError ? <><span>저장 데이터를 불러오지 못했습니다: {loadError}</span><button onClick={retry}>다시 불러오기</button></> : "저장한 자동 입력 데이터를 불러오는 중입니다."}
+    {loadError ? <><span>저장 데이터를 불러오지 못했습니다: {loadError}</span><Button variant="secondary" onClick={retry}>다시 불러오기</Button></> : "저장한 자동 입력 데이터를 불러오는 중입니다."}
   </div>;
   return <StorageContext.Provider key={attempt} value={storage}>
     {loadError && <div className="fa-discovery-notice" role="alert">
       <span>저장 데이터를 불러오지 못해 기존 화면 저장본으로 표시합니다. 저장은 연결 복구 후 가능합니다: {loadError}</span>
-      <button onClick={retry}>다시 불러오기</button>
+      <Button variant="secondary" onClick={retry}>다시 불러오기</Button>
     </div>}
     {compatibilityMode && <div className="fa-discovery-notice" role="status">
       <span>파일 저장 연결을 기다리는 중입니다. 변경한 값은 현재 화면 저장소에 보관하며, 앱을 다시 실행하거나 연결을 재시도하면 파일에 반영합니다.</span>
-      <button onClick={retry}>저장 연결 다시 시도</button>
+      <Button variant="secondary" onClick={retry}>저장 연결 다시 시도</Button>
     </div>}
     {saveError && <div className="fa-discovery-notice" role="alert">자동 입력 데이터 저장 실패: {saveError}</div>}
     {children}

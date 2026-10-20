@@ -26,6 +26,7 @@ import { AuthUnavailable } from "../pages/auth/AuthUnavailable";
 import type { AuthAccount } from "../pages/auth/model";
 import { useAuth } from "./hooks/useAuth";
 
+import { Input } from "../shared/ui/Input";
 const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement => {
   const [apiRunAction, setApiRunAction] = useState<ApiRunAction | null>(null);
   const [keepSessionPromptChecked, setKeepSessionPromptChecked] =
@@ -389,7 +390,7 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
           aria-live="polite"
           aria-label="시나리오 실행 알림"
         >
-          <Button
+          <Button variant="ghost" iconOnly
             className="run-notification-close"
             onClick={() => setRunNotification(null)}
             aria-label="실행 알림 닫기"
@@ -504,7 +505,7 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
               />
             </label>
             <div className="modal-actions">
-              <Button
+              <Button variant="secondary"
                 onClick={() => {
                   resolveSessionPrompt(false, keepSessionPromptChecked);
                   setKeepSessionPromptChecked(false);
@@ -547,8 +548,8 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
         <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="delete-scenario-title">
           <div className="manual-modal"><h2 id="delete-scenario-title">시나리오 삭제</h2>
             <p>“{activeRecord?.title}”을 팀 DB에서 삭제하시겠습니까?</p>
-            <div className="modal-actions"><Button disabled={busy} onClick={() => setConfirmDelete(false)}>취소</Button>
-              <Button disabled={busy} variant="primary" onClick={async () => { await deleteRecord(); setConfirmDelete(false); }}>삭제</Button></div>
+            <div className="modal-actions"><Button variant="secondary" disabled={busy} onClick={() => setConfirmDelete(false)}>취소</Button>
+              <Button variant="danger" disabled={busy} onClick={async () => { await deleteRecord(); setConfirmDelete(false); }}>삭제</Button></div>
           </div>
         </div>
       )}
@@ -563,7 +564,7 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
             <h2 id="open-scenario-title">저장하지 않은 변경 사항이 있습니다</h2>
             <p>계속하면 지금 편집 중인 변경 사항이 사라집니다.</p>
             <div className="modal-actions">
-              <Button onClick={() => setPendingOpenPath(null)}>취소</Button>
+              <Button variant="secondary" onClick={() => setPendingOpenPath(null)}>취소</Button>
               <Button
                 variant="primary"
                 onClick={() => {
@@ -588,10 +589,10 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
             <h2 id="save-scenario-title">시나리오를 저장할까요?</h2>
             <p>화면에서 수정한 실행 단계를 Markdown 시나리오에 반영합니다.</p>
             <div className="modal-actions">
-              <Button onClick={() => setSaveBeforeReturning(false)}>
+              <Button variant="secondary" onClick={() => setSaveBeforeReturning(false)}>
                 취소
               </Button>
-              <Button
+              <Button variant="secondary"
                 onClick={() => {
                   setSaveBeforeReturning(false);
                   setEditorMode("text");
@@ -628,7 +629,7 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
             </p>
             <label>
               실패 사유
-              <input
+              <Input
                 autoFocus
                 value={manualFailureReason}
                 onChange={(event) => setManualFailureReason(event.target.value)}

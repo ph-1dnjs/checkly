@@ -20,6 +20,7 @@ import {
   type WheelEvent,
 } from "react";
 
+import { Input } from "../../shared/ui/Input";
 const ACCENT = "#17607F";
 const PASS = "#1E7A4A";
 const FAIL = "#B32318";
@@ -535,13 +536,13 @@ export const RunPage = ({
             </div>
           </div>
           {canStop && (
-            <Button className="run-stop-btn" onClick={onCancel}>
+            <Button variant="danger" className="run-stop-btn" onClick={onCancel}>
               <span className="msi">stop</span>
               실행 중단
             </Button>
           )}
           {reportAvailable && !running && (
-            <Button
+            <Button variant="secondary"
               className="run-report-btn"
               title="실행 결과 리포트 보기 · Markdown 다운로드"
               onClick={onOpenReport}
@@ -551,7 +552,7 @@ export const RunPage = ({
             </Button>
           )}
           {fullRunVideoAvailable && !running && (
-            <Button
+            <Button variant="secondary"
               className="run-full-video-btn"
               title="모든 시나리오를 이어 붙인 영상 (mp4)"
               onClick={onDownloadFullRunVideo}
@@ -560,7 +561,7 @@ export const RunPage = ({
               전체 영상
             </Button>
           )}
-          <Button
+          <Button variant="secondary"
             className={`run-session-btn${keepSession ? " active" : ""}`}
             title={
               running
@@ -651,7 +652,7 @@ export const RunPage = ({
               <Button variant="secondary" onClick={onClearDoneRecords}>
                 완료 기록 지우기
               </Button>
-              <Button
+              <Button variant="secondary"
                 className="run-rq-pause-btn"
                 onClick={stackPaused ? onResumeStack : onPauseStack}
               >
@@ -695,8 +696,8 @@ export const RunPage = ({
                       </span>
                       {(entry.status === "queued" ||
                         entry.status === "running") && (
-                        <button
-                          type="button"
+                        <Button variant="ghost" iconOnly
+                         
                           className="run-rq-remove"
                           aria-label={
                             entry.status === "running"
@@ -711,7 +712,7 @@ export const RunPage = ({
                           onClick={() => onRemoveFromStack(entry.seq)}
                         >
                           ×
-                        </button>
+                        </Button>
                       )}
                     </div>
                     <div
@@ -752,7 +753,7 @@ export const RunPage = ({
             </div>
           </div>
           <div className="run-manual-actions">
-            <input
+            <Input mono
               autoFocus
               type={manualValueVisible ? "text" : "password"}
               value={manualValue}
@@ -770,7 +771,7 @@ export const RunPage = ({
             <Button variant="primary" onClick={onSubmitManualInput}>
               입력 완료 · 계속
             </Button>
-            <Button className="run-manual-skip" onClick={onCancelManual}>
+            <Button variant="ghost" className="run-manual-skip" onClick={onCancelManual}>
               취소
             </Button>
           </div>
@@ -811,7 +812,7 @@ export const RunPage = ({
                     );
                     return (
                       video && (
-                        <Button
+                        <Button variant="secondary" iconOnly
                           className="run-group-icon-btn"
                           title={`${group.scenario.title} 영상 다운로드 (mp4)`}
                           onClick={() => onDownloadRunVideo(video.path)}
@@ -821,7 +822,7 @@ export const RunPage = ({
                       )
                     );
                   })()}
-                  <Button
+                  <Button variant="secondary" iconOnly
                     className="run-group-icon-btn run-group-rerun"
                     title="이 시나리오를 대기열 끝에 추가"
                     onClick={() => onRerunScenario(group.scenario)}
@@ -1109,7 +1110,7 @@ export const RunPage = ({
 
               {manualControl && (
                 <div className="manual-browser-actions">
-                  <input
+                  <Input
                     value={manualFailureReason}
                     onChange={(event) =>
                       setManualFailureReason(event.target.value)

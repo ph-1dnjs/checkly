@@ -147,18 +147,18 @@ export const ScenarioWorkspaceHeaderExtra = ({
         {route === "editor" && editorMode === "text" && (
           <>
             {isDirty && <span className="ws-unsaved">UNSAVED</span>}
-            <Button className="ws-save-main" disabled={busy} onClick={() => void runSave(onSave)}>
+            <Button variant="primary" className="ws-save-main" disabled={busy} onClick={() => void runSave(onSave)}>
               {busy ? "저장 중…" : savedFlash ? "저장됨" : "저장"}
             </Button>
-            <Button className="ws-action" disabled={busy || !canDelete} onClick={onDelete}>삭제</Button>
+            <Button variant="danger" className="ws-action" disabled={busy || !canDelete} onClick={onDelete}>삭제</Button>
           </>
         )}
         {route === "picker" && (
           <>
-            <Button className="ws-action" onClick={onRefresh}>
+            <Button variant="secondary" className="ws-action" onClick={onRefresh}>
               새로고침
             </Button>
-            <Button className="ws-action" onClick={() => onNavigate("editor")}>
+            <Button variant="secondary" className="ws-action" onClick={() => onNavigate("editor")}>
               <span className="msi" aria-hidden="true">edit</span>
               편집
             </Button>

@@ -140,6 +140,8 @@ export const ScenarioPickerPage = ({ records, loading, pickedKeys, onPick, onOpe
                         {isOpen ? "▾" : "▸"} 단계
                       </Button>
                       <Button
+                        variant="secondary"
+                        iconOnly
                         className="picker-run-only"
                         title="이 시나리오만 실행"
                         aria-label="이 시나리오만 실행"
@@ -197,6 +199,8 @@ export const ScenarioPickerPage = ({ records, loading, pickedKeys, onPick, onOpe
                       <span>{item.title}</span>
                       <i>{item.steps.length} steps</i>
                       <Button
+                        variant="ghost"
+                        iconOnly
                         title="선택 해제"
                         onClick={() => togglePick(item.id)}
                       >
