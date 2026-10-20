@@ -108,7 +108,7 @@ export const JoinFlow = ({ bridge, backLabel, onBack, onEnter }: Props) => {
           <form className="auth-form" onSubmit={submitInvite} noValidate>
             <Field label="초대코드">
               <AuthInput
-                className="mono"
+                mono
                 value={invite}
                 onValue={edit((value) => setInvite(normalizeInvite(value)))}
                 placeholder="XXX-XXXXXX"
@@ -119,10 +119,10 @@ export const JoinFlow = ({ bridge, backLabel, onBack, onEnter }: Props) => {
             </Field>
             <AuthError message={error} />
             <div className="auth-actions">
-              <Button className="auth-btn auth-btn-secondary" onClick={onBack}>
+              <Button variant="secondary" size="large" className="auth-btn" onClick={onBack}>
                 취소
               </Button>
-              <Button type="submit" className="auth-btn auth-btn-primary" disabled={busy} aria-busy={busy}>
+              <Button type="submit" variant="primary" size="large" className="auth-btn" disabled={busy} aria-busy={busy}>
                 다음
               </Button>
             </div>
@@ -150,10 +150,10 @@ export const JoinFlow = ({ bridge, backLabel, onBack, onEnter }: Props) => {
               ]}
             />
             <div className="auth-actions">
-              <Button className="auth-btn auth-btn-secondary" onClick={() => go(1)}>
+              <Button variant="secondary" size="large" className="auth-btn" onClick={() => go(1)}>
                 이전
               </Button>
-              <Button type="submit" className="auth-btn auth-btn-primary" autoFocus>
+              <Button type="submit" variant="primary" size="large" className="auth-btn" autoFocus>
                 이 프로젝트에 가입
               </Button>
             </div>
@@ -166,11 +166,11 @@ export const JoinFlow = ({ bridge, backLabel, onBack, onEnter }: Props) => {
           <FlowHeading title="계정 설정" description="프로젝트에서 사용할 영문 닉네임과 비밀번호를 입력해주세요." />
           <form className="auth-form" onSubmit={submitJoin} noValidate>
             <Field label="닉네임" check={nickCheck}>
-              <AuthInput className="mono" value={nickname} onValue={edit(setNickname)} placeholder="hyewon" aria-label="닉네임" autoFocus />
+              <AuthInput mono value={nickname} onValue={edit(setNickname)} placeholder="hyewon" aria-label="닉네임" autoFocus />
             </Field>
             <Field label="비밀번호">
               <PasswordInput
-                className="mono"
+                mono
                 value={password}
                 onValue={edit(setPassword)}
                 placeholder={`${PASSWORD_MIN}자 이상`}
@@ -182,7 +182,7 @@ export const JoinFlow = ({ bridge, backLabel, onBack, onEnter }: Props) => {
             </Field>
             <Field label="비밀번호 확인" className="auth-field-gap">
               <AuthInput
-                className="mono"
+                mono
                 type={showPassword ? "text" : "password"}
                 value={confirm}
                 onValue={edit(setConfirm)}
@@ -193,10 +193,10 @@ export const JoinFlow = ({ bridge, backLabel, onBack, onEnter }: Props) => {
             </Field>
             <AuthError message={error} />
             <div className="auth-actions">
-              <Button className="auth-btn auth-btn-secondary" onClick={() => go(2)}>
+              <Button variant="secondary" size="large" className="auth-btn" onClick={() => go(2)}>
                 이전
               </Button>
-              <Button type="submit" className="auth-btn auth-btn-primary" disabled={busy} aria-busy={busy}>
+              <Button type="submit" variant="primary" size="large" className="auth-btn" disabled={busy} aria-busy={busy}>
                 {busy ? "가입하는 중…" : "가입하기"}
               </Button>
             </div>
@@ -216,7 +216,7 @@ export const JoinFlow = ({ bridge, backLabel, onBack, onEnter }: Props) => {
                 ["비밀번호", "••••••••"],
               ]}
             />
-            <Button className="auth-btn auth-btn-primary" onClick={() => onEnter(session)} autoFocus>
+            <Button variant="primary" size="large" className="auth-btn" onClick={() => onEnter(session)} autoFocus>
               시작하기
             </Button>
           </div>

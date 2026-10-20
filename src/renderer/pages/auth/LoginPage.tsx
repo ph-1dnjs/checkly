@@ -77,16 +77,15 @@ export const LoginPage = ({ bridge, onEnter, onJoin, onCreate }: Props) => {
         </div>
         <form className="auth-form" onSubmit={submit} noValidate>
           <AuthInput
-            className="mono"
+            mono
             value={code}
             onValue={edit((value) => setCode(value.toLowerCase()))}
             placeholder="프로젝트 코드"
             aria-label="프로젝트 코드"
             autoFocus={!code}
           />
-          <AuthInput className="mono" value={nickname} onValue={edit(setNickname)} placeholder="닉네임" aria-label="닉네임" autoComplete="username" />
+          <AuthInput value={nickname} onValue={edit(setNickname)} placeholder="닉네임" aria-label="닉네임" autoComplete="username" />
           <PasswordInput
-            className="mono"
             value={password}
             onValue={edit(setPassword)}
             placeholder="비밀번호"
@@ -99,7 +98,7 @@ export const LoginPage = ({ bridge, onEnter, onJoin, onCreate }: Props) => {
             기억하기
           </label>
           <AuthError message={error || notice} />
-          <Button type="submit" className="auth-btn auth-btn-primary auth-login-submit" disabled={busy} aria-busy={busy}>
+          <Button type="submit" variant="primary" size="large" className="auth-btn auth-login-submit" disabled={busy} aria-busy={busy}>
             {busy ? "로그인 중…" : "로그인"}
           </Button>
         </form>
@@ -109,7 +108,7 @@ export const LoginPage = ({ bridge, onEnter, onJoin, onCreate }: Props) => {
           <i />
         </div>
         <div className="auth-login-alt">
-          <Button className="auth-btn auth-btn-secondary strong" onClick={onJoin}>
+          <Button variant="secondary" size="large" className="auth-btn" onClick={onJoin}>
             초대코드로 가입
           </Button>
           <div className="auth-login-create">
