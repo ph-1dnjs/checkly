@@ -14,7 +14,24 @@ type Props = {
   onOpenReport: (record: RunRecord) => void;
 };
 
-const TAPE_HEIGHTS = [20, 26, 30, 23, 28];
+const TAPE_SIZE = 28;
+const TAPE_MAX_HEIGHT = 34;
+const TAPE_MIN_HEIGHT = 4;
+
+/** 통과율(0~100)을 막대 높이(px)로 바꾼다. 0%여도 보이도록 최소 높이를 둔다. */
+const tapeHeightOf = (rate: number) =>
+  Math.max(TAPE_MIN_HEIGHT * 2, Math.round((rate / 100) * TAPE_MAX_HEIGHT));
+
+const STATUS_LABEL: Record<RunRecord["status"], string> = {
+  passed: "통과",
+  failed: "실패",
+  cancelled: "취소",
+};
+
+const passRateOf = (record: RunRecord) => {
+  const total = record.passed + record.failed;
+  return total ? Math.round((record.passed / total) * 100) : 0;
+};
 
 const durationOf = (record: RunRecord) =>
   record.results.every(result => result.elapsedSeconds !== undefined)
@@ -54,11 +71,14 @@ export const DashboardPage = ({
   const medianDur = durations.length
     ? durations[Math.floor(durations.length / 2)]
     : 0;
-  const tape = Array.from({ length: 28 }, (_, index) => {
-    const record = history.length ? history[index % history.length] : undefined;
-    return { record, bad: record?.status === "failed" };
-  });
-  const tapeFailCount = tape.filter((t) => t.bad).length;
+  // 실행 1건당 막대 1개. history는 최신순이므로 최근 28건을 뒤집어 왼쪽(오래된 것) → 오른쪽(최신)으로 놓고, 빈 칸은 앞쪽에 채운다.
+  const recent = history.slice(0, TAPE_SIZE).reverse();
+  const tape: (RunRecord | undefined)[] = [
+    ...Array<undefined>(TAPE_SIZE - recent.length).fill(undefined),
+    ...recent,
+  ];
+  const tapePassCount = recent.filter((record) => record.status === "passed").length;
+  const tapeFailCount = recent.filter((record) => record.status === "failed").length;
 
   return (
     <div className="dash">
@@ -84,6 +104,12 @@ export const DashboardPage = ({
         </div>
         <div className="dash-stat-group">
           <div className="dash-stat">
+            <div className="dash-stat-label">성공</div>
+            <div className="dash-stat-value dash-stat-pass">
+              {summary.passed}
+            </div>
+          </div>
+          <div className="dash-stat">
             <div className="dash-stat-label">실패</div>
             <div className="dash-stat-value dash-stat-fail">
               {summary.failed}
@@ -96,20 +122,34 @@ export const DashboardPage = ({
         </div>
         <div className="dash-tape-cell">
           <div className="dash-tape-head">
-            <span>최근 28회</span>
+            <span>최근 {TAPE_SIZE}회</span>
             <span className="dash-mono dash-muted">
-              pass {tape.length - tapeFailCount} · fail {tapeFailCount}
+              pass {tapePassCount} · fail {tapeFailCount}
             </span>
           </div>
           <div className="dash-tape">
-            {tape.map(({ record, bad }, index) => (
-              <div
-                key={index}
-                className={`dash-tape-bar${bad ? " failed" : ""}`}
-                style={{ height: `${bad ? 12 : TAPE_HEIGHTS[index % TAPE_HEIGHTS.length]}px` }}
-                title={record ? (record.status === "cancelled" ? "취소" : bad ? "실패" : "통과") : "기록 없음"}
-              />
-            ))}
+            {tape.map((record, index) => {
+              if (!record) {
+                return (
+                  <div
+                    key={`empty-${index}`}
+                    className="dash-tape-bar empty"
+                    style={{ height: `${TAPE_MIN_HEIGHT}px` }}
+                    title="기록 없음"
+                  />
+                );
+              }
+              // 전부 통과한 실행만 초록(passed), 하나라도 실패하면 빨강(failed), 취소는 회색. 높이는 시나리오 통과율.
+              const rate = passRateOf(record);
+              return (
+                <div
+                  key={record.id}
+                  className={`dash-tape-bar ${record.status}`}
+                  style={{ height: `${tapeHeightOf(rate)}px` }}
+                  title={`${STATUS_LABEL[record.status]} · ${rate}% (${record.passed}/${record.passed + record.failed})`}
+                />
+              );
+            })}
           </div>
         </div>
       </div>
@@ -124,8 +164,7 @@ export const DashboardPage = ({
 
       {history.length ? (
         history.map((record) => {
-          const total = record.passed + record.failed;
-          const rate = total ? Math.round((record.passed / total) * 100) : 0;
+          const rate = passRateOf(record);
           return (
             <div
               className="dash-row"
@@ -136,7 +175,7 @@ export const DashboardPage = ({
             >
               <div>
                 <div
-                  className={`dash-dot${record.status === "failed" ? " failed" : ""}`}
+                  className={`dash-dot ${record.status}`}
                 />
               </div>
               <div className="dash-row-name">
@@ -150,7 +189,7 @@ export const DashboardPage = ({
                 </div>
               </div>
               <div
-                className={`dash-col-right dash-mono${record.status === "failed" ? " failed" : ""}`}
+                className={`dash-col-right dash-mono ${record.status}`}
               >
                 {rate}%
               </div>
