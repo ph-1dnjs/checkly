@@ -31,22 +31,22 @@ export const COMPONENTS: ComponentDef[] = [
     group: "CONTROLS",
     name: "Button",
     tag: "B",
-    desc: "Primary / Secondary / Ghost / Danger / Dashed 다섯 종류. 높이는 34·30·28·26px 네 단계로 고정하고 좌우 패딩만 조정합니다. 한 화면의 primary는 하나입니다.",
+    desc: "shared/ui/Button 하나로 모든 버튼을 만듭니다. Primary / Secondary / Danger / Ghost 네 종류, 크기는 large(44px)·small(32px) 두 가지뿐입니다. 한 화면의 primary는 하나입니다.",
     specs: specs([
-      ["comp/button-primary", "bg #1F63AE · fg #FFFFFF · hover #17538F", "주 CTA"],
-      ["comp/button-secondary", "bg #FFFFFF · 1px #D8DDE2 · hover #F5F7F8", "보조 동작"],
-      ["comp/button-ghost", "no border · fg #5A646E · hover #F0F3F5", "아이콘 버튼, 목록 내 동작"],
-      ["comp/button-danger", "1px #E9C4C0 · fg #B32318 · hover #FDF6F5", "삭제 등 되돌릴 수 없는 동작"],
-      ["comp/button-dashed", "1px dashed #B9D4F1 · fg #1F63AE · hover #F5F9FE", "항목 추가"],
-      ["comp/button-radius", "4px", "모든 크기 동일"],
-      ["comp/button-icon", "msi 16px · gap 8px", "라벨 왼쪽"],
-      ["comp/button-shortcut", "mono 10.5px · opacity .65", "라벨 오른쪽"],
+      ["comp/button-large", "h 44px · radius 8px · 14px · padding 0 14px · icon 18px", "시작 화면(로그인·가입) 같은 폼 중심 화면"],
+      ["comp/button-small", "h 32px · radius 6px · 12.5px · padding 0 12px · icon 16px", "그 외 모든 작업 화면 (기본값)"],
+      ["comp/button-primary", "bg #1F63AE · 1px #1A589C · hover #1B5A9F · active #174E8B", "주 CTA"],
+      ["comp/button-secondary", "bg #FFFFFF · 1px #D5DBE1 · hover #F7F9FA / #C3CBD3", "보조 동작"],
+      ["comp/button-danger", "bg #FFFFFF · 1px #E9C4C0 · fg #B32318 · hover #FDF6F5", "삭제·중지"],
+      ["comp/button-ghost", "no border · fg #3D4650 · hover #F1F4F6", "아이콘 버튼, 목록·툴바 내 동작"],
+      ["comp/button-focus", "ring 0 0 0 4px rgba(61,140,224,.15–.22)", "키보드 포커스"],
+      ["comp/button-motion", "140ms ease · active translateY(1px)", "눌림"],
     ]),
     rules: [
-      "전환은 background 120ms ease만. 크기·그림자 변화를 주지 않습니다.",
-      "아이콘 단독 버튼은 30×30px 정사각형, title 또는 aria-label 필수.",
-      "danger는 배경을 채우지 않고 테두리·글자색으로만 표시합니다.",
-      "비활성은 배경 #FAFBFC, 글자 #A6AEB5, 테두리 #E4E7EA로 통일합니다.",
+      "size는 large·small만 받습니다. 높이·글자 크기·패딩은 styles/controls.css가 소유하며 화면 CSS나 inline style로 바꿀 수 없습니다.",
+      "아이콘 단독 버튼은 iconOnly(정사각형)로 만들고 aria-label을 붙입니다.",
+      "ghost의 색만 --ck-btn-ghost-fg / --ck-btn-ghost-hover-bg / --ck-btn-ghost-hover-fg 토큰으로 바꿀 수 있습니다(링크형 파랑, 어두운 툴바 등).",
+      "탭·목록 행·메뉴 항목·인라인 링크처럼 버튼 모양이 아닌 클릭 영역은 variant 없이(plain) 씁니다.",
     ],
   },
   {
@@ -73,20 +73,23 @@ export const COMPONENTS: ComponentDef[] = [
     group: "CONTROLS",
     name: "Input · Toggle",
     tag: "I",
-    desc: "입력은 높이 26–30px, 테두리 1px #D8DDE2, radius 4px으로 통일합니다. 값이 데이터·경로·시간이면 모노를 씁니다. 토글은 즉시 적용되는 설정, 체크박스는 다중 선택에 씁니다.",
+    desc: "글자 입력은 shared/ui/Input(비밀번호는 PasswordInput) 하나로 만듭니다. 크기는 large(44px)·small(32px) 두 가지뿐이고, 값이 데이터·경로·코드이면 mono를 씁니다. 토글은 즉시 적용되는 설정, 체크박스는 다중 선택에 씁니다.",
     specs: specs([
-      ["comp/input", "h 30px · 1px #D8DDE2 · radius 4px · 12px", "기본 텍스트 입력"],
-      ["comp/input-dense", "h 26px · 11.5px", "패널·헤더 바 내부"],
-      ["comp/input-mono", "font D2Coding 11.5px", "경로·선택자·시간 값"],
-      ["comp/input-disabled", "bg #FAFBFC · fg #A6AEB5 · 1px #E4E7EA", "비활성"],
-      ["comp/checkbox", "16px · radius 4px · on #1F63AE + check 13px", "다중 선택"],
+      ["comp/input-large", "h 44px · radius 8px · 14px · padding 0 14px", "시작 화면(로그인·가입)"],
+      ["comp/input-small", "h 32px · radius 6px · 12.5px · padding 0 10px", "그 외 모든 화면 (기본값)"],
+      ["comp/input", "1px #D5DBE1 · hover #BAC3CC · shadow 0 1px 2px rgba(20,24,28,.04)", "기본 상태"],
+      ["comp/input-focus", "border #3D8CE0 · ring 4px(large)/3px(small) rgba(61,140,224,.15)", "포커스"],
+      ["comp/input-invalid", "border #DE3B45 · ring rgba(222,59,69,.15)", "invalid"],
+      ["comp/input-disabled", "bg #F5F7F8 · fg #8A939C", "비활성"],
+      ["comp/input-mono", "font D2Coding · tabular-nums", "경로·선택자·코드 값"],
+      ["comp/checkbox", "16px · accent #1F63AE", "다중 선택"],
       ["comp/toggle", "track 26×15px pill · knob 11px · on #3D8CE0", "즉시 적용 설정"],
-      ["comp/toggle-motion", "transform 140ms ease", "노브 이동"],
     ]),
     rules: [
-      "라벨은 입력 위가 아니라 행 왼쪽에 둡니다. 설정 화면은 라벨 + 오른쪽 컨트롤 구조입니다.",
+      "size는 large·small만 받습니다. 높이·글자 크기·패딩은 styles/controls.css가 소유합니다.",
+      "아이콘·단위·표시 토글은 leading / trailing 슬롯으로 인풋 안쪽에 넣습니다.",
+      "checkbox·radio·range·file은 Input을 쓰지 않습니다(type에서 막힘).",
       "토글은 저장 버튼 없이 즉시 반영되는 항목에만 씁니다.",
-      "입력 오류는 테두리 #FFB3AE + 아래 11px #B32318 문구로 표시합니다.",
     ],
   },
   {
@@ -293,47 +296,6 @@ export function componentById(id: string): ComponentDef {
 }
 
 /* ---------------------------------------------------------------------- */
-/* Button                                                                  */
-/* ---------------------------------------------------------------------- */
-
-export interface ButtonVariant {
-  token: string;
-  name: string;
-  label: string;
-  bg: string;
-  fg: string;
-  border: string;
-  hoverBg: string;
-  hoverFg: string;
-  hoverBorder: string;
-  disabledBg: string;
-  disabledBorder: string;
-  use: string;
-}
-
-export const BUTTON_VARIANTS: ButtonVariant[] = [
-  { token: "comp/button-primary", name: "Primary", label: "전체 실행", bg: "#1F63AE", fg: "#FFFFFF", border: "none", hoverBg: "#17538F", hoverFg: "#FFFFFF", hoverBorder: "none", disabledBg: "#E4E7EA", disabledBorder: "1px solid #E4E7EA", use: "화면의 주 동작. 한 화면에 하나." },
-  { token: "comp/button-secondary", name: "Secondary", label: "편집", bg: "#FFFFFF", fg: "#3D4650", border: "1px solid #D8DDE2", hoverBg: "#F5F7F8", hoverFg: "#3D4650", hoverBorder: "1px solid #D8DDE2", disabledBg: "#FAFBFC", disabledBorder: "1px solid #E4E7EA", use: "보조 동작. 개수 제한 없음." },
-  { token: "comp/button-ghost", name: "Ghost", label: "실행 기록", bg: "transparent", fg: "#5A646E", border: "none", hoverBg: "#F0F3F5", hoverFg: "#3D4650", hoverBorder: "none", disabledBg: "transparent", disabledBorder: "none", use: "목록·헤더 안의 동작, 아이콘 버튼." },
-  { token: "comp/button-danger", name: "Danger", label: "삭제", bg: "#FFFFFF", fg: "#B32318", border: "1px solid #E9C4C0", hoverBg: "#FDF6F5", hoverFg: "#B32318", hoverBorder: "1px solid #E9C4C0", disabledBg: "#FAFBFC", disabledBorder: "1px solid #E4E7EA", use: "되돌릴 수 없는 동작. 배경을 채우지 않는다." },
-  { token: "comp/button-dashed", name: "Dashed", label: "단계 추가", bg: "#FFFFFF", fg: "#1F63AE", border: "1px dashed #B9D4F1", hoverBg: "#F5F9FE", hoverFg: "#1F63AE", hoverBorder: "1px dashed #B9D4F1", disabledBg: "#FAFBFC", disabledBorder: "1px dashed #E4E7EA", use: "목록 끝의 항목 추가." },
-];
-
-export interface ButtonSize {
-  h: string;
-  fs: string;
-  pad: string;
-  use: string;
-}
-
-export const BUTTON_SIZES: ButtonSize[] = [
-  { h: "34px", fs: "12.5px", pad: "0 14px", use: "h-34 · 주 CTA" },
-  { h: "30px", fs: "12.5px", pad: "0 12px", use: "h-30 · 보조 버튼" },
-  { h: "28px", fs: "12px", pad: "0 12px", use: "h-28 · 패널 내부" },
-  { h: "26px", fs: "11.5px", pad: "0 10px", use: "h-26 · 헤더 바" },
-];
-
-/* ---------------------------------------------------------------------- */
 /* Segmented                                                               */
 /* ---------------------------------------------------------------------- */
 
@@ -350,33 +312,6 @@ export const SEGMENTED_GROUPS: SegmentedGroup[] = [
   { token: "comp/segmented-22", h: "22px", fs: "11px", use: "헤더 바 안", items: ["1440", "768", "390"], activeIndex: 0 },
   { token: "comp/segmented-24", h: "24px", fs: "11.5px", use: "툴바·상단 바", items: ["Docs", "Canvas"], activeIndex: 1 },
   { token: "comp/segmented-28", h: "28px", fs: "12px", use: "단독 배치", items: ["전체", "통과", "실패"], activeIndex: 2 },
-];
-
-/* ---------------------------------------------------------------------- */
-/* Input · Toggle                                                         */
-/* ---------------------------------------------------------------------- */
-
-export interface InputDef {
-  token: string;
-  h: string;
-  value: string;
-  family: "ui" | "mono";
-  fs: string;
-  fg: string;
-  border: string;
-  bg: string;
-  icon?: string;
-  suffix?: string;
-  use: string;
-}
-
-export const INPUTS: InputDef[] = [
-  { token: "comp/input", h: "30px", value: "시나리오 이름을 입력하세요", family: "ui", fs: "12px", fg: "#A6AEB5", border: "#D8DDE2", bg: "#FFFFFF", use: "기본 텍스트 입력 · placeholder 상태" },
-  { token: "comp/input (filled)", h: "30px", value: "로그인 후 대시보드 확인", family: "ui", fs: "12px", fg: "#14181C", border: "#D8DDE2", bg: "#FFFFFF", use: "값이 있는 상태" },
-  { token: "comp/input-mono", h: "30px", value: "scenarios/login-dashboard.md", family: "mono", fs: "11.5px", fg: "#14181C", border: "#D8DDE2", bg: "#FFFFFF", use: "경로·선택자·식별자" },
-  { token: "comp/input-dense", h: "26px", value: "단계 검색", family: "ui", fs: "11.5px", fg: "#A6AEB5", border: "#D8DDE2", bg: "#FFFFFF", icon: "search", suffix: "/", use: "패널·헤더 바 내부" },
-  { token: "comp/input-unit", h: "30px", value: "3", family: "mono", fs: "11.5px", fg: "#14181C", border: "#D8DDE2", bg: "#FFFFFF", suffix: "회 재시도", use: "단위가 붙는 수치" },
-  { token: "comp/input-disabled", h: "30px", value: "연결된 시나리오 없음", family: "ui", fs: "12px", fg: "#A6AEB5", border: "#E4E7EA", bg: "#FAFBFC", use: "비활성" },
 ];
 
 /* ---------------------------------------------------------------------- */

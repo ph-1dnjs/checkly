@@ -1,7 +1,7 @@
 ---
-version: v16
+version: v29
 name: Checkly design system
-source: Checkly v16.dc.html (기준 구현)
+source: Checkly v16.dc.html (기준 구현) · 버튼·인풋은 Checkly v29.dc.html 시작 · 로그인
 ---
 
 # Checkly 디자인 기준
@@ -16,7 +16,7 @@ source: Checkly v16.dc.html (기준 구현)
 - 카드로 감싸지 않는다. 목록·표·단계는 컨테이너 카드 대신 **행 + 하단 구분선 + hover 표면**으로 묶는다. 그림자는 떠 있는 요소(dock, 알림, 모달, drawer)에만 쓴다.
 - 기본 radius는 **4px**. 떠 있는 표면(알림, 모달, 화면 전환 바)은 `6px`, dock과 토글은 pill(`999px`).
 - 강조는 파랑 한 계열로 통일한다. 면·그래프는 `#3D8CE0`, 인터랙션(버튼·링크·활성)은 `#1F63AE`. 한 화면의 주 CTA는 하나.
-- 밀도가 높은 제품이다. 기본 본문 11.5–12.5px, 컨트롤 높이 22/26/28/30/34px, 섹션 헤더 바 26px.
+- 밀도가 높은 제품이다. 기본 본문 11.5–12.5px, 섹션 헤더 바 26px. **버튼·인풋 높이는 large 44px / small 32px 두 가지뿐**이다(세그먼트·탭·칩 같은 비버튼 요소는 별도).
 - 데이터·식별자·경로·시간·코드·수치는 모두 `D2Coding` 모노스페이스 + `font-variant-numeric: tabular-nums`.
 - 제목과 워드마크만 `Nunito` 800. 본문·라벨·버튼은 Helvetica 계열.
 - 상태는 색 점(8px 정사각형)과 짧은 단어로 표현한다. 배지 남발 금지.
@@ -112,15 +112,18 @@ source: Checkly v16.dc.html (기준 구현)
 
 ## 컴포넌트 규칙
 
-**버튼**
+**버튼** — `shared/ui/Button` (기준: `Checkly v29.dc.html` 시작 · 로그인)
 
-- Primary: 배경 `#1F63AE`, 흰 글자, 600, radius 4px. 높이 34px(페이지 헤더·주 CTA) / 30px / 28px(패널 내부).
-- Secondary: 흰 배경 + `1px #D8DDE2`, hover `#F5F7F8`.
-- Ghost: 테두리 없음, `#5A646E`, hover `#F0F3F5`.
-- Danger: 테두리 `#E9C4C0` + 글자 `#B32318`, hover `#FDF6F5`.
-- 점선 추가 버튼: `1px dashed #B9D4F1`, 글자 `#1F63AE`, hover `#F5F9FE`, 높이 30px.
+- 모든 `<button>`은 `Button`으로 만든다. 모양·크기는 `styles/controls.css`(cascade layer `controls`)가 소유하며, 화면 CSS(`legacy` layer)는 선택자 우선순위와 상관없이 높이·패딩·색을 덮어쓸 수 없다. 화면 CSS는 여백·폭·정렬만 지정한다.
+- 크기: `size="large"` 44px · radius 8px · 14px · 아이콘 18px(시작 화면처럼 폼 중심 화면) / `size="small"`(기본값) 32px · radius 6px · 12.5px · 아이콘 16px. 다른 크기는 없다. inline style로도 height·padding·fontSize를 줄 수 없다(타입에서 막힘).
+- Primary: `#1F63AE` + `1px #1A589C`, 흰 글자 600, 안쪽 하이라이트 + 파랑 그림자. hover `#1B5A9F`, active `#174E8B` + `translateY(1px)`.
+- Secondary: 흰 배경 + `1px #D5DBE1` + 옅은 그림자, 600. hover `#F7F9FA`/`#C3CBD3`. `aria-pressed="true"`면 `#EDF4FC`/`#B9D4F1`/`#1F63AE`.
+- Danger: 흰 배경 + `1px #E9C4C0` + 글자 `#B32318`, hover `#FDF6F5`.
+- Ghost: 테두리 없음, `#3D4650`, hover `#F1F4F6`. 색은 `--ck-btn-ghost-fg` / `--ck-btn-ghost-hover-bg` / `--ck-btn-ghost-hover-fg` 토큰으로만 바꾼다(링크형 파랑, 어두운 툴바).
+- 아이콘 단독 버튼은 `iconOnly`(정사각형) + `aria-label`.
+- 포커스는 `0 0 0 4px rgba(61,140,224,.15–.22)` 링. 전환 140ms ease.
+- 탭·목록 행·메뉴 항목·세그먼트·인라인 텍스트 링크처럼 버튼 모양이 아닌 클릭 영역은 `variant` 없이(plain) 쓰고 화면 CSS가 모양을 정한다.
 - 단축키는 버튼 안 우측에 모노 10.5px, `opacity: .65`.
-- 전환은 `background 120ms ease`.
 
 **세그먼트 컨트롤**
 
@@ -152,9 +155,14 @@ source: Checkly v16.dc.html (기준 구현)
 
 - 트랙 26×15px pill, 노브 11px 흰 원, on 배경 `#3D8CE0` / off `#D8DDE2`, `transition: transform 140ms ease`.
 
-**입력**
+**입력** — `shared/ui/Input` · `PasswordInput`
 
-- 높이 26–30px, `1px #D8DDE2`, radius 4px, 모노 또는 12px 본문. placeholder `#A6AEB5`.
+- 글자를 입력하는 모든 `<input>`은 `Input`으로 만든다. checkbox·radio·range·file은 대상이 아니다(`type`에서 막힘).
+- 크기: large 44px · radius 8px · 14px · 좌우 14px / small(기본값) 32px · radius 6px · 12.5px · 좌우 10px.
+- 테두리 `1px #D5DBE1` + `0 1px 2px rgba(20,24,28,.04)`, hover `#BAC3CC`, focus `#3D8CE0` + 링 `rgba(61,140,224,.15)`(large 4px, small 3px). placeholder `#A1A9B1`.
+- invalid `#DE3B45`, disabled 배경 `#F5F7F8` + 글자 `#8A939C`, readonly 배경 `#FAFBFC`.
+- 코드·식별자·경로 값은 `mono`(D2Coding). 검색 아이콘·단위·표시 토글은 `leading`/`trailing` 슬롯으로 인풋 안쪽에 넣는다.
+- 비밀번호는 `PasswordInput`(오른쪽 `visibility` 아이콘 토글).
 
 **콜아웃 / 배너**
 
