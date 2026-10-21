@@ -401,3 +401,10 @@
   .ws-editor-preview { display:none; }
   .scenario-workspace .extract-body { grid-template-columns:260px minmax(0,1fr); }
 }
+
+.scenario-files-entry { position:relative; }
+.scenario-files-entry.deletable .scenario-files-row { padding-right:46px; }
+.scenario-files-delete { position:absolute; right:8px; top:8px; opacity:0; pointer-events:none; }
+.scenario-files-entry:hover .scenario-files-delete,
+.scenario-files-entry:focus-within .scenario-files-delete { opacity:1; pointer-events:auto; }
+.scenario-files-delete:hover { color:var(--danger, #dc2626); }

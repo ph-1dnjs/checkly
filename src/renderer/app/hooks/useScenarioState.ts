@@ -394,10 +394,16 @@ export const useScenarioState = ({
     setEditorMode("text");
     setMarkerScenarioId("");
     setSelectedId("");
+    setIsAddingMarker(false);
     closeMarkerDialog();
   };
   const deleteRecord = async () => {
-    if (!activeRecord || saving.current) return;
+    if (saving.current || loading) return;
+    if (!activeRecord) {
+      clearRecord();
+      showToast("저장 전 시나리오를 삭제했습니다.");
+      return;
+    }
     saving.current = true;
     setBusy(true);
     try {

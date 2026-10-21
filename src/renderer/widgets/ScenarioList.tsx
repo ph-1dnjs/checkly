@@ -14,6 +14,7 @@ type Props = {
   /** 없으면 새 문서 버튼을 숨긴다(대상 선택). */
   onNew?: () => void;
   onRefresh?: () => void;
+  onDelete?: () => void;
   pickedCountByRecord?: Record<string, number>;
   /** 저장 전 새 문서의 제목. 있으면 목록 맨 위에 선택된 초안 행을 보여 준다. */
   draftTitle?: string;
@@ -29,12 +30,17 @@ const shortDate = (iso: string) => {
 };
 
 /** 편집·대상 선택이 같이 쓰는 문서 열: 머리(개수·새로고침·새 문서) · 검색 · 문서 행 */
-export const ScenarioList = ({ records, activeId, busy, loading, onSelect, onNew, onRefresh, pickedCountByRecord = {}, draftTitle, dirty = false }: Props) => {
+export const ScenarioList = ({ records, activeId, busy, loading, onSelect, onNew, onRefresh, onDelete, pickedCountByRecord = {}, draftTitle, dirty = false }: Props) => {
   const [query, setQuery] = useState("");
   const counts = useMemo(() => Object.fromEntries(records.map(record => [record.id, parseMarkdown(record.markdown).length])), [records]);
   const keyword = query.trim().toLowerCase();
   const visible = keyword ? records.filter(record => record.title.toLowerCase().includes(keyword)) : records;
   const showDraft = draftTitle !== undefined && activeId === null;
+  const deleteButton = onDelete && (
+    <Button className="scenario-files-delete" variant="ghost" iconOnly aria-label="시나리오 삭제" title="시나리오 삭제" disabled={busy || loading} onClick={onDelete}>
+      <span className="msi" aria-hidden="true">delete</span>
+    </Button>
+  );
   return (
     <aside className="scenario-files">
       <div className="scenario-files-label">
@@ -64,15 +70,18 @@ export const ScenarioList = ({ records, activeId, busy, loading, onSelect, onNew
       <div className="scenario-files-list" data-ck-scroll="light">
         {loading && <LoadingSpinner label="시나리오를 불러오는 중입니다." />}
         {showDraft && (
-          <div className="scenario-files-row active draft" aria-current="true">
-            <span className="msi" aria-hidden="true">description</span>
-            <div>
-              <div className="scenario-files-title">
-                <strong title={draftTitle || "제목 없는 시나리오"}>{draftTitle || "제목 없는 시나리오"}</strong>
-                {dirty && <i className="scenario-files-dirty" title="저장 안 됨" />}
+          <div className={`scenario-files-entry${onDelete ? " deletable" : ""}`}>
+            <div className="scenario-files-row active draft" aria-current="true">
+              <span className="msi" aria-hidden="true">description</span>
+              <div>
+                <div className="scenario-files-title">
+                  <strong title={draftTitle || "제목 없는 시나리오"}>{draftTitle || "제목 없는 시나리오"}</strong>
+                  {dirty && <i className="scenario-files-dirty" title="저장 안 됨" />}
+                </div>
+                <small><span>새 문서</span><span aria-hidden="true">·</span><span className="mono">저장 전</span></small>
               </div>
-              <small><span>새 문서</span><span aria-hidden="true">·</span><span className="mono">저장 전</span></small>
             </div>
+            {deleteButton}
           </div>
         )}
         {!loading && !records.length && !showDraft && <p className="scenario-files-empty">저장된 시나리오가 없습니다. 새 시나리오를 작성하세요.</p>}
@@ -80,22 +89,25 @@ export const ScenarioList = ({ records, activeId, busy, loading, onSelect, onNew
         {visible.map(record => {
           const active = record.id === activeId;
           return (
-            <Button key={record.id} disabled={busy} aria-pressed={active} className={`scenario-files-row${active ? " active" : ""}`} onClick={() => onSelect(record.id)}>
-              <span className="msi" aria-hidden="true">description</span>
-              <div>
-                <div className="scenario-files-title">
-                  <strong title={record.title}>{record.title}</strong>
-                  {active && dirty && <i className="scenario-files-dirty" title="저장 안 됨" />}
+            <div key={record.id} className={`scenario-files-entry${active && onDelete ? " deletable" : ""}`}>
+              <Button disabled={busy} aria-pressed={active} className={`scenario-files-row${active ? " active" : ""}`} onClick={() => onSelect(record.id)}>
+                <span className="msi" aria-hidden="true">description</span>
+                <div>
+                  <div className="scenario-files-title">
+                    <strong title={record.title}>{record.title}</strong>
+                    {active && dirty && <i className="scenario-files-dirty" title="저장 안 됨" />}
+                  </div>
+                  <small title={`${record.createdBy} 작성 · ${record.updatedBy} 수정 · ${new Date(record.updatedAt).toLocaleString("ko-KR")}`}>
+                    <span>{record.updatedBy}</span>
+                    <span aria-hidden="true">·</span>
+                    <span className="mono">{shortDate(record.updatedAt)}</span>
+                    <span className="mono scenario-files-count">{counts[record.id]}개</span>
+                  </small>
                 </div>
-                <small title={`${record.createdBy} 작성 · ${record.updatedBy} 수정 · ${new Date(record.updatedAt).toLocaleString("ko-KR")}`}>
-                  <span>{record.updatedBy}</span>
-                  <span aria-hidden="true">·</span>
-                  <span className="mono">{shortDate(record.updatedAt)}</span>
-                  <span className="mono scenario-files-count">{counts[record.id]}개</span>
-                </small>
-              </div>
-              {pickedCountByRecord[record.id] > 0 && <em>{pickedCountByRecord[record.id]} 선택</em>}
-            </Button>
+                {pickedCountByRecord[record.id] > 0 && <em>{pickedCountByRecord[record.id]} 선택</em>}
+              </Button>
+              {active && deleteButton}
+            </div>
           );
         })}
       </div>

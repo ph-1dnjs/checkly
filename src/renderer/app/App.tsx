@@ -233,7 +233,7 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
                 isDirty={isDirty}
                 onSave={() => saveRecord()}
                 busy={busy || loading}
-                canDelete={Boolean(activeRecord)}
+                canDelete={Boolean(activeRecord || sourceMarkdown.trim())}
                 onDelete={() => setConfirmDelete(true)}
                 onDuplicate={duplicateRecord}
                 onImportMarkdown={importMarkdown}
@@ -269,7 +269,7 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
             webEndpoints={environment.endpoints}
             defaultEndpointId={environment.defaultEndpointId}
             sidebar={<ScenarioList records={records} activeId={activeRecord?.id ?? null} loading={loading} busy={busy}
-              draftTitle={activeRecord || !sourceMarkdown.trim() ? undefined : previews[0]?.title ?? ""} dirty={isDirty}
+              draftTitle={activeRecord || !sourceMarkdown.trim() ? undefined : previews[0]?.title ?? ""} dirty={isDirty} onDelete={() => setConfirmDelete(true)}
               onSelect={requestOpenRecord} onNew={() => requestOpenRecord("new")} onRefresh={() => requestOpenRecord("refresh")} />}
             previews={previews}
             markerScenarioId={markerScenarioId || previews[0]?.id || ""}
@@ -562,7 +562,7 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
       {confirmDelete && (
         <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="delete-scenario-title">
           <div className="manual-modal"><h2 id="delete-scenario-title">시나리오 삭제</h2>
-            <p>“{activeRecord?.title}”을 팀 DB에서 삭제하시겠습니까?</p>
+            <p>{activeRecord ? `“${activeRecord.title}”을 팀 DB에서 삭제하시겠습니까?` : `저장 전 시나리오 “${previews[0]?.title || "제목 없는 시나리오"}”을 삭제하시겠습니까? 작성한 내용은 사라집니다.`}</p>
             <div className="modal-actions"><Button variant="secondary" disabled={busy} onClick={() => setConfirmDelete(false)}>취소</Button>
               <Button variant="danger" disabled={busy} onClick={async () => { await deleteRecord(); setConfirmDelete(false); }}>삭제</Button></div>
           </div>
