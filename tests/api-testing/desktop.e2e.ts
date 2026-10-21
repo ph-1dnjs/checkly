@@ -703,9 +703,9 @@ process.stdin.on("data", chunk => {
     await page.getByRole("button", { name: "+ 새 스위트", exact: true }).click();
     await page.getByLabel("스위트 이름", { exact: true }).fill("화면에서 만든 스위트");
     // One AI 로그인 to pick: the earlier same-name draft was not saved.
-    await expect(page.getByRole("combobox", { name: /^시나리오 추가/ }).locator("option", { hasText: "AI 로그인" })).toHaveCount(1);
-    await page.getByRole("combobox", { name: /^시나리오 추가/ }).selectOption({ label: "AI 로그인" });
-    await page.getByRole("combobox", { name: /^시나리오 추가/ }).selectOption({ label: "AI 로그인" });
+    await expect(page.getByRole("combobox", { name: /시나리오 추가/ }).locator("option", { hasText: "AI 로그인" })).toHaveCount(1);
+    await page.getByRole("combobox", { name: /시나리오 추가/ }).selectOption({ label: "AI 로그인" });
+    await page.getByRole("combobox", { name: /시나리오 추가/ }).selectOption({ label: "AI 로그인" });
     await expect(page.locator(".api-suite-order")).toHaveText(["1AI 로그인", "2AI 로그인"]);
     await page.getByRole("button", { name: "스위트 저장", exact: true }).click();
     await expect(page.getByRole("region", { name: "스위트 구성" })).toContainText("2개 시나리오");

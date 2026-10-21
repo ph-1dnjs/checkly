@@ -17,11 +17,13 @@ export type IconName =
   | "edit"
   | "error"
   | "expand_more"
+  | "folder"
   | "info"
   | "link"
   | "more_horiz"
   | "play_arrow"
   | "play_circle"
+  | "playlist_play"
   | "refresh"
   | "save"
   | "settings"
@@ -71,6 +73,7 @@ const CONTENT: Record<IconName, ReactNode> = {
   edit: <path d="m4 16.5-.5 3.5 3.5-.5L18.81 7.19a2 2 0 0 0 0-2.83l-1.17-1.17a2 2 0 0 0-2.83 0L4 16.5Zm2.1 1.1.29-1.99 8.72-8.72 1.99 1.99-8.72 8.72-2.28.32Z" />,
   error: <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2Zm1 15h-2v-2h2v2Zm0-4h-2V7h2v6Z" />,
   expand_more: <path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />,
+  folder: <path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2Z" />,
   info: <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2Zm1 15h-2v-6h2v6Zm0-8h-2V7h2v2Z" />,
   link: <>
     <path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1Z" />
@@ -83,6 +86,7 @@ const CONTENT: Record<IconName, ReactNode> = {
     <path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm0 2a7 7 0 1 1 0 14 7 7 0 0 1 0-14Z" />
     <path d="m10 8 5.5 4-5.5 4V8Z" />
   </>,
+  playlist_play: <path d="M3 10h11v2H3v-2Zm0-4h11v2H3V6Zm0 8h7v2H3v-2Zm13-1v8l6-4-6-4Z" />,
   refresh: <path d="M17.65 6.35A7.96 7.96 0 0 0 12 4a8 8 0 1 0 7.73 10h-2.08A6 6 0 1 1 12 6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35Z" />,
   save: <path d="M17 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7l-4-4Zm-5 16a3 3 0 1 1 0-6 3 3 0 0 1 0 6Zm3-10H5V5h10v4Z" />,
   settings: <>

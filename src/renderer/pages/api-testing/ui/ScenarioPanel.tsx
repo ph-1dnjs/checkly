@@ -420,7 +420,7 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
       <Input aria-label="시나리오·스위트 검색" placeholder="이름·그룹·설명·API 검색" value={query} onChange={event => setQuery(event.target.value)} />
       <section className="api-sidebar-section">
         <header><Button className="api-sidebar-section-toggle" aria-expanded={scenariosExpanded} onClick={() => setScenariosExpanded(value => !value)}><span className="api-sidebar-section-label">시나리오</span><Icon name="expand_more" size={18} className="api-sidebar-chevron" /></Button><Button variant="secondary" className="api-sidebar-add" disabled={busy} onClick={openNewScenario}>+ 새 시나리오</Button></header>
-        {scenariosExpanded && <ScenarioSidebarTree kind="scenario" expandAll={Boolean(normalizedQuery)} warnings={specWarnings} reasons={sidebarReasons} items={sidebarScenarios} selectedId={suiteSelection === null ? current?.id : null} disabled={busy} onSelect={item => { setSuiteSelection(null); void load(item); }} />}
+        {scenariosExpanded && <ScenarioSidebarTree kind="scenario" expandAll={Boolean(normalizedQuery)} warnings={specWarnings} reasons={sidebarReasons} items={sidebarScenarios} selectedId={suiteSelection === null ? current?.id : null} disabled={busy} onSelect={item => { setSuiteSelection(null); void load(item); }} emptyAction={onOpenAi && <Button className="api-compose-link api-sidebar-empty-action" disabled={busy} onClick={onOpenAi}>AI 작성 도우미로 만들기 →</Button>} />}
       </section>
       <section className="api-sidebar-section api-sidebar-suite-section">
         <header><Button className="api-sidebar-section-toggle" aria-expanded={suitesExpanded} onClick={() => setSuitesExpanded(value => !value)}><span className="api-sidebar-section-label">스위트</span><Icon name="expand_more" size={18} className="api-sidebar-chevron" /></Button><Button variant="secondary" className="api-sidebar-add" disabled={busy} onClick={() => setSuiteSelection("")}>+ 새 스위트</Button></header>
@@ -454,7 +454,7 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
           </div>}
         </header>;
       })()}
-      {!current && <div className="api-empty"><h3>시나리오를 고르거나 새로 만드세요</h3><p>왼쪽 목록에서 고르면 단계와 최근 결과를 여기서 봅니다.</p>
+      {!current && <div className="api-empty"><h3>시나리오를 고르거나 새로 만드세요</h3><p>왼쪽 목록에서 고르면 실행 흐름과 최근 결과를 여기서 봅니다.</p>
         <div className="api-actions">{onCreateScenario && <Button variant="primary" disabled={busy} onClick={onCreateScenario}>새 시나리오 만들기</Button>}{onOpenAi && <Button variant="secondary" disabled={busy} onClick={onOpenAi}>AI로 만들기</Button>}</div>
       </div>}
       {preview && <>

@@ -361,7 +361,7 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
           window.history.replaceState(window.history.state, "", `${window.location.pathname}${window.location.search}#/`);
         }}>{project.servers.map(server => <option key={server.id} value={server.id}>{server.name}</option>)}</select></label>
         <code>{displayBaseUrl || "기본 주소 없음"}</code>
-        {composeCatalogLoading && <small>명세를 불러오는 중…</small>}
+        {composeCatalogLoading ? <small>명세를 불러오는 중…</small> : <small className="api-compose-server-note">보기·추가 전용 · 요청값은 ② 값 설정에서</small>}
       </div>}
       {displayCatalog ? <StableSwaggerUI
         key={`${scope.environmentId}:${composeServerId}:${displayCatalog.importedAt}`}

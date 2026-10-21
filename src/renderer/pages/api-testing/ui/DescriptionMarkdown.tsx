@@ -150,7 +150,7 @@ export function Diagram({ source, title }: DiagramDefinition) {
     if (status !== "loading") void renderDiagram();
   };
   return <div className="api-diagram">
-    <Button ref={trigger} className="api-diagram-trigger" aria-haspopup="dialog" disabled={status === "loading"} onClick={open}>
+    <Button ref={trigger} className="api-diagram-trigger" aria-haspopup="dialog" title="전체 화면으로 보기" disabled={status === "loading"} onClick={open}>
       {title}{status === "loading" ? " · 그리는 중…" : ""}
     </Button>
     {status === "error" && <p role="alert">다이어그램을 표시하지 못했습니다. 버튼을 다시 눌러 재시도하세요.</p>}

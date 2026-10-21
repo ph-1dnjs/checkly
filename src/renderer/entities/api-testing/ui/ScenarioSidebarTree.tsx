@@ -1,4 +1,4 @@
-import { Fragment, useMemo } from "react";
+import { Fragment, useMemo, type ReactNode } from "react";
 import { Icon } from "../../../shared/ui/Icon";
 import { lastEditedText, type AuthoredItem } from "../lib/authorship";
 
@@ -22,6 +22,8 @@ type Props<T extends ScenarioSidebarEntry> = {
   /** Item id → why a search matched when the row doesn't show it (e.g. "설명 · API GET /items"). */
   reasons?: Map<string, string>;
   onSelect: (item: T) => void;
+  /** Shown under the empty-list message, e.g. a link to the AI author. */
+  emptyAction?: ReactNode;
 };
 
 type Folder<T> = { name: string; path: string; children: Map<string, Folder<T>>; items: T[] };
@@ -49,13 +51,14 @@ function makeTree<T extends ScenarioSidebarEntry>(items: T[]): Folder<T> {
   return root;
 }
 
-export function ScenarioSidebarTree<T extends ScenarioSidebarEntry>({ items, selectedId, disabled = false, kind, expandAll = false, warnings, reasons, onSelect }: Props<T>) {
+export function ScenarioSidebarTree<T extends ScenarioSidebarEntry>({ items, selectedId, disabled = false, kind, expandAll = false, warnings, reasons, onSelect, emptyAction }: Props<T>) {
   const tree = useMemo(() => makeTree(items), [items]);
   const now = new Date();
   const renderRows = (folder: Folder<T>) => [...folder.items].sort((left, right) => left.name.localeCompare(right.name, "ko")).map(item => {
     // Team mode: who changed it last and when, as a second line.
     const edited = lastEditedText(item, now);
     return <Button key={item.id} disabled={disabled} className={`api-sidebar-entry${selectedId === item.id ? " selected" : ""}${reasons?.has(item.id) ? " has-reason" : ""}${edited ? " has-by" : ""}`} onClick={() => onSelect(item)}>
+      {kind === "suite" && <Icon name="playlist_play" size={16} className="api-sidebar-entry-icon" />}
       <strong>{item.name}</strong>
       {reasons?.has(item.id) && <small className="api-sidebar-entry-reason">검색 일치 · {reasons.get(item.id)}</small>}
       {warnings?.has(item.id) && <span className="api-sidebar-warning" role="img" aria-label={warnings.get(item.id)} title={warnings.get(item.id)} />}
@@ -67,7 +70,7 @@ export function ScenarioSidebarTree<T extends ScenarioSidebarEntry>({ items, sel
     const children = [...folder.children.values()].sort((left, right) => left.name.localeCompare(right.name, "ko"));
     return <details className="api-sidebar-folder" key={folder.path} open={expandAll || depth === 0 || containsItem(folder, selectedId)}>
       <summary>
-        <Icon name="expand_more" size={16} className="api-sidebar-chevron" /><span>{folder.name}</span>
+        <Icon name="expand_more" size={16} className="api-sidebar-chevron" /><Icon name="folder" size={16} className="api-sidebar-folder-icon" /><span>{folder.name}</span>
       </summary>
       <div className="api-sidebar-folder-content">
         {renderRows(folder)}
@@ -82,6 +85,6 @@ export function ScenarioSidebarTree<T extends ScenarioSidebarEntry>({ items, sel
     {folders.length === 1 && folders[0].name === "미분류" && !folders[0].children.size
       ? <div className="api-sidebar-folder-content api-sidebar-flat">{renderRows(folders[0])}</div>
       : folders.map(folder => renderFolder(folder, 0))}
-    {!items.length && <p className="api-sidebar-empty">{kind === "scenario" ? "조건에 맞는 시나리오가 없습니다." : "조건에 맞는 스위트가 없습니다."}</p>}
+    {!items.length && <p className="api-sidebar-empty">{kind === "scenario" ? "조건에 맞는 시나리오가 없습니다." : "조건에 맞는 스위트가 없습니다."}{emptyAction}</p>}
   </div>;
 }

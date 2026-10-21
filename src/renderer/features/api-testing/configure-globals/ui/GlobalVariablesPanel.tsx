@@ -91,6 +91,7 @@ export function GlobalVariablesPanel({ scope, bridge, targetName = "", targetReq
       <header className="api-globals-section-heading"><h3>세션 쿠키 <small>{cookies.length}개</small></h3><Button variant="secondary" aria-label="쿠키 비우기" disabled={busy || !cookies.length} onClick={async () => { setBusy(true); setError(""); try { await bridge.clearCookies(scope); await refreshCookies(); } catch { setError("쿠키를 비우지 못했습니다. 실행 중에는 비울 수 없습니다."); } finally { setBusy(false); } }}>비우기</Button></header>
       <p className="api-field-help">응답의 Set-Cookie를 다음 요청에 자동으로 보냅니다. 값은 표시하지 않습니다.</p>
       {cookies.length > 0 && <ul>{cookies.map(cookie => <li key={`${cookie.domain}${cookie.path}${cookie.name}`}><code>{cookie.name}</code><small>{cookie.domain}{cookie.path}</small></li>)}</ul>}
+      {cookies.length > 0 && <p className="api-globals-note">이름·도메인·경로만 표시합니다.</p>}
     </section>
     {error && !editing && <p role="alert" className="api-warning">{error}</p>}
   </section>;
