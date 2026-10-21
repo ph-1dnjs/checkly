@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import type { ApiMcpSetup, ApiMcpSetupFormat, ApiMcpStatus, ApiProject, ApiTestingBridge } from "../../../../../app/api-testing/shared/workspace";
+import { Button } from "../../../../shared/ui/Button";
 import { Icon } from "../../../../shared/ui/Icon";
+import { Input } from "../../../../shared/ui/Input";
 
 const errorMessage = (error: unknown) => (error instanceof Error ? error.message : String(error))
   .replace(/^Error invoking remote method '[^']+': (?:Error: )?/, "")
@@ -61,14 +63,14 @@ export function McpConnect({ project, environmentId, bridge, status, onStatus }:
       </div>
       <div className="api-ai-mcp-code">
         <pre aria-label={`${guide.name} MCP 설정`}>{client === "codex" ? setup.codexCommand : client === "claude" ? setup.claudeCommand : setup.configJson}</pre>
-        <button type="button" className="api-icon-button" aria-label={guide.copy} title={copied ? "복사했습니다" : "복사"} onClick={() => void copy()}><Icon name={copied ? "check" : "content_copy"} size={16} /></button>
+        <Button variant="ghost" iconOnly className="api-icon-button" aria-label={guide.copy} title={copied ? "복사했습니다" : "복사"} onClick={() => void copy()}><Icon name={copied ? "check" : "content_copy"} size={16} /></Button>
       </div>
       <p className="api-field-help">{guide.help}</p>
     </details>}
 
     {connected && <details><summary>고급: HTTP 직접 연결</summary>
-      <label>서버 주소<input aria-label="MCP 서버 주소" readOnly value={status.url} /></label>
-      <details><summary>연결 토큰 보기</summary><label>Bearer 토큰<input aria-label="MCP 연결 토큰" readOnly value={status.token} /></label></details>
+      <label>서버 주소<Input mono aria-label="MCP 서버 주소" readOnly value={status.url} /></label>
+      <details><summary>연결 토큰 보기</summary><label>Bearer 토큰<Input mono aria-label="MCP 연결 토큰" readOnly value={status.token} /></label></details>
       <p className="api-field-help">Streamable HTTP 클라이언트용입니다. 연결을 다시 켜면 주소·토큰이 바뀝니다.</p>
     </details>}
     {error && <p role="alert" className="api-warning">{error}</p>}
