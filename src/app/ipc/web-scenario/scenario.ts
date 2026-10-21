@@ -43,20 +43,47 @@ export const splitScenarioBlocks = (markdown: string): string[] =>
 
 const STEP_LINE = /^(Given|When|Then|And|But|If)\s+/i;
 
-/** 이전 문서의 `url:` 줄을 없앤다. 경로가 `/`가 아니면 첫 단계 앞에 같은 주소로 이동하는 단계를 넣어 동작을 유지한다. */
+/** 이동 주소는 환경과 무관한 경로만 보관한다. 쿼리와 해시는 유지한다. */
+export const routePath = (value: string): string => {
+  const route = value.trim();
+  if (/^(https?:)?\/\//i.test(route)) {
+    const url = new URL(route, "https://route.invalid");
+    return `${url.pathname}${url.search}${url.hash}`;
+  }
+  return route || "/";
+};
+
+/** 이전 시작 URL을 이동 단계로 옮기고 절대 이동 주소에서 호스트를 제거한다. */
 export const migrateLegacyUrl = (block: string): string => {
   const lines = block.split("\n");
   const index = lines.findIndex((line) => line.trim().startsWith("url:"));
-  if (index < 0) return block;
-  const url = lines[index].trim().slice(4).trim();
-  lines.splice(index, 1);
-  if (url && url !== "/") {
-    const first = lines.findIndex((line) => STEP_LINE.test(line.trim()));
-    const step = `Given \`${url}\` 페이지로 이동한다`;
-    if (first < 0) lines.push(step);
-    else lines.splice(first, 0, step);
+  if (index >= 0) {
+    const path = routePath(lines[index].trim().slice(4));
+    lines.splice(index, 1);
+    if (path !== "/") {
+      const first = lines.findIndex((line) => STEP_LINE.test(line.trim()));
+      const step = `Given \`${path}\` 페이지로 이동한다`;
+      if (first < 0) lines.push(step);
+      else lines.splice(first, 0, step);
+    }
   }
-  return lines.join("\n");
+  return lines.map(line => {
+    if (!STEP_LINE.test(line.trim())) return line;
+    const step = parseMarkdown(`# 시나리오: 경로\n${line}`)[0]?.steps[0];
+    if (step?.action !== "goto") return line;
+    const index = line.lastIndexOf(step.target);
+    return index < 0 ? line : line.slice(0, index) + routePath(step.target) + line.slice(index + step.target.length);
+  }).join("\n");
+};
+
+export const resolveScenarioUrl = (scenario: Scenario, baseUrl: string): Scenario => {
+  const base = new URL(baseUrl);
+  if (!/^https?:$/.test(base.protocol)) throw new Error("웹 주소를 확인하세요.");
+  return {
+    ...scenario,
+    url: scenario.url ? new URL(routePath(scenario.url), base).href : base.href,
+    steps: scenario.steps.map(step => step.action === "goto" ? { ...step, target: routePath(step.target) } : step),
+  };
 };
 
 // 저장된 id: UUID를 우선 사용한다. 이전 문서에는 source + 블록 순서로 임시 ID를 만든다.

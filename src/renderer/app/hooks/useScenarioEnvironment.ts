@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { ProjectSettings } from "../../../app/ipc/auth/types";
-import type { Scenario } from "../../shared/model/scenario";
+import { resolveScenarioUrl, type Scenario } from "../../shared/model/scenario";
 
 /** 환경만 개인별로 고르고, 웹 엔드포인트는 시나리오 본문의 `endpoint:` ID로 설정의 주소와 연결한다. */
 export const useScenarioEnvironment = (projectId: string | undefined, showToast: (message: string) => void) => {
@@ -37,7 +37,7 @@ export const useScenarioEnvironment = (projectId: string | undefined, showToast:
       return null;
     }
     try {
-      return items.map(item => ({ ...item, url: new URL(item.url || "/", baseUrlFor(item.endpointId)).href }));
+      return items.map(item => resolveScenarioUrl(item, baseUrlFor(item.endpointId)));
     } catch { showToast("설정의 웹 주소를 확인하세요."); return null; }
   };
   // 환경 메뉴(EnvironmentMenu)용: 웹 엔드포인트를 서버로, 환경마다 엔드포인트별 주소를 보여 준다.

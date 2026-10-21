@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { migrateLegacyUrl, parseMarkdown, splitScenarioBlocks, type Scenario, type Step } from './scenario';
+import { routePath, migrateLegacyUrl, parseMarkdown, splitScenarioBlocks, type Scenario, type Step } from './scenario';
 
 export const isUuid = (value: string | undefined): value is string => !!value && /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(value);
 
@@ -22,7 +22,7 @@ export const normalizeDocument = (source: string, positions: string, newDocument
     return { ...scenario, id, code: scenario.code || `TC_${index + 1}`, sortOrder: index,
       steps: scenario.steps.map(step => {
         const pointIndex = points.findIndex(point => step.databaseId && point.databaseId ? step.databaseId === point.databaseId :
-          point.action === step.action && point.target === step.target && point.value === step.value &&
+          point.action === step.action && (step.action === 'goto' && point.target ? routePath(point.target) : point.target) === step.target && point.value === step.value &&
           point.prompt === step.prompt && point.condition === step.condition && point.waitSeconds === step.waitSeconds &&
           (point.occurrence ?? 1) === (step.occurrence ?? 1));
         const point = pointIndex < 0 ? undefined : points.splice(pointIndex, 1)[0];

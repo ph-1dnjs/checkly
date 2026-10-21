@@ -1,3 +1,4 @@
+import { resolveScenarioUrl } from "../../shared/model/scenario";
 import { Fragment, useEffect, useRef, useState, type ReactNode, type MouseEvent } from "react";
 import {
   actionText,
@@ -238,7 +239,7 @@ export const ScenarioEditorPage = ({
   const deviceFrame = DEVICES.find((d) => d.id === device) ?? DEVICES[2];
   const unlinkedCount = scenario.steps.filter((step) => !step.connected).length;
   const pinColor = (step: Step) => (step.connected ? LINKED : UNLINKED);
-  const markerTargetUrl = (() => { try { return baseUrl ? new URL(scenario.url || "/", baseUrl).href : ""; } catch { return ""; } })();
+  const markerTargetUrl = (() => { try { return baseUrl ? resolveScenarioUrl(scenario, baseUrl).url : ""; } catch { return ""; } })();
   const toggleMarker = (step: Step) => {
     onSelectStep(step.id);
     if (editingId === step.id) onCloseMarkerDialog();

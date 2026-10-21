@@ -3,6 +3,7 @@ import type { WebScenarioRecord } from "../../../app/ipc/web-scenario/types";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   markerColor,
+  resolveScenarioUrl,
   migrateLegacyUrl,
   parseMarkdown,
   splitScenarioBlocks,
@@ -227,11 +228,11 @@ export const useScenarioState = ({
 
   useEffect(() => {
     if (route !== "editor" || editorMode !== "marker" || !baseUrl) return;
-    let url: string;
-    try { url = new URL(scenario.url || "/", baseUrl).href; } catch { return; }
+    let resolved: Scenario;
+    try { resolved = resolveScenarioUrl(scenario, baseUrl); } catch { return; }
     let alive = true;
     const inspected = scenario;
-    void window.electronAPI.inspectScenario({ ...inspected, url }).then(matches => {
+    void window.electronAPI.inspectScenario(resolved).then(matches => {
       if (!alive) return;
       setScenario(current => current !== inspected ? current : ({ ...current,
         steps: current.steps.map(step => ({ ...step, connected: matches.some(match => match.id === step.id && match.connected) })),

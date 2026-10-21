@@ -98,3 +98,21 @@ test('copying a saved document into a new document renews scenario and step UUID
   assert.notEqual(copy.scenarios[0].steps[1].databaseId, first.scenarios[0].steps[1].databaseId);
   assert.equal(copy.scenarios[0].steps[1].x, 10);
 });
+
+test('saved navigation removes hosts and retains query, hash and stable step identity', () => {
+  const saved = normalizeDocument('# 시나리오: 경로\nurl: https://old.example/login?next=1#form\nGiven `https://old.example/orders?q=2#list` 페이지로 이동한다', '{}');
+  assert.doesNotMatch(saved.markdown, /https:\/\/old.example/);
+  assert.deepEqual(saved.scenarios[0].steps.map(step => step.target), ['/login?next=1#form', '/orders?q=2#list']);
+  assert.deepEqual(normalizeDocument(saved.markdown, saved.positions), saved);
+});
+
+test('selected environment overrides legacy absolute navigation addresses', async () => {
+  const { resolveScenarioUrl } = await import('../../src/app/ipc/web-scenario/scenario');
+  const scenario = parseMarkdown('# 시나리오: 경로\nurl: https://old.example/login\nGiven `//old.example/orders?q=2#list` 페이지로 이동한다')[0];
+  const resolved = resolveScenarioUrl(scenario, 'https://staging.example/app/');
+  assert.equal(resolved.url, 'https://staging.example/login');
+  assert.equal(new URL(resolved.steps[0].target, resolved.url).href, 'https://staging.example/orders?q=2#list');
+  assert.equal(scenario.url, 'https://old.example/login');
+  assert.equal(resolveScenarioUrl({ ...scenario, url: '' }, 'https://staging.example/app/').url, 'https://staging.example/app/');
+  assert.throws(() => resolveScenarioUrl(scenario, 'file:///tmp/test'));
+});
