@@ -1683,14 +1683,15 @@ body.panel-resizing { cursor:col-resize; user-select:none; }
 .api-layout .page-layout-header .api-select-chip.is-mono { height:28px; border:1px solid var(--ck-color-line-strong); border-radius:4px; }
 .api-layout .page-layout-header .api-select-chip.is-mono > select { border-radius:3px; font:11.5px var(--ck-font-mono); }
 /* 환경 ▾ */
-.api-env-menu { position:relative; flex:none; }
-.api-testing-page button.api-env-trigger:not(.swagger-ui *) { display:flex; align-items:center; gap:6px; height:28px; min-height:28px; padding:0 6px 0 10px; border:1px solid var(--ck-color-line-strong); border-radius:4px; background:var(--ck-color-canvas); color:var(--api-ink); white-space:nowrap; }
-.api-testing-page button.api-env-trigger:not(.swagger-ui *):hover:not(:disabled) { background:var(--ck-color-surface-hover); }
+/* 환경 메뉴(widgets/EnvironmentMenu): API 테스트와 시나리오 편집·실행이 같이 쓴다. */
+.api-env-menu { position:relative; flex:none; --api-ink:var(--ck-color-text-ink); --api-border:var(--ck-color-line); }
+.api-env-menu button.api-env-trigger:not(.swagger-ui *) { display:flex; align-items:center; gap:6px; height:28px; min-height:28px; padding:0 6px 0 10px; border:1px solid var(--ck-color-line-strong); border-radius:4px; background:var(--ck-color-canvas); color:var(--api-ink); white-space:nowrap; }
+.api-env-menu button.api-env-trigger:not(.swagger-ui *):hover:not(:disabled) { background:var(--ck-color-surface-hover); }
 .api-env-trigger .app-icon { color:var(--ck-color-text-mute); }
 .api-env-current { font:700 11.5px var(--ck-font-mono); }
 .api-env-popup { position:absolute; top:32px; right:0; z-index:40; display:flex; flex-direction:column; width:240px; padding:4px; border:1px solid var(--api-border); border-radius:6px; background:var(--ck-color-canvas); box-shadow:0 6px 20px rgb(20 24 28 / 10%); }
-.api-testing-page button.api-env-item:not(.swagger-ui *) { display:flex; align-items:center; gap:8px; width:100%; min-height:32px; padding:0 8px; border:0; border-radius:4px; background:transparent; color:var(--api-ink); font-size:12px; text-align:left; }
-.api-testing-page button.api-env-item:not(.swagger-ui *):hover { background:var(--ck-color-line-faint); }
+.api-env-menu button.api-env-item:not(.swagger-ui *) { display:flex; align-items:center; gap:8px; width:100%; min-height:32px; padding:0 8px; border:0; border-radius:4px; background:transparent; color:var(--api-ink); font-size:12px; text-align:left; }
+.api-env-menu button.api-env-item:not(.swagger-ui *):hover { background:var(--ck-color-line-faint); }
 .api-env-check { flex:none; color:var(--ck-color-blue-action); opacity:0; }
 .api-env-item[aria-checked="true"] .api-env-check { opacity:1; }
 .api-env-name { font:12px var(--ck-font-mono); }
@@ -1702,8 +1703,8 @@ body.panel-resizing { cursor:col-resize; user-select:none; }
 .api-env-server { display:flex; align-items:center; gap:8px; min-width:0; }
 .api-env-server .api-run-server { flex:none; margin:0; }
 .api-env-add { display:flex; gap:6px; padding:4px; }
-.api-testing-page .api-env-add input:not(.swagger-ui *) { flex:1; min-width:0; height:28px; min-height:28px; padding:0 8px; font:12px var(--ck-font-mono); }
-.api-testing-page .api-env-add button:not(.swagger-ui *) { flex:none; height:28px; min-height:28px; padding:0 10px; font-size:12px; }
+.api-env-menu .api-env-add input:not(.swagger-ui *) { flex:1; min-width:0; height:28px; min-height:28px; padding:0 8px; font:12px var(--ck-font-mono); }
+.api-env-menu .api-env-add button:not(.swagger-ui *) { flex:none; height:28px; min-height:28px; padding:0 10px; font-size:12px; }
 .api-env-empty,.api-env-hint,.api-env-error { margin:0; padding:6px 10px; color:var(--ck-color-text-mute); font-size:11.5px; line-height:1.6; }
 .api-env-error { color:var(--ck-color-fail-ink); }
 /* { } 전역변수 */

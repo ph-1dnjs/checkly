@@ -9,7 +9,7 @@ import { GlobalVariableMenu } from "../../features/api-testing/configure-globals
 import { ApiTestingProviders } from "./ui/ApiTestingProviders";
 import { ScenarioPanel } from "./ui/ScenarioPanel";
 import { ScenarioEditorPanel } from "./ui/ScenarioEditorPanel";
-import { EnvironmentMenu } from "./ui/EnvironmentMenu";
+import { EnvironmentMenu } from "../../widgets/EnvironmentMenu";
 import { AiAuthorPanel, showAiChat } from "../../features/api-testing/author-scenarios";
 import { SpecSourcePanel } from "../../features/api-testing/configure-spec";
 import "./ui/api-testing.css";

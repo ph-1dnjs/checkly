@@ -1,17 +1,22 @@
 import { useEffect, useRef, useState } from "react";
-import type { ApiProject } from "../../../../app/api-testing/shared/workspace";
-import { Icon } from "../../../shared/ui/Icon";
-import { ServerTag } from "../../../entities/api-testing";
+import { Icon } from "../shared/ui/Icon";
+import { ServerTag } from "../entities/api-testing";
 
-import { Button } from "../../../shared/ui/Button";
-import { Input } from "../../../shared/ui/Input";
+import { Button } from "../shared/ui/Button";
+import { Input } from "../shared/ui/Input";
 const hostOf = (url: string | undefined) => {
   if (!url) return "";
   try { return new URL(url).host; } catch { return url; }
 };
 
+/** API 프로젝트(서버)와 웹 시나리오(웹 엔드포인트)가 같이 쓰는 모양. baseUrls는 서버 id → 이 환경의 주소. */
+export type EnvironmentMenuProject = {
+  environments: Array<{ id: string; name: string; baseUrls: Record<string, string> }>;
+  servers: Array<{ id: string; name: string }>;
+};
+
 type Props = {
-  project: ApiProject;
+  project: EnvironmentMenuProject;
   environmentId: string;
   /** The server whose address each row shows (the API docs' server); otherwise the first one with an address. */
   serverId?: string;
@@ -23,7 +28,7 @@ type Props = {
   onAdd?: (name: string) => Promise<void>;
 };
 
-/** The header's environment switch: the current environment, and a menu of the project's environments. */
+/** The header's environment switch: the current environment, and a menu of the project's environments (API 테스트, 시나리오 편집·실행). */
 export function EnvironmentMenu({ project, environmentId, serverId, label, title, disabled = false, onSelect, onAdd }: Props) {
   const [open, setOpen] = useState(false);
   const [adding, setAdding] = useState(false);
