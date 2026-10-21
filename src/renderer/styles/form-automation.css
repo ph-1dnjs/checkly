@@ -97,6 +97,14 @@
 .fa-zoom .msi { font-size:14px; }
 .fa-zoom .fa-zoom-value { width:42px; color:#17607f; font:10px D2Coding,ui-monospace,monospace; }
 .fa-browser-surface { position:relative; flex:1; min-height:0; background:#f0f3f5; }
+/* 로드 실패 · Electron 전용 안내 (Checkly v30 "폼 자동 완성") */
+.fa-browser-overlay { position:absolute; inset:0; z-index:3; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; background:#fafbfc; color:#3d4650; font-size:13px; text-align:center; }
+.fa-browser-overlay > .msi { color:#8a939c; font-size:32px; }
+.fa-browser-overlay strong { color:#14181c; font-size:14px; }
+.fa-browser-overlay span { color:#8a939c; font-family:D2Coding,ui-monospace,monospace; font-size:12px; }
+.fa-browser-overlay button { margin-top:6px; }
+.fa-electron-only { position:absolute; left:12px; right:12px; bottom:12px; z-index:3; display:flex; align-items:center; gap:10px; padding:9px 12px; border:1px solid #f1e3bf; border-radius:4px; background:#fdf8ec; color:#6b5313; font-size:12px; line-height:1.5; }
+.fa-electron-only b { flex:none; font-family:D2Coding,ui-monospace,monospace; font-size:10px; letter-spacing:.08em; }
 .fa-webview { position:absolute; inset:0; display:none; width:100%; height:100%; border:0; background:#fff; }
 .fa-webview.active { display:flex; }
 

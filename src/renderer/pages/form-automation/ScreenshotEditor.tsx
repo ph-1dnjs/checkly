@@ -481,8 +481,8 @@ export const ScreenshotEditor = ({
           ))}
         </div>
         <label className="fa-capture-size">굵기<input disabled={tool === "crop"} type="range" min="3" max="14" value={brushSize} onChange={(event) => setBrushSize(Number(event.target.value))} /></label>
-        <Button variant="ghost" className="fa-capture-undo" disabled={!commands.length} onClick={() => setCommands((items) => items.slice(0, -1))}><MaterialIcon name="undo" /> 실행 취소</Button>
-        <Button variant="ghost" className="fa-capture-reset" disabled={!cropped && !commands.length} onClick={resetCapture}><MaterialIcon name="fullscreen" /> 전체 화면</Button>
+        <Button variant="ghost" className="fa-capture-undo" title="실행 취소 · ⌘/Ctrl Z" disabled={!commands.length} onClick={() => setCommands((items) => items.slice(0, -1))}><MaterialIcon name="undo" /> 실행 취소</Button>
+        <Button variant="ghost" className="fa-capture-reset" title="자르기 전 원본으로" disabled={!cropped && !commands.length} onClick={resetCapture}><MaterialIcon name="fullscreen" /> 전체 화면</Button>
         <span className="fa-capture-divider" />
         <Button variant="ghost" className="fa-capture-cancel" onClick={onCancel}>취소</Button>
         <Button variant="primary" className="fa-capture-complete" disabled={!ready || copying || Boolean(textDraft)} onClick={() => void copyCapture()}><MaterialIcon name="content_copy" /> {copying ? "복사 중…" : "완료 · 클립보드 복사"}</Button>

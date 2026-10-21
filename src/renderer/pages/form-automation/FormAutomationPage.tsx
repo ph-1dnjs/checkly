@@ -542,7 +542,11 @@ const FormAutomationContent = (): ReactElement => {
         updateBrowserTab(tabId, { state: "loading" });
         if (isActive()) setDiscoveredFields([]);
       };
-      const failed = () => updateBrowserTab(tabId, { state: "error" });
+      const failed = (event: Event & { errorCode?: number; isMainFrame?: boolean }) => {
+        // 리다이렉트·SPA 이동으로 중단된 로드(ERR_ABORTED)와 하위 프레임 실패는 페이지 실패로 보지 않는다.
+        if (event.errorCode === -3 || event.isMainFrame === false) return;
+        updateBrowserTab(tabId, { state: "error" });
+      };
       const navigated = (event: Event & { url?: string }) => {
         const url = event.url || currentWebviewUrl(webview, sessionForTab().url);
         // The webview owns in-page navigation. Updating its src here reloads SPA routes
@@ -1224,7 +1228,7 @@ const FormAutomationContent = (): ReactElement => {
               </select>
             </label>
             <span className="fa-browser-engine-note">Chromium 웹뷰</span>
-            <div className="fa-zoom" aria-label="브라우저 화면 배율">
+            <div className="fa-zoom" aria-label="브라우저 화면 배율" title="화면 배율 50–125%">
               <Button variant="ghost" iconOnly aria-label="화면 축소" disabled={zoomPercent <= 50} onClick={() => setZoomPercent((value) => Math.max(50, value - 5))}><MaterialIcon name="remove" /></Button>
               <Button className="fa-zoom-value" title="100%로 초기화" onClick={() => setZoomPercent(100)}>{zoomPercent}%</Button>
               <Button variant="ghost" iconOnly aria-label="화면 확대" disabled={zoomPercent >= 125} onClick={() => setZoomPercent((value) => Math.min(125, value + 5))}><MaterialIcon name="add" /></Button>
@@ -1247,12 +1251,34 @@ const FormAutomationContent = (): ReactElement => {
                 allowpopups={true}
               />
             ))}
+            {activeTab.state === "error" && (
+              <div className="fa-browser-overlay" role="alert">
+                <MaterialIcon name="wifi_off" />
+                <strong>페이지를 불러오지 못했습니다</strong>
+                <span>{urlHost(activeTab.currentPageUrl || activeTab.url)}</span>
+                <Button variant="secondary" onClick={() => activeWebview()?.reload()}><MaterialIcon name="refresh" /> 다시 시도</Button>
+              </div>
+            )}
+            {!window.electronAPI && (
+              <div className="fa-electron-only" role="note">
+                <b>ELECTRON ONLY</b>
+                <span>자동 입력은 Electron 앱에서만 동작합니다. 이 환경에서는 화면 구성만 확인할 수 있습니다.</span>
+              </div>
+            )}
           </div>
         </section>
 
-        <div className="fa-inspector-resizer" onMouseDown={startInspectorResize} title="드래그해서 패널 너비 조절"><span /></div>
+        <div
+          className="fa-inspector-resizer"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="검사 패널 너비 조절"
+          title="드래그해 너비 조절 · 더블클릭 기본 너비"
+          onMouseDown={startInspectorResize}
+          onDoubleClick={() => setInspectorWidth(420)}
+        ><span /></div>
 
-        <aside className="fa-inspector">
+        <aside className="fa-inspector" aria-label="검사 패널">
           <div className="fa-inspector-tabs">
             <Button className={drawerTab === "network" ? `active${activeErrorCount ? " has-error" : ""}` : ""} onClick={() => setDrawerTab("network")}><MaterialIcon name="lan" /> 네트워크 <b>{activeErrorCount || activeNetworkEvents.length}</b></Button>
             <Button className={drawerTab === "cases" ? "active" : ""} onClick={() => { setDrawerTab("cases"); if (!discoveredFields.length) void discoverFields(true); }}><MaterialIcon name="auto_awesome" /> 자동 입력 <b>{availableCases.length}</b></Button>
@@ -1386,7 +1412,7 @@ const FormAutomationContent = (): ReactElement => {
 
           <div className="fa-inspector-footer">
             <Button variant="primary" className="primary" onClick={() => void autofill()} disabled={!draftFieldCount}><MaterialIcon name="auto_fix_high" /> 선택한 {draftFieldCount}개 필드 입력</Button>
-            <Button variant="secondary" onClick={() => void clearAutofill()} disabled={!draftFieldCount}><MaterialIcon name="restart_alt" /> 선택 필드 초기화</Button>
+            <Button variant="secondary" title="현재 입력값 초기화" onClick={() => void clearAutofill()} disabled={!draftFieldCount}><MaterialIcon name="restart_alt" /> 선택 필드 초기화</Button>
             <Button variant="secondary" onClick={() => void createCaseFromCurrentPage()}><MaterialIcon name="add" /> 현재 화면 케이스 만들기</Button>
           </div>
             </>

@@ -63,7 +63,7 @@ export const NetworkPanel = ({
     <>
       <div className="fa-inspector-heading">
         <div><strong>{activeSessionName} 타임라인</strong><span>이 로그인 세션의 API·페이지 오류만 표시</span></div>
-        {events.length > 0 && <div className="fa-heading-actions"><Button variant="secondary" onClick={onDownload}><MaterialIcon name="download" /> 다운로드</Button><Button variant="danger" onClick={onClear}><MaterialIcon name="delete" /> 전체 삭제</Button></div>}
+        {events.length > 0 && <div className="fa-heading-actions"><Button variant="secondary" title="XLSX로 다운로드" onClick={onDownload}><MaterialIcon name="download" /> 다운로드</Button><Button variant="danger" onClick={onClear}><MaterialIcon name="delete" /> 전체 삭제</Button></div>}
       </div>
       <div className="fa-network-filters">
         <Button className={filter === "all" ? "active" : ""} onClick={() => onFilter("all")}>전체 {events.length}</Button>
@@ -92,7 +92,7 @@ export const NetworkPanel = ({
         className="fa-timeline-resizer"
         role="separator"
         aria-label="네트워크 목록 높이 조절"
-        title="위아래로 드래그해서 요청 목록 높이 조절 · 더블클릭해서 초기화"
+        title="드래그해 높이 조절 · 더블클릭 기본 높이"
         onMouseDown={onResizeList}
         onDoubleClick={onResetListHeight}
       ><MaterialIcon name="drag_handle" /></div>
@@ -245,7 +245,7 @@ export const OverridePanel = ({
   onDelete: () => void;
 }): ReactElement => (
   <>
-    <div className="fa-inspector-heading"><div><strong>응답 오버라이드</strong><span>현재 웹뷰에만 적용되는 테스트 데이터</span></div><Button variant="secondary" onClick={onCreate}><MaterialIcon name="add" /> 선택 응답 복제</Button></div>
+    <div className="fa-inspector-heading"><div><strong>응답 오버라이드</strong><span>현재 웹뷰에만 적용되는 테스트 데이터</span></div><Button variant="secondary" title="네트워크 탭에서 선택한 응답을 복제" onClick={onCreate}><MaterialIcon name="add" /> 선택 응답 복제</Button></div>
     {!selected ? <EmptyState icon="tune" title="응답 규칙이 없습니다" description="네트워크 응답을 선택한 뒤 오버라이드로 복제해 보세요." /> : <div className="fa-override-editor">
       <label>적용할 API<select value={selected.id} onChange={(event) => onSelect(event.target.value)}>{overrides.map((item) => <option value={item.id} key={item.id}>{item.method} · {item.match}</option>)}</select></label>
       <div className={`fa-override-status ${status.tone}`}><MaterialIcon name={status.applied ? "check_circle" : selected.enabled ? "pending" : "circle"} /><span><strong>{status.title}</strong><small>{status.detail}</small></span><Status tone={status.tone}>{status.applied ? "OVERRIDE" : selected.enabled ? "대기" : "원본"}</Status></div>
