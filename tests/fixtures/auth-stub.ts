@@ -134,6 +134,30 @@ export async function installAuthStub(page: Page, options: AuthStubOptions) {
         emit(next)
         return next
       },
+      // 비밀번호 찾기: 관리자가 발급한 코드는 '482913'으로 둔다. 관리자 계정(minsu)은 받을 수 없다.
+      findResetAccount: async (input: { projectCode: string; nickname: string }) => {
+        record('findResetAccount', input)
+        await wait()
+        if (input.projectCode !== 'checkly-team' || !members.some((member) => member.nickname === input.nickname)) {
+          throw new Error('프로젝트 코드 또는 닉네임이 올바르지 않습니다.')
+        }
+        if (input.nickname === 'minsu') throw new Error('관리자 계정은 재설정 코드를 받을 수 없습니다. 운영자에게 문의하세요.')
+        return { projectCode: input.projectCode, nickname: input.nickname, ownerNickname: 'minsu' }
+      },
+      verifyResetCode: async (input: { code: string }) => {
+        record('verifyResetCode', input)
+        await wait()
+        if (input.code !== '482913') throw new Error('재설정 코드가 올바르지 않거나 만료되었습니다. 관리자에게 새 코드를 받아 주세요.')
+      },
+      resetPassword: async (input: unknown) => {
+        record('resetPassword', input)
+        await wait()
+      },
+      issueResetCode: async (userId: string) => {
+        record('issueResetCode', userId)
+        await wait()
+        return { code: '482913', expiresAt: '2026-10-20T09:30:00.000Z' }
+      },
       getProject: async () => ({ id: 'p-team', code: 'checkly-team', inviteCode, createdAt: '2026-03-04T09:00:00.000Z', members }),
       regenerateInviteCode: async () => {
         record('regenerateInviteCode', null)

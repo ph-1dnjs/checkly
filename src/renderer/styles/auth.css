@@ -28,6 +28,12 @@
 
 /* 입력 · 버튼: 모양과 크기는 shared/ui Input·Button(styles/controls.css, large)이 맡는다. */
 .auth-form { margin:0; display:flex; flex-direction:column; gap:10px; }
+.auth-login-options { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+/* 비밀번호 찾기 (Checkly v30 "시작 · 로그인") */
+.auth-forgot { padding:4px 0 0; border:0; background:none; color:#5a646e; font-size:13px; cursor:pointer; text-decoration:underline; text-decoration-color:transparent; text-underline-offset:3px; transition:color 140ms ease, text-decoration-color 140ms ease; }
+.auth-forgot:hover { color:#14181c; text-decoration-color:#14181c; }
+.auth-reset-code { letter-spacing:.12em; }
+.auth-mono-strong { color:#14181c; font-family:D2Coding,ui-monospace,monospace; font-weight:700; }
 .auth-remember { display:flex; align-items:center; gap:8px; width:fit-content; padding:4px 0 0; color:#3d4650; font-size:13px; cursor:pointer; user-select:none; }
 .auth-remember input { width:16px; height:16px; margin:0; accent-color:#1f63ae; cursor:pointer; }
 .auth-field-label { padding-bottom:6px; color:#5a646e; font-size:11px; }

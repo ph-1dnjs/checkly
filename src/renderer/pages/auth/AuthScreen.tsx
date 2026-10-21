@@ -3,6 +3,7 @@ import type { AuthBridge, AuthSession } from "../../shared/model/electron-api/au
 import { CreateFlow } from "./CreateFlow";
 import { JoinFlow } from "./JoinFlow";
 import { LoginPage } from "./LoginPage";
+import { ResetFlow } from "./ResetFlow";
 import type { AuthMode } from "./model";
 
 type Props = {
@@ -16,6 +17,8 @@ type Props = {
 
 export const AuthScreen = ({ bridge, initialMode = "login", onEnter, onExit }: Props) => {
   const [mode, setMode] = useState<AuthMode>(initialMode);
+  // 비밀번호를 바꾼 계정. 로그인 화면으로 돌아가면 프로젝트 코드·닉네임을 채운다.
+  const [prefill, setPrefill] = useState<{ projectCode: string; nickname: string } | null>(null);
   const overlay = Boolean(onExit);
   const back = onExit ?? (() => setMode("login"));
   const backLabel = overlay ? "설정" : "로그인";
@@ -39,7 +42,25 @@ export const AuthScreen = ({ bridge, initialMode = "login", onEnter, onExit }: P
       aria-label={overlay ? "초대코드로 가입" : undefined}
     >
       {mode === "login" && (
-        <LoginPage bridge={bridge} onEnter={onEnter} onJoin={() => setMode("join")} onCreate={() => setMode("create")} />
+        <LoginPage
+          bridge={bridge}
+          prefill={prefill}
+          onEnter={onEnter}
+          onJoin={() => setMode("join")}
+          onCreate={() => setMode("create")}
+          onReset={() => setMode("reset")}
+        />
+      )}
+      {mode === "reset" && (
+        <ResetFlow
+          bridge={bridge}
+          backLabel={backLabel}
+          onBack={back}
+          onDone={(account) => {
+            setPrefill(account);
+            setMode("login");
+          }}
+        />
       )}
       {mode === "join" && <JoinFlow bridge={bridge} backLabel={backLabel} onBack={back} onEnter={onEnter} />}
       {mode === "create" && <CreateFlow bridge={bridge} backLabel={backLabel} onBack={back} onEnter={onEnter} />}

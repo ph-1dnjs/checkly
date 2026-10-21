@@ -9,7 +9,17 @@ import {
 } from "@supabase/supabase-js";
 import { AuthFailure, MESSAGES } from "./errors";
 import { fromRows, normalizeSettings, toSavePayload, type EndpointRow, type EndpointUrlRow, type EnvironmentRow } from "./settings";
-import type { AuthBridge, AuthRole, AuthSession, InvitePreview, ProjectInfo, ProjectSettings, RecentProject } from "./types";
+import type {
+  AuthBridge,
+  AuthRole,
+  AuthSession,
+  InvitePreview,
+  IssuedResetCode,
+  ProjectInfo,
+  ProjectSettings,
+  RecentProject,
+  ResetAccount,
+} from "./types";
 
 // 팀 프로젝트 로그인(Supabase). Electron 없이 동작하도록 저장소·경로를 받아서 쓴다(Electron 연결은 instance.ts).
 // 설계: docs/02-architecture/supabase-common.md
@@ -303,6 +313,30 @@ export class AuthService implements Omit<AuthBridge, "getConfig" | "onSessionCha
     return this.signInAs(result.projectCode, nickname, input.password);
   }
 
+  // ─── 비밀번호 찾기(Edge Function, 로그인 전) ─────────────
+
+  private resetBody(input: { projectCode: string; nickname: string }) {
+    return { projectCode: normalize(input.projectCode), nickname: normalize(input.nickname) };
+  }
+
+  async findResetAccount(input: { projectCode: string; nickname: string }): Promise<ResetAccount> {
+    return this.invoke<ResetAccount>("reset-password", { step: "lookup", ...this.resetBody(input) });
+  }
+
+  async verifyResetCode(input: { projectCode: string; nickname: string; code: string }): Promise<void> {
+    await this.invoke("reset-password", { step: "verify", ...this.resetBody(input), code: input.code.replace(/\s+/g, "") });
+  }
+
+  async resetPassword(input: { projectCode: string; nickname: string; code: string; password: string }): Promise<void> {
+    if (input.password.length < MIN_PASSWORD) throw new AuthFailure(MESSAGES.shortPassword);
+    await this.invoke("reset-password", {
+      step: "reset",
+      ...this.resetBody(input),
+      code: input.code.replace(/\s+/g, ""),
+      password: input.password,
+    });
+  }
+
   // ─── 프로젝트·계정 ────────────────────────────────────
 
   async getProject(): Promise<ProjectInfo> {
@@ -332,6 +366,11 @@ export class AuthService implements Omit<AuthBridge, "getConfig" | "onSessionCha
   async removeMember(userId: string): Promise<void> {
     await this.requireSession();
     await this.invoke("remove-member", { userId });
+  }
+
+  async issueResetCode(userId: string): Promise<IssuedResetCode> {
+    await this.requireSession();
+    return this.invoke<IssuedResetCode>("issue-reset-code", { userId });
   }
 
   async changeNickname(nickname: string): Promise<AuthSession> {

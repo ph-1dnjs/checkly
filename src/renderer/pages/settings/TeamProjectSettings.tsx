@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { Button } from "../../shared/ui/Button";
 import { Input } from "../../shared/ui/Input";
-import type { ProjectMember } from "../../shared/model/electron-api/auth";
+import type { IssuedResetCode, ProjectMember } from "../../shared/model/electron-api/auth";
 import { CopyButton } from "../auth/AuthFields";
 import { formatDate, type AuthAccount } from "../auth/model";
 import { ShareSecretsRow } from "./ShareSecretsRow";
-import { ConfirmDialog, SettingsSheet } from "./SettingsDialog";
+import { ConfirmDialog, SettingsDialog, SettingsSheet } from "./SettingsDialog";
 import { SettingRow } from "./SettingsSection";
 import type { ProjectInfoState } from "./useProjectInfo";
 
@@ -27,7 +27,11 @@ export const TeamProjectSettings = ({ account, project }: Props) => {
   const info = project.info;
   const members = info?.members ?? [];
   const [showMembers, setShowMembers] = useState(false);
-  const [confirm, setConfirm] = useState<{ kind: "invite" } | { kind: "remove"; member: ProjectMember } | null>(null);
+  const [confirm, setConfirm] = useState<
+    { kind: "invite" } | { kind: "remove"; member: ProjectMember } | { kind: "reset"; member: ProjectMember } | null
+  >(null);
+  // 발급한 재설정 코드는 이 창에서 한 번만 보여 준다(서버에는 해시만 남는다).
+  const [issued, setIssued] = useState<{ member: ProjectMember; reset: IssuedResetCode } | null>(null);
 
   const summary = members.length
     ? members.slice(0, 2).map((member) => member.nickname).join(", ") + (members.length > 2 ? ` 외 ${members.length - 2}명` : "")
@@ -87,9 +91,10 @@ export const TeamProjectSettings = ({ account, project }: Props) => {
           members={members}
           selfId={session.userId}
           canRemove={isOwner}
-          // 내보내기 확인 창이 떠 있으면 Esc는 그 창만 닫는다.
-          onClose={() => !confirm && setShowMembers(false)}
+          // 확인·코드 창이 떠 있으면 Esc는 그 창만 닫는다.
+          onClose={() => !confirm && !issued && setShowMembers(false)}
           onRemove={(member) => setConfirm({ kind: "remove", member })}
+          onIssueReset={(member) => setConfirm({ kind: "reset", member })}
         />
       )}
       {confirm?.kind === "invite" && (
@@ -105,6 +110,20 @@ export const TeamProjectSettings = ({ account, project }: Props) => {
           }}
         />
       )}
+      {confirm?.kind === "reset" && (
+        <ConfirmDialog
+          eyebrow="PASSWORD RESET"
+          title={`${confirm.member.nickname}님의 재설정 코드를 발급할까요?`}
+          description="팀원이 로그인 화면의 비밀번호 찾기에서 이 코드로 새 비밀번호를 정합니다. 이전에 발급한 코드는 바로 쓸 수 없게 됩니다."
+          confirmLabel="발급"
+          onClose={() => setConfirm(null)}
+          onConfirm={async () => {
+            const member = confirm.member;
+            setIssued({ member, reset: await bridge.issueResetCode(member.userId) });
+          }}
+        />
+      )}
+      {issued && <ResetCodeDialog member={issued.member} reset={issued.reset} onClose={() => setIssued(null)} />}
       {confirm?.kind === "remove" && (
         <ConfirmDialog
           eyebrow="MEMBER"
@@ -130,9 +149,40 @@ type MembersProps = {
   canRemove: boolean;
   onClose: () => void;
   onRemove: (member: ProjectMember) => void;
+  onIssueReset: (member: ProjectMember) => void;
 };
 
-const MembersSheet = ({ members, selfId, canRemove, onClose, onRemove }: MembersProps) => {
+const formatTime = (iso: string): string => {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "-";
+  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+};
+
+/** 발급한 재설정 코드: 팀원에게 전달하도록 복사 버튼과 만료 시각을 보여준다. */
+const ResetCodeDialog = ({ member, reset, onClose }: { member: ProjectMember; reset: IssuedResetCode; onClose: () => void }) => (
+  <SettingsDialog
+    eyebrow="PASSWORD RESET"
+    title="재설정 코드를 발급했습니다"
+    description={`${member.nickname}님에게 전달하세요. ${formatTime(reset.expiresAt)}까지 한 번만 쓸 수 있으며, 이 창을 닫으면 다시 볼 수 없습니다.`}
+    onClose={onClose}
+    footer={
+      <Button variant="primary" className="settings-dialog-push" onClick={onClose} autoFocus>
+        확인
+      </Button>
+    }
+  >
+    <div className="settings-dialog-body">
+      <div className="reset-code-box">
+        <span className="reset-code-value" aria-label="재설정 코드">
+          {reset.code}
+        </span>
+        <CopyButton className="setting-chip" value={reset.code} subject="재설정 코드" />
+      </div>
+    </div>
+  </SettingsDialog>
+);
+
+const MembersSheet = ({ members, selfId, canRemove, onClose, onRemove, onIssueReset }: MembersProps) => {
   const [query, setQuery] = useState("");
   const q = query.trim().toLowerCase();
   const filtered = members
@@ -161,6 +211,16 @@ const MembersSheet = ({ members, selfId, canRemove, onClose, onRemove }: Members
             {member.role === "owner" && <span className="member-badge">관리자</span>}
             {member.userId === selfId && <span className="member-badge self">나</span>}
             <span className="member-meta">{formatDate(member.createdAt)} 참여</span>
+            {canRemove && member.role !== "owner" && member.userId !== selfId && (
+              <Button
+                variant="secondary"
+                className="member-reset"
+                onClick={() => onIssueReset(member)}
+                aria-label={`${member.nickname} 비밀번호 재설정 코드 발급`}
+              >
+                재설정 코드
+              </Button>
+            )}
             {canRemove && member.role !== "owner" && member.userId !== selfId && (
               <Button variant="danger" className="member-remove" onClick={() => onRemove(member)} aria-label={`${member.nickname} 내보내기`}>
                 내보내기
