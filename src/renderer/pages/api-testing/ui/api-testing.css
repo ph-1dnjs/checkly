@@ -64,7 +64,7 @@ html:has(.api-diagram-dialog[open]) { overflow:hidden; }
 .api-swagger-shell:has(.api-compose-layout) { max-width:1800px; padding-left:24px; padding-right:24px; }
 .api-compose-layout { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); grid-template-rows:minmax(0,1fr); align-items:stretch; min-height:0; overflow:hidden; border-top:1px solid var(--ck-color-line-strong); height:calc(100dvh - 150px); margin-top:16px; }
 .api-compose-layout.api-selection-layout { grid-template-columns:minmax(0,1fr) minmax(340px,40%); }
-.api-compose-layout > .api-swagger-renderer { min-width:0; min-height:0; overflow:auto; padding:12px 16px 96px 0; overscroll-behavior:contain; scrollbar-gutter:stable; }
+.api-compose-layout > .api-swagger-renderer { min-width:0; min-height:0; overflow:auto; padding:12px 16px var(--api-dock-space, 96px) 0; overscroll-behavior:contain; scrollbar-gutter:stable; }
 .api-compose-server-switch { display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin:0 0 12px; padding:8px 10px; border:1px solid var(--api-border); background:var(--ck-color-surface-subtle); }
 .api-compose-server-switch > label { display:flex; align-items:center; gap:8px; margin:0; color:var(--api-muted); font-size:11px; }
 .api-compose-server-switch select { min-width:180px; }
@@ -1360,7 +1360,10 @@ body.panel-resizing { cursor:col-resize; user-select:none; }
    the title, project and tabs rows stay and only .api-page-body below the tabs scrolls.
    The composer keeps its own inner scroll panes; the project form still scrolls .content. */
 /* clip, not hidden: a hidden overflow can still be scrolled by focus or scrollIntoView, which pushed the title rows off screen. */
-.content:has(> .api-testing-page > .api-page-body) { box-sizing:border-box; display:flex; flex-direction:column; height:100%; overflow:clip; }
+/* The dock floats over the page like the other workspaces: no reserved strip under the page; each scroll area
+   leaves room at its end so its last row can scroll above the dock. */
+.api-testing-page { --api-dock-space: 100px; }
+.content:has(> .api-testing-page > .api-page-body) { box-sizing:border-box; display:flex; flex-direction:column; height:100%; overflow:clip; padding-bottom:0; }
 .content:has(> .api-testing-page > .api-page-body) > * { flex:none; }
 .content > .api-testing-page:has(> .api-page-body) { box-sizing:border-box; display:flex; flex-direction:column; flex:1 1 auto; width:100%; min-height:0; padding-bottom:0; overflow:clip; }
 /* One rule under the tabs: the tabs row keeps its underline; the list below starts right at it. */
@@ -1373,7 +1376,7 @@ body.panel-resizing { cursor:col-resize; user-select:none; }
 /* List and detail scroll on their own, so the list stays put while reading a long scenario. */
 .api-page-body:has(> .api-columns:first-child) { overflow:hidden; }
 .api-page-body > .api-columns:first-child { height:100%; min-height:0; grid-template-rows:minmax(0,1fr); }
-.api-page-body > .api-columns:first-child > :is(aside, article) { min-height:0; overflow-y:auto; scrollbar-gutter:stable; overscroll-behavior:contain; }
+.api-page-body > .api-columns:first-child > :is(aside, article) { min-height:0; overflow-y:auto; scrollbar-gutter:stable; overscroll-behavior:contain; padding-bottom:var(--api-dock-space); }
 .api-testing-page:has(> .api-page-body) > :not(.api-page-body) { flex:none; }
 .api-page-body { flex:1 1 auto; min-height:0; overflow-y:auto; scrollbar-gutter:stable; padding-bottom:24px; }
 .api-page-body:has(.api-compose-layout) { display:flex; flex-direction:column; overflow:hidden; padding-bottom:0; }
@@ -1673,7 +1676,11 @@ body.panel-resizing { cursor:col-resize; user-select:none; }
 @media(max-width:1100px) { .api-layout .page-layout-header .api-compose-status,.api-layout .page-layout-header .api-project-servers { display:none; } }
 /* Messages between the header and the content keep the header's side margins. */
 .api-layout > :is(.api-warning,.api-page-notice,.api-local-import,.api-page-message) { flex:none; margin:12px 20px 0; }
-.api-layout > .api-page-body { padding:16px 20px 24px; }
+.api-layout > .api-page-body { padding:16px 20px var(--api-dock-space); }
+/* The chat views keep their input above the dock; the composer's panes run to the bottom and end with room for it. */
+.api-layout > .api-page-body:is(:has(.api-ai-terminal.is-active), :has(.api-ai-quick.is-active)) { padding-bottom:var(--api-dock-space); }
+.api-testing-page:has(.api-compose-layout) .api-compose-layout > :is(.api-selection-basket,.api-compose-editor) { padding-bottom:var(--api-dock-space); }
+.api-layout > .api-page-body:is(:has(> .api-columns:first-child), :has(.api-compose-layout)) { padding-bottom:0; }
 .api-layout > .api-page-body:has(> .api-columns:first-child),.api-layout > .api-page-body:has(.api-compose-layout) { padding:0; }
 .api-layout .api-page-body > .api-columns:first-child > aside { padding:14px; }
 .api-layout .api-page-body > .api-columns:first-child > aside > input { height:30px; min-height:30px; font-size:12px; }
