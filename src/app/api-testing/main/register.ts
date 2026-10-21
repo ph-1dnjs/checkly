@@ -2,6 +2,9 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, safeStorage } from "ele
 import { readFile, stat, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
+import { prepareMcpSetup } from "./mcp/setup";
+import { ApiMcpService } from "./mcp/server";
+import { McpAutoStart } from "./mcp/auto-start";
 import { ApiWorkspace, scopeSchema } from "./workspace";
 import { specSourceSchema } from "../shared/workspace";
 import { z } from "zod";
@@ -18,8 +21,50 @@ export function registerApiTesting() {
   const workspace = new ApiWorkspace(path.join(app.getPath("userData"), "api-testing"), () => {
     const session = isSupabaseEnabled() ? getCurrentSession() : null;
     return session && { client: getSupabase(), userId: session.userId, projectId: session.projectId, projectCode: session.projectCode };
+  // Projects on this computer only when no Supabase is configured (tests, development); otherwise sign-in is required.
+  }, !isSupabaseEnabled());
+  const mcpDirectory = path.join(app.getPath("userData"), "api-testing", "mcp");
+  const discoveryFile = process.env.CHECKLY_MCP_CONNECTION_FILE || path.join(app.getPath("appData"), "checkly-mcp", "connection.json");
+  if (!path.isAbsolute(discoveryFile)) throw new Error("CHECKLY_MCP_CONNECTION_FILE은 절대 경로여야 합니다");
+  const mcp = new ApiMcpService(workspace, discoveryFile, { confirm: async ({ title, detail, signal }) => {
+    // A parent window is required: on macOS only parented message boxes honour the abort signal.
+    const window = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows().find(item => !item.isDestroyed());
+    if (!window) return false;
+    if (window.isMinimized()) window.restore();
+    window.show(); window.focus();
+    const { response } = await dialog.showMessageBox(window, { type: "warning", title: "외부 AI 삭제 요청", message: title, detail, buttons: ["삭제", "취소"], defaultId: 1, cancelId: 1, noLink: true, signal });
+    return response === 0 && !signal.aborted;
+  }, onRun: event => {
+    for (const window of BrowserWindow.getAllWindows()) if (!window.isDestroyed()) window.webContents.send("api-testing:mcp-run", event);
+  } });
+  const autoStart = new McpAutoStart(path.join(mcpDirectory, "auto-start.json"));
+  // Reconnect what the user left on. A project that is gone or not visible to this login simply stays off.
+  const startSaved = async () => { const saved = await autoStart.scope(); if (saved && !mcp.status().enabled) await mcp.start(saved).catch(() => undefined); };
+  const getMcpSetup = () => prepareMcpSetup(mcpDirectory, path.join(app.getAppPath(), "packages", "checkly-mcp", "bin", "checkly-mcp.cjs"), process.platform, discoveryFile);
+  ipcMain.handle("api-testing:mcp-setup", getMcpSetup);
+  ipcMain.handle("api-testing:mcp-copy-setup", async (_event, rawFormat) => {
+    const format = z.enum(["codex", "claude", "json"]).parse(rawFormat);
+    const setup = await getMcpSetup();
+    clipboard.writeText(format === "codex" ? setup.codexCommand : format === "claude" ? setup.claudeCommand : setup.configJson);
   });
-  if (isSupabaseEnabled()) onSessionChanged(() => workspace.syncSession());
+  ipcMain.handle("api-testing:mcp-status", () => mcp.status());
+  ipcMain.handle("api-testing:mcp-start", async (_event, scope) => {
+    const status = await mcp.start(scope);
+    if (status.enabled) await autoStart.remember(status);
+    return status;
+  });
+  ipcMain.handle("api-testing:mcp-stop", async (_event, projectId) => {
+    const expected = z.string().uuid().optional().parse(projectId);
+    const current = mcp.status();
+    if (expected && current.enabled && current.projectId !== expected) throw new Error("다른 프로젝트에서 사용 중인 MCP 연결입니다");
+    // Only the user's own "끄기" keeps it off on the next start; quitting or a login change does not.
+    await autoStart.forget();
+    return mcp.stop();
+  });
+  app.on("before-quit", () => { void mcp.stop(); });
+  // Login changes revoke the grant; the opt-in reconnect then applies again to what this login can see.
+  if (isSupabaseEnabled()) onSessionChanged(() => { workspace.syncSession(); void mcp.stop().then(startSaved); });
+  void app.whenReady().then(startSaved);
   const sync = new SpecSync(path.join(app.getPath("userData"), "api-testing"), workspace, {
     available: () => safeStorage.isEncryptionAvailable() && (process.platform !== "linux" || safeStorage.getSelectedStorageBackend() !== "basic_text"),
     encrypt: value => safeStorage.encryptString(value).toString("base64"),
@@ -105,10 +150,8 @@ export function registerApiTesting() {
   ipcMain.handle("api-testing:get-storage", () => workspace.getStorage());
   ipcMain.handle("api-testing:get-team-settings", () => workspace.getTeamSettings());
   ipcMain.handle("api-testing:set-share-secrets", (_event, on) => workspace.setShareSecrets(on));
-  ipcMain.handle("api-testing:import-local-project", (_event, projectId) => workspace.importLocalProject(projectId));
   ipcMain.handle("api-testing:list-projects", () => workspace.listProjects());
   ipcMain.handle("api-testing:save-project", (_event, project) => workspace.saveProject(project));
-  ipcMain.handle("api-testing:delete-project", async (_event, id) => { await terminals.forget(id); quick.forget(id); await workspace.deleteProject(id); });
   ipcMain.handle("api-testing:delete-catalog", (_event, scope) => workspace.deleteCatalog(scope));
   ipcMain.handle("api-testing:delete-scenario", (_event, projectId, id, revision) => workspace.deleteScenario(projectId, id, revision));
   ipcMain.handle("api-testing:catalog", (_event, scope) => workspace.getCatalog(scope));
@@ -166,22 +209,6 @@ export function registerApiTesting() {
     clearTimeout(pending.timeout); event.sender.removeListener("destroyed", pending.onDestroyed);
     pendingInputs.delete(submission.requestId); pending.resolve(submission.value);
   });
-  ipcMain.handle("api-testing:export-project", async (_event, projectId) => {
-    const text = await workspace.exportProject(projectId);
-    const name = (JSON.parse(text) as { project: { name: string } }).project.name.replace(/[\\/:*?"<>|]/g, "_");
-    const selected = await dialog.showSaveDialog({ defaultPath: `${name}.checkly-api.json`, filters: [{ name: "Checkly API 프로젝트", extensions: ["json"] }] });
-    if (selected.canceled || !selected.filePath) return null;
-    await writeFile(selected.filePath, text, "utf8");
-    return selected.filePath;
-  });
-  ipcMain.handle("api-testing:read-project-file", async () => {
-    const selected = await dialog.showOpenDialog({ properties: ["openFile"], filters: [{ name: "Checkly API 프로젝트", extensions: ["json"] }] });
-    if (selected.canceled || !selected.filePaths[0]) return null;
-    if ((await stat(selected.filePaths[0])).size > 10_000_000) throw new Error("프로젝트 파일은 10MB 이하만 지원합니다");
-    return readFile(selected.filePaths[0], "utf8");
-  });
-  ipcMain.handle("api-testing:plan-project-import", (_event, text) => workspace.planProjectImport(z.string().parse(text)));
-  ipcMain.handle("api-testing:import-project", (_event, text, update) => workspace.importProject(z.string().parse(text), update));
   ipcMain.handle("api-testing:read-scenario-file", async () => {
     const selected = await dialog.showOpenDialog({ properties: ["openFile"], filters: [{ name: "시나리오 YAML", extensions: ["yaml", "yml"] }] });
     if (selected.canceled || !selected.filePaths[0]) return null;

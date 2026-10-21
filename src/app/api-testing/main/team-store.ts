@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { MESSAGES, toUserMessage } from "../../ipc/auth/errors";
 import type { ApiAuthorship, ApiProject, SavedApiScenario, SavedApiSuite } from "../shared/workspace";
 import type { ApiDocInput } from "../shared/doc-inputs";
-import type { ApiStore, ScenarioRename, SpecUrl } from "./store";
+import type { ApiStore, ScenarioRename } from "./store";
 
 /** The signed-in member's team project. Its API testing project has the same id and the project code as name. */
 export type ApiTeamContext = { client: SupabaseClient; userId: string; projectId: string; projectCode: string };
@@ -182,12 +182,6 @@ export class TeamStore implements ApiStore {
     else await must(this.db.from("api_doc_inputs").delete().eq("project_id", this.projectId).eq("endpoint_id", endpoint_id).eq("operation", operation));
   }
 
-  async specUrls(project: ApiProject): Promise<SpecUrl[]> {
-    const rows = await must<UrlRow[]>(this.db.from("endpoint_urls").select("endpoint_id, environment_id, spec_url").eq("project_id", this.projectId).not("spec_url", "is", null));
-    return rows.filter(row => project.servers.some(server => server.id === row.endpoint_id) && project.environments.some(environment => environment.id === row.environment_id))
-      .map(row => ({ serverId: row.endpoint_id, environmentId: row.environment_id, url: row.spec_url! }));
-  }
-
   /** The team's spec URL of one server·environment; null when none is set. */
   async specUrl(environmentId: string, serverId: string): Promise<string | null> {
     const rows = await must<Array<{ spec_url: string | null }>>(this.db.from("endpoint_urls").select("spec_url").eq("project_id", this.projectId).eq("endpoint_id", serverId).eq("environment_id", environmentId));
@@ -253,24 +247,6 @@ export class TeamStore implements ApiStore {
     await must(query);
   }
 
-  async counts(): Promise<{ scenarios: number; suites: number }> {
-    const count = async (table: string) => {
-      const { count, error } = await this.db.from(table).select("id", { count: "exact", head: true }).eq("project_id", this.projectId);
-      if (error) throw new Error(toUserMessage(error));
-      return count ?? 0;
-    };
-    const [scenarios, suites] = await Promise.all([count("api_scenarios"), count("api_suites")]);
-    return { scenarios, suites };
-  }
-
-  /** Adds what is not there yet (same id) and leaves existing items alone; resolves to how many were added. */
-  async addScenarios(items: SavedApiScenario[]) { return this.addMissing("api_scenarios", items.map(scenarioRow)); }
-  async addSuites(suites: SavedApiSuite[]) { return this.addMissing("api_suites", suites.map(suiteRow)); }
-  async addDocInputs(inputs: Record<string, ApiDocInput>) {
-    const rows = Object.entries(inputs).map(([key, input]) => ({ project_id: this.projectId, ...splitDocKey(key), input }));
-    if (rows.length) await must(this.db.from("api_doc_inputs").upsert(rows, { onConflict: "endpoint_id,operation", ignoreDuplicates: true }));
-  }
-
   /** Update when the row is still the version read; otherwise insert, which fails on an existing id (conflict). */
   private async put<T>(table: string, columns: string, id: string, row: Record<string, unknown>, expectedUpdatedAt: string | undefined): Promise<T | null> {
     if (expectedUpdatedAt !== undefined) {
@@ -285,9 +261,5 @@ export class TeamStore implements ApiStore {
   private async drop(table: string, id: string, expectedUpdatedAt: string) {
     return (await must<unknown[]>(this.db.from(table).delete().eq("project_id", this.projectId).eq("id", id).eq("updated_at", expectedUpdatedAt).select("id"))).length > 0;
   }
-  private async addMissing(table: string, rows: Array<Record<string, unknown>>) {
-    if (!rows.length) return 0;
-    const added = await must<unknown[]>(this.db.from(table).upsert(rows.map(row => ({ project_id: this.projectId, ...row })), { onConflict: "project_id,id", ignoreDuplicates: true }).select("id"));
-    return added.length;
-  }
+
 }

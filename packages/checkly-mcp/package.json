@@ -1,0 +1,10 @@
+{
+  "name": "@checkly-local/api-testing-mcp",
+  "version": "0.1.0",
+  "description": "Local stdio MCP bridge for the Checkly API testing desktop app",
+  "license": "UNLICENSED",
+  "private": true,
+  "bin": { "checkly-mcp": "bin/checkly-mcp.cjs" },
+  "files": ["bin/checkly-mcp.cjs", "README.md"],
+  "engines": { "node": ">=18" }
+}

@@ -12,13 +12,15 @@ const errorText = (error: unknown) => (error as Error).message.replace(/^Error i
  * AI's answers, the input at the bottom) and the result opens in a panel over its right side.
  * 내용 바꾸기 (before saving) continues the same AI session; after saving, a failed run's AI로 고치기 starts a new one.
  */
-export function AiQuickPanel({ project, scope, bridge, onBusy, onSaved, onOpenSpecs, toolChoice, noSpec, specNote }: {
+export function AiQuickPanel({ project, scope, bridge, onBusy, onSaved, onOpenSpecs, toolChoice, styleToggle, noSpec, specNote }: {
   project: ApiProject; scope: ApiEnvironmentScope; bridge: ApiTestingBridge; onBusy: (busy: boolean) => void; onSaved: (first?: SavedApiScenario) => void;
   /** API 문서 tab, where a missing spec is imported again. */
   onOpenSpecs?: () => void;
   noSpec: boolean; specNote: string;
   /** Which AI a new request uses, shown in the first input. */
   toolChoice?: ReactNode;
+  /** 터미널로 보기, on the title row. */
+  styleToggle?: ReactNode;
 }) {
   const projectId = scope.projectId;
   const [quick, setQuick] = useState<ApiAiQuick | null>(null);
@@ -79,7 +81,7 @@ export function AiQuickPanel({ project, scope, bridge, onBusy, onSaved, onOpenSp
   if (loading) return <p role="status" className="api-field-help">불러오는 중…</p>;
   if (!quick) {
     return <section className="api-ai-quick" aria-label="바로 만들기">
-      <h3 className="api-ai-quick-title">무엇을 테스트할까요?</h3>
+      <div className="api-ai-quick-titlebar"><h3 className="api-ai-quick-title">무엇을 테스트할까요?</h3>{styleToggle}</div>
       {/* A chat-style box: the request on top, the AI choice and 만들기 on its bottom bar. */}
       <div className="api-ai-composer">
         <textarea rows={3} aria-label="무엇을 테스트할까요?" value={request} disabled={pending || noSpec} placeholder={"예: 회원가입 후 로그인해서 내 정보를 조회하는 흐름. 비밀번호가 틀리면 로그인이 실패하는지도 확인"}
@@ -112,6 +114,7 @@ export function AiQuickPanel({ project, scope, bridge, onBusy, onSaved, onOpenSp
         <small className="api-field-help">{environmentName(quick.environmentId)} · {statusText}</small>
       </div>
       <Button variant="secondary" disabled={pending || running || reviewBusy} onClick={() => void startOver()}>새로 만들기</Button>
+      {styleToggle}
     </header>
     {quick.environmentId !== scope.environmentId && <p className="api-warning" role="note">이 결과는 {environmentName(quick.environmentId)} 환경 기준입니다. 현재 환경으로 만들려면 새로 만드세요.</p>}
     <div className="api-ai-terminal-body">

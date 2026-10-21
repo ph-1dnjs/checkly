@@ -48,12 +48,10 @@ test("executing from the docs remembers inputs per server for the whole project,
     await workspace.forgetDocInput(devApi, "POST /login");
     assert.deepEqual(await workspace.getDocInputs(devApi), { "GET /items/{id}": { pathParams: { id: 7 } } });
 
-    // Removing a server drops its inputs; deleting the project drops the file.
+    // Removing a server drops its inputs.
     await workspace.execute({ ...devApi, serverId: authId }, "GET /items/{id}", { pathParams: { id: 1 } });
     await workspace.saveProject({ ...project, servers: [project.servers[0]], environments: project.environments.map(env => ({ ...env, baseUrls: { [apiId]: baseUrl } })) });
     assert.deepEqual(Object.keys(await workspace.getDocInputs(devApi)), ["GET /items/{id}"]);
-    await workspace.deleteProject(projectId);
-    await assert.rejects(workspace.getDocInputs(devApi));
   } finally {
     await new Promise<void>(resolve => server.close(() => resolve()));
     await rm(dir, { recursive: true, force: true });

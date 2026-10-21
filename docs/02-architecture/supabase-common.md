@@ -188,8 +188,7 @@ npx tsx --test tests/auth/*.test.ts
 | DB | 시나리오·묶음(`api_scenarios`, `api_suites`), 개별 요청 입력값(`api_doc_inputs`), 설정(`api_settings`), 문서 계정(`api_spec_accounts`, 공유가 켜져 있을 때만) |
 | 공통으로 이동 | `projects.json`의 서버·환경·주소, `spec-source-*`의 명세 주소 → 위 공통 테이블 |
 | 로컬 | 명세·카탈로그 캐시(`catalog-*`, 각자 팀의 명세 주소에서 가져옴), `ai/*`, AI 대화·설정, 동기화 상태, 공유를 끈 경우의 문서 계정(키체인) |
-| 없어짐 | `share-origins.json`, `share-bases.json`(내보내기·가져오기 공유), API 테스트 안의 프로젝트 목록·생성·삭제 UI |
-| 이전 | 최초 1회 "로컬 프로젝트 → 현재 팀 프로젝트로 가져오기" (기존 가져오기 코드 재사용) |
+| 없어짐 | `share-origins.json`, `share-bases.json`(내보내기·가져오기 공유), API 테스트 안의 프로젝트 목록·생성·삭제·설정 화면, 로컬 프로젝트 가져오기. 서버·환경·주소는 전체 설정의 엔드포인트 × 환경에서만 고친다 |
 
 API 테스트 테이블 (`20261007000200_api_testing.sql`, `20261009000000_api_share_secrets.sql`, `20261009000200_api_authorship.sql`)
 

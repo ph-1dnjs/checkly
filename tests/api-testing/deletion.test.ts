@@ -6,7 +6,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { ApiWorkspace } from "../../src/app/api-testing/main/workspace";
 
-test("deletion protects references, revisions and sync; cleans only the selected project", async () => {
+test("deletion protects references, revisions and sync", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "checkly-delete-"));
   try {
     const workspace = new ApiWorkspace(dir);
@@ -27,7 +27,6 @@ test("deletion protects references, revisions and sync; cleans only the selected
     await assert.rejects(workspace.saveProject({ ...project, servers: [project.servers[1]], environments: project.environments.map(e => ({ ...e, baseUrls: { [extraServer]: baseUrls[extraServer] } })) }), /참조/);
     await assert.rejects(workspace.saveProject({ ...project, servers: [] }));
     const release = workspace.beginSpecSync(scope);
-    await assert.rejects(workspace.deleteProject(project.id), /동기화/);
     await assert.rejects(workspace.deleteCatalog(scope), /동기화/);
     release();
     const accountFile = `spec-source-${project.id}-${environmentId}-${serverId}.json`;
@@ -41,18 +40,5 @@ test("deletion protects references, revisions and sync; cleans only the selected
     await workspace.deleteScenario(project.id, item.id, item.updatedAt);
     assert.deepEqual(await workspace.listScenarios(project.id), []);
     await workspace.saveProject({ ...project, environments: [project.environments[0]] });
-    // Leftovers no step names: an old format backup and a spec of a pair no longer in the project.
-    await writeFile(path.join(dir, `scenarios-${project.id}.json.bak-2026-09-25T09-56-04-383Z`), "[]");
-    await writeFile(path.join(dir, `catalog-${project.id}-${randomUUID()}-${serverId}.json`), "null");
-    const otherBackup = `scenarios-${other.id}.json.bak-2026-09-25T09-56-04-383Z`;
-    await writeFile(path.join(dir, otherBackup), "[]");
-    await workspace.deleteProject(project.id);
-    assert.ok((await readdir(dir)).includes(otherBackup));
-    assert.deepEqual((await workspace.listProjects()).map(p => p.id), [other.id]);
-    assert.ok(await workspace.getCatalog({ ...scope, projectId: other.id }));
-    assert.ok((await readdir(dir)).every(file => !file.includes(project.id)));
-    await assert.rejects(workspace.deleteProject("../projects.json"));
-    await workspace.saveProject(project);
-    assert.deepEqual(await workspace.listGlobals({ projectId: project.id }), []);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });

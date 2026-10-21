@@ -1,7 +1,17 @@
 import { ipcRenderer } from 'electron'
-import type { ApiAiQuickEvent, ApiAiTerminalEvent, ApiTestingBridge } from './shared/workspace'
+import type { ApiAiQuickEvent, ApiAiTerminalEvent, ApiMcpRunEvent, ApiTestingBridge } from './shared/workspace'
 
 export const apiTestingBridge: ApiTestingBridge = {
+  getMcpSetup: () => ipcRenderer.invoke('api-testing:mcp-setup'),
+  copyMcpSetup: (format) => ipcRenderer.invoke('api-testing:mcp-copy-setup', format),
+  getMcpStatus: () => ipcRenderer.invoke('api-testing:mcp-status'),
+  startMcp: (scope) => ipcRenderer.invoke('api-testing:mcp-start', scope),
+  stopMcp: (projectId) => ipcRenderer.invoke('api-testing:mcp-stop', projectId),
+  onMcpRun: (listener) => {
+    const handler = (_event: unknown, payload: ApiMcpRunEvent) => listener(payload)
+    ipcRenderer.on('api-testing:mcp-run', handler)
+    return () => { ipcRenderer.removeListener('api-testing:mcp-run', handler) }
+  },
   getSpecSync: (scope) => ipcRenderer.invoke('api-testing:spec-sync', scope),
   deleteSpecAccount: (scope) => ipcRenderer.invoke('api-testing:delete-spec-account', scope),
   getRequestAuth: (scope) => ipcRenderer.invoke('api-testing:get-request-auth', scope),
@@ -44,10 +54,8 @@ export const apiTestingBridge: ApiTestingBridge = {
   getStorage: () => ipcRenderer.invoke('api-testing:get-storage'),
   getTeamSettings: () => ipcRenderer.invoke('api-testing:get-team-settings'),
   setShareSecrets: (on) => ipcRenderer.invoke('api-testing:set-share-secrets', on),
-  importLocalProject: (projectId) => ipcRenderer.invoke('api-testing:import-local-project', projectId),
   listProjects: () => ipcRenderer.invoke('api-testing:list-projects'),
   saveProject: (project) => ipcRenderer.invoke('api-testing:save-project', project),
-  deleteProject: (id) => ipcRenderer.invoke('api-testing:delete-project', id),
   deleteCatalog: (scope) => ipcRenderer.invoke('api-testing:delete-catalog', scope),
   deleteScenario: (projectId, id, revision) => ipcRenderer.invoke('api-testing:delete-scenario', projectId, id, revision),
   getCatalog: (scope) => ipcRenderer.invoke('api-testing:catalog', scope),
@@ -65,10 +73,6 @@ export const apiTestingBridge: ApiTestingBridge = {
   keepTitles: (scope, scenarioId) => ipcRenderer.invoke('api-testing:keep-titles', scope, scenarioId),
   getDocInputs: (scope) => ipcRenderer.invoke('api-testing:get-doc-inputs', scope),
   forgetDocInput: (scope, key) => ipcRenderer.invoke('api-testing:forget-doc-input', scope, key),
-  exportProject: (projectId) => ipcRenderer.invoke('api-testing:export-project', projectId),
-  readProjectFile: () => ipcRenderer.invoke('api-testing:read-project-file'),
-  planProjectImport: (text) => ipcRenderer.invoke('api-testing:plan-project-import', text),
-  importProject: (text, update) => ipcRenderer.invoke('api-testing:import-project', text, update),
   listSuites: (projectId) => ipcRenderer.invoke('api-testing:list-suites', projectId),
   saveSuite: (projectId, suite, revision) => ipcRenderer.invoke('api-testing:save-suite', projectId, suite, revision),
   deleteSuite: (projectId, id, revision) => ipcRenderer.invoke('api-testing:delete-suite', projectId, id, revision),

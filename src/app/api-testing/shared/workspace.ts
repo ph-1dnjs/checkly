@@ -85,42 +85,11 @@ export type ApiCookie = { name: string; domain: string; path: string };
 export type ApiAuthorship = { createdAt?: string; createdBy?: string; updatedBy?: string };
 export type SavedApiScenario = ApiAuthorship & { id: string; name: string; source: string; bindings: Record<string, string>; updatedAt: string; draft?: boolean; groupPath?: string[]; tags?: string[]; /** Old-title → new-title renames the user chose to keep as is. */ keptTitles?: Array<{ from: string; to: string }> };
 /**
- * A project shared as one file: settings, scenarios and suites, plus each spec's URL, as written.
- * Never carries globals, saved docs accounts, cookies, remembered docs inputs or spec bodies.
+ * Where API testing keeps its data. "team": the signed-in team project, the only project.
+ * "signed-out": sign in first (API testing needs the team project, like the web scenarios).
+ * "file": this computer only, when no Supabase is configured (tests and development).
  */
-export type ApiProjectExport = {
-  format: "checkly-api-project"; version: 1; exportedAt: string;
-  /** Id of the project this one was first shared from (its own id for the original). */
-  origin: string;
-  /** Content hashes of the version the sender last received/merged, to tell who changed what. */
-  base: { scenarios: Record<string, string>; suites: Record<string, string> };
-  project: ApiProject;
-  specUrls: Array<{ serverId: string; environmentId: string; url: string }>;
-  scenarios: Array<{ id: string; name: string; source: string; draft?: boolean; groupPath?: string[]; tags?: string[] }>;
-  suites: Array<{ id: string; name: string; scenarioIds: string[]; onFailure: "stop" | "continue"; groupPath?: string[]; tags?: string[] }>;
-};
-export type ApiProjectImportResult = {
-  project: ApiProject; scenarios: number; suites: number; specUrls: number;
-  /** Set when merged into an existing copy: what came from the file and what stayed local. */
-  merged?: { added: number; updated: number; kept: number };
-};
-/**
- * Scenario/suite changes against the last version both sides had (the "base"): `incoming` changed
- * only in the file and is applied, `mine` changed only locally and is kept, `conflicts` changed on
- * both sides (or have no base yet) and need a choice.
- */
-export type ApiShareDiff = { added: Array<{ id: string; name: string }>; incoming: Array<{ id: string; name: string }>; conflicts: Array<{ id: string; name: string }>; mine: number; same: number };
-export type ApiProjectImportPlan = {
-  name: string; scenarios: number; suites: number;
-  /** Local copies of the same project that the file can update. */
-  targets: Array<{ projectId: string; name: string; scenarios: ApiShareDiff; suites: ApiShareDiff; serversAdded: string[]; environmentsAdded: string[] }>;
-};
-/**
- * Where API testing keeps its data. "file": this computer only (no sign-in). "team": the signed-in
- * team project, the only project; `importable` lists local projects that can be copied into it once,
- * offered while the team project has no scenarios or suites yet.
- */
-export type ApiStorageInfo = { mode: "file" } | { mode: "team"; projectCode: string; importable: Array<{ id: string; name: string; scenarios: number; suites: number }> };
+export type ApiStorageInfo = { mode: "team"; projectCode: string } | { mode: "signed-out" } | { mode: "file" };
 export type SavedApiSuite = ApiAuthorship & { id: string; name: string; scenarioIds: string[]; onFailure: "stop" | "continue"; updatedAt: string; groupPath?: string[]; tags?: string[] };
 export type ApiSidebarMetadata = { groupPath?: string[]; tags?: string[] };
 export type ApiScenarioPreview = { scenario: Scenario; issues: string[]; executionIssues?: string[] };
@@ -188,7 +157,20 @@ export type ApiAiQuickEvent = { projectId: string; quick: ApiAiQuick | null };
 export type ApiAiQuickRequest = { scope: ApiEnvironmentScope; request: string; about?: { scenarioId: string; failures?: string[]; response?: string } };
 export type ApiAiTerminalStartRequest = { scope: ApiEnvironmentScope; size: { cols: number; rows: number } };
 /** checkly: messages Checkly adds (guide sent, check results); `result` is a checked AI answer to review and save. */
+export type ApiMcpSetup = { command: string; args: string[]; codexCommand: string; claudeCommand: string; configJson: string };
+export type ApiMcpSetupFormat = "codex" | "claude" | "json";
+/** A run an external AI started over MCP, handed to the renderer so the scenario screen can show its full trace. */
+export type ApiMcpRunEvent = { projectId: string; environmentId: string; scenarioId: string; result: ApiScenarioResult; preview: ApiScenarioPreview; bindings: Record<string, string>; startedAt: string; completedAt: string };
+
+export type ApiMcpStatus = { enabled: false } | { enabled: true; projectId: string; environmentId: string; url: string; token: string };
+
 export type ApiTestingBridge = {
+  getMcpSetup(): Promise<ApiMcpSetup>;
+  copyMcpSetup(format: ApiMcpSetupFormat): Promise<void>;
+  getMcpStatus(): Promise<ApiMcpStatus>;
+  startMcp(scope: ApiEnvironmentScope): Promise<ApiMcpStatus>;
+  stopMcp(projectId?: string): Promise<ApiMcpStatus>;
+  onMcpRun(listener: (event: ApiMcpRunEvent) => void): () => void;
   /** Which AI CLIs are installed and the project's chat settings (desktop app only). */
   getAiChatStatus(refresh?: boolean): Promise<ApiAiChatStatus>;
   getAiChatSettings(projectId: string): Promise<ApiAiChatSettings>;
@@ -242,10 +224,8 @@ export type ApiTestingBridge = {
   /** "비밀값도 팀에 공유". Turning it off also removes the secrets already shared (docs inputs, docs accounts). */
   setShareSecrets(on: boolean): Promise<ApiTeamSettings>;
   /** Team mode: copies a local project's servers, environments, scenarios, suites and docs inputs into the team project. */
-  importLocalProject(projectId: string): Promise<ApiProjectImportResult>;
   listProjects(): Promise<ApiProject[]>;
   saveProject(project: ApiProject): Promise<ApiProject>;
-  deleteProject(projectId: string): Promise<void>;
   deleteCatalog(scope: ApiScope): Promise<void>;
   deleteScenario(projectId: string, id: string, expectedUpdatedAt: string): Promise<void>;
   getCatalog(scope: ApiScope): Promise<ApiCatalog | null>;
@@ -257,12 +237,8 @@ export type ApiTestingBridge = {
   getDocInputs(scope: ApiScope): Promise<Record<string, ApiDocInput>>;
   forgetDocInput(scope: ApiScope, operationKey: string): Promise<void>;
   /** Saves the project as a share file; resolves to where it was saved, or null when cancelled. */
-  exportProject(projectId: string): Promise<string | null>;
   /** Picks a share file; resolves to its text, or null when cancelled. */
-  readProjectFile(): Promise<string | null>;
-  planProjectImport(text: string): Promise<ApiProjectImportPlan>;
   /** New project without `update`; with it, merges into that copy taking the file side for the listed conflicts. */
-  importProject(text: string, update?: { projectId: string; scenarioIds: string[]; suiteIds: string[] }): Promise<ApiProjectImportResult>;
   listGlobals(scope: ApiProjectScope): Promise<ApiGlobal[]>;
   setGlobal(scope: ApiProjectScope, name: string, value: Json): Promise<void>;
   deleteGlobal(scope: ApiProjectScope, name: string): Promise<void>;

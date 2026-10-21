@@ -10,7 +10,7 @@ export { GlobalVariableSetupLink } from "./ui/GlobalVariableSetupLink";
 export { JsonCode } from "./ui/JsonCode";
 export { objectValue } from "./lib/response-fields";
 export { operationForStep } from "./ui/ScenarioRunViews";
-export { readLastRun } from "./model/scenario-last-run";
+export { readLastRun, onLastRunWritten } from "./model/scenario-last-run";
 export { responseFields } from "./lib/response-fields";
 export { runStatusName } from "./model/run-status";
 export type { ScenarioLastRun } from "./model/scenario-last-run";

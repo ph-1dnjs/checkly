@@ -42,7 +42,8 @@
       "dist/**",
       "dist-electron/**",
       "integrations/react-native/checkly.js",
-      "package.json"
+      "package.json",
+      "packages/checkly-mcp/bin/checkly-mcp.cjs"
     ],
     "asarUnpack": [
       "node_modules/ffmpeg-static/**",
@@ -81,6 +82,7 @@
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.1",
     "@electron-toolkit/utils": "^4.0.0",
+    "@modelcontextprotocol/sdk": "^1.32.1",
     "@playwright/test": "^1.55.0",
     "@rrweb/record": "2.1.7",
     "@rrweb/replay": "2.1.7",

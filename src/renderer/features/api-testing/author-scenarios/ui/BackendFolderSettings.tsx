@@ -1,9 +1,8 @@
 import { useState } from "react";
 import type { ApiAiChatSettings, ApiProject, ApiTestingBridge } from "../../../../../app/api-testing/shared/workspace";
-
 import { Button } from "../../../../shared/ui/Button";
 import { Input } from "../../../../shared/ui/Input";
-export function ProjectAiSettings({ project, settings, drafts, onDrafts, onChange, chooseDirectories }: {
+function BackendFolderEditor({ project, settings, drafts, onDrafts, onChange, chooseDirectories }: {
   project: ApiProject; settings: ApiAiChatSettings;
   drafts: Record<string, string>; onDrafts: (drafts: Record<string, string>) => void;
   onChange: (settings: ApiAiChatSettings) => void; chooseDirectories: ApiTestingBridge["chooseDirectories"];
@@ -14,9 +13,9 @@ export function ProjectAiSettings({ project, settings, drafts, onDrafts, onChang
   const add = (serverId: string, paths: string[]) => {
     if (paths.length) onChange({ ...settings, folders: { ...folders, [serverId]: [...new Set([...(folders[serverId] ?? []), ...paths])] } });
   };
-  return <section className="api-project-section api-ai-chat-settings" aria-labelledby="api-project-ai-settings">
-    <h3 id="api-project-ai-settings">백엔드 코드 폴더 (선택)</h3>
-    <p className="api-field-help">폴더를 지정하면 AI 작성 도우미에서 코드 읽기·대화·검사·저장을 진행합니다. 비워 두면 가이드 복사·결과 불러오기 방식으로 사용합니다. 이 PC에만 저장되고 프로젝트 내보내기에 포함되지 않습니다.</p>
+  return <section className="api-ai-chat-settings" aria-labelledby="api-ai-backend-folders">
+    <h3 id="api-ai-backend-folders">백엔드 코드 폴더</h3>
+    <p className="api-field-help">서버마다 백엔드 저장소 폴더를 지정합니다(예: /Users/me/work/pharma-api). 이 PC에만 저장됩니다.</p>
     {project.servers.map(server => <div key={server.id} className="api-ai-chat-folder-server">
       <span>{server.name || "새 서버"}</span>
       {(folders[server.id] ?? []).length > 0 && <ul>{folders[server.id].map(folder => <li key={folder}><code title={folder}>{folder}</code>
@@ -35,4 +34,24 @@ export function ProjectAiSettings({ project, settings, drafts, onDrafts, onChang
     </div>)}
     {error && <p className="api-warning" role="alert">{error}</p>}
   </section>;
+}
+
+/** Edits the AI chat's backend folders in place: each change is saved right away for this PC. */
+export function BackendFolderSettings({ project, settings, bridge, disabled, onSaved }: {
+  project: ApiProject; settings: ApiAiChatSettings; bridge: ApiTestingBridge; disabled?: boolean;
+  onSaved: (settings: ApiAiChatSettings) => void;
+}) {
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const save = async (next: ApiAiChatSettings) => {
+    setSaving(true); setError("");
+    try { onSaved(await bridge.saveAiChatSettings(project.id, next)); }
+    catch (e) { setError((e as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, "")); }
+    finally { setSaving(false); }
+  };
+  return <fieldset className="api-ai-backend-folders" disabled={disabled || saving}>
+    <BackendFolderEditor project={project} settings={settings} drafts={drafts} onDrafts={setDrafts} onChange={next => void save(next)} chooseDirectories={() => bridge.chooseDirectories()} />
+    {error && <p className="api-warning" role="alert">{error}</p>}
+  </fieldset>;
 }
