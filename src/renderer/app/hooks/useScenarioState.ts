@@ -273,6 +273,12 @@ export const useScenarioState = ({
     }
   };
 
+  const selectEndpoint = (endpointId: string) => {
+    const next = { ...scenario, endpointId };
+    setScenario(next);
+    if (editorMode === "text") setSourceMarkdown(replaceScenarioMarkdown(sourceMarkdown, next));
+  };
+
   const openRecord = (id: string) => {
     if (saving.current) return;
     const record = records.find(item => item.id === id);
@@ -567,6 +573,7 @@ export const useScenarioState = ({
   return {
     scenario,
     setScenario,
+    selectEndpoint,
     sourceMarkdown,
     isDirty: sourceMarkdown !== savedMarkdown || (editorMode === "marker" && replaceScenarioMarkdown(sourceMarkdown, scenario) !== savedMarkdown) || serializePositions(Object.fromEntries(parseMarkdown(sourceMarkdown).map(item => [positionKey(item), currentPositions[positionKey(item)] ?? []]))) !== savedPositions,
     records, activeRecord, loading, busy, refreshRecords, openRecord, newRecord, saveRecord, deleteRecord, duplicateRecord, importMarkdown,

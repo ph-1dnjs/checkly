@@ -4,6 +4,7 @@ import { resolveScenarioUrl, type Scenario } from "../../shared/model/scenario";
 
 /** 환경만 개인별로 고르고, 웹 엔드포인트는 시나리오 본문의 `endpoint:` ID로 설정의 주소와 연결한다. */
 export const useScenarioEnvironment = (projectId: string | undefined, showToast: (message: string) => void) => {
+  const [runEndpointId, setRunEndpointId] = useState("");
   const [settings, setSettings] = useState<ProjectSettings>({ endpoints: [], environments: [], urls: [] });
   const key = `web-scenario-environment:${projectId}`;
   const [selection, setSelection] = useState(() => {
@@ -28,7 +29,8 @@ export const useScenarioEnvironment = (projectId: string | undefined, showToast:
     setSelection(next);
     localStorage.setItem(key, JSON.stringify(next));
   };
-  const resolve = (items: Scenario[]): Scenario[] | null => {
+  const resolve = (source: Scenario[], endpointId?: string): Scenario[] | null => {
+    const items = endpointId ? source.map(item => ({ ...item, endpointId })) : source;
     const missing = items.find(item => !baseUrlFor(item.endpointId));
     if (missing) {
       showToast(endpointFor(missing.endpointId)
@@ -52,5 +54,5 @@ export const useScenarioEnvironment = (projectId: string | undefined, showToast:
     })),
     servers: endpoints.map(endpoint => ({ id: endpoint.id, name: endpoint.name })),
   };
-  return { endpoints, environments: settings.environments, menuProject, defaultEndpointId, environmentId, baseUrlFor, select, resolve, refresh };
+  return { runEndpointId, setRunEndpointId, endpoints, environments: settings.environments, menuProject, defaultEndpointId, environmentId, baseUrlFor, select, resolve, refresh };
 };

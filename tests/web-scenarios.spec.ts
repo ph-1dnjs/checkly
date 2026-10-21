@@ -174,10 +174,10 @@ test('shared DB list preserves selections across documents and shows the existin
   await expect(page.locator('.picker-scenario-name')).toHaveText('프로필')
 })
 
-test('scenario header has no global web endpoint picker and legacy url becomes a goto step on save', async ({ page }) => {
+test('scenario header selects a website and legacy url becomes a goto step on save', async ({ page }) => {
   await installAuthStub(page, { enabled: true, session: owner })
   await editor(page)
-  await expect(page.locator('.scenario-environment').getByLabel('웹 엔드포인트')).toHaveCount(0)
+  await expect(page.locator('.scenario-environment').getByLabel('웹 사이트')).toHaveValue('e-web')
   await page.getByRole('button', { name: '새 시나리오', exact: true }).click()
   const source = page.getByRole('textbox', { name: '시나리오 Markdown 원본' })
   await expect(source).toHaveValue(/endpoint: e-web/)
@@ -187,6 +187,7 @@ test('scenario header has no global web endpoint picker and legacy url becomes a
   await expect(source).not.toHaveValue(/^url:/m)
   await expect(source).toHaveValue(/Given `\/login` 페이지로 이동한다[^\n]*\nGiven `로그인` 클릭/)
 })
+
 
 test('active document hover delete supports unsaved drafts without DB removal', async ({ page }) => {
   await installAuthStub(page, { enabled: true, session: owner })
@@ -222,4 +223,50 @@ test('active document hover delete supports unsaved drafts without DB removal', 
   await dialog.getByRole('button', { name: '삭제', exact: true }).click()
   await expect(page.locator('.scenario-files-row')).toHaveCount(0)
   expect((await authCalls(page)).filter(([name]) => name === 'webScenarios.remove')).toHaveLength(1)
+})
+
+
+test('website and environment selection resolve routes for editor and picker runs', async ({ page }) => {
+  await installAuthStub(page, { enabled: true, session: owner })
+  await page.addInitScript(() => {
+    const api = window.electronAPI
+    const getSettings = api.auth.getProjectSettings
+    api.auth.getProjectSettings = async () => {
+      const settings = await getSettings()
+      return { ...settings,
+        endpoints: [...settings.endpoints, { ...settings.endpoints[0], id: 'e-admin', name: '관리자' }],
+        urls: [...settings.urls, { ...settings.urls[0], endpointId: 'e-admin', environmentId: 'v-stg', baseUrl: 'https://admin.stg.app.com' }],
+      }
+    }
+    api.runQa = async scenario => {
+      sessionStorage.setItem('executed-scenario', JSON.stringify(scenario))
+      return { status: 'passed', log: [] } as any
+    }
+    api.finishQaWorker = async () => undefined
+  })
+  await editor(page)
+  const source = page.getByRole('textbox', { name: '시나리오 Markdown 원본' })
+  await source.fill('# 시나리오: 주문 조회\nendpoint: e-web\nGiven `https://old.example/orders?q=1#list` 페이지로 이동한다')
+  await page.getByLabel('웹 사이트', { exact: true }).selectOption('e-admin')
+  await chooseEnvironment(page, 'staging')
+  await page.getByRole('button', { name: '저장', exact: true }).click()
+  await expect(page.getByText('저장 안 됨', { exact: true })).toHaveCount(0)
+  await expect(source).toHaveValue(/endpoint: e-admin/)
+  await expect(source).toHaveValue(/`\/orders\?q=1#list`/)
+  await expect(source).not.toHaveValue(/old.example|^url:/m)
+  await page.getByRole('button', { name: '화면 추출', exact: true }).click()
+  await expect(page.locator('webview')).toHaveAttribute('src', 'https://admin.stg.app.com/')
+  await page.getByRole('button', { name: '텍스트', exact: true }).click()
+  const returnButton = page.getByRole('button', { name: '저장 후 돌아가기' })
+  if (await returnButton.isVisible()) await returnButton.click()
+  await page.getByRole('tab', { name: '실행', exact: true }).click()
+  await page.getByLabel('웹 사이트', { exact: true }).selectOption('e-web')
+  await page.getByRole('checkbox', { name: '전체 선택' }).click()
+  await page.getByRole('button', { name: '1개 시나리오 실행' }).click()
+  await page.getByRole('dialog', { name: '실행하기 전에 세션을 유지하시겠습니까?' }).getByRole('button', { name: '닫기', exact: true }).click()
+  await expect.poll(() => page.evaluate(() => JSON.parse(sessionStorage.getItem('executed-scenario') || 'null'))).toMatchObject({
+    endpointId: 'e-web', url: 'https://stg.app.com/', steps: [{ target: '/orders?q=1#list' }],
+  })
+  const saved = (await authCalls(page)).filter(([name]) => name === 'webScenarios.save')
+  expect(saved[0][1].markdown).toContain('endpoint: e-admin')
 })

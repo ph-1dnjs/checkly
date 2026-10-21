@@ -167,7 +167,7 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
 
   const runScenarios = (items: typeof executableScenarios, trigger: "editor" | "picker" = "picker") => {
     if (!account) { showToast("웹 시나리오를 사용하려면 로그인해 주세요."); return; }
-    const resolved = environment.resolve(items);
+    const resolved = environment.resolve(items, trigger === "picker" ? environment.runEndpointId : undefined);
     if (resolved) beginRuns(resolved, false, trigger);
   };
   const runEditorContent = () => runScenarios(commitEditorRunSnapshot(), "editor");
@@ -246,11 +246,24 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
                 environment={
                   <div className="scenario-environment" title={environment.endpoints.length ? "실행 환경 · 설정 > 엔드포인트 × 환경" : "설정에서 웹 엔드포인트와 환경별 주소를 넣어 주세요."}>
                     {!environment.endpoints.length && <span className="msi scenario-environment-warn" aria-label="웹 엔드포인트 없음">warning</span>}
+                    <span>{account?.session.projectCode}</span>
+                    <select
+                      aria-label="웹 사이트"
+                      disabled={busy || loading || running || (route === "editor" && !scenario.title)}
+                      value={route === "editor" ? scenario.endpointId ?? environment.defaultEndpointId : environment.runEndpointId}
+                      onChange={event => route === "editor" ? scenarioState.selectEndpoint(event.target.value) : environment.setRunEndpointId(event.target.value)}
+                    >
+                      {route !== "editor" && <option value="">시나리오별 웹 사이트</option>}
+                      {!environment.endpoints.length && <option value="">등록된 웹 사이트 없음</option>}
+                      {route === "editor" && scenario.endpointId && !environment.endpoints.some(item => item.id === scenario.endpointId) && <option value={scenario.endpointId}>삭제된 웹 사이트</option>}
+                      {environment.endpoints.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+                    </select>
                     <EnvironmentMenu
                       project={environment.menuProject}
                       environmentId={environment.environmentId}
                       label="시나리오 환경"
-                      disabled={busy || loading}
+                      disabled={busy || loading || running}
+                      serverId={route === "editor" ? scenario.endpointId ?? environment.defaultEndpointId : environment.runEndpointId || undefined}
                       onSelect={id => environment.select({ environmentId: id })}
                     />
                   </div>
