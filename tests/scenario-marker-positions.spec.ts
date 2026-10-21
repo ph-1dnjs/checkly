@@ -34,7 +34,7 @@ test('screen extraction restores each document and repeated step position withou
     for (const [index, [x, y]] of points.entries()) {
       await expect(pins.nth(index)).toHaveAttribute('style', new RegExp(`left: ${x}%; top: ${y}%;`))
     }
-    await expect(page.getByText('UNSAVED', { exact: true })).toHaveCount(0)
+    await expect(page.getByText('저장 안 됨', { exact: true })).toHaveCount(0)
     await page.getByRole('button', { name: '텍스트', exact: true }).click()
     await page.getByRole('button', { name: '저장하지 않고 돌아가기' }).click()
   }
@@ -47,16 +47,16 @@ test('new marker survives saving and reopening when inspection cannot find its t
   await page.getByRole('tab', { name: '편집', exact: true }).click()
   await page.getByRole('button', { name: '새 시나리오', exact: true }).click()
   await page.getByRole('button', { name: '화면 추출', exact: true }).click()
-  await page.getByRole('button', { name: '+ 마커 추가', exact: true }).click()
+  await page.getByRole('button', { name: '마커 추가', exact: true }).click()
   await page.getByLabel('마커를 추가할 위치').click({ position: { x: 100, y: 150 } })
   await page.getByRole('textbox', { name: '라벨', exact: true }).fill('로그인 후 표시되는 버튼')
-  await page.getByRole('button', { name: '마커 편집 완료', exact: true }).click()
+  await page.getByRole('button', { name: '완료', exact: true }).click()
   const pin = page.locator('.extract-pin')
   await expect(pin).toHaveCount(1)
   const style = await pin.getAttribute('style')
   await page.getByRole('button', { name: '텍스트', exact: true }).click()
   await page.getByRole('button', { name: '저장 후 돌아가기' }).click()
-  await expect(page.getByText('UNSAVED', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('저장 안 됨', { exact: true })).toHaveCount(0)
   const stored = await page.evaluate(() => JSON.parse(sessionStorage.getItem('web-scenarios')!)[0])
   expect(Object.values(JSON.parse(stored.positions)).flat()).toEqual([
     expect.objectContaining({ target: '로그인 후 표시되는 버튼', x: expect.any(Number), y: expect.any(Number) }),

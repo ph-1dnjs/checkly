@@ -313,7 +313,44 @@ export const useScenarioState = ({
     setEditorMode("text");
     closeMarkerDialog();
   };
-  const saveRecord = async (markdown = editorMode === "marker" ? replaceScenarioMarkdown(sourceMarkdown, scenario) : sourceMarkdown) => {
+  // 지금 문서를 저장 전 새 문서로 복제한다. 시나리오·단계 식별자는 새로 붙이고 마커 위치는 내용으로 다시 맞춘다.
+  const duplicateRecord = () => {
+    if (saving.current) return;
+    const source = editorMode === "marker" ? replaceScenarioMarkdown(sourceMarkdown, scenario) : sourceMarkdown;
+    const original = parseMarkdown(source);
+    if (!original.length) { showToast("복제할 시나리오가 없습니다."); return; }
+    const stripped = source.split("\n")
+      .filter(line => !/^\s*(id|code):/.test(line))
+      .map(line => line.replace(/\s*<!-- step:[a-f0-9-]{36} -->/, ""))
+      .join("\n")
+      .replace(/^(#\s*시나리오:\s*)(.+)$/m, (_, head: string, title: string) => `${head}${title.trim()} 복사본`);
+    const markdown = identifyMarkdown(stripped);
+    const copied = parseMarkdown(markdown);
+    const store = Object.fromEntries(copied.map((item, index) => [item.id,
+      (currentPositions[positionKey(original[index])] ?? []).map(({ databaseId: _databaseId, ...point }) => point),
+    ]));
+    const first = copied[0];
+    setActiveRecord(null);
+    setSavedMarkdown("");
+    setSavedPositions("{}");
+    setPositionStore(store);
+    setSourceMarkdown(markdown);
+    setScenario(applyPositions(first, store));
+    setMarkerScenarioId(first.id);
+    setSelectedId(first.steps[0]?.id ?? "");
+    setIsAddingMarker(false);
+    setEditorMode("text");
+    closeMarkerDialog();
+    showToast("문서를 복제했습니다. 저장하면 새 문서로 추가됩니다.");
+  };
+  // .md 파일 내용으로 편집 중인 본문을 바꾼다. 저장하기 전까지는 팀 DB에 반영되지 않는다.
+  const importMarkdown = (markdown: string) => {
+    setEditorMode("text");
+    closeMarkerDialog();
+    updateSource(markdown);
+    showToast(parseMarkdown(markdown).length ? "Markdown을 불러왔습니다. 저장하면 반영됩니다." : "시나리오 형식을 인식하지 못했습니다.");
+  };
+  const saveRecord = async (markdown =editorMode === "marker" ? replaceScenarioMarkdown(sourceMarkdown, scenario) : sourceMarkdown) => {
     if (!enabled || saving.current || loading) return false;
     const parsed = parseMarkdown(markdown);
     if (!parsed.length) { showToast("저장할 시나리오를 작성하세요."); return false; }
@@ -525,7 +562,7 @@ export const useScenarioState = ({
     setScenario,
     sourceMarkdown,
     isDirty: sourceMarkdown !== savedMarkdown || (editorMode === "marker" && replaceScenarioMarkdown(sourceMarkdown, scenario) !== savedMarkdown) || serializePositions(Object.fromEntries(parseMarkdown(sourceMarkdown).map(item => [positionKey(item), currentPositions[positionKey(item)] ?? []]))) !== savedPositions,
-    records, activeRecord, loading, busy, refreshRecords, openRecord, newRecord, saveRecord, deleteRecord,
+    records, activeRecord, loading, busy, refreshRecords, openRecord, newRecord, saveRecord, deleteRecord, duplicateRecord, importMarkdown,
     markerScenarioId,
     editorMode,
     setEditorMode,

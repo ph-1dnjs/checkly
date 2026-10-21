@@ -40,5 +40,17 @@ export const useScenarioEnvironment = (projectId: string | undefined, showToast:
       return items.map(item => ({ ...item, url: new URL(item.url || "/", baseUrlFor(item.endpointId)).href }));
     } catch { showToast("설정의 웹 주소를 확인하세요."); return null; }
   };
-  return { endpoints, environments: settings.environments, defaultEndpointId, environmentId, baseUrlFor, select, resolve, refresh };
+  // 환경 메뉴(EnvironmentMenu)용: 웹 엔드포인트를 서버로, 환경마다 엔드포인트별 주소를 보여 준다.
+  const menuProject = {
+    environments: settings.environments.map(environment => ({
+      id: environment.id,
+      name: environment.name,
+      baseUrls: Object.fromEntries(endpoints.map(endpoint => [
+        endpoint.id,
+        settings.urls.find(item => item.endpointId === endpoint.id && item.environmentId === environment.id)?.baseUrl ?? "",
+      ])),
+    })),
+    servers: endpoints.map(endpoint => ({ id: endpoint.id, name: endpoint.name })),
+  };
+  return { endpoints, environments: settings.environments, menuProject, defaultEndpointId, environmentId, baseUrlFor, select, resolve, refresh };
 };

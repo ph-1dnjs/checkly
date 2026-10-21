@@ -8,7 +8,6 @@ import {
 import type { RunTimelineEntry } from "../../app/hooks/useRunOrchestration";
 import { ActionTag } from "../../shared/ui/ActionTag";
 import { Button } from "../../shared/ui/Button";
-import { Popover } from "../../shared/ui/Popover";
 import {
   useEffect,
   useLayoutEffect,
@@ -21,7 +20,8 @@ import {
 } from "react";
 
 import { Input } from "../../shared/ui/Input";
-const ACCENT = "#17607F";
+const ACCENT = "#1F63AE";
+const LIVE = "#3D8CE0";
 const PASS = "#1E7A4A";
 const FAIL = "#B32318";
 const WAIT = "#C08A15";
@@ -66,7 +66,7 @@ const VIEWPORT_PRESETS: Array<{
 const FIT_MODES: Array<{ key: FitMode; label: string; title: string }> = [
   {
     key: "fit",
-    label: "맞춘",
+    label: "맞춤",
     title: "가로·세로 모두 들어가는 배율로 축소 (기본)",
   },
   {
@@ -98,10 +98,6 @@ type Props = {
   elapsedSeconds: number;
   runStartedAt: number | null;
   livePreview: boolean;
-  keepSession: boolean;
-  onKeepSessionChange: (value: boolean) => void;
-  sessionActive: boolean;
-  onEndSession: () => void;
   onRerunScenario: (scenario: Scenario) => void;
   runTimeline: RunTimelineEntry[];
   stackPaused: boolean;
@@ -131,6 +127,7 @@ type Props = {
   onDownloadFullRunVideo: () => void;
   reportAvailable: boolean;
   onOpenReport: () => void;
+  onGoPick: () => void;
 };
 
 export const RunPage = ({
@@ -151,10 +148,6 @@ export const RunPage = ({
   runProgress,
   elapsedSeconds,
   livePreview,
-  keepSession,
-  onKeepSessionChange,
-  sessionActive,
-  onEndSession,
   onRerunScenario,
   runTimeline,
   stackPaused,
@@ -177,6 +170,7 @@ export const RunPage = ({
   onDownloadFullRunVideo,
   reportAvailable,
   onOpenReport,
+  onGoPick,
 }: Props) => {
   const [manualFailureReason, setManualFailureReason] = useState("");
   const [selStep, setSelStep] = useState<string | null>(null);
@@ -253,11 +247,26 @@ export const RunPage = ({
   const progressPercent = runProgress.total
     ? Math.round((runProgress.current / runProgress.total) * 100)
     : 0;
+  // 큐가 끝나면 진행률이 초기화되므로, 끝난 실행은 결과 목록으로 완료 여부를 판단한다.
+  const resultsDone = !running && scenarioResults.length > 0;
   const runComplete =
-    !running &&
-    runProgress.total > 0 &&
-    runProgress.current >= runProgress.total;
+    resultsDone ||
+    (!running &&
+      runProgress.total > 0 &&
+      runProgress.current >= runProgress.total);
+  const lastResult = scenarioResults[scenarioResults.length - 1];
+  const doneSteps = scenarioResults.reduce((total, result) => total + result.scenario.steps.length, 0);
+  const shownProgress = resultsDone
+    ? { current: doneSteps, total: doneSteps }
+    : runProgress;
+  const shownPercent = resultsDone ? 100 : progressPercent;
   const awaiting = Boolean(manual || manualControl || manualResult);
+  const idle =
+    !running &&
+    !awaiting &&
+    runTimeline.length === 0 &&
+    scenarioResults.length === 0 &&
+    runProgress.total === 0;
   const failedAny = scenarioResults.some(
     (result) => result.status === "failed",
   );
@@ -268,7 +277,9 @@ export const RunPage = ({
       : runComplete
         ? failedAny
           ? "FAILED"
-          : "PASSED"
+          : scenarioResults.some((result) => result.status === "cancelled")
+            ? "STOPPED"
+            : "PASSED"
         : "IDLE";
   const stateColor =
     stateWord === "WAITING"
@@ -279,8 +290,11 @@ export const RunPage = ({
           ? FAIL
           : stateWord === "PASSED"
             ? PASS
-            : IDLE;
+            : stateWord === "STOPPED"
+              ? FAIL
+              : IDLE;
   const canStop = running;
+  const headTitle = running || !lastResult ? scenario.title : lastResult.scenario.title;
 
   const directOn = Boolean(manualControl);
   const selectedPreview = selStep ? stepPreviews[selStep] : undefined;
@@ -331,14 +345,13 @@ export const RunPage = ({
     : scale < 0.999
       ? "축소 표시 · 잘림 없음"
       : "원본 크기 · 1:1";
-  const cropFg = needScroll ? "#96690C" : scale < 0.999 ? "#8A939C" : "#1E7A4A";
   const logCollapsed = zen || directOn;
 
   const currentStep = scenario.steps[runProgress.current];
-  const nowAction = currentStep
+  const nowAction = running && currentStep
     ? actionText(currentStep)
     : runComplete
-      ? "완료"
+      ? `완료 · 통과 ${scenarioResults.filter((result) => result.status === "passed").length}/${scenarioResults.length}`
       : "대기 중";
 
   const groups = scenarios.map((item) => {
@@ -375,7 +388,7 @@ export const RunPage = ({
             : isWaiting
               ? WAIT
               : isRunning
-                ? ACCENT
+                ? LIVE
                 : "#D3D8DD",
         bar: selected
           ? INK
@@ -384,14 +397,14 @@ export const RunPage = ({
             : isWaiting
               ? WAIT
               : isRunning
-                ? ACCENT
+                ? LIVE
                 : "transparent",
         rowBg: selected
           ? "#F0F3F5"
           : isWaiting
             ? "#FDFBF6"
             : isRunning
-              ? "#F5F9FB"
+              ? "#F5F9FE"
               : failed
                 ? "#FDF6F5"
                 : "transparent",
@@ -408,14 +421,24 @@ export const RunPage = ({
       : isCurrentScenario && running
         ? "run"
         : "pend";
+    const doneSteps = steps.filter((row) => row.dot === PASS || row.dot === FAIL).length;
     return {
       scenario: item,
       steps,
+      meta:
+        groupState === "pass"
+          ? "PASS"
+          : groupState === "fail"
+            ? "FAIL"
+            : `${doneSteps}/${item.steps.length}`,
+      metaColor:
+        groupState === "pass" ? PASS : groupState === "fail" ? FAIL : groupState === "run" ? RQ_ACTIVE : "#8A939C",
+      pulsing: groupState === "run",
       dot:
         groupState === "fail"
           ? FAIL
           : groupState === "run"
-            ? ACCENT
+            ? LIVE
             : groupState === "pass"
               ? PASS
               : "#D3D8DD",
@@ -467,7 +490,7 @@ export const RunPage = ({
       return {
         ...base,
         dot: PASS,
-        meta: `통과 ${entry.totalSteps}/${entry.totalSteps}`,
+        meta: "PASS",
         meta2: fmtElapsed(entry.elapsedSeconds ?? 0),
         metaColor: PASS,
         nameColor: "#5A646E",
@@ -476,7 +499,7 @@ export const RunPage = ({
       return {
         ...base,
         dot: FAIL,
-        meta: `실패 ${entry.finishedStep ?? 0}단계`,
+        meta: `FAIL · ${entry.finishedStep ?? 0}단계`,
         meta2: fmtElapsed(entry.elapsedSeconds ?? 0),
         metaColor: FAIL,
         nameColor: "#5A646E",
@@ -492,7 +515,7 @@ export const RunPage = ({
       return {
         ...base,
         dot: RQ_ACTIVE,
-        meta: `${stackPaused ? "일시정지 " : "실행 중 "}${runProgress.current}/${runProgress.total}`,
+        meta: `${stackPaused ? "일시정지 " : ""}${runProgress.current}/${runProgress.total}`,
         meta2: fmtElapsed(elapsedSeconds),
         metaColor: RQ_ACTIVE,
         bg: "#F5F9FE",
@@ -502,8 +525,9 @@ export const RunPage = ({
     const queuedIndex = queuedTimeline.indexOf(entry);
     return {
       ...base,
-      meta: queuedIndex === 0 ? "다음 차례" : `대기 ${queuedIndex + 1}번째`,
-      metaColor: RQ_QUEUED,
+      meta: stackPaused ? "일시정지" : queuedIndex === 0 ? "다음 차례" : `대기 ${queuedIndex + 1}번째`,
+      metaColor: stackPaused ? RQ_QUEUED : "#8A939C",
+      nameColor: "#5A646E",
       seqColor: "#5A646E",
     };
   };
@@ -521,106 +545,50 @@ export const RunPage = ({
     <div className="run">
       <div className="run-top">
         <div className="run-state-word">
-          <span className="run-state-dot" style={{ background: stateColor }} />
+          <span className={`run-state-dot${running && !awaiting ? " pulsing" : ""}`} style={{ background: stateColor }} />
           <span style={{ color: stateColor }}>{stateWord}</span>
         </div>
-        <div className="run-now-scenario">{scenario.title}</div>
-        <div className="run-now-action">{nowAction}</div>
-        <div className="run-top-right">
-          <div className="run-progress-readout">
-            <div className="run-progress-pct" style={{ color: stateColor }}>
-              {progressPercent}%
-            </div>
-            <div className="run-progress-steps">
-              {runProgress.current}/{runProgress.total}
-            </div>
-          </div>
-          {canStop && (
-            <Button variant="danger" className="run-stop-btn" onClick={onCancel}>
-              <span className="msi">stop</span>
-              실행 중단
-            </Button>
-          )}
-          {reportAvailable && !running && (
-            <Button variant="secondary"
-              className="run-report-btn"
-              title="실행 결과 리포트 보기 · Markdown 다운로드"
-              onClick={onOpenReport}
-            >
-              <span className="msi">description</span>
-              리포트
-            </Button>
-          )}
-          {fullRunVideoAvailable && !running && (
-            <Button variant="secondary"
-              className="run-full-video-btn"
-              title="모든 시나리오를 이어 붙인 영상 (mp4)"
-              onClick={onDownloadFullRunVideo}
-            >
-              <span className="msi">download</span>
-              전체 영상
-            </Button>
-          )}
-          <Button variant="secondary"
-            className={`run-session-btn${keepSession ? " active" : ""}`}
-            title={
-              running
-                ? "지금 실행 중인 브라우저를 그대로 유지 세션으로 사용합니다. 다음 실행부터 재인증을 건너뜁니다."
-                : "켜두면 시나리오를 다시 실행할 때 이전 실행의 로그인 세션(쿠키)을 그대로 사용해 재인증을 건너뜁니다."
-            }
-            aria-pressed={keepSession}
-            onClick={() => onKeepSessionChange(!keepSession)}
-          >
-            <span className="run-session-dot" />
-            세션 유지
-          </Button>
-          {sessionActive && (
-            <Button
-              variant="secondary"
-              className="run-session-end-btn"
-              disabled={running}
-              onClick={onEndSession}
-            >
-              세션 종료
-            </Button>
-          )}
-          <Popover
-            label="Chromium · 1w"
-            className="run-settings-menu"
-            triggerClassName="run-settings-btn"
-            panelClassName="run-settings-popover"
-          >
-            <div className="run-settings-group">
-              <p>BROWSER</p>
-              <div className="setting-choice">
-                <Button className="selected">Chromium</Button>
-                <Button>WebKit</Button>
-                <Button>Firefox</Button>
-              </div>
-            </div>
-            <div className="run-settings-group">
-              <p>WORKERS</p>
-              <div className="setting-choice">
-                <Button className="selected">1</Button>
-                <Button>2</Button>
-                <Button>4</Button>
-              </div>
-            </div>
-            <label className="run-settings-toggle">
-              <input
-                type="checkbox"
-                checked={livePreview}
-                onChange={(event) => onLivePreviewChange(event.target.checked)}
-                disabled={running}
-              />
-              실행 화면 표시
-            </label>
-          </Popover>
+        <div className="run-now-scenario" title={idle ? undefined : headTitle}>{idle ? "대기 중" : headTitle}</div>
+        <div className="run-now-action" title={idle ? undefined : nowAction}>{idle ? "" : running ? `${runProgress.current + 1}단계 · ${nowAction}` : nowAction}</div>
+        <div className="run-progress-readout">
+          <span className="run-progress-pct" style={{ color: stateColor }}>
+            {shownPercent}%
+          </span>
+          <span className="run-progress-steps">
+            {shownProgress.current}/{shownProgress.total}
+          </span>
         </div>
+        {canStop && (
+          <Button variant="danger" className="run-stop-btn" onClick={onCancel}>
+            <span className="msi" aria-hidden="true">stop</span>
+            실행 중단
+          </Button>
+        )}
+        {reportAvailable && !running && (
+          <Button variant="secondary"
+            className="run-report-btn"
+            title="실행 결과 리포트 보기 · Markdown 다운로드"
+            onClick={onOpenReport}
+          >
+            <span className="msi" aria-hidden="true">description</span>
+            리포트
+          </Button>
+        )}
+        {fullRunVideoAvailable && !running && (
+          <Button variant="secondary"
+            className="run-full-video-btn"
+            title="전체 시나리오 영상 (mp4)"
+            onClick={onDownloadFullRunVideo}
+          >
+            <span className="msi" aria-hidden="true">download</span>
+            전체 영상
+          </Button>
+        )}
       </div>
 
       <div className="run-tape">
-        {groups
+        {idle && Array.from({ length: 21 }, (_, index) => <div key={index} className="run-tape-bar" />)}
+        {!idle && groups
           .flatMap((group) => group.steps)
           .map((row) => (
             <div
@@ -632,114 +600,89 @@ export const RunPage = ({
           ))}
       </div>
 
-      {runTimeline.length > 0 && (
+      {runTimeline.length > 0 ? (
         <div className="run-rq-bar">
-          <div className="run-rq-head">
-            <span className="run-rq-title">실행 대기열</span>
-            <span className="run-rq-count">
-              완료{" "}
-              {
-                runTimeline.filter(
-                  (entry) =>
-                    entry.status === "passed" || entry.status === "failed",
-                ).length
-              }{" "}
-              · 실행{" "}
-              {runTimeline.filter((entry) => entry.status === "running").length}{" "}
-              · 대기 {queuedTimeline.length}
-            </span>
-            <div className="run-rq-actions">
-              <Button variant="secondary" onClick={onClearDoneRecords}>
-                완료 기록 지우기
-              </Button>
-              <Button variant="secondary"
-                className="run-rq-pause-btn"
-                onClick={stackPaused ? onResumeStack : onPauseStack}
-              >
-                <span className="msi">
-                  {stackPaused ? "play_arrow" : "pause"}
-                </span>
-                {stackPaused ? "계속" : "일시정지"}
-              </Button>
-            </div>
-          </div>
+          <span
+            className="run-rq-title"
+            title={`완료 ${runTimeline.filter((entry) => entry.status === "passed" || entry.status === "failed").length} · 실행 ${runTimeline.filter((entry) => entry.status === "running").length} · 대기 ${queuedTimeline.length}`}
+          >
+            대기열
+          </span>
           <div className="run-rq-strip" ref={rqStripRef}>
-            {runTimeline.map((entry, index) => {
+            {runTimeline.map((entry) => {
               const visual = timelineVisual(entry);
               return (
-                <div className="run-rq-item" key={entry.seq}>
-                  {index > 0 && (
-                    <span className="msi run-rq-chevron">chevron_right</span>
-                  )}
-                  <div
-                    className="run-rq-card"
-                    data-running={entry.status === "running"}
-                    title={entry.scenario.title}
-                    style={{ background: visual.bg, borderColor: visual.line }}
-                  >
-                    <div className="run-rq-card-row">
-                      <span
-                        className="run-rq-seq"
-                        style={{ color: visual.seqColor }}
-                      >
-                        #{pad2(entry.seq)}
-                      </span>
-                      <span
-                        className="run-rq-dot"
-                        style={{ background: visual.dot }}
-                      />
-                      <span
-                        className="run-rq-name"
-                        style={{ color: visual.nameColor }}
-                      >
-                        {entry.scenario.title}
-                      </span>
-                      {(entry.status === "queued" ||
-                        entry.status === "running") && (
-                        <Button variant="ghost" iconOnly
-                         
-                          className="run-rq-remove"
-                          aria-label={
-                            entry.status === "running"
-                              ? `${entry.scenario.title} 실행 취소 및 대기열에서 제거`
-                              : `${entry.scenario.title} 대기열에서 제거`
-                          }
-                          title={
-                            entry.status === "running"
-                              ? "이 시나리오만 취소하고 다음 항목으로 진행"
-                              : undefined
-                          }
-                          onClick={() => onRemoveFromStack(entry.seq)}
-                        >
-                          ×
-                        </Button>
-                      )}
-                    </div>
-                    <div
-                      className="run-rq-card-meta"
-                      style={{ color: visual.metaColor }}
+                <div
+                  className="run-rq-card"
+                  key={entry.seq}
+                  data-running={entry.status === "running"}
+                  title={`${entry.scenario.title}${visual.meta2 ? ` · ${visual.meta2}` : ""}`}
+                  style={{ borderColor: visual.line }}
+                >
+                  <span className="run-rq-seq" style={{ color: visual.seqColor }}>
+                    #{pad2(entry.seq)}
+                  </span>
+                  <span
+                    className={`run-rq-dot${entry.status === "running" ? " pulsing" : ""}`}
+                    style={{ background: visual.dot }}
+                  />
+                  <span className="run-rq-name" style={{ color: visual.nameColor }}>
+                    {entry.scenario.title}
+                  </span>
+                  <span className="run-rq-meta" style={{ color: visual.metaColor }}>
+                    {visual.meta}
+                  </span>
+                  {(entry.status === "queued" || entry.status === "running") && (
+                    <Button
+                      className="run-rq-remove"
+                      aria-label={
+                        entry.status === "running"
+                          ? `${entry.scenario.title} 실행 취소 및 대기열에서 제거`
+                          : `${entry.scenario.title} 대기열에서 제거`
+                      }
+                      title={
+                        entry.status === "running"
+                          ? "이 시나리오만 취소하고 다음 항목으로 진행"
+                          : "대기열에서 빼기"
+                      }
+                      onClick={() => onRemoveFromStack(entry.seq)}
                     >
-                      <span>{visual.meta}</span>
-                      <span className="run-rq-meta2">{visual.meta2}</span>
-                    </div>
-                    {entry.status === "running" && (
-                      <div
-                        className="run-rq-progress"
-                        style={{
-                          width: `${Math.round(
-                            (runProgress.current /
-                              Math.max(runProgress.total, 1)) *
-                              100,
-                          )}%`,
-                        }}
-                      />
-                    )}
-                  </div>
+                      <span className="msi" aria-hidden="true">close</span>
+                    </Button>
+                  )}
+                  {entry.status === "running" && (
+                    <span
+                      className="run-rq-progress"
+                      style={{
+                        width: `${Math.round(
+                          (runProgress.current / Math.max(runProgress.total, 1)) * 100,
+                        )}%`,
+                      }}
+                    />
+                  )}
                 </div>
               );
             })}
           </div>
+          <Button
+            className="run-rq-icon"
+            title="완료 기록 지우기"
+            aria-label="완료 기록 지우기"
+            onClick={onClearDoneRecords}
+          >
+            <span className="msi" aria-hidden="true">clear_all</span>
+          </Button>
+          <Button
+            className="run-rq-pause-btn"
+            title={`다음 항목 자동 시작 ${stackPaused ? "재개" : "일시정지"}`}
+            onClick={stackPaused ? onResumeStack : onPauseStack}
+          >
+            <span className="msi" aria-hidden="true">{stackPaused ? "play_arrow" : "pause"}</span>
+            {stackPaused ? "재개" : "일시정지"}
+          </Button>
         </div>
+      ) : (
+        <div className="run-rq-rule" />
       )}
 
       {manual && (
@@ -783,51 +726,50 @@ export const RunPage = ({
           <div className="run-col-head">
             <span>EXECUTION</span>
             <span className="run-col-head-meta">
-              {runProgress.current}/{runProgress.total} steps
+              {shownProgress.current}/{shownProgress.total} steps
             </span>
-            {selStep && (
-              <Button
-                className="run-live-return"
-                onClick={() => setSelStep(null)}
-              >
-                LIVE로 복귀
-              </Button>
-            )}
           </div>
-          <div className="run-execution-body">
-            {groups.map((group) => (
+          <div className="run-execution-body" data-ck-scroll="light">
+            {idle && (
+              <div className="run-idle">
+                <span className="msi" aria-hidden="true">playlist_play</span>
+                <p>실행 중인 시나리오가 없습니다.</p>
+                <Button variant="secondary" onClick={onGoPick}>
+                  대상 선택
+                  <span className="msi" aria-hidden="true">arrow_forward</span>
+                </Button>
+              </div>
+            )}
+            {!idle && groups.map((group) => {
+              const video = runVideos.find((item) => item.scenario.id === group.scenario.id);
+              return (
               <div key={group.scenario.id}>
                 <div className="run-group-head">
                   <span
-                    className="run-group-dot"
+                    className={`run-group-dot${group.pulsing ? " pulsing" : ""}`}
                     style={{ background: group.dot }}
                   />
-                  <span>{group.scenario.title}</span>
-                  <span className="run-group-count">
-                    {group.scenario.steps.length}단계
+                  <span className="run-group-title" title={group.scenario.title}>{group.scenario.title}</span>
+                  <span className="run-group-count" style={{ color: group.metaColor }}>
+                    {group.meta}
                   </span>
-                  {(() => {
-                    const video = runVideos.find(
-                      (item) => item.scenario.id === group.scenario.id,
-                    );
-                    return (
-                      video && (
-                        <Button variant="secondary" iconOnly
-                          className="run-group-icon-btn"
-                          title={`${group.scenario.title} 영상 다운로드 (mp4)`}
-                          onClick={() => onDownloadRunVideo(video.path)}
-                        >
-                          <span className="msi">download</span>
-                        </Button>
-                      )
-                    );
-                  })()}
-                  <Button variant="secondary" iconOnly
+                  {video && (
+                    <Button
+                      className="run-group-icon-btn"
+                      title={`${group.scenario.title} 영상 다운로드 (mp4)`}
+                      aria-label={`${group.scenario.title} 영상 다운로드`}
+                      onClick={() => onDownloadRunVideo(video.path)}
+                    >
+                      <span className="msi" aria-hidden="true">download</span>
+                    </Button>
+                  )}
+                  <Button
                     className="run-group-icon-btn run-group-rerun"
-                    title="이 시나리오를 대기열 끝에 추가"
+                    title="다시 실행 · 대기열에 추가"
+                    aria-label={`${group.scenario.title} 다시 실행`}
                     onClick={() => onRerunScenario(group.scenario)}
                   >
-                    <span className="msi">replay</span>
+                    <span className="msi" aria-hidden="true">replay</span>
                   </Button>
                 </div>
                 {group.steps.map((row) => (
@@ -860,38 +802,18 @@ export const RunPage = ({
                   </Button>
                 ))}
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
         <div className="run-side">
           {livePreview && (
             <div className="run-viewport">
-              <div className="run-col-head">
-                <span>VIEWPORT</span>
-                <span
-                  className="run-col-head-meta"
-                  style={{ marginLeft: "auto", color: stateColor }}
-                >
-                  {selStep
-                    ? "REPLAY"
-                    : awaiting
-                      ? "PAUSED"
-                      : running
-                        ? "CAPTURING"
-                        : "IDLE"}
-                </span>
-                <Button
-                  className="run-live-return"
-                  onClick={() => onLivePreviewChange(false)}
-                >
-                  숨기기
-                </Button>
-              </div>
-
               <div className="run-viewport-toolbar">
+                <span className="run-vp-label">VIEWPORT</span>
                 <div className="run-viewport-toolbar-scroll">
-                  <div className="run-vp-group">
+                  <div className="run-vp-group" role="group" aria-label="실행 해상도">
                     {VIEWPORT_PRESETS.map((preset) => (
                       <Button
                         key={preset.key}
@@ -899,6 +821,7 @@ export const RunPage = ({
                         className={
                           !directOn && vpKey === preset.key ? "active" : ""
                         }
+                        aria-pressed={!directOn && vpKey === preset.key}
                         disabled={directOn}
                         onClick={() => {
                           setVpKey(preset.key);
@@ -909,8 +832,7 @@ export const RunPage = ({
                       </Button>
                     ))}
                   </div>
-                  <span className="run-vp-divider" />
-                  <div className="run-vp-group">
+                  <div className="run-vp-group" role="group" aria-label="표시 배율">
                     {FIT_MODES.map((mode) => (
                       <Button
                         key={mode.key}
@@ -920,6 +842,7 @@ export const RunPage = ({
                             ? "active"
                             : ""
                         }
+                        aria-pressed={customScale === null && effectiveFit === mode.key}
                         onClick={() => {
                           setFitMode(mode.key);
                           setCustomScale(null);
@@ -929,11 +852,9 @@ export const RunPage = ({
                       </Button>
                     ))}
                   </div>
-                </div>
-                <div className="run-viewport-toolbar-right">
                   <div
                     className={`run-vp-scale${directOn ? " direct" : ""}`}
-                    title="실제 브라우저 픽셀 대비 표시 배율 · 직접 입력할 수 있습니다"
+                    title={`실제 브라우저 픽셀 대비 표시 배율 · 직접 입력할 수 있습니다 · ${cropLabel}`}
                   >
                     <input
                       type="number"
@@ -959,29 +880,49 @@ export const RunPage = ({
                       aria-label="표시 배율 직접 입력"
                     />
                     <span>%</span>
-                    <span className="run-vp-scale-note">
-                      {customScale !== null
-                        ? "직접 입력"
-                        : effectiveFit === "actual"
-                          ? "1:1"
-                          : effectiveFit === "width"
-                            ? "너비"
-                            : "맞춘"}
-                    </span>
                   </div>
-                  <Button
-                    className={zen ? "active" : ""}
-                    onClick={() => setZen((value) => !value)}
-                  >
-                    {zen ? "패널 복원" : "패널 최대화"}
-                  </Button>
-                  <Button
-                    title="실제 브라우저 창을 분리해 원본 크기로 조작"
-                    onClick={() => onPopout(vpNow.label)}
-                  >
-                    창 분리
-                  </Button>
                 </div>
+                {selStep && (
+                  <Button className="run-live-return" onClick={() => setSelStep(null)}>
+                    LIVE로 복귀
+                  </Button>
+                )}
+                <span className="run-vp-cap" style={{ color: running && !selStep ? RQ_ACTIVE : "#8A939C" }}>
+                  {selStep
+                    ? "REPLAY"
+                    : awaiting
+                      ? "PAUSED"
+                      : running
+                        ? "CAPTURING"
+                        : idle
+                          ? "IDLE"
+                          : "LAST FRAME"}
+                </span>
+                <Button
+                  className="run-vp-icon"
+                  title="실제 브라우저 창을 분리해 원본 크기로 조작"
+                  aria-label="창 분리"
+                  onClick={() => onPopout(vpNow.label)}
+                >
+                  <span className="msi" aria-hidden="true">open_in_new</span>
+                </Button>
+                <Button
+                  className={`run-vp-icon${zen ? " active" : ""}`}
+                  title={zen ? "패널 복원" : "패널 최대화"}
+                  aria-label={zen ? "패널 복원" : "패널 최대화"}
+                  aria-pressed={zen}
+                  onClick={() => setZen((value) => !value)}
+                >
+                  <span className="msi" aria-hidden="true">{zen ? "close_fullscreen" : "open_in_full"}</span>
+                </Button>
+                <Button
+                  className="run-vp-icon"
+                  title="뷰포트 숨기기"
+                  aria-label="뷰포트 숨기기"
+                  onClick={() => onLivePreviewChange(false)}
+                >
+                  <span className="msi" aria-hidden="true">visibility_off</span>
+                </Button>
               </div>
 
               {directOn && (
@@ -1098,16 +1039,6 @@ export const RunPage = ({
                 </div>
               </div>
 
-              <div className="run-viewport-status">
-                <span>{selStep ? "선택 단계" : vpNow.label}</span>
-                <span
-                  className="run-viewport-status-crop"
-                  style={{ color: cropFg }}
-                >
-                  {cropLabel}
-                </span>
-              </div>
-
               {manualControl && (
                 <div className="manual-browser-actions">
                   <Input
@@ -1151,16 +1082,19 @@ export const RunPage = ({
               </div>
               {!livePreview && (
                 <Button
-                  className="run-live-return run-live-return-dark"
+                  className="run-console-viewport"
+                  title="뷰포트 보이기"
+                  aria-label="뷰포트 보이기"
                   onClick={() => onLivePreviewChange(true)}
                 >
-                  VIEWPORT 표시
+                  <span className="msi" aria-hidden="true">visibility</span>
                 </Button>
               )}
             </div>
             <div
               ref={consoleBodyRef}
               className="run-console-body"
+              data-ck-scroll="dark"
               onScroll={handleConsoleScroll}
             >
               {filteredLog.length ? (

@@ -20,6 +20,7 @@ import "../shared/model/electron-api";
 import { useNavigation } from "./hooks/useNavigation";
 import { useScenarioState } from "./hooks/useScenarioState";
 import { useRunOrchestration } from "./hooks/useRunOrchestration";
+import { EnvironmentMenu } from "../widgets/EnvironmentMenu";
 import { ApiTestingPage } from "../pages/api-testing/ApiTestingPage";
 import { AuthScreen } from "../pages/auth/AuthScreen";
 import { AuthUnavailable } from "../pages/auth/AuthUnavailable";
@@ -68,7 +69,7 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
     scenario,
     sourceMarkdown,
     isDirty,
-    records, activeRecord, loading, busy, refreshRecords, openRecord, newRecord, saveRecord, deleteRecord,
+    records, activeRecord, loading, busy, refreshRecords, openRecord, newRecord, saveRecord, deleteRecord, duplicateRecord, importMarkdown,
     markerScenarioId,
     editorMode,
     setEditorMode,
@@ -234,16 +235,29 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
                 busy={busy || loading}
                 canDelete={Boolean(activeRecord)}
                 onDelete={() => setConfirmDelete(true)}
-                onRefresh={() => { void refreshRecords(); void environment.refresh(); }}
+                onDuplicate={duplicateRecord}
+                onImportMarkdown={importMarkdown}
+                keepSession={keepSession}
+                onKeepSessionChange={setKeepSession}
+                sessionActive={sessionActive}
+                onEndSession={endSession}
+                livePreview={livePreview}
+                onLivePreviewChange={setLivePreview}
+                environment={
+                  <div className="scenario-environment" title={environment.endpoints.length ? "실행 환경 · 설정 > 엔드포인트 × 환경" : "설정에서 웹 엔드포인트와 환경별 주소를 넣어 주세요."}>
+                    {!environment.endpoints.length && <span className="msi scenario-environment-warn" aria-label="웹 엔드포인트 없음">warning</span>}
+                    <EnvironmentMenu
+                      project={environment.menuProject}
+                      environmentId={environment.environmentId}
+                      label="시나리오 환경"
+                      disabled={busy || loading}
+                      onSelect={id => environment.select({ environmentId: id })}
+                    />
+                  </div>
+                }
               />
             }
           >
-            <div className="scenario-environment">
-              <label>환경 <select aria-label="시나리오 환경" value={environment.environmentId} onChange={event => environment.select({ environmentId: event.target.value })}>
-                {environment.environments.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
-              </select></label>
-              {!environment.endpoints.length && <span>설정에서 웹 엔드포인트와 환경별 주소를 넣어 주세요.</span>}
-            </div>
             <div className="ws-page">
         {route === "editor" && (
           <ScenarioEditorPage
@@ -251,9 +265,11 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
             scenario={scenario}
             sourceMarkdown={sourceMarkdown}
             baseUrl={environment.baseUrlFor(scenario.endpointId)}
+            resolveBaseUrl={environment.baseUrlFor}
             webEndpoints={environment.endpoints}
             defaultEndpointId={environment.defaultEndpointId}
             sidebar={<ScenarioList records={records} activeId={activeRecord?.id ?? null} loading={loading} busy={busy}
+              draftTitle={activeRecord || !sourceMarkdown.trim() ? undefined : previews[0]?.title ?? ""} dirty={isDirty}
               onSelect={requestOpenRecord} onNew={() => requestOpenRecord("new")} onRefresh={() => requestOpenRecord("refresh")} />}
             previews={previews}
             markerScenarioId={markerScenarioId || previews[0]?.id || ""}
@@ -267,6 +283,7 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
             onSourceChange={updateSource}
             onScenarioChange={setScenario}
             onBeginMarkerPlacement={() => setIsAddingMarker(true)}
+            onCancelMarkerPlacement={() => setIsAddingMarker(false)}
             onToggleMarkersVisible={() =>
               setMarkersVisible((visible) => !visible)
             }
@@ -292,6 +309,7 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
             pickedKeys={pickedKeys}
             onPick={setPickedKeys}
             onOpenEditor={() => setRoute("editor")}
+            onRefresh={() => { void refreshRecords(); void environment.refresh(); }}
             onRun={runScenarios}
           />
         )}
@@ -317,10 +335,6 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
             elapsedSeconds={elapsedSeconds}
             runStartedAt={runStartedAt}
             livePreview={livePreview}
-            keepSession={keepSession}
-            onKeepSessionChange={setKeepSession}
-            sessionActive={sessionActive}
-            onEndSession={endSession}
             onRerunScenario={queueRerun}
             runTimeline={runTimeline}
             stackPaused={stackPaused}
@@ -347,6 +361,7 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
             onDownloadFullRunVideo={downloadFullRunVideo}
             reportAvailable={Boolean(lastRunRecord)}
             onOpenReport={() => setReportRecord(lastRunRecord)}
+            onGoPick={() => setRoute("picker")}
           />
         )}
             </div>

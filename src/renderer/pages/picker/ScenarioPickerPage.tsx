@@ -12,6 +12,7 @@ type Props = {
   pickedKeys: Set<string>;
   onPick: (keys: Set<string>) => void;
   onOpenEditor: () => void;
+  onRefresh: () => void;
   onRun: (scenarios: Scenario[]) => void;
 };
 export const recordScenarios = (record: WebScenarioRecord): Scenario[] => {
@@ -26,7 +27,7 @@ export const recordScenarios = (record: WebScenarioRecord): Scenario[] => {
     }) };
   });
 };
-export const ScenarioPickerPage = ({ records, loading, pickedKeys, onPick, onOpenEditor, onRun }: Props) => {
+export const ScenarioPickerPage = ({ records, loading, pickedKeys, onPick, onOpenEditor, onRefresh, onRun }: Props) => {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
   const groups = useMemo(() => records.map(record => ({ record, scenarios: recordScenarios(record) })), [records]);
@@ -69,9 +70,13 @@ export const ScenarioPickerPage = ({ records, loading, pickedKeys, onPick, onOpe
     </div>
   );
 
+  const tagCounts = activeScenarios.reduce<Record<string, number>>((counts, scenario) => {
+    if (scenario.tag) counts[scenario.tag] = (counts[scenario.tag] ?? 0) + 1;
+    return counts;
+  }, {});
+
   return (
     <div className="picker">
-
       <div className="picker-layout">
         <ScenarioList
           records={records}
@@ -80,11 +85,10 @@ export const ScenarioPickerPage = ({ records, loading, pickedKeys, onPick, onOpe
           busy={false}
           pickedCountByRecord={pickedCountByRecord}
           onSelect={setActiveId}
-          onNew={onOpenEditor}
-          newLabel="편집기 열기"
+          onRefresh={onRefresh}
         />
 
-        <section className="picker-scenarios" data-ck-scroll="light">
+        <section className="picker-scenarios">
           {activeRecord ? (
             <>
               <div className="picker-panel-heading">
@@ -92,6 +96,7 @@ export const ScenarioPickerPage = ({ records, loading, pickedKeys, onPick, onOpe
                   className="picker-scenario-main"
                   role="checkbox"
                   aria-label="전체 선택"
+                  title="문서 전체 선택"
                   aria-checked={allActivePicked ? true : someActivePicked ? "mixed" : false}
                   disabled={!activeScenarios.length}
                   onClick={togglePickAll}
@@ -100,7 +105,7 @@ export const ScenarioPickerPage = ({ records, loading, pickedKeys, onPick, onOpe
                     {someActivePicked && <span className="msi">{allActivePicked ? "check" : "remove"}</span>}
                   </span>
                   <div>
-                    <p>{activeRecord.title}</p>
+                    <p title={activeRecord.title}>{activeRecord.title}</p>
                     <strong>
                       {activeScenarios.length} scenario
                       {activeScenarios.length === 1 ? "" : "s"} ·{" "}
@@ -108,7 +113,16 @@ export const ScenarioPickerPage = ({ records, loading, pickedKeys, onPick, onOpe
                     </strong>
                   </div>
                 </Button>
+                {Object.keys(tagCounts).length > 0 && (
+                  <div className="picker-tags">
+                    <span>태그</span>
+                    {Object.entries(tagCounts).map(([tag, count]) => (
+                      <em key={tag} className="picker-tag">{tag}<b>{count}</b></em>
+                    ))}
+                  </div>
+                )}
               </div>
+              <div className="picker-scenario-list" data-ck-scroll="light">
               {activeScenarios.map((scenario) => {
                 const key = scenario.id;
                 const isPicked = pickedKeys.has(key);
@@ -122,41 +136,42 @@ export const ScenarioPickerPage = ({ records, loading, pickedKeys, onPick, onOpe
                         aria-pressed={isPicked}
                         onClick={() => togglePick(scenario.id)}
                       >
-                        <span className={`picker-check${isPicked ? " on" : ""}`}>
+                        <span className={`picker-check${isPicked ? " on" : ""}`} aria-hidden="true">
                           {isPicked && <span className="msi">check</span>}
                         </span>
                         <div>
-                          <div className="picker-scenario-name">
-                            <span>{scenario.title}</span>
-                            {scenario.tag && <em className="picker-tag">{scenario.tag}</em>}
-                          </div>
+                          <div className="picker-scenario-name" title={scenario.title}>{scenario.title}</div>
                           <div className="picker-scenario-summary">
-                            {scenario.steps.length}개 단계
-                            {unlinked ? ` · 선택자 미연결 ${unlinked}` : ""}
+                            <span>{scenario.steps.length}단계</span>
+                            {unlinked > 0 && <span className="unlinked">선택자 미연결 {unlinked}</span>}
                           </div>
                         </div>
                       </Button>
-                      <Button className="picker-expand" aria-expanded={isOpen} onClick={() => toggleExpand(key)}>
-                        {isOpen ? "▾" : "▸"} 단계
+                      <Button
+                        className="picker-expand"
+                        aria-expanded={isOpen}
+                        aria-label="단계 보기"
+                        title="단계 보기"
+                        onClick={() => toggleExpand(key)}
+                      >
+                        <span className="msi" aria-hidden="true">{isOpen ? "expand_less" : "expand_more"}</span>
                       </Button>
                       <Button
-                        variant="secondary"
-                        iconOnly
                         className="picker-run-only"
                         title="이 시나리오만 실행"
                         aria-label="이 시나리오만 실행"
                         onClick={() => onRun([scenario])}
                       >
-                        <span className="msi">play_arrow</span>
+                        <span className="msi" aria-hidden="true">play_arrow</span>
                       </Button>
                     </div>
                     {isOpen && (
                       <ol className="picker-steps">
                         {scenario.steps.map((step, index) => (
                           <li key={step.id}>
-                            <b>{String(index + 1).padStart(2, "0")}</b>
+                            <b>{index + 1}</b>
                             <ActionTag action={step.action} className="picker-op" />
-                            <span className="picker-target">{actionText(step)}</span>
+                            <span className="picker-target" title={actionText(step)}>{actionText(step)}</span>
                             <em className={step.connected ? "" : "unlinked"}>
                               {step.connected ? "linked" : "unlinked"}
                             </em>
@@ -167,6 +182,7 @@ export const ScenarioPickerPage = ({ records, loading, pickedKeys, onPick, onOpe
                   </div>
                 );
               })}
+              </div>
             </>
           ) : (
             <div className="picker-empty">저장된 시나리오를 선택해 주세요.</div>
@@ -183,28 +199,27 @@ export const ScenarioPickerPage = ({ records, loading, pickedKeys, onPick, onOpe
           <div className="picker-cart-body" data-ck-scroll="light">
             {picked.length === 0 ? (
               <p className="picker-cart-empty">
-                왼쪽 목록에서 실행할 시나리오를 선택하세요. 여러 문서에서 골라
-                한 번에 실행할 수 있습니다.
+                선택한 시나리오가 여기에 모입니다. 여러 문서에서 골라 한 번에 실행할 수 있습니다.
               </p>
             ) : (
               pickedGroups.map((group) => (
                 <div key={group.record.id}>
                   <div className="picker-cart-group">
-                    <span>{group.record.title}</span>
-                    <b>{group.scenarios.length}</b>
+                    <span title={group.record.title}>{group.record.title}</span>
+                    <b>{group.scenarios.length}개</b>
                   </div>
-                  {group.scenarios.map((item, index) => (
+                  {group.scenarios.map((item) => (
                     <div className="picker-cart-item" key={item.id}>
-                      <b>{String(index + 1).padStart(2, "0")}</b>
-                      <span>{item.title}</span>
-                      <i>{item.steps.length} steps</i>
+                      <b>{String(picked.indexOf(item) + 1).padStart(2, "0")}</b>
+                      <span title={item.title}>{item.title}</span>
+                      <i>{item.steps.length}</i>
                       <Button
-                        variant="ghost"
-                        iconOnly
-                        title="선택 해제"
+                        className="picker-cart-remove"
+                        title="빼기"
+                        aria-label={`${item.title} 빼기`}
                         onClick={() => togglePick(item.id)}
                       >
-                        ✕
+                        <span className="msi" aria-hidden="true">close</span>
                       </Button>
                     </div>
                   ))}
@@ -228,7 +243,7 @@ export const ScenarioPickerPage = ({ records, loading, pickedKeys, onPick, onOpe
               disabled={!picked.length}
               onClick={runPicked}
             >
-              <span className="msi">play_arrow</span>
+              <span className="msi" aria-hidden="true">play_arrow</span>
               {picked.length ? `${picked.length}개 시나리오 실행` : "시나리오를 선택하세요"}
             </Button>
           </footer>
