@@ -188,6 +188,7 @@
 
 @media (max-width:640px) {
   .account-card { grid-template-columns:minmax(0,1fr); }
+  .account-card-side { border-right:0; border-bottom:1px solid #e4e7ea; }
   .setting-section-body { padding-left:4px; }
   .setting-row { grid-template-columns:minmax(0,1fr) auto; padding:8px 0; }
   .setting-row-body { grid-column:1 / -1; grid-row:2; }

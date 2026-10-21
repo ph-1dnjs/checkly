@@ -5,7 +5,7 @@ import { errorMessage, formatDate, roleLabel, type AuthAccount } from "../auth/m
 import { ProjectSwitchModal } from "./ProjectSwitchModal";
 import type { ProjectInfoState } from "./useProjectInfo";
 
-/** 설정 맨 위 계정 카드: 왼쪽 글라스 면(이니셜·닉네임·역할·로그아웃), 오른쪽 소속 프로젝트·코드. */
+/** 설정 맨 위 계정 카드: 왼쪽 회색 면(이니셜·닉네임·역할·로그아웃), 오른쪽 소속 프로젝트·코드. */
 export const AccountCard = ({ account, project }: { account: AuthAccount; project: ProjectInfoState }) => {
   const { session } = account;
   const [switching, setSwitching] = useState(false);
