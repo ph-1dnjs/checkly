@@ -1,5 +1,8 @@
 import { type MouseEvent, type ReactElement, type ReactNode } from "react";
 import { browserSessionPartition, type BrowserSession } from "./model";
+import type { NetworkSpec } from "./networkSpec";
+import type { SharedOpenApiSource } from "./sharedOpenApi";
+import { NetworkRequestDetail } from "./NetworkRequestDetail";
 import {
   isSessionError,
   readableStorageValue,
@@ -31,6 +34,14 @@ const Status = ({ tone = "neutral", children }: { tone?: string; children: React
 export const NetworkPanel = ({
   events,
   selectedEvent,
+  spec,
+  specLoading,
+  specSources = [],
+  specErrors = [],
+  selectedSpecSource = "",
+  onSpecSource,
+  onRefreshSpec,
+  onCopyUrl,
   filter,
   activeSessionName,
   onSelect,
@@ -42,9 +53,19 @@ export const NetworkPanel = ({
   listHeight,
   onResizeList,
   onResetListHeight,
+  description = "이 로그인 세션의 API·페이지 오류만 표시",
+  emptyDescription = "사이트에서 조회·저장 등의 동작을 실행해 보세요.",
 }: {
   events: NetworkEvent[];
   selectedEvent: NetworkEvent | null;
+  spec?: NetworkSpec;
+  specLoading?: boolean;
+  specSources?: SharedOpenApiSource[];
+  specErrors?: string[];
+  selectedSpecSource?: string;
+  onSpecSource?: (source: string) => void;
+  onRefreshSpec?: () => void;
+  onCopyUrl: (url: string) => void;
   filter: "all" | "errors";
   activeSessionName: string;
   onSelect: (event: NetworkEvent) => void;
@@ -56,13 +77,15 @@ export const NetworkPanel = ({
   listHeight: number;
   onResizeList: (event: MouseEvent<HTMLDivElement>) => void;
   onResetListHeight: () => void;
+  description?: string;
+  emptyDescription?: string;
 }): ReactElement => {
   const errorCount = events.filter(isSessionError).length;
   const visible = filter === "errors" ? events.filter(isSessionError) : events;
   return (
     <>
       <div className="fa-inspector-heading">
-        <div><strong>{activeSessionName} 타임라인</strong><span>이 로그인 세션의 API·페이지 오류만 표시</span></div>
+        <div><strong>{activeSessionName} 타임라인</strong><span>{description}</span></div>
         {events.length > 0 && <div className="fa-heading-actions"><Button variant="secondary" title="XLSX로 다운로드" onClick={onDownload}><MaterialIcon name="download" /> 다운로드</Button><Button variant="danger" onClick={onClear}><MaterialIcon name="delete" /> 전체 삭제</Button></div>}
       </div>
       <div className="fa-network-filters">
@@ -71,7 +94,7 @@ export const NetworkPanel = ({
       </div>
       <div className="fa-request-list" style={{ height: listHeight }}>
         {!visible.length ? (
-          <EmptyState icon={filter === "errors" ? "check_circle" : "lan"} title={filter === "errors" ? "저장된 오류가 없습니다" : "아직 수집된 기록이 없습니다"} description={filter === "errors" ? "페이지와 API가 정상적으로 동작하고 있습니다." : "사이트에서 조회·저장 등의 동작을 실행해 보세요."} />
+          <EmptyState icon={filter === "errors" ? "check_circle" : "lan"} title={filter === "errors" ? "저장된 오류가 없습니다" : "아직 수집된 기록이 없습니다"} description={filter === "errors" ? "페이지와 API가 정상적으로 동작하고 있습니다." : emptyDescription} />
         ) : visible.map((item) => {
           const failed = isSessionError(item);
           const method = item.method || "ERROR";
@@ -96,25 +119,25 @@ export const NetworkPanel = ({
         onMouseDown={onResizeList}
         onDoubleClick={onResetListHeight}
       ><MaterialIcon name="drag_handle" /></div>
-      {selectedEvent && (
-        <div className={`fa-request-detail${isSessionError(selectedEvent) ? " error" : ""}`}>
-          <div className="fa-detail-title">
-            <strong>{isSessionError(selectedEvent) ? "오류 상세" : selectedEvent.type === "navigation" ? "페이지 활동" : "계약 검사"}</strong>
-            <div>
-              {["fetch", "xhr"].includes(selectedEvent.type) && <Button variant="secondary" onClick={onCopy}><MaterialIcon name="content_copy" /> API 스펙 복사</Button>}
-              <Status tone={isSessionError(selectedEvent) ? "danger" : selectedEvent.contract?.tone}>{selectedEvent.category === "page" ? "페이지 오류" : selectedEvent.type === "navigation" ? "페이지 이동" : selectedEvent.contract?.label || "스펙 미연결"}</Status>
-            </div>
-          </div>
-          <p>{selectedEvent.error || selectedEvent.contract?.detail}</p>
-          <dl>
-            <div><dt>발생 시각</dt><dd>{new Date(selectedEvent.at).toLocaleString("ko-KR")}</dd></div>
-            <div><dt>상태</dt><dd>{selectedEvent.category === "page" || selectedEvent.type === "navigation" ? selectedEvent.type : `${selectedEvent.status || "Network error"} · ${selectedEvent.elapsed ?? "-"}ms`}</dd></div>
-            <div><dt>페이지</dt><dd>{selectedEvent.pageUrl || selectedEvent.url}</dd></div>
-          </dl>
-          {["fetch", "xhr"].includes(selectedEvent.type) && <Button variant="secondary" className="fa-create-override" onClick={onCreateOverride}><MaterialIcon name="tune" /> 이 응답으로 오버라이드 만들기</Button>}
-          <details><summary>기술 정보 보기</summary><pre>{stringify({ error: selectedEvent.error, source: selectedEvent.source, line: selectedEvent.line, stack: selectedEvent.stack, request: selectedEvent.requestBody, response: selectedEvent.responseBody })}</pre></details>
-        </div>
-      )}
+      {selectedEvent && (["fetch", "xhr"].includes(selectedEvent.type) ? <NetworkRequestDetail
+        key={selectedEvent.id}
+        event={selectedEvent}
+        spec={spec}
+        specLoading={specLoading}
+        specSources={specSources}
+        specErrors={specErrors}
+        selectedSpecSource={selectedSpecSource}
+        onSpecSource={onSpecSource}
+        onRefreshSpec={onRefreshSpec}
+        onCopy={onCopy}
+        onCopyUrl={onCopyUrl}
+        onCreateOverride={onCreateOverride}
+      /> : <div className={`fa-request-detail${isSessionError(selectedEvent) ? " error" : ""}`}>
+        <div className="fa-detail-title"><strong>{selectedEvent.type === "navigation" ? "페이지 활동" : "오류 상세"}</strong><Status tone={isSessionError(selectedEvent) ? "danger" : "neutral"}>{selectedEvent.type === "navigation" ? "페이지 이동" : "페이지 오류"}</Status></div>
+        <p>{selectedEvent.error || selectedEvent.contract?.detail}</p>
+        <dl><div><dt>발생 시각</dt><dd>{new Date(selectedEvent.at).toLocaleString("ko-KR")}</dd></div><div><dt>페이지</dt><dd>{selectedEvent.pageUrl || selectedEvent.url}</dd></div></dl>
+        <details><summary>기술 정보 보기</summary><pre>{stringify({ error: selectedEvent.error, source: selectedEvent.source, line: selectedEvent.line, stack: selectedEvent.stack })}</pre></details>
+      </div>)}
     </>
   );
 };
@@ -225,6 +248,8 @@ export const OverridePanel = ({
   onSave,
   onReset,
   onDelete,
+  description = "현재 웹뷰에만 적용되는 테스트 데이터",
+  note = "저장하면 정확히 일치하는 API를 다시 조회합니다. 서버와 다른 사용자 데이터에는 영향을 주지 않습니다.",
 }: {
   openApi: OpenApiDocument | null;
   overrides: OverrideRule[];
@@ -243,9 +268,11 @@ export const OverridePanel = ({
   onSave: () => void;
   onReset: () => void;
   onDelete: () => void;
+  description?: string;
+  note?: string;
 }): ReactElement => (
   <>
-    <div className="fa-inspector-heading"><div><strong>응답 오버라이드</strong><span>현재 웹뷰에만 적용되는 테스트 데이터</span></div><Button variant="secondary" title="네트워크 탭에서 선택한 응답을 복제" onClick={onCreate}><MaterialIcon name="add" /> 선택 응답 복제</Button></div>
+    <div className="fa-inspector-heading"><div><strong>응답 오버라이드</strong><span>{description}</span></div><Button variant="secondary" title="네트워크 탭에서 선택한 응답을 복제" onClick={onCreate}><MaterialIcon name="add" /> 선택 응답 복제</Button></div>
     {!selected ? <EmptyState icon="tune" title="응답 규칙이 없습니다" description="네트워크 응답을 선택한 뒤 오버라이드로 복제해 보세요." /> : <div className="fa-override-editor">
       <label>적용할 API<select value={selected.id} onChange={(event) => onSelect(event.target.value)}>{overrides.map((item) => <option value={item.id} key={item.id}>{item.method} · {item.match}</option>)}</select></label>
       <div className={`fa-override-status ${status.tone}`}><MaterialIcon name={status.applied ? "check_circle" : selected.enabled ? "pending" : "circle"} /><span><strong>{status.title}</strong><small>{status.detail}</small></span><Status tone={status.tone}>{status.applied ? "OVERRIDE" : selected.enabled ? "대기" : "원본"}</Status></div>
@@ -253,7 +280,7 @@ export const OverridePanel = ({
       <div className="fa-override-switch"><Button className={selected.enabled ? "on" : ""} onClick={() => onUpdate({ enabled: !selected.enabled })}><span><i /></span>{selected.enabled ? "이 응답 오버라이드 활성" : "오버라이드 비활성"}</Button><Button variant="danger" iconOnly className="danger" aria-label="오버라이드 규칙 삭제" onClick={onDelete}><MaterialIcon name="delete" /></Button></div>
       <div className="fa-override-tabs"><Button className={editorMode === "fields" ? "active" : ""} onClick={() => onEditorMode("fields")}><MaterialIcon name="tune" /> 필드 편집</Button><Button className={editorMode === "json" ? "active" : ""} onClick={() => onEditorMode("json")}><MaterialIcon name="code" /> JSON</Button><Status tone={schema ? "success" : "neutral"}>{schema ? "Swagger 타입" : "타입 자동 추론"}</Status></div>
       {editorMode === "fields" ? <div className="fa-override-fields">{parsedBody && typeof parsedBody === "object" ? <OverrideFieldEditor document={openApi} schema={schema} value={parsedBody} onChange={onFieldChange} /> : <div className="fa-override-json-error"><MaterialIcon name="error" /> JSON 형식을 먼저 수정해 주세요.</div>}</div> : <label>Response body JSON<textarea className="fa-override-json" spellCheck={false} value={bodyText} onChange={(event) => onBodyText(event.target.value)} /></label>}
-      <p className="fa-override-note"><MaterialIcon name="info" /> 저장하면 정확히 일치하는 API를 다시 조회합니다. 서버와 다른 사용자 데이터에는 영향을 주지 않습니다.</p>
+      <p className="fa-override-note"><MaterialIcon name="info" /> {note}</p>
       <div className="fa-override-actions"><Button variant="secondary" disabled={!selected.enabled} onClick={onReset}><MaterialIcon name="restart_alt" /> 초기화</Button><Button variant="primary" className="primary" onClick={onSave}><MaterialIcon name="save" /> 저장 및 적용</Button></div>
     </div>}
   </>

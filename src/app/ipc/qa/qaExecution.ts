@@ -20,6 +20,7 @@ import type {
   QaStep,
 } from "./qaTypes";
 import { runVideoDirectory, runVideoFileName } from "./video";
+import { startScenarioRecording, stopRecording } from "../live-session/service";
 
 let activeRun: {
   browser?: Browser;
@@ -449,6 +450,7 @@ export const executeScenario = async (
   let page: Page | undefined;
   let video: Video | null = null;
   let previewInterval: ReturnType<typeof setInterval> | undefined;
+  let replaySessionId: string | undefined;
   let activeStep: QaStep | undefined;
   const run = { cancelled: false } as NonNullable<typeof activeRun>;
   activeRun = run;
@@ -497,6 +499,11 @@ export const executeScenario = async (
           "실행이 취소되었습니다.",
         ]),
       };
+    try {
+      replaySessionId = await startScenarioRecording(context, owner.webContents, scenario.title, scenario.url);
+    } catch (error) {
+      log.push(`라이브세션 기록 시작 실패: ${error instanceof Error ? error.message : String(error)}`);
+    }
     page = await context.newPage();
     await page.setViewportSize(selectedViewport);
     run.page = page;
@@ -836,6 +843,10 @@ export const executeScenario = async (
   } finally {
     activeRun = null;
     if (previewInterval) clearInterval(previewInterval);
+    if (replaySessionId) {
+      try { await stopRecording(replaySessionId, owner.webContents, !run.cancelled); }
+      catch (error) { log.push(`라이브세션 저장 실패: ${error instanceof Error ? error.message : String(error)}`); }
+    }
     try {
       await page?.close();
     } catch {

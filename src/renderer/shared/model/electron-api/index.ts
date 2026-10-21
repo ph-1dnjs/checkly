@@ -5,6 +5,7 @@ import type { FormAutomationApi } from "./form-automation";
 import type { QaApi } from "./qa";
 import type { WebScenarioBridge } from "../../../../app/ipc/web-scenario/types";
 import type { UpdateApi } from "./update";
+import type { LiveSessionBridge } from "./live-session";
 
 export {};
 
@@ -15,6 +16,7 @@ export type ElectronAPI = {
   windowSettings: WindowSettingsBridge;
   webScenarios: WebScenarioBridge;
   selectUploadFile: () => Promise<string | null>;
+  liveSession: LiveSessionBridge;
 } & UpdateApi &
   QaApi &
   FormAutomationApi;

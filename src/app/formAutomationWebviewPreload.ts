@@ -1,8 +1,16 @@
 import { contextBridge, ipcRenderer, webFrame } from "electron";
+import { isNextInternalNetworkEvent } from "./ipc/form-automation/networkFilter";
+
+// Only accepts recorder events; no auth, filesystem or raw IPC API reaches the tested site.
+contextBridge.exposeInMainWorld("__CHECKLY_SESSION_BRIDGE__", {
+  emit: (key: string, batch: unknown) => ipcRenderer.send("live-session:events", key, batch),
+});
 
 contextBridge.exposeInMainWorld("__CHECKLY_FORM_AUTOMATION__", {
-  emitNetwork: (payload: unknown) =>
-    ipcRenderer.sendToHost("form-automation:network-event", payload),
+  emitNetwork: (payload: unknown) => {
+    ipcRenderer.sendToHost("form-automation:network-event", payload);
+    ipcRenderer.send("live-session:failure", payload);
+  },
 });
 
 window.addEventListener("keydown", (event) => {
@@ -50,7 +58,12 @@ const hookSource = `(() => {
   let config = { overrides: [] };
   const nativeFetch = window.fetch.bind(window);
   const NativeXHR = window.XMLHttpRequest;
+  const isNextInternalNetworkEvent = ${isNextInternalNetworkEvent.toString()};
+  const isNextHeader = (name, value) => (String(name).toLowerCase() === 'rsc' && String(value) === '1')
+    || (String(name).toLowerCase() === 'next-router-prefetch' && ['1', '2'].includes(String(value)))
+    || String(name).toLowerCase() === 'next-router-segment-prefetch';
   const emit = (payload) => {
+    if (isNextInternalNetworkEvent(payload)) return;
     try {
       window.__CHECKLY_FORM_AUTOMATION__?.emitNetwork({
         pageUrl: location.href,
@@ -119,6 +132,11 @@ const hookSource = `(() => {
     const options = args[1] || {};
     const url = String(request?.url || args[0]);
     const method = String(options.method || request?.method || 'GET').toUpperCase();
+    let nextInternal = false;
+    try {
+      const headers = new Headers(options.headers ?? request?.headers);
+      nextInternal = Array.from(headers.entries()).some(([name, value]) => isNextHeader(name, value));
+    } catch { /* Let native fetch report invalid headers without changing its behavior. */ }
     const started = performance.now();
     const override = findOverride(url, method);
     if (override) {
@@ -126,15 +144,17 @@ const hookSource = `(() => {
         status: override.status || 200,
         headers: { 'Content-Type': 'application/json', 'X-Checkly-Override': 'true' },
       });
-      emit({ type: 'fetch', url, method, requestBody: bodyValue(options.body), status: response.status, responseBody: override.body, elapsed: Math.round(performance.now() - started), overridden: true });
+      emit({ type: 'fetch', url, method, nextInternal, requestBody: bodyValue(options.body), status: response.status, responseBody: override.body, elapsed: Math.round(performance.now() - started), overridden: true });
       return response;
     }
     try {
       const response = await nativeFetch(...args);
+      const responseContentType = response.headers.get('content-type') || '';
+      if (isNextInternalNetworkEvent({ type: 'fetch', url, method, status: response.status, nextInternal, responseContentType })) return response;
       const clone = response.clone();
       let responseBody = await clone.text();
       try { responseBody = responseBody ? JSON.parse(responseBody) : null; } catch {}
-      emit({ type: 'fetch', url, method, requestBody: bodyValue(options.body), status: response.status, responseBody, elapsed: Math.round(performance.now() - started), overridden: false });
+      emit({ type: 'fetch', url, method, nextInternal, responseContentType, requestBody: bodyValue(options.body), status: response.status, responseBody, elapsed: Math.round(performance.now() - started), overridden: false });
       return response;
     } catch (error) {
       emit({ type: 'fetch', url, method, requestBody: bodyValue(options.body), status: 0, error: error?.message || String(error), elapsed: Math.round(performance.now() - started), overridden: false });
@@ -157,6 +177,7 @@ const hookSource = `(() => {
       if (typeof handler === 'function') handler.call(this, event);
     }
     open(method, url, async = true, user, password) {
+      this._nextInternal = false;
       this._method = String(method).toUpperCase(); this._url = String(url); this._async = async;
       this._override = findOverride(this._url, this._method);
       if (this._override) { this.readyState = 1; this._fire('readystatechange'); return; }
@@ -169,13 +190,13 @@ const hookSource = `(() => {
         if (type === 'loadend') {
           let responseBody = this.responseText;
           try { responseBody = responseBody ? JSON.parse(responseBody) : this.response; } catch {}
-          emit({ type: 'xhr', url: this._url, method: this._method, requestBody: this._requestBody, status: this.status, responseBody, elapsed: Math.round(performance.now() - this._started), overridden: false });
+          emit({ type: 'xhr', url: this._url, method: this._method, nextInternal: this._nextInternal, responseContentType: this._native.getResponseHeader('content-type') || '', requestBody: this._requestBody, status: this.status, responseBody, elapsed: Math.round(performance.now() - this._started), overridden: false });
         }
         this._fire(type);
       }));
       this._native.open(method, url, async, user, password);
     }
-    setRequestHeader(name, value) { if (this._native) this._native.setRequestHeader(name, value); else this._headers[name] = value; }
+    setRequestHeader(name, value) { if (isNextHeader(name, value)) this._nextInternal = true; if (this._native) this._native.setRequestHeader(name, value); else this._headers[name] = value; }
     getResponseHeader(name) { return this._override ? (name.toLowerCase() === 'content-type' ? 'application/json' : null) : this._native?.getResponseHeader(name); }
     getAllResponseHeaders() { return this._override ? 'content-type: application/json\\r\\nx-checkly-override: true\\r\\n' : this._native?.getAllResponseHeaders() || ''; }
     overrideMimeType(value) { this._native?.overrideMimeType(value); }
@@ -196,7 +217,7 @@ const hookSource = `(() => {
         this.responseText = json;
         this.response = this.responseType === 'json' ? this._override.body : json;
         this._fire('readystatechange'); this._fire('load'); this._fire('loadend');
-        emit({ type: 'xhr', url: this._url, method: this._method, requestBody: this._requestBody, status: this.status, responseBody: this._override.body, elapsed: Math.round(performance.now() - this._started), overridden: true });
+        emit({ type: 'xhr', url: this._url, method: this._method, nextInternal: this._nextInternal, requestBody: this._requestBody, status: this.status, responseBody: this._override.body, elapsed: Math.round(performance.now() - this._started), overridden: true });
       }, 0);
     }
   }

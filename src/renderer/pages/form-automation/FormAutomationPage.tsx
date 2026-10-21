@@ -1,3 +1,4 @@
+import { SessionRecordingsDialog } from "./SessionRecordingsDialog";
 import {
   useCallback,
   useEffect,
@@ -11,6 +12,7 @@ import {
 import {
   clearFieldsScript,
   discoverFieldsScript,
+  passiveDiscoverFieldsScript,
   fillFieldsScript,
   focusRichTextScript,
   selectDateRangeScript,
@@ -39,20 +41,22 @@ import {
 } from "./model";
 import { PageHeader } from "../../shared/ui/PageLayout";
 import { NetworkPanel, OverridePanel } from "./InspectorPanels";
-import { OpenApiDialog } from "./OpenApiDialog";
+import { useSharedOpenApi } from "./useSharedOpenApi";
+import { contractForSharedEvent, matchSharedOpenApi } from "./sharedOpenApi";
+import { specForNetworkEvent } from "./networkSpec";
 import { ScreenshotEditor, type ScreenshotCapture } from "./ScreenshotEditor";
 import { FormAutomationStorageProvider, useStoredState } from "./StoredState";
+import { NativeInspectorPage } from "./NativeInspectorPage";
 import {
   apiEventClipboardText,
-  contractForEvent,
   isSessionError,
+  isNextInternalNetworkEvent,
   mergeNetworkEvents,
   normalizedEndpointPath,
   overrideResponseSchema,
   safeJson,
   stringify,
   type NetworkEvent,
-  type OpenApiDocument,
   type OverrideRule,
 } from "./liveQa";
 
@@ -87,6 +91,13 @@ type FillResult = {
 };
 
 const DEFAULT_URL = "https://example.com";
+const VIEWPORT_PRESETS = [
+  { id: "desktop", label: "데스크톱 · 화면에 맞춤", width: 0, height: 0 },
+  { id: "mobile-small", label: "모바일 · 375 × 667", width: 375, height: 667 },
+  { id: "mobile", label: "모바일 · 390 × 844", width: 390, height: 844 },
+  { id: "mobile-large", label: "모바일 · 412 × 915", width: 412, height: 915 },
+  { id: "tablet", label: "태블릿 · 768 × 1024", width: 768, height: 1024 },
+];
 
 const MaterialIcon = ({ name }: { name: string }): ReactElement => (
   <span className="msi" aria-hidden="true">{name}</span>
@@ -234,11 +245,14 @@ const CaseValueInput = ({
   );
 };
 
-export const FormAutomationPage = (): ReactElement => (
-  <FormAutomationStorageProvider><FormAutomationContent /></FormAutomationStorageProvider>
-);
+export const FormAutomationPage = (): ReactElement => {
+  const [native, setNative] = useState(false);
+  return <FormAutomationStorageProvider>{native
+    ? <NativeInspectorPage onBack={() => setNative(false)} />
+    : <FormAutomationContent onNative={() => setNative(true)} />}</FormAutomationStorageProvider>;
+};
 
-const FormAutomationContent = (): ReactElement => {
+const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactElement => {
   const [targetUrl, setTargetUrl] = useStoredState("checkly-form-target-url", DEFAULT_URL);
   const [browserTabs, setBrowserTabs] = useStoredState<BrowserSession[]>(
     "checkly-form-browser-sessions",
@@ -273,11 +287,19 @@ const FormAutomationContent = (): ReactElement => {
   const [selectedOverrideId, setSelectedOverrideId] = useState("");
   const [overrideBodyText, setOverrideBodyText] = useState("{}");
   const [overrideEditorMode, setOverrideEditorMode] = useState<"fields" | "json">("fields");
-  const [openApi, setOpenApi] = useStoredState<OpenApiDocument | null>("checkly-form-openapi", null);
-  const [openApiDialog, setOpenApiDialog] = useState(false);
+  const sharedOpenApi = useSharedOpenApi();
+  const [eventSpecSources, setEventSpecSources] = useState<Record<string, string>>({});
   const [capture, setCapture] = useState<ScreenshotCapture | null>(null);
   const [captureBusy, setCaptureBusy] = useState(false);
+  const [recordingsOpen, setRecordingsOpen] = useState(false);
+  const closeRecordings = useCallback(() => setRecordingsOpen(false), []);
   const [zoomPercent, setZoomPercent] = useStoredState("checkly-form-browser-zoom", 80);
+  const [viewportId, setViewportId] = useStoredState("checkly-form-browser-viewport", "desktop");
+  const [landscape, setLandscape] = useStoredState("checkly-form-browser-landscape", false);
+  const viewport = VIEWPORT_PRESETS.find((item) => item.id === viewportId) ?? VIEWPORT_PRESETS[0];
+  const viewportWidth = landscape ? viewport.height : viewport.width;
+  const viewportHeight = landscape ? viewport.width : viewport.height;
+  const zoomFactor = Math.min(1.25, Math.max(0.5, Number(zoomPercent) / 100));
   const [toast, setToast] = useState("");
   const webviewRefs = useRef(new Map<string, WebviewElement>());
   const refCallbacks = useRef(new Map<string, (node: HTMLElement | null) => void>());
@@ -322,13 +344,14 @@ const FormAutomationContent = (): ReactElement => {
     eventPayload: Omit<NetworkEvent, "id">,
     browserSession: BrowserSession,
   ) => {
+    if (isNextInternalNetworkEvent(eventPayload)) return;
     const payload: NetworkEvent = {
       ...eventPayload,
       id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
       browserSessionId: browserSession.id,
       browserSessionName: browserSession.name,
       contract: ["fetch", "xhr"].includes(eventPayload.type)
-        ? contractForEvent(openApi, { ...eventPayload, id: "contract-check" } as NetworkEvent)
+        ? contractForSharedEvent(sharedOpenApi.sources, { ...eventPayload, id: "contract-check" } as NetworkEvent)
         : {
           tone: "danger",
           label: "페이지 오류",
@@ -339,7 +362,7 @@ const FormAutomationContent = (): ReactElement => {
     void window.electronAPI?.saveFormAutomationSessionEvent?.(payload).catch(() => undefined);
     if (activeTabIdRef.current === browserSession.id)
       setSelectedEvent((current) => current || payload);
-  }, [openApi]);
+  }, [sharedOpenApi.sources]);
 
   useEffect(() => {
     void window.electronAPI?.readFormAutomationSessionEvents?.(1000)
@@ -359,14 +382,15 @@ const FormAutomationContent = (): ReactElement => {
     return refCallbacks.current.get(tabId)!;
   };
 
-  const discoverFields = useCallback(async (selectDefault = false) => {
+  const discoverFields = useCallback(async (selectDefault = false, interactive = true) => {
     const webview = activeWebview();
     if (!webview?.executeJavaScript) {
       if (selectDefault) showToast("필드 자동 감지는 Electron 앱에서 사용할 수 있습니다.");
       return [];
     }
     try {
-      const fields = await webview.executeJavaScript(discoverFieldsScript) as DetectedField[];
+      const fields = await webview.executeJavaScript(interactive ? discoverFieldsScript : passiveDiscoverFieldsScript) as DetectedField[];
+      if (webview !== activeWebview()) return fields;
       setDiscoveredFields(fields);
       if (selectDefault && fields.length) {
         // Delayed page discovery must not replace a case the user just selected.
@@ -500,11 +524,11 @@ const FormAutomationContent = (): ReactElement => {
 
   const tabIds = browserTabs.map((item) => item.id).join("|");
   useEffect(() => {
-    const factor = Math.min(1.25, Math.max(0.5, Number(zoomPercent) / 100));
+    const factor = viewport.width ? 1 : zoomFactor;
     for (const webview of webviewRefs.current.values()) {
       try { webview.setZoomFactor(factor); } catch { /* Electron 웹뷰 준비 전 */ }
     }
-  }, [tabIds, zoomPercent]);
+  }, [tabIds, viewport.width, zoomFactor]);
 
   useEffect(() => {
     const cleanups: Array<() => void> = [];
@@ -512,6 +536,7 @@ const FormAutomationContent = (): ReactElement => {
       const webview = webviewRefs.current.get(tabId);
       if (!webview) continue;
       let discoveryTimer = 0;
+      let discoveryScope = "";
       const sessionForTab = () => browserTabsRef.current.find((item) => item.id === tabId)
         ?? defaultBrowserSession(browserTabsRef.current[0]?.url || DEFAULT_URL);
       const isActive = () => activeTabIdRef.current === tabId;
@@ -524,23 +549,38 @@ const FormAutomationContent = (): ReactElement => {
           updateBrowserTab(tabId, { history: { back: false, forward: false } });
         }
       };
+      const scheduleDiscovery = (url: string) => {
+        // Field layout follows the route, not debounced search parameters.
+        let scope = url.split("?")[0];
+        try {
+          const page = new URL(url);
+          scope = `${page.origin}${page.pathname}${page.hash}`;
+        } catch { /* 주소 파싱 전에는 경로 문자열 사용 */ }
+        if (!isActive() || scope === discoveryScope) return;
+        discoveryScope = scope;
+        window.clearTimeout(discoveryTimer);
+        discoveryTimer = window.setTimeout(() => void discoverFields(true, false), 350);
+      };
       const ready = () => {
         const url = currentWebviewUrl(webview, sessionForTab().url);
         updateBrowserTab(tabId, { state: "ready", currentPageUrl: url });
-        try { webview.setZoomFactor(Math.min(1.25, Math.max(0.5, Number(zoomPercent) / 100))); } catch { /* 웹뷰 준비 전 */ }
-        sendGuestConfig();
         updateHistory();
         if (isActive()) {
           setDraftUrl(url);
           setTargetUrl(url);
-          window.clearTimeout(discoveryTimer);
-          discoveryTimer = window.setTimeout(() => void discoverFields(true), 350);
+          scheduleDiscovery(url);
         }
+      };
+      const documentReady = () => {
+        discoveryScope = "";
+        if (isActive()) setDiscoveredFields([]);
+        try { webview.setZoomFactor(viewport.width ? 1 : zoomFactor); } catch { /* 웹뷰 준비 전 */ }
+        sendGuestConfig();
+        ready();
       };
       const loading = () => {
         loadStartedAtRef.current.set(tabId, Date.now());
         updateBrowserTab(tabId, { state: "loading" });
-        if (isActive()) setDiscoveredFields([]);
       };
       const failed = (event: Event & { errorCode?: number; isMainFrame?: boolean }) => {
         // 리다이렉트·SPA 이동으로 중단된 로드(ERR_ABORTED)와 하위 프레임 실패는 페이지 실패로 보지 않는다.
@@ -556,6 +596,7 @@ const FormAutomationContent = (): ReactElement => {
         if (isActive()) {
           setDraftUrl(url);
           setTargetUrl(url);
+          if (event.type === "did-navigate-in-page") scheduleDiscovery(url);
         }
         const owner = sessionForTab();
         const payload: NetworkEvent = {
@@ -590,7 +631,7 @@ const FormAutomationContent = (): ReactElement => {
         if (event.channel === "form-automation:network-event")
           recordGuestNetworkEvent(event.args?.[0] as Omit<NetworkEvent, "id">, sessionForTab());
       };
-      webview.addEventListener("dom-ready", ready);
+      webview.addEventListener("dom-ready", documentReady);
       webview.addEventListener("did-stop-loading", ready);
       webview.addEventListener("did-start-loading", loading);
       webview.addEventListener("did-fail-load", failed);
@@ -599,7 +640,7 @@ const FormAutomationContent = (): ReactElement => {
       webview.addEventListener("ipc-message", message as EventListener);
       cleanups.push(() => {
         window.clearTimeout(discoveryTimer);
-        webview.removeEventListener("dom-ready", ready);
+        webview.removeEventListener("dom-ready", documentReady);
         webview.removeEventListener("did-stop-loading", ready);
         webview.removeEventListener("did-start-loading", loading);
         webview.removeEventListener("did-fail-load", failed);
@@ -609,22 +650,17 @@ const FormAutomationContent = (): ReactElement => {
       });
     }
     return () => cleanups.forEach((cleanup) => cleanup());
-  }, [discoverFields, recordGuestNetworkEvent, sendGuestConfig, setTargetUrl, startCapture, tabIds, updateBrowserTab, zoomPercent]);
+  }, [discoverFields, recordGuestNetworkEvent, sendGuestConfig, setTargetUrl, startCapture, tabIds, updateBrowserTab, viewport.width, zoomFactor]);
 
   const currentPageUrl = activeTab?.currentPageUrl || activeTab?.url || targetUrl;
   const currentPageScope = pageScopeFromUrl(currentPageUrl);
-  const activeNetworkEvents = networkEvents.filter((event) =>
-    event.browserSessionId ? event.browserSessionId === activeTab?.id : activeTab?.id === "default");
-  const activeSelectedEvent = selectedEvent && activeNetworkEvents.some(event => event.id === selectedEvent.id) ? selectedEvent : null;
+  const activeNetworkEvents = useMemo(() => networkEvents
+    .filter((event) => event.browserSessionId ? event.browserSessionId === activeTab?.id : activeTab?.id === "default")
+    .map(event => ["fetch", "xhr"].includes(event.type)
+      ? { ...event, contract: contractForSharedEvent(sharedOpenApi.sources, event, eventSpecSources[event.id]) } : event),
+  [networkEvents, activeTab?.id, sharedOpenApi.sources, eventSpecSources]);
+  const activeSelectedEvent = activeNetworkEvents.find(event => event.id === selectedEvent?.id) ?? null;
   const activeErrorCount = activeNetworkEvents.filter(isSessionError).length;
-
-  useEffect(() => {
-    setNetworkEvents((items) => items.map((item) => (
-      ["fetch", "xhr"].includes(item.type)
-        ? { ...item, contract: contractForEvent(openApi, item) }
-        : item
-    )));
-  }, [openApi]);
 
   const copyText = async (text: string, successMessage: string) => {
     try {
@@ -654,10 +690,10 @@ const FormAutomationContent = (): ReactElement => {
   };
 
   const copyApiEvent = () => {
-    if (!selectedEvent) return;
+    if (!activeSelectedEvent) return;
     void copyText(
-      apiEventClipboardText(selectedEvent, targetUrl),
-      isSessionError(selectedEvent)
+      apiEventClipboardText(activeSelectedEvent, targetUrl),
+      isSessionError(activeSelectedEvent)
         ? "API 오류 내용을 클립보드에 복사했습니다."
         : "API 요청·응답 스펙을 클립보드에 복사했습니다.",
     );
@@ -674,7 +710,15 @@ const FormAutomationContent = (): ReactElement => {
   };
 
   const selectedOverride = overrides.find((item) => item.id === selectedOverrideId) ?? overrides[0];
-  const selectedOverrideSchema = overrideResponseSchema(openApi, selectedOverride);
+  let overrideSourceUrl = "";
+  if (selectedOverride) {
+    try { overrideSourceUrl = new URL(selectedOverride.sourceUrl || selectedOverride.match, currentPageUrl).href; }
+    catch { /* A malformed rule or an about:blank guest has no matching document. */ }
+  }
+  const overrideSpec = matchSharedOpenApi(sharedOpenApi.sources, overrideSourceUrl, selectedOverride?.method);
+  const openApi = overrideSpec?.source.document ?? null;
+  const selectedOverrideSchema = overrideResponseSchema(openApi,
+    selectedOverride && overrideSpec ? { ...selectedOverride, sourceUrl: overrideSpec.url } : selectedOverride);
   const parsedOverrideBody = safeJson(overrideBodyText);
   const latestOverrideEvent = selectedOverride
     ? activeNetworkEvents.find((event) =>
@@ -862,12 +906,15 @@ const FormAutomationContent = (): ReactElement => {
   }, [selectedCase?.id, JSON.stringify(selectedCase?.fields), JSON.stringify(selectedCase?.excludedFields)]);
 
   const selectCase = (item: AutofillCase) => {
-    if (item.id === selectedCaseId) return;
-    setSelectedCaseId(item.id);
-    setCaseDraftName(item.userSaved ? item.name : `${item.name} · 저장본`);
-    setCaseDraftKind(item.kind);
-    setCaseDraftFields(cloneFields(item.fields));
-    setCaseDraftExcludedFields(Array.isArray(item.excludedFields) ? [...item.excludedFields] : []);
+    if (item.id !== selectedCaseId) {
+      setSelectedCaseId(item.id);
+      setCaseDraftName(item.userSaved ? item.name : `${item.name} · 저장본`);
+      setCaseDraftKind(item.kind);
+      setCaseDraftFields(cloneFields(item.fields));
+      setCaseDraftExcludedFields(Array.isArray(item.excludedFields) ? [...item.excludedFields] : []);
+    }
+    // Pass the clicked case directly; React has not committed the new draft yet.
+    void autofill(item);
   };
 
   const saveCase = async () => {
@@ -914,23 +961,27 @@ const FormAutomationContent = (): ReactElement => {
     showToast("저장한 케이스를 삭제했습니다.");
   };
 
-  const autofill = async () => {
+  const autofill = async (caseOverride?: AutofillCase) => {
+    const item = caseOverride ?? selectedCase;
+    const fields = caseOverride && caseOverride.id !== selectedCaseId
+      ? includedCaseFields(caseOverride.fields, caseOverride.excludedFields)
+      : draftIncludedFields;
     const webview = activeWebview();
     if (!webview?.executeJavaScript) {
       showToast("폼·검색 자동 입력은 Electron 앱에서 사용할 수 있습니다.");
       return;
     }
-    if (!selectedCase) {
+    if (!item) {
       showToast("먼저 현재 화면의 케이스를 선택해 주세요.");
       return;
     }
-    if (!draftFieldCount) {
+    if (!Object.keys(fields).length) {
       showToast("입력할 필드를 하나 이상 선택해 주세요.");
       return;
     }
     try {
       webview.focus();
-      const result = await webview.executeJavaScript(fillFieldsScript(draftIncludedFields)) as FillResult;
+      const result = await webview.executeJavaScript(fillFieldsScript(fields)) as FillResult;
       const webContentsId = webview.getWebContentsId();
       for (const entry of result.richText) {
         await webview.executeJavaScript(focusRichTextScript(entry.key));
@@ -950,7 +1001,7 @@ const FormAutomationContent = (): ReactElement => {
       }
       showToast(
         result.filled.length
-          ? `${selectedCase.name}: ${result.filled.length}개 필드에 값을 입력했습니다.${result.missing.length ? ` 미입력 ${result.missing.length}개` : ""}`
+          ? `${item.name}: ${result.filled.length}개 필드에 값을 입력했습니다.${result.missing.length ? ` 미입력 ${result.missing.length}개` : ""}`
           : `일치하는 필드가 없습니다: ${result.missing.join(", ")}`,
       );
     } catch (error) {
@@ -1094,6 +1145,9 @@ const FormAutomationContent = (): ReactElement => {
     <div className="form-automation-page">
       <PageHeader icon="dynamic_form" title="폼 자동 완성" className="form-automation-header">
         <div className="fa-header-actions">
+          <span className="ls-auto-recording">오류 전 10초 · 후 5초 저장</span>
+          <Button variant="secondary" className="fa-header-action" onClick={() => setRecordingsOpen(true)}><MaterialIcon name="history" /> 브라우저 기록</Button>
+          <Button variant="secondary" className="fa-header-action" onClick={onNative}><MaterialIcon name="smartphone" /> 모바일 앱</Button>
           <Button variant="secondary"
             className="fa-header-action"
             disabled={captureBusy}
@@ -1104,10 +1158,6 @@ const FormAutomationContent = (): ReactElement => {
           >
             <MaterialIcon name="photo_camera" /> {captureBusy ? "캡처 중…" : "화면 캡처"}
             {!captureBusy && <span className="fa-shortcut-hint" aria-hidden="true">⌘/Ctrl ⇧ S</span>}
-          </Button>
-          <Button variant="secondary" className="fa-header-action" onClick={() => setOpenApiDialog(true)}>
-            {openApi && <span className="fa-swagger-dot" aria-hidden="true" />}
-            <MaterialIcon name="data_object" /> {openApi ? "Swagger 연결됨" : "Swagger 연결"}
           </Button>
           <Button variant="primary" className="fa-header-action" onClick={() => void autofill()} disabled={!draftFieldCount}>
             <MaterialIcon name="auto_fix_high" /> 선택 케이스 자동 입력
@@ -1239,18 +1289,40 @@ const FormAutomationContent = (): ReactElement => {
             </Button>
           </div>
 
-          <div className="fa-browser-surface">
-            {browserTabs.map((tab) => (
-              <webview
-                className={`fa-webview${tab.id === activeTab.id ? " active" : ""}`}
-                key={tab.id}
-                ref={webviewRefFor(tab.id)}
-                src={tab.url}
-                partition={browserSessionPartition(tab.id)}
-                useragent={browserUserAgent(tab.browserIdentity || "electron", navigator.userAgent)}
-                allowpopups={true}
-              />
-            ))}
+          <div className="fa-viewport-toolbar">
+            <label>
+              <MaterialIcon name={viewport.width ? "smartphone" : "desktop_windows"} />
+              <select aria-label="미리보기 화면 크기" value={viewport.id} onChange={(event) => setViewportId(event.target.value)}>
+                {VIEWPORT_PRESETS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+              </select>
+            </label>
+            {Boolean(viewport.width) && <>
+              <button type="button" aria-label="가로·세로 전환" title="가로·세로 전환" onClick={() => setLandscape((value) => !value)}>
+                <MaterialIcon name="screen_rotation" />
+              </button>
+              <span className="fa-viewport-size">{viewportWidth} × {viewportHeight}</span>
+            </>}
+            <span className="fa-viewport-note">{viewport.width ? "반응형 화면 확인" : "브라우저 영역에 맞춰 표시"}</span>
+          </div>
+
+          <div className={`fa-browser-surface${viewport.width ? " responsive" : ""}`}>
+            {/* Scale the preview outside the guest to preserve its exact CSS viewport. */}
+            <div className="fa-viewport-frame" style={viewport.width ? { width: viewportWidth * zoomFactor, height: viewportHeight * zoomFactor } : undefined}>
+              {browserTabs.map((tab) => (
+                <webview
+                  className={`fa-webview${tab.id === activeTab.id ? " active" : ""}`}
+                  style={viewport.width ? { width: viewportWidth, height: viewportHeight, transform: `scale(${zoomFactor})`, transformOrigin: "top left" } : undefined}
+                  key={tab.id}
+                  ref={webviewRefFor(tab.id)}
+                  src={tab.url}
+                  partition={browserSessionPartition(tab.id)}
+                  useragent={browserUserAgent(tab.browserIdentity || "electron", navigator.userAgent)}
+                  // React types declare a boolean, but React omits true for this DOM attribute.
+                  // Electron requires the attribute to be present, so emit an empty string.
+                  allowpopups={"" as unknown as boolean}
+                />
+              ))}
+            </div>
             {activeTab.state === "error" && (
               <div className="fa-browser-overlay" role="alert">
                 <MaterialIcon name="wifi_off" />
@@ -1288,6 +1360,14 @@ const FormAutomationContent = (): ReactElement => {
             <NetworkPanel
               events={activeNetworkEvents}
               selectedEvent={activeSelectedEvent}
+              spec={activeSelectedEvent ? specForNetworkEvent(sharedOpenApi.sources, activeSelectedEvent, eventSpecSources[activeSelectedEvent.id]) : undefined}
+              specLoading={sharedOpenApi.loading}
+              specSources={sharedOpenApi.sources}
+              specErrors={sharedOpenApi.errors}
+              selectedSpecSource={activeSelectedEvent ? eventSpecSources[activeSelectedEvent.id] || "" : ""}
+              onSpecSource={source => { if (activeSelectedEvent) setEventSpecSources(current => ({ ...current, [activeSelectedEvent.id]: source })); }}
+              onRefreshSpec={sharedOpenApi.refresh}
+              onCopyUrl={url => { void copyText(url, "요청 URL을 복사했습니다."); }}
               filter={networkFilter}
               activeSessionName={activeTab.name}
               onSelect={setSelectedEvent}
@@ -1420,7 +1500,7 @@ const FormAutomationContent = (): ReactElement => {
         </aside>
       </div>
       {toast && <div className="toast"><span className="toast-dot" />{toast}</div>}
-      {openApiDialog && <OpenApiDialog document={openApi} onApply={setOpenApi} onClose={() => setOpenApiDialog(false)} />}
+      {recordingsOpen && <SessionRecordingsDialog onClose={closeRecordings} />}
       {capture && <ScreenshotEditor capture={capture} onCancel={() => setCapture(null)} onCopy={copyCapture} />}
     </div>
   );

@@ -16,6 +16,7 @@
 @import "./auth.css" layer(legacy);
 @import "./screen-extract.css" layer(legacy);
 @import "./form-automation.css" layer(legacy);
+@import "./form-recording.css" layer(legacy);
 @import "./page-layout.css" layer(legacy);
 @import "./scenario-workspace.css" layer(legacy);
 @import "./controls.css";

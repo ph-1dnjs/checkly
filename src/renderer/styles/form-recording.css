@@ -1,0 +1,52 @@
+.ls-dialog-backdrop { position:fixed; inset:0; z-index:400; display:flex; align-items:center; justify-content:center; padding:24px; background:rgba(20,24,28,.24); }
+.ls-recordings-dialog { display:flex; flex-direction:column; width:min(1500px,100%); height:min(900px,calc(100vh - 48px)); min-height:0; background:#fff; border:1px solid #d8dde2; border-radius:6px; overflow:hidden; box-shadow:0 14px 30px -14px rgba(20,24,28,.55); }
+.ls-dialog-header { display:flex; align-items:center; gap:16px; min-height:48px; padding:0 16px; border-bottom:1px solid #e4e7ea; }
+.ls-dialog-header h2 { margin:0; font-size:16px; }
+.ls-dialog-header .ls-close { margin-left:auto; }
+.ls-local-note { color:#5a646e; font-size:12px; }
+.ls-workbench { display:flex; flex:1; min-height:0;  }
+.ls-session-list { width:300px; flex:none; border-right:1px solid #e4e7ea; overflow:auto; }
+.ls-section-label { display:flex; gap:8px; align-items:center; min-height:36px; padding:6px 12px; background:#fafbfc; border-bottom:1px solid #e4e7ea; font-weight:600; }
+.ls-section-label span { color:#8a939c; }
+.ls-section-label .button { margin-left:auto; }
+.ls-session-row { padding:8px 12px; border-bottom:1px solid #edf0f2; }
+.ls-session-row:hover { background:#f7f9fa; }
+.ls-session-row.selected { background:#edf4fc; }
+.ls-session-open { display:flex; flex-direction:column; width:100%; gap:7px; padding:4px 0; text-align:left; border:0; background:transparent; color:inherit; cursor:pointer; }
+.ls-session-open:disabled { cursor:default; }
+.ls-session-open strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%; }
+.ls-session-url { display:block; width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#5a646e; }
+.ls-session-meta { display:flex; gap:10px; font-size:11px; color:#5a646e; }
+.ls-status::before { content:""; display:inline-block; width:7px; height:7px; background:#8a939c; margin-right:5px; }
+.ls-status.recording::before { background:#de3b45; }
+.ls-status.saved::before { background:#0e8a5f; }
+.ls-status.error::before,.ls-status.interrupted::before { background:#ad6800; }
+.ls-mono { font-family:var(--ck-font-mono); font-variant-numeric:tabular-nums; }
+.ls-detail { flex:1; display:flex; min-width:0; min-height:0; flex-direction:column; }
+.ls-detail-header { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 16px; border-bottom:1px solid #e4e7ea; }
+.ls-detail-header strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ls-detail-header select { max-width:60%; }
+.ls-recordings-dialog select { border:1px solid #d8dde2; border-radius:4px; background:#fff; padding:5px; }
+.ls-player { display:flex; flex:1; min-height:0; min-width:0; }
+.ls-player-main { display:flex; flex:1; min-width:0; flex-direction:column; }
+.ls-stage { flex:1; min-height:0; overflow:hidden; position:relative; background:#fafbfc; }
+.ls-stage > div:first-child { position:absolute; inset:0; }
+.ls-stage .replayer-wrapper { position:relative; }
+.ls-stage .replayer-wrapper iframe { border:0; pointer-events:none; }
+.ls-controls { display:flex; align-items:center; gap:10px; padding:10px 12px; border-top:1px solid #e4e7ea; }
+.ls-controls input { flex:1; min-width:40px; accent-color:#1f63ae; }
+.ls-controls .ls-mono { white-space:nowrap; }
+.ls-activities { width:175px; flex:none; border-left:1px solid #e4e7ea; overflow:auto; }
+.ls-activities > button { display:flex; gap:12px; width:100%; border:0; border-bottom:1px solid #edf0f2; padding:10px 12px; background:#fff; text-align:left; cursor:pointer; color:#3d4650; }
+.ls-activities > button:hover { background:#f5f9fe; }
+.ls-empty { padding:28px 18px; color:#5a646e; line-height:1.8; }
+.ls-detail-empty { display:flex; align-items:center; justify-content:center; flex:1; flex-direction:column; text-align:center; }
+.ls-detail-empty > .msi { color:#1f63ae; font-size:32px; }
+.ls-detail-empty h2 { color:#14181c; font-size:17px; margin:12px 0 0; }
+.ls-detail-empty p { margin:6px 0; max-width:420px; }
+.ls-notice { padding:10px 16px; background:#fafbfc; border-bottom:1px solid #e4e7ea; }
+.ls-error { color:#de3b45 !important; }
+.ls-auto-recording { align-self:center; color:#5a646e; font-size:11px; white-space:nowrap; }
+.ls-delete { background:transparent; border:0; padding:6px 0 0; color:#5a646e; cursor:pointer; font-size:11px; }
+.ls-delete-confirm { display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-top:6px; }
+@media(max-width:1100px) { .ls-session-list { width:250px; } .ls-activities { width:140px; } .ls-local-note { display:none; } }

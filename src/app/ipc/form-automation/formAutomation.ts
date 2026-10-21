@@ -10,6 +10,8 @@ import {
 import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createFormAutomationWorkbook } from "./formAutomationReport";
+import { isNextInternalNetworkEvent } from "./networkFilter";
+import { failureTrigger } from "../live-session/failure";
 
 export type FormAutomationTextInput = {
   webContentsId: number;
@@ -35,9 +37,19 @@ type FormAutomationRequestInput = {
 const sessionLogPath = () =>
   path.join(app.getPath("userData"), "form-automation-session-events.jsonl");
 
+export const saveReactNativeModule = async (): Promise<string | null> => {
+  const result = await dialog.showSaveDialog({ title: "React Native 프로젝트에 연결 모듈 저장", defaultPath: "checkly.js", filters: [{ name: "JavaScript", extensions: ["js"] }] });
+  if (result.canceled || !result.filePath) return null;
+  const source = await readFile(path.join(app.getAppPath(), "integrations", "react-native", "checkly.js"), "utf8");
+  await writeFile(result.filePath, source, "utf8");
+  return result.filePath;
+};
+
 export const appendFormAutomationSessionEvent = async (
   payload: Record<string, unknown>,
 ): Promise<boolean> => {
+  if (isNextInternalNetworkEvent(payload)) return true;
+  if (!failureTrigger(payload)) return true;
   await mkdir(path.dirname(sessionLogPath()), { recursive: true });
   await appendFile(sessionLogPath(), `${JSON.stringify(payload)}\n`, "utf8");
   return true;
@@ -46,15 +58,16 @@ export const appendFormAutomationSessionEvent = async (
 export const readFormAutomationSessionEvents = async (limit = 1000) => {
   try {
     const text = await readFile(sessionLogPath(), "utf8");
-    return text
-      .split("\n")
-      .filter(Boolean)
-      .slice(-Math.min(Math.max(Number(limit) || 1000, 1), 5000))
-      .reverse()
-      .flatMap((line) => {
-        try { return [JSON.parse(line) as Record<string, unknown>]; }
-        catch { return []; }
-      });
+    const lines = text.split("\n");
+    const maximum = Math.min(Math.max(Number(limit) || 1000, 1), 5000);
+    const events: Record<string, unknown>[] = [];
+    for (let index = lines.length - 1; index >= 0 && events.length < maximum; index -= 1) {
+      try {
+        const event = JSON.parse(lines[index]) as Record<string, unknown>;
+        if (event && typeof event === "object" && !isNextInternalNetworkEvent(event)) events.push(event);
+      } catch { /* Skip empty or incomplete records. */ }
+    }
+    return events;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
     throw error;

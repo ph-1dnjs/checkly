@@ -1,3 +1,6 @@
+import { isNextInternalNetworkEvent } from "../../../app/ipc/form-automation/networkFilter";
+export { isNextInternalNetworkEvent } from "../../../app/ipc/form-automation/networkFilter";
+
 export type JsonValue = unknown;
 
 export type ContractResult = {
@@ -17,6 +20,8 @@ export type NetworkEvent = {
   status?: number;
   requestBody?: JsonValue;
   responseBody?: JsonValue;
+  responseContentType?: string;
+  nextInternal?: boolean;
   elapsed?: number;
   overridden?: boolean;
   error?: string;
@@ -33,7 +38,7 @@ export type NetworkEvent = {
 export const mergeNetworkEvents = (current: NetworkEvent[], saved: NetworkEvent[]): NetworkEvent[] => {
   const events = new Map<string, NetworkEvent>();
   for (const event of [...current, ...saved]) {
-    if (!events.has(event.id)) events.set(event.id, event);
+    if (!isNextInternalNetworkEvent(event) && !events.has(event.id)) events.set(event.id, event);
   }
   return [...events.values()]
     .sort((a, b) => (Date.parse(b.at) || 0) - (Date.parse(a.at) || 0))
@@ -89,6 +94,7 @@ export type OpenApiSchema = {
 };
 
 type OpenApiResponse = {
+  $ref?: string;
   description?: string;
   content?: Record<string, { schema?: OpenApiSchema }>;
 };
@@ -96,8 +102,9 @@ type OpenApiResponse = {
 type OpenApiOperationBody = {
   operationId?: string;
   summary?: string;
+  description?: string;
   parameters?: unknown[];
-  requestBody?: { content?: Record<string, { schema?: OpenApiSchema }> };
+  requestBody?: { $ref?: string; required?: boolean; description?: string; content?: Record<string, { schema?: OpenApiSchema }> };
   responses?: Record<string, OpenApiResponse>;
 };
 
@@ -105,7 +112,7 @@ export type OpenApiDocument = {
   openapi?: string;
   swagger?: string;
   info?: { title?: string; version?: string };
-  paths?: Record<string, Record<string, OpenApiOperationBody | unknown[]>>;
+  paths?: Record<string, Record<string, OpenApiOperationBody | unknown[] | string>>;
   components?: Record<string, unknown>;
   [key: string]: unknown;
 };
@@ -160,6 +167,7 @@ export const isSessionError = (item?: NetworkEvent | null): boolean =>
   Boolean(
     item?.category === "page"
     || item?.error
+    || item?.contract?.tone === "danger"
     || Number(item?.status) === 0
     || Number(item?.status) >= 400,
   );
@@ -188,27 +196,32 @@ export const normalizedEndpointPath = (value: string): string => {
 export const resolveSchema = (
   document: OpenApiDocument | null,
   rawSchema?: OpenApiSchema,
+  references: string[] = [],
 ): OpenApiSchema | undefined => {
   if (!rawSchema) return undefined;
   if (rawSchema.$ref) {
+    if (!rawSchema.$ref.startsWith("#/") || references.includes(rawSchema.$ref)) return undefined;
     const target = rawSchema.$ref
       .replace("#/", "")
       .split("/")
+      .map(key => key.replace(/~1/g, "/").replace(/~0/g, "~"))
       .reduce<unknown>((value, key) => (
         value && typeof value === "object" ? (value as Record<string, unknown>)[key] : undefined
       ), document);
-    return resolveSchema(document, target as OpenApiSchema | undefined);
+    const { $ref, ...siblings } = rawSchema;
+    return target && typeof target === "object"
+      ? resolveSchema(document, { ...target, ...siblings }, [...references, $ref]) : undefined;
   }
   if (rawSchema.allOf) {
     return rawSchema.allOf
-      .map((part) => resolveSchema(document, part))
+      .map((part) => resolveSchema(document, part, references))
       .filter(Boolean)
       .reduce<OpenApiSchema>((combined, part) => ({
         ...combined,
         ...part,
         properties: { ...combined.properties, ...part?.properties },
         required: [...new Set([...(combined.required || []), ...(part?.required || [])])],
-      }), {});
+      }), { ...rawSchema, allOf: undefined });
   }
   return rawSchema;
 };
@@ -267,39 +280,55 @@ export const validateSchema = (
   return errors;
 };
 
+const documentOperations = new WeakMap<OpenApiDocument, OpenApiOperation[]>();
+
 export const operationsFromDocument = (document: OpenApiDocument | null): OpenApiOperation[] => {
+  if (!document) return [];
+  const cached = documentOperations.get(document);
+  if (cached) return cached;
   const methods = new Set(["get", "post", "put", "patch", "delete", "options", "head"]);
-  return Object.entries(document?.paths || {}).flatMap(([path, pathItem]) => {
+  const operations = Object.entries(document.paths || {}).flatMap(([path, rawPathItem]) => {
+    const pathItem = resolveSchema(document, rawPathItem as OpenApiSchema) as typeof rawPathItem | undefined;
+    if (!pathItem) return [];
     const common = Array.isArray(pathItem.parameters) ? pathItem.parameters : [];
     return Object.entries(pathItem).flatMap(([method, rawOperation]) => {
-      if (!methods.has(method) || !rawOperation || Array.isArray(rawOperation)) return [];
+      if (!methods.has(method) || !rawOperation || typeof rawOperation !== "object" || Array.isArray(rawOperation)) return [];
       const operation = rawOperation as OpenApiOperationBody;
+      const parameters = new Map<string, unknown>();
+      for (const raw of [...common, ...(operation.parameters || [])]) {
+        const parameter = resolveSchema(document, raw as OpenApiSchema) as { name?: string; in?: string } | undefined;
+        if (parameter) parameters.set(`${parameter.in}:${parameter.name}`, parameter);
+      }
+      const requestBody = resolveSchema(document, operation.requestBody as OpenApiSchema) as OpenApiOperationBody["requestBody"];
       const responseEntries = Object.entries(operation.responses || {}) as Array<[string, OpenApiResponse]>;
       return [{
         id: operation.operationId || `${method}-${path}`,
         method: method.toUpperCase(),
         path,
-        operation,
+        operation: { ...operation, requestBody },
         summary: operation.summary || operation.operationId || path,
-        parameters: [...common, ...(operation.parameters || [])],
-        requestSchema: operation.requestBody?.content?.["application/json"]?.schema,
+        parameters: [...parameters.values()],
+        requestSchema: requestBody?.content?.["application/json"]?.schema,
         successResponse: responseEntries.find(([status]) => /^2\d\d$/.test(status)),
         errorResponse: responseEntries.find(([status]) => /^[45]\d\d$/.test(status)),
       }];
     });
-  });
+  }).sort((a, b) => (a.path.match(/\{/g)?.length || 0) - (b.path.match(/\{/g)?.length || 0));
+  documentOperations.set(document, operations);
+  return operations;
 };
 
-const responseSchemaFor = (response?: OpenApiResponse): OpenApiSchema | undefined =>
-  response?.content?.["application/json"]?.schema
-  || Object.values(response?.content || {})[0]?.schema;
+const responseSchemaFor = (document: OpenApiDocument | null, response?: OpenApiResponse): OpenApiSchema | undefined => {
+  const resolved = resolveSchema(document, response) as OpenApiResponse | undefined;
+  return resolved?.content?.["application/json"]?.schema || Object.values(resolved?.content || {})[0]?.schema;
+};
 
 export const contractForEvent = (
   document: OpenApiDocument | null,
   event: NetworkEvent,
 ): ContractResult => {
   if (!document)
-    return { tone: "neutral", label: "스펙 미연결", detail: "Swagger/OpenAPI 문서를 연결해 주세요." };
+    return { tone: "neutral", label: "스펙 미연결", detail: "설정/API 테스트에 등록된 문서 중 이 요청 주소에 맞는 문서가 없습니다." };
   const operation = operationsFromDocument(document).find(
     (item) => item.method === event.method && pathMatches(item.path, event.url),
   );
@@ -308,14 +337,17 @@ export const contractForEvent = (
   const requestErrors = operation.requestSchema && event.requestBody != null
     ? validateSchema(document, operation.requestSchema, event.requestBody)
     : [];
-  const expectedResponse = operation.operation.responses?.[String(event.status)]
-    || (Number(event.status) >= 200 && Number(event.status) < 300
-      ? operation.successResponse?.[1]
-      : operation.errorResponse?.[1]);
-  const responseErrors = event.responseBody != null
-    ? validateSchema(document, responseSchemaFor(expectedResponse), event.responseBody)
-    : [];
+  const responses = operation.operation.responses;
+  const expectedResponse = responses?.[String(event.status)]
+    || responses?.[`${String(event.status)[0]}XX`]
+    || responses?.default;
+  if (!expectedResponse)
+    return { tone: "danger", label: "계약 불일치", detail: `HTTP ${event.status ?? "알 수 없음"}: 문서에 정의되지 않은 응답 상태입니다.`, operation };
+  const responseSchema = responseSchemaFor(document, expectedResponse);
+  const responseErrors = responseSchema ? validateSchema(document, responseSchema, event.responseBody) : [];
   const errors = [...requestErrors, ...responseErrors];
+  if (!errors.length && !responseSchema)
+    return { tone: "neutral", label: "응답 스키마 없음", detail: `HTTP ${event.status}: 문서에 응답 본문 스키마가 정의되어 있지 않습니다.`, operation };
   return errors.length
     ? { tone: "danger", label: "계약 불일치", detail: errors.slice(0, 4).join("\n"), operation }
     : { tone: "success", label: "계약 일치", detail: `${operation.method} ${operation.path}`, operation };
@@ -333,7 +365,7 @@ export const overrideResponseSchema = (
   const response = operation.operation.responses?.[String(rule.status)]
     || operation.successResponse?.[1]
     || operation.errorResponse?.[1];
-  return responseSchemaFor(response);
+  return responseSchemaFor(document, response);
 };
 
 export const apiEventClipboardText = (event: NetworkEvent, fallbackUrl: string): string => {

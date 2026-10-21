@@ -12,14 +12,15 @@
   "scripts": {
     "predev": "node scripts/rename-dev-electron.cjs",
     "clean:electron": "node -e \"require('fs').rmSync('dist-electron',{recursive:true,force:true})\"",
-    "dev": "npm run clean:electron && tsc -p tsconfig.electron.json --incremental --tsBuildInfoFile dist-electron/.tsbuildinfo && concurrently -k \"vite --host 127.0.0.1 --port 5173 --strictPort\" \"tsc -p tsconfig.electron.json --incremental --tsBuildInfoFile dist-electron/.tsbuildinfo --watch --preserveWatchOutput\" \"wait-on --timeout 30000 http-get://127.0.0.1:5173 && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electronmon .\"",
-    "build": "npm run clean:electron && vite build && tsc -p tsconfig.electron.json",
+    "dev": "npm run clean:electron && node scripts/copy-session-recorder.cjs && tsc -p tsconfig.electron.json --incremental --tsBuildInfoFile dist-electron/.tsbuildinfo && concurrently -k \"vite --host 127.0.0.1 --port 5173 --strictPort\" \"tsc -p tsconfig.electron.json --incremental --tsBuildInfoFile dist-electron/.tsbuildinfo --watch --preserveWatchOutput\" \"wait-on --timeout 30000 http-get://127.0.0.1:5173 && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electronmon .\"",
+    "build": "npm run clean:electron && node scripts/copy-session-recorder.cjs && vite build && tsc -p tsconfig.electron.json",
     "start": "npm run build && electron .",
     "preview": "vite preview",
     "test": "cross-env PLAYWRIGHT_BROWSERS_PATH=0 playwright test",
     "test:ui": "playwright test --ui",
     "test:api": "tsx --test tests/api-testing/*.test.ts",
     "test:report": "tsx --test tests/run-report.test.ts",
+    "test:mobile": "tsx --test tests/mobile-inspector/*.test.ts",
     "test:api:desktop": "npm run build && tsx tests/api-testing/desktop.e2e.ts",
     "test:supabase": "tsx --test tests/supabase/*.test.ts",
     "storybook": "storybook dev -p 6006",
@@ -27,7 +28,9 @@
     "typecheck:api": "tsc --noEmit --strict --skipLibCheck --esModuleInterop --target ES2022 --module commonjs --moduleResolution node src/app/api-testing/main/execution.ts",
     "package": "npm run build && dotenv -e .env -- electron-builder",
     "package:dir": "npm run build && dotenv -e .env -- electron-builder --dir",
-    "postinstall": "cross-env PLAYWRIGHT_BROWSERS_PATH=0 playwright install chromium && node scripts/rename-dev-electron.cjs"
+    "postinstall": "cross-env PLAYWRIGHT_BROWSERS_PATH=0 playwright install chromium && node scripts/rename-dev-electron.cjs",
+    "test:live-session": "node --import tsx --test tests/live-session/*.test.ts",
+    "test:live-session:desktop": "npm run build && node --import tsx tests/live-session/desktop.e2e.ts"
   },
   "build": {
     "appId": "dev.ph1dnjs.checkly",
@@ -38,6 +41,7 @@
     "files": [
       "dist/**",
       "dist-electron/**",
+      "integrations/react-native/checkly.js",
       "package.json"
     ],
     "asarUnpack": [
@@ -78,6 +82,8 @@
     "@electron-toolkit/preload": "^3.0.1",
     "@electron-toolkit/utils": "^4.0.0",
     "@playwright/test": "^1.55.0",
+    "@rrweb/record": "2.1.7",
+    "@rrweb/replay": "2.1.7",
     "@supabase/supabase-js": "^2.117.3",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
@@ -96,6 +102,7 @@
     "zod": "^4.5.4"
   },
   "devDependencies": {
+    "@rrweb/types": "2.1.7",
     "@storybook/react-vite": "^10.6.0",
     "@types/node": "^24.3.0",
     "@types/react": "^19.1.10",

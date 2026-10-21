@@ -1,7 +1,22 @@
 // src/app/ipc/form-automation/bridge.ts 가 preload에서 노출하는 API.
 import type { FormAutomationStorageKey, FormAutomationStoredState, FormAutomationStoredValues } from "../../../../app/ipc/form-automation/storageTypes";
+import type { NativeInspectorSnapshot, NativeOverride, SimulatorApp, SimulatorDevice, SimulatorFrame, SimulatorInput, SimulatorStatus } from "../../../../app/ipc/form-automation/nativeInspectorTypes";
 
 export type FormAutomationApi = {
+  saveReactNativeModule: () => Promise<string | null>;
+  simulatorDevices: () => Promise<SimulatorDevice[]>;
+  simulatorApps: (udid: string) => Promise<SimulatorApp[]>;
+  simulatorStatus: () => Promise<SimulatorStatus>;
+  connectSimulator: (udid: string) => Promise<SimulatorStatus>;
+  disconnectSimulator: () => Promise<void>;
+  launchSimulatorApp: (udid: string, bundleId: string, restart?: boolean) => Promise<void>;
+  simulatorInput: (udid: string, input: SimulatorInput) => Promise<void>;
+  onSimulatorFrame: (callback: (frame: SimulatorFrame) => void) => () => void;
+  nativeInspectorSnapshot: () => Promise<NativeInspectorSnapshot>;
+  startNativeInspector: (rules: NativeOverride[]) => Promise<NativeInspectorSnapshot>;
+  stopNativeInspector: () => Promise<void>;
+  setNativeInspectorRules: (rules: NativeOverride[]) => Promise<void>;
+  clearNativeInspectorEvents: () => Promise<void>;
   loadFormAutomationState: (legacy: FormAutomationStoredValues) => Promise<FormAutomationStoredState>;
   setFormAutomationState: (key: FormAutomationStorageKey, value: unknown) => Promise<void>;
   insertFormAutomationText: (input: {

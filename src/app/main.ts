@@ -11,6 +11,7 @@ import type { MainDomain } from "./ipc/domain";
 import { apiTestingDomain } from "./api-testing";
 import { authDomain } from "./ipc/auth";
 import { formAutomationDomain } from "./ipc/form-automation";
+import { liveSessionDomain } from "./ipc/live-session";
 import { qaDomain } from "./ipc/qa";
 import { webScenarioDomain } from "./ipc/web-scenario";
 import { updateDomain } from "./ipc/update";
@@ -27,6 +28,7 @@ const domains: MainDomain[] = [
   apiTestingDomain,
   authDomain,
   formAutomationDomain,
+  liveSessionDomain,
   qaDomain,
   webScenarioDomain,
   updateDomain,
