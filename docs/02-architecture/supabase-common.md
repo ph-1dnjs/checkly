@@ -34,6 +34,8 @@
 | 설정 · 계정 카드 | `projects`, `members` 조회 | 멤버 |
 | 설정 · 초대코드 재발급 | `rpc regenerate_invite_code()` | 관리자 |
 | 설정 · 로그아웃 | `auth.signOut()` | 멤버 |
+| 설정 · 멤버 · 재설정 코드 | **Edge Function `issue-reset-code`** → 6자리 코드(30분, 한 번) | 관리자 |
+| 비밀번호 찾기 1 · 계정 확인 / 2 · 재설정 코드 / 3 · 새 비밀번호 | **Edge Function `reset-password`** `step` = `lookup` → `verify` → `reset` | anon + 재설정 코드 |
 
 **Edge Function (service_role)**
 
@@ -43,6 +45,8 @@
 | `join-project` | 입력값 확인 → auth 사용자 생성 → `join_project_for(user, invite, nick)`. 실패하면 사용자 삭제 |
 | `change-nickname` | auth 이메일과 `members.nickname`을 같이 변경 (프로필 관리) |
 | `remove-member` | 관리자가 멤버를 내보냄 → auth 사용자 삭제(멤버 행은 cascade) |
+| `issue-reset-code` | 관리자가 같은 프로젝트 팀원의 재설정 코드를 발급. `auth_password_resets`에 SHA-256(user_id:code)·만료(30분)만 저장하고 원문은 응답으로 한 번만 준다. 관리자 계정은 대상이 아니다 |
+| `reset-password` | 로그인 전 비밀번호 찾기. `lookup`(계정·관리자 닉네임), `verify`(코드만 확인), `reset`(코드 확인 → Admin API로 비밀번호 변경 → 코드 삭제). 5번 틀리거나 만료되면 코드를 지우고 400 `invalid_reset_code` |
 
 ## 테이블
 
@@ -53,6 +57,7 @@
 | `endpoints` | 프론트·백엔드 등. `kind`: `web` / `api` | 이름은 프로젝트 안에서 유일 |
 | `environments` | dev / staging / prod 등 | 이름은 프로젝트 안에서 유일 |
 | `endpoint_urls` | 엔드포인트 × 환경 → `base_url`, `spec_url`(api만) | 복합 FK로 다른 프로젝트 것과 섞이지 않음 |
+| `auth_password_resets` | 팀원 비밀번호 재설정 코드(해시·만료·시도 횟수) | 멤버당 1행, RLS 정책 없음(Edge Function만 접근) |
 
 - 엔드포인트 × 환경 주소는 모든 쌍을 채우지 않아도 된다. 행이 없으면 '미설정'이다. 각 기능이 자기에게 필요한 쌍이 비어 있으면 안내한다.
 - 수정되는 테이블에는 모두 `updated_at`, `updated_by`가 있고 트리거가 채운다.
@@ -105,7 +110,7 @@ create policy "같은 프로젝트" on public.<테이블> for all to authenticat
 | `src/app/ipc/auth/types.ts` | IPC 계약(`AuthBridge`). renderer는 `window.electronAPI.auth` |
 | `src/app/ipc/auth/client.ts` | main 안의 다른 기능용: `isSupabaseEnabled`, `getSupabase`, `getCurrentSession`, `onSessionChanged` |
 | `src/app/ipc/auth/{service,settings,storage,errors}.ts` | 로그인·가입·프로필, 설정 저장, 암호화 세션 저장, 한국어 오류 변환 |
-| `supabase/functions/*` | `create-project`, `join-project`, `change-nickname`, `remove-member` |
+| `supabase/functions/*` | `create-project`, `join-project`, `change-nickname`, `remove-member`, `issue-reset-code`, `reset-password` |
 
 - IPC 채널은 `auth:<메서드>`, 세션 변경 알림은 `auth:session`. 실패는 `{ ok: false, message }`로 돌려주고 bridge가 `Error(message)`로 reject한다.
 - 프로젝트 설정 저장은 `save_project_settings(p jsonb)` 한 번으로 한다(한 트랜잭션, security invoker). main이 마지막으로 읽은 행 중 빠진 것만 지우고, 읽은 뒤 다른 팀원이 추가·수정한 행이 있으면 충돌로 거절한다.
