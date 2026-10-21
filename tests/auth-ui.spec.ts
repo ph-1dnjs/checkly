@@ -6,7 +6,15 @@ const dock = (page: Page) => page.getByRole('navigation', { name: '주요 메뉴
 
 async function openSettings(page: Page) {
   await dock(page).getByRole('button', { name: '설정' }).click()
-  await expect(page.getByRole('heading', { name: '설정', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '설정', exact: true })).toBeAttached()
+}
+
+const sectionHead = (page: Page, name: string) => page.locator('.setting-section-head').and(page.getByRole('button', { name, exact: true }))
+
+async function openSection(page: Page, name: string) {
+  const head = sectionHead(page, name)
+  if ((await head.getAttribute('aria-expanded')) !== 'true') await head.click()
+  await expect(head).toHaveAttribute('aria-expanded', 'true')
 }
 
 test.describe('팀 프로젝트 로그인 꺼짐', () => {
@@ -144,6 +152,57 @@ test('초대코드 가입 4단계', async ({ page }) => {
   await expect(dock(page)).toBeVisible()
 })
 
+test('비밀번호 찾기 4단계: 계정 확인 → 재설정 코드 → 새 비밀번호 → 로그인 화면에 계정을 채운다', async ({ page }) => {
+  await installAuthStub(page, { enabled: true })
+  await page.goto('/')
+  await loginForm(page).getByRole('button', { name: '비밀번호 찾기' }).click()
+  const flow = page.locator('[data-screen-label="시작 · 비밀번호 찾기"]')
+  await expect(flow.getByRole('heading', { name: '비밀번호 찾기' })).toBeVisible()
+  await expect(flow.locator('li[aria-current="step"]')).toContainText('계정 확인')
+
+  await page.getByRole('button', { name: '다음' }).click()
+  await expect(page.getByRole('alert')).toContainText('프로젝트 코드와 닉네임을 입력하세요.')
+  await page.getByLabel('프로젝트 코드').fill('Checkly-Team')
+  await expect(page.getByLabel('프로젝트 코드')).toHaveValue('checkly-team')
+  await page.getByLabel('닉네임').fill('minsu')
+  await page.getByRole('button', { name: '다음' }).click()
+  await expect(page.getByRole('alert')).toContainText('관리자 계정은 재설정 코드를 받을 수 없습니다.')
+  await page.getByLabel('닉네임').fill('hyewon')
+  await page.getByRole('button', { name: '다음' }).click()
+
+  await expect(flow.getByRole('heading', { name: '재설정 코드 입력' })).toBeVisible()
+  await expect(page.getByLabel('재설정할 계정')).toContainText('checkly-team')
+  await expect(page.getByLabel('재설정할 계정')).toContainText('minsu')
+  const code = page.getByLabel('재설정 코드')
+  await code.fill('12a34')
+  await expect(code).toHaveValue('1234')
+  await page.getByRole('button', { name: '다음' }).click()
+  await expect(page.getByRole('alert')).toContainText('재설정 코드는 6자리 숫자입니다.')
+  await code.fill('111111')
+  await page.getByRole('button', { name: '다음' }).click()
+  await expect(page.getByRole('alert')).toContainText('재설정 코드가 올바르지 않거나 만료되었습니다.')
+  await code.fill('482913')
+  await page.getByRole('button', { name: '다음' }).click()
+
+  await expect(flow.getByRole('heading', { name: '새 비밀번호' })).toBeVisible()
+  await expect(flow).toContainText('hyewon 계정에서 사용할 새 비밀번호를 입력해주세요.')
+  await page.getByLabel('새 비밀번호', { exact: true }).fill('newpass1')
+  await page.getByLabel('새 비밀번호 확인').fill('newpass2')
+  await page.getByRole('button', { name: '비밀번호 변경' }).click()
+  await expect(page.getByRole('alert')).toContainText('비밀번호가 일치하지 않습니다.')
+  await page.getByLabel('새 비밀번호 확인').fill('newpass1')
+  await page.getByRole('button', { name: '비밀번호 변경' }).click()
+
+  await expect(flow.getByRole('heading', { name: '비밀번호를 변경했습니다' })).toBeVisible()
+  expect((await authCalls(page)).find(([name]) => name === 'resetPassword')?.[1]).toEqual({
+    projectCode: 'checkly-team', nickname: 'hyewon', code: '482913', password: 'newpass1',
+  })
+  await page.getByRole('button', { name: '로그인하러 가기' }).click()
+  await expect(page.getByLabel('프로젝트 코드')).toHaveValue('checkly-team')
+  await expect(page.getByLabel('닉네임')).toHaveValue('hyewon')
+  await expect(page.getByLabel('비밀번호', { exact: true })).toBeFocused()
+})
+
 test('새 프로젝트 2단계와 초대코드 복사', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write'])
   await installAuthStub(page, { enabled: true })
@@ -197,20 +256,23 @@ test('새 프로젝트 2단계와 초대코드 복사', async ({ page, context }
 })
 
 test.describe('설정 · 계정과 프로젝트', () => {
-  test('PROJECT의 비밀값도 팀에 공유: 기본 켬, 끌 때는 확인 후 끄고 바꾼 사람이 보인다', async ({ page }) => {
+  test('팀 프로젝트의 비밀값도 팀에 공유: 기본 켬, 끌 때는 행 아래에서 확인 후 끄고 바꾼 사람이 보인다', async ({ page }) => {
     await installAuthStub(page, { enabled: true, session: owner, teamSettings: true })
     await page.goto('/')
     await openSettings(page)
+    await openSection(page, '팀 프로젝트')
     const toggle = page.getByRole('switch', { name: '비밀값도 팀에 공유' })
-    const row = page.locator('.settings-row').filter({ has: toggle })
+    const row = page.locator('.setting-row').filter({ has: toggle })
     await expect(toggle).toHaveAttribute('aria-checked', 'true')
-    await expect(row).toContainText('개발용 계정·토큰을 팀원과 같이 씁니다. 운영 계정을 넣는 프로젝트라면 끄세요.')
+    await expect(row).toContainText('API 테스트의 개발용 계정·토큰')
     await toggle.click()
-    const dialog = page.getByRole('dialog', { name: '비밀값 공유를 끌까요?' })
-    await dialog.getByRole('button', { name: '취소' }).click()
+    const confirm = page.getByRole('alertdialog')
+    await expect(confirm).toContainText('끄면 팀에 저장된 비밀값이 지워지고')
+    await confirm.getByRole('button', { name: '취소' }).click()
+    await expect(confirm).toHaveCount(0)
     await expect(toggle).toHaveAttribute('aria-checked', 'true')
     await toggle.click()
-    await dialog.getByRole('button', { name: '끄기' }).click()
+    await confirm.getByRole('button', { name: '끄기' }).click()
     await expect(toggle).toHaveAttribute('aria-checked', 'false')
     await expect(row).toContainText('minsu님이 2026. 10. 9.에 바꿈')
     await toggle.click()
@@ -222,11 +284,31 @@ test.describe('설정 · 계정과 프로젝트', () => {
     await installAuthStub(page, { enabled: true, session: owner })
     await page.goto('/')
     await openSettings(page)
+    await openSection(page, '팀 프로젝트')
     await expect(page.locator('.settings-invite-code')).toHaveText('CHK-7Q2M3X')
     await expect(page.getByRole('switch', { name: '비밀값도 팀에 공유' })).toHaveCount(0)
   })
 
-  test('계정 카드, 멤버, 엔드포인트 × 환경 저장과 충돌 안내', async ({ page }) => {
+  test('섹션은 하나씩 펼치고, 모두 펼치기·접기를 기억한다', async ({ page }) => {
+    await installAuthStub(page, { enabled: true, session: owner })
+    await page.goto('/')
+    await openSettings(page)
+    await expect(sectionHead(page, '내 계정')).toHaveAttribute('aria-expanded', 'true')
+    await sectionHead(page, '앱').click()
+    await expect(sectionHead(page, '앱')).toHaveAttribute('aria-expanded', 'true')
+    await expect(sectionHead(page, '내 계정')).toHaveAttribute('aria-expanded', 'false')
+    await page.getByRole('button', { name: '모두 펼치기' }).click()
+    for (const name of ['내 계정', '팀 프로젝트', '엔드포인트', '실행·알림', '앱']) {
+      await expect(sectionHead(page, name)).toHaveAttribute('aria-expanded', 'true')
+    }
+    await page.reload()
+    await openSettings(page)
+    await expect(sectionHead(page, '엔드포인트')).toHaveAttribute('aria-expanded', 'true')
+    await page.getByRole('button', { name: '모두 접기' }).click()
+    await expect(sectionHead(page, '내 계정')).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  test('계정 카드, 멤버, 엔드포인트 저장과 충돌 안내', async ({ page }) => {
     await installAuthStub(page, { enabled: true, session: owner, conflictOnSecondSave: true })
     await page.goto('/')
     await expect(dock(page)).toBeVisible()
@@ -239,47 +321,89 @@ test.describe('설정 · 계정과 프로젝트', () => {
     await expect(card.locator('.account-code')).toHaveText('checkly-team')
     await expect(page.getByText('기본 URL')).toHaveCount(0)
 
+    await openSection(page, '팀 프로젝트')
     await expect(page.locator('.settings-invite-code')).toHaveText('CHK-7Q2M3X')
-    const members = page.getByRole('list', { name: '멤버 목록' })
+    await expect(page.locator('.setting-row').filter({ hasText: '멤버 3명' })).toContainText('minsu, hyewon 외 1명')
+    await page.getByRole('button', { name: '전체 보기' }).click()
+    const sheet = page.getByRole('dialog', { name: '멤버 3명' })
+    const members = sheet.getByRole('list', { name: '멤버 목록' })
     await expect(members.getByRole('listitem')).toHaveCount(3)
+    await sheet.getByLabel('멤버 검색').fill('ji')
+    await expect(members.getByRole('listitem')).toHaveCount(1)
+    // 관리자는 팀원의 비밀번호 재설정 코드를 발급한다. 관리자 자신에게는 버튼이 없다.
+    await expect(members.getByRole('button', { name: 'minsu 비밀번호 재설정 코드 발급' })).toHaveCount(0)
+    await members.getByRole('button', { name: 'jiho 비밀번호 재설정 코드 발급' }).click()
+    await page.getByRole('dialog', { name: 'jiho님의 재설정 코드를 발급할까요?' }).getByRole('button', { name: '발급' }).click()
+    const issued = page.getByRole('dialog', { name: '재설정 코드를 발급했습니다' })
+    await expect(issued.getByLabel('재설정 코드', { exact: true })).toHaveText('482913')
+    expect((await authCalls(page)).find(([name]) => name === 'issueResetCode')?.[1]).toBe('u-jiho')
+    await issued.getByRole('button', { name: '확인' }).click()
+    await expect(issued).toHaveCount(0)
     await members.getByRole('button', { name: 'jiho 내보내기' }).click()
-    await page.getByRole('dialog').getByRole('button', { name: '내보내기' }).click()
-    await expect(members.getByRole('listitem')).toHaveCount(2)
+    await page.getByRole('dialog', { name: 'jiho님을 내보낼까요?' }).getByRole('button', { name: '내보내기' }).click()
+    await expect(page.getByRole('dialog', { name: '멤버 2명' }).getByText('일치하는 멤버가 없습니다')).toBeVisible()
+    await page.getByRole('dialog', { name: '멤버 2명' }).getByRole('button', { name: '닫기' }).click()
 
-    const table = page.getByRole('table', { name: '엔드포인트 × 환경 주소' })
-    await expect(table.getByLabel('프론트 · dev 주소')).toHaveValue('https://dev.app.com')
-    await expect(table.getByLabel('백엔드 · dev 스웨거 주소')).toHaveValue('https://dev-api.app.com/v3/api-docs')
-    await expect(table.getByLabel('백엔드 · staging 주소')).toHaveValue('')
-    await expect(table.getByLabel('백엔드 · staging 주소')).toHaveAttribute('placeholder', '미설정')
+    await openSection(page, '엔드포인트')
+    await expect(page.getByRole('button', { name: '프론트 편집' })).toContainText('dev.app.com')
+    await expect(page.getByRole('button', { name: '백엔드 편집' })).toContainText('미설정')
 
     // 잘못된 주소는 저장 전에 막는다.
-    await table.getByLabel('프론트 · staging 주소').fill('stg.app.com')
+    await page.getByRole('button', { name: '프론트 편집' }).click()
+    await expect(page.getByLabel('서버 이름')).toHaveValue('프론트')
+    await page.getByLabel('staging 주소').fill('stg.app.com')
     await page.getByRole('button', { name: '저장', exact: true }).click()
-    await expect(page.locator('.settings-callout')).toHaveText('프론트 · staging 주소는 http:// 또는 https://로 시작해야 합니다.')
-    // 빈 칸은 미설정으로 저장한다.
-    await table.getByLabel('프론트 · staging 주소').fill('')
-    await page.getByRole('button', { name: '환경', exact: true }).click()
-    await table.getByLabel('환경 이름').last().fill('prod')
-    await table.getByLabel('프론트 · prod 주소').fill('https://app.com')
-    await page.getByRole('button', { name: '저장', exact: true }).click()
-    await expect(page.locator('.em-status')).toHaveText('저장했습니다')
+    await expect(page.locator('.endpoint-editor').getByRole('alert')).toContainText('프론트 · staging 주소는 http:// 또는 https://로 시작해야 합니다.')
+    await page.getByRole('button', { name: '취소', exact: true }).click()
 
+    // 환경을 추가하면 표 전체를 한 번에 저장한다(취소한 편집은 버리고, 스웨거 주소는 그대로).
+    await page.getByRole('button', { name: '환경 편집' }).click()
+    await page.getByRole('button', { name: '추가', exact: true }).click()
+    await page.getByLabel('환경 이름').last().fill('prod')
+    await page.getByRole('button', { name: '완료' }).click()
+    await expect(page.locator('.setting-saved')).toHaveText(/저장했습니다 · 팀원에게 바로 반영됩니다/)
     const saved = (await authCalls(page)).filter(([name]) => name === 'saveProjectSettings').at(-1)?.[1]
     expect(saved.environments.map((environment: { name: string; position: number }) => [environment.name, environment.position]))
       .toEqual([['dev', 0], ['staging', 1], ['prod', 2]])
     expect(saved.urls.map((url: { baseUrl: string; specUrl: string | null }) => [url.baseUrl, url.specUrl])).toEqual([
       ['https://dev.app.com', null],
-      ['https://app.com', null],
+      ['https://stg.app.com', null],
       ['https://dev-api.app.com', 'https://dev-api.app.com/v3/api-docs'],
     ])
 
     // 두 번째 저장은 다른 팀원이 먼저 고쳐서 거절된다.
-    await table.getByLabel('프론트 · dev 주소').fill('https://dev2.app.com')
+    await page.getByRole('button', { name: '프론트 편집' }).click()
+    await page.getByLabel('prod 주소').fill('https://app.com')
     await page.getByRole('button', { name: '저장', exact: true }).click()
     await expect(page.locator('.settings-callout')).toContainText('다른 팀원이 먼저 수정했습니다. 새로 불러온 뒤 다시 저장하세요.')
     await page.getByRole('button', { name: '새로 불러오기' }).click()
-    await expect(table.getByLabel('프론트 · dev 주소')).toHaveValue('https://teammate.app.com')
+    await expect(page.getByRole('button', { name: '프론트 편집' })).toContainText('teammate.app.com')
     await expect(page.locator('.settings-callout')).toHaveCount(0)
+  })
+
+  test('엔드포인트: API 서버의 스웨거 주소는 기본 주소에서 자동으로 만들고, 직접 바꿀 수 있다', async ({ page }) => {
+    await installAuthStub(page, { enabled: true, session: owner })
+    await page.goto('/')
+    await openSettings(page)
+    await openSection(page, '엔드포인트')
+    await page.getByRole('button', { name: '서버 추가' }).click()
+    await page.getByLabel('서버 이름').fill('결제')
+    await page.getByRole('radio', { name: 'API' }).click()
+    await page.getByLabel('dev 주소').fill('https://pay.dev.app.com/')
+    await expect(page.locator('.endpoint-swagger')).toContainText('pay.dev.app.com/v3/api-docs')
+    await page.getByLabel('staging 주소').fill('https://pay.stg.app.com')
+    await page.getByRole('button', { name: 'staging 스웨거 주소 변경' }).click()
+    await page.getByLabel('staging 스웨거 주소').fill('https://pay.stg.app.com/docs.json')
+    await page.getByRole('button', { name: '저장', exact: true }).click()
+    await expect(page.getByRole('button', { name: '결제 편집' })).toContainText('pay.dev.app.com')
+    const saved = (await authCalls(page)).filter(([name]) => name === 'saveProjectSettings').at(-1)?.[1]
+    const endpoint = saved.endpoints.find((item: { name: string }) => item.name === '결제')
+    expect(endpoint.kind).toBe('api')
+    expect(saved.urls.filter((url: { endpointId: string }) => url.endpointId === endpoint.id).map((url: { baseUrl: string; specUrl: string | null }) => [url.baseUrl, url.specUrl]))
+      .toEqual([
+        ['https://pay.dev.app.com/', 'https://pay.dev.app.com/v3/api-docs'],
+        ['https://pay.stg.app.com', 'https://pay.stg.app.com/docs.json'],
+      ])
   })
 
   test('프로젝트 변경 모달: 경고를 보여주고 다른 프로젝트로 로그인한 뒤 다시 불러온다', async ({ page }) => {
@@ -316,27 +440,35 @@ test.describe('설정 · 계정과 프로젝트', () => {
     await expect(page.getByRole('region', { name: '계정' })).toBeVisible()
   })
 
-  test('프로필: 닉네임 변경은 계정 카드에 바로 반영되고, 비밀번호 변경 실패는 main의 문장을 보여준다', async ({ page }) => {
+  test('내 계정: 닉네임 변경은 계정 카드에 바로 반영되고, 비밀번호 변경 실패는 main의 문장을 보여준다', async ({ page }) => {
     await installAuthStub(page, { enabled: true, session: owner })
     await page.goto('/')
     await openSettings(page)
-    const profile = page.locator('[aria-label="프로필"]')
-    await profile.getByLabel('새 닉네임').fill('Minsu')
-    await profile.getByRole('button', { name: '변경' }).first().click()
-    await expect(profile.getByRole('alert')).toContainText('영문 소문자로 시작')
-    await profile.getByLabel('새 닉네임').fill('minsu_k')
-    await profile.getByRole('button', { name: '변경' }).first().click()
-    await expect(profile.getByRole('status')).toContainText('닉네임을 바꿨습니다.')
+    await openSection(page, '내 계정')
+    await page.getByRole('button', { name: '닉네임 변경' }).click()
+    const nick = page.getByRole('dialog', { name: '닉네임 변경' })
+    await nick.getByLabel('새 닉네임').fill('Minsu')
+    await expect(nick.getByText('영문 소문자로 시작')).toHaveAttribute('data-tone', 'fail')
+    await expect(nick.getByRole('button', { name: '저장' })).toBeDisabled()
+    await nick.getByLabel('새 닉네임').fill('minsu_k')
+    await nick.getByRole('button', { name: '저장' }).click()
+    await expect(nick).toHaveCount(0)
+    await expect(page.getByRole('status').filter({ hasText: '닉네임을 변경했습니다' })).toBeVisible()
     await expect(page.getByRole('region', { name: '계정' }).locator('.account-nick')).toHaveText('minsu_k')
 
-    await profile.getByLabel('현재 비밀번호').fill('wrong1')
-    await profile.getByLabel('새 비밀번호', { exact: true }).fill('newpass')
-    await profile.getByLabel('새 비밀번호 확인').fill('newpass')
-    await profile.getByRole('button', { name: '변경' }).last().click()
-    await expect(profile.getByRole('alert')).toHaveText(/현재 비밀번호가 올바르지 않습니다./)
-    await profile.getByLabel('현재 비밀번호').fill('secret1')
-    await profile.getByRole('button', { name: '변경' }).last().click()
-    await expect(profile.getByRole('status').filter({ hasText: '비밀번호를 바꿨습니다.' })).toBeVisible()
+    await page.getByRole('button', { name: '비밀번호 변경' }).click()
+    const pw = page.getByRole('dialog', { name: '비밀번호 변경' })
+    await pw.getByLabel('현재 비밀번호').fill('wrong1')
+    await pw.getByLabel('새 비밀번호', { exact: true }).fill('newpass')
+    await pw.getByLabel('새 비밀번호 확인').fill('newpas')
+    await expect(pw.getByText('새 비밀번호가 일치하지 않습니다')).toBeVisible()
+    await pw.getByLabel('새 비밀번호 확인').fill('newpass')
+    await pw.getByRole('button', { name: '변경' }).click()
+    await expect(pw.getByRole('alert')).toHaveText(/현재 비밀번호가 올바르지 않습니다./)
+    await pw.getByLabel('현재 비밀번호').fill('secret1')
+    await pw.getByRole('button', { name: '변경' }).click()
+    await expect(pw).toHaveCount(0)
+    await expect(page.getByRole('status').filter({ hasText: '비밀번호를 변경했습니다' })).toBeVisible()
     expect((await authCalls(page)).find(([name]) => name === 'changePassword')?.[1]).toEqual({ currentPassword: 'wrong1', newPassword: 'newpass' })
   })
 

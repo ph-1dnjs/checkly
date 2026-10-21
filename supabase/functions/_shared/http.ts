@@ -13,6 +13,7 @@ export type ErrorCode =
   | "invalid_create_code"
   | "create_disabled"
   | "not_found"
+  | "invalid_reset_code"
   | "internal";
 
 const STATUS: Record<ErrorCode, number> = {
@@ -27,6 +28,7 @@ const STATUS: Record<ErrorCode, number> = {
   invalid_create_code: 403,
   create_disabled: 403,
   not_found: 404,
+  invalid_reset_code: 400,
   internal: 500,
 };
 

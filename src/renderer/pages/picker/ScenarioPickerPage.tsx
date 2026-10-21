@@ -1,164 +1,102 @@
 import { useMemo, useState } from "react";
-import { actionText, type Scenario } from "../../shared/model/scenario";
+import { actionText, parseMarkdown, type MarkerPositionStore, type Scenario } from "../../shared/model/scenario";
+import type { WebScenarioRecord } from "../../../app/ipc/web-scenario/types";
 import { ActionTag } from "../../shared/ui/ActionTag";
 import { Button } from "../../shared/ui/Button";
-import {
-  pickKeyOf as keyOf,
-  ScenarioFileList,
-  type ScenarioFolderState,
-} from "../../entities/scenario-folder";
-
-type Picked = { fileName: string; filePath: string; scenario: Scenario };
+import { LoadingSpinner } from "../../shared/ui/LoadingSpinner";
+import { ScenarioList } from "../../widgets/ScenarioList";
 
 type Props = {
-  folder: ScenarioFolderState;
+  records: WebScenarioRecord[];
+  loading: boolean;
+  pickedKeys: Set<string>;
+  onPick: (keys: Set<string>) => void;
   onOpenEditor: () => void;
+  onRefresh: () => void;
   onRun: (scenarios: Scenario[]) => void;
 };
-
-export const ScenarioPickerPage = ({ folder, onOpenEditor, onRun }: Props) => {
-  const {
-    folderPath,
-    files,
-    fileCache,
-    loadingFolder,
-    refreshFolder,
-    chooseFolder,
-    pickedKeys,
-    setPickedKeys,
-    pickedCountByFile,
-  } = folder;
-  const [selectedFilePath, setActiveFilePath] = useState<string | null>(null);
+export const recordScenarios = (record: WebScenarioRecord): Scenario[] => {
+  const positions = JSON.parse(record.positions) as MarkerPositionStore;
+  return parseMarkdown(record.markdown, record.id).map(scenario => {
+    const points = [...(positions[scenario.id] ?? positions[`${scenario.title}\n${scenario.url}`] ?? [])];
+    return { ...scenario, steps: scenario.steps.map(step => {
+      const index = points.findIndex(item => item.databaseId && step.databaseId ? item.databaseId === step.databaseId :
+        item.action === step.action && item.target === step.target && item.value === step.value &&
+        item.prompt === step.prompt && item.condition === step.condition && item.waitSeconds === step.waitSeconds && (item.occurrence ?? 1) === (step.occurrence ?? 1));
+      return { ...step, ...(index < 0 ? undefined : points.splice(index, 1)[0]), id: step.id };
+    }) };
+  });
+};
+export const ScenarioPickerPage = ({ records, loading, pickedKeys, onPick, onOpenEditor, onRefresh, onRun }: Props) => {
+  const [activeId, setActiveId] = useState<string | null>(null);
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
-  const activeFilePath =
-    selectedFilePath && files.some((file) => file.path === selectedFilePath)
-      ? selectedFilePath
-      : (files[0]?.path ?? null);
-
-  const activeFile = files.find((file) => file.path === activeFilePath) ?? null;
-  const activeScenarios = activeFilePath ? (fileCache[activeFilePath] ?? []) : [];
-  const allActivePicked = activeScenarios.length > 0 && activeScenarios.every(
-    (scenario) => pickedKeys.has(keyOf(activeFilePath!, scenario)),
-  );
-  const someActivePicked = activeScenarios.some(
-    (scenario) => pickedKeys.has(keyOf(activeFilePath!, scenario)),
-  );
-
+  const groups = useMemo(() => records.map(record => ({ record, scenarios: recordScenarios(record) })), [records]);
+  const activeGroup = groups.find(group => group.record.id === activeId) ?? groups[0];
+  const activeRecord = activeGroup?.record;
+  const activeScenarios = activeGroup?.scenarios ?? [];
+  const pickedGroups = groups.map(group => ({ ...group, scenarios: group.scenarios.filter(scenario => pickedKeys.has(scenario.id)) })).filter(group => group.scenarios.length);
+  const picked = pickedGroups.flatMap(group => group.scenarios);
+  const pickedCountByRecord = Object.fromEntries(pickedGroups.map(group => [group.record.id, group.scenarios.length]));
+  const allActivePicked = activeScenarios.length > 0 && activeScenarios.every(scenario => pickedKeys.has(scenario.id));
+  const someActivePicked = activeScenarios.some(scenario => pickedKeys.has(scenario.id));
   const togglePickAll = () => {
-    if (!activeFilePath) return;
-    setPickedKeys((keys) => {
-      const next = new Set(keys);
-      const allPicked = activeScenarios.every((scenario) => keys.has(keyOf(activeFilePath, scenario)));
-      for (const scenario of activeScenarios) {
-        const key = keyOf(activeFilePath, scenario);
-        allPicked ? next.delete(key) : next.add(key);
-      }
-      return next;
-    });
-  };
-
-  const togglePick = (filePath: string, scenario: Scenario) => {
-    const key = keyOf(filePath, scenario);
-    setPickedKeys((keys) => {
-      const next = new Set(keys);
-      next.has(key) ? next.delete(key) : next.add(key);
-      return next;
-    });
-  };
-
-  const toggleExpand = (key: string) =>
-    setExpandedKeys((keys) => {
-      const next = new Set(keys);
-      next.has(key) ? next.delete(key) : next.add(key);
-      return next;
-    });
-
-  const picked = useMemo(() => {
-    const out: Picked[] = [];
-    for (const file of files) {
-      const scenarios = fileCache[file.path] ?? [];
-      for (const scenario of scenarios) {
-        if (pickedKeys.has(keyOf(file.path, scenario))) {
-          out.push({ fileName: file.name, filePath: file.path, scenario });
-        }
-      }
+    const next = new Set(pickedKeys);
+    for (const scenario of activeScenarios) {
+      allActivePicked ? next.delete(scenario.id) : next.add(scenario.id);
     }
-    return out;
-  }, [files, fileCache, pickedKeys]);
+    onPick(next);
+  };
+  const togglePick = (id: string) => {
+    const next = new Set(pickedKeys);
+    next.has(id) ? next.delete(id) : next.add(id);
+    onPick(next);
+  };
+  const toggleExpand = (id: string) => setExpandedKeys(current => {
+    const next = new Set(current);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
+  const totalSteps = picked.reduce((total, item) => total + item.steps.length, 0);
+  const runPicked = () => onRun(picked);
 
-  const pickedGroups = useMemo(() => {
-    const groups = new Map<string, Picked[]>();
-    for (const item of picked) {
-      const list = groups.get(item.filePath) ?? [];
-      list.push(item);
-      groups.set(item.filePath, list);
-    }
-    return Array.from(groups.entries()).map(([filePath, items]) => ({
-      filePath,
-      fileName: items[0].fileName,
-      items,
-    }));
-  }, [picked]);
-
-  const totalSteps = picked.reduce((total, item) => total + item.scenario.steps.length, 0);
-  const hasFiles = files.length > 0;
-
-  const runOnly = (filePath: string, scenario: Scenario) => onRun([scenario]);
-  const runPicked = () => onRun(picked.map((item) => item.scenario));
-
-  if (loadingFolder) return <div className="picker" />;
-
-  if (!folderPath || !hasFiles) {
-    return (
-      <div className="picker">
-        <div className="picker-empty-state">
-          <div className="picker-empty-title">
-            {folderPath ? "폴더에 시나리오 파일이 없습니다" : "시나리오 폴더를 선택해 주세요"}
-          </div>
-          <div className="picker-empty-body">
-            {folderPath
-              ? `${folderPath} 폴더에 .md 시나리오 파일을 추가한 뒤 다시 불러오세요.`
-              : "시나리오 markdown(.md) 파일이 들어있는 폴더를 선택하면 이 화면에서 파일과 시나리오를 확인하고 실행할 수 있습니다."}
-          </div>
-          <div className="picker-empty-actions">
-            <Button variant="primary" onClick={() => void chooseFolder()}>
-              폴더 선택
-            </Button>
-            {folderPath && (
-              <Button variant="secondary" onClick={() => void refreshFolder()}>
-                다시 불러오기
-              </Button>
-            )}
-            <Button variant="secondary" onClick={onOpenEditor}>
-              편집기 열기
-            </Button>
-          </div>
-        </div>
+  if (loading) return <div className="picker"><LoadingSpinner label="시나리오를 불러오는 중입니다." /></div>;
+  if (!records.length) return (
+    <div className="picker">
+      <div className="picker-empty-state">
+        <div className="picker-empty-title">저장된 시나리오가 없습니다.</div>
+        <div className="picker-empty-body">편집기에서 시나리오를 작성하고 저장하면 팀과 함께 선택하고 실행할 수 있습니다.</div>
+        <div className="picker-empty-actions"><Button variant="primary" onClick={onOpenEditor}>편집기 열기</Button></div>
       </div>
-    );
-  }
+    </div>
+  );
+
+  const tagCounts = activeScenarios.reduce<Record<string, number>>((counts, scenario) => {
+    if (scenario.tag) counts[scenario.tag] = (counts[scenario.tag] ?? 0) + 1;
+    return counts;
+  }, {});
 
   return (
     <div className="picker">
-
       <div className="picker-layout">
-        <ScenarioFileList
-          files={files}
-          fileCache={fileCache}
-          activePath={activeFilePath}
-          pickedCountByFile={pickedCountByFile}
-          onSelect={setActiveFilePath}
-          onChooseFolder={() => void chooseFolder()}
+        <ScenarioList
+          records={records}
+          activeId={activeRecord?.id ?? null}
+          loading={loading}
+          busy={false}
+          pickedCountByRecord={pickedCountByRecord}
+          onSelect={setActiveId}
+          onRefresh={onRefresh}
         />
 
         <section className="picker-scenarios">
-          {activeFile ? (
+          {activeRecord ? (
             <>
               <div className="picker-panel-heading">
                 <Button
                   className="picker-scenario-main"
                   role="checkbox"
                   aria-label="전체 선택"
+                  title="문서 전체 선택"
                   aria-checked={allActivePicked ? true : someActivePicked ? "mixed" : false}
                   disabled={!activeScenarios.length}
                   onClick={togglePickAll}
@@ -167,7 +105,7 @@ export const ScenarioPickerPage = ({ folder, onOpenEditor, onRun }: Props) => {
                     {someActivePicked && <span className="msi">{allActivePicked ? "check" : "remove"}</span>}
                   </span>
                   <div>
-                    <p>{activeFile.name}</p>
+                    <p title={activeRecord.title}>{activeRecord.title}</p>
                     <strong>
                       {activeScenarios.length} scenario
                       {activeScenarios.length === 1 ? "" : "s"} ·{" "}
@@ -175,9 +113,18 @@ export const ScenarioPickerPage = ({ folder, onOpenEditor, onRun }: Props) => {
                     </strong>
                   </div>
                 </Button>
+                {Object.keys(tagCounts).length > 0 && (
+                  <div className="picker-tags">
+                    <span>태그</span>
+                    {Object.entries(tagCounts).map(([tag, count]) => (
+                      <em key={tag} className="picker-tag">{tag}<b>{count}</b></em>
+                    ))}
+                  </div>
+                )}
               </div>
+              <div className="picker-scenario-list" data-ck-scroll="light">
               {activeScenarios.map((scenario) => {
-                const key = keyOf(activeFilePath!, scenario);
+                const key = scenario.id;
                 const isPicked = pickedKeys.has(key);
                 const isOpen = expandedKeys.has(key);
                 const unlinked = scenario.steps.filter((step) => !step.connected).length;
@@ -187,40 +134,44 @@ export const ScenarioPickerPage = ({ folder, onOpenEditor, onRun }: Props) => {
                       <Button
                         className="picker-scenario-main"
                         aria-pressed={isPicked}
-                        onClick={() => togglePick(activeFilePath!, scenario)}
+                        onClick={() => togglePick(scenario.id)}
                       >
-                        <span className={`picker-check${isPicked ? " on" : ""}`}>
+                        <span className={`picker-check${isPicked ? " on" : ""}`} aria-hidden="true">
                           {isPicked && <span className="msi">check</span>}
                         </span>
                         <div>
-                          <div className="picker-scenario-name">
-                            <span>{scenario.title}</span>
-                            {scenario.tag && <em className="picker-tag">{scenario.tag}</em>}
-                          </div>
+                          <div className="picker-scenario-name" title={scenario.title}>{scenario.title}</div>
                           <div className="picker-scenario-summary">
-                            {scenario.steps.length}개 단계
-                            {unlinked ? ` · 선택자 미연결 ${unlinked}` : ""}
+                            <span>{scenario.steps.length}단계</span>
+                            {unlinked > 0 && <span className="unlinked">선택자 미연결 {unlinked}</span>}
                           </div>
                         </div>
                       </Button>
-                      <Button className="picker-expand" onClick={() => toggleExpand(key)}>
-                        {isOpen ? "▾" : "▸"} 단계
+                      <Button
+                        className="picker-expand"
+                        aria-expanded={isOpen}
+                        aria-label="단계 보기"
+                        title="단계 보기"
+                        onClick={() => toggleExpand(key)}
+                      >
+                        <span className="msi" aria-hidden="true">{isOpen ? "expand_less" : "expand_more"}</span>
                       </Button>
                       <Button
                         className="picker-run-only"
                         title="이 시나리오만 실행"
-                        onClick={() => runOnly(activeFilePath!, scenario)}
+                        aria-label="이 시나리오만 실행"
+                        onClick={() => onRun([scenario])}
                       >
-                        <span className="msi">play_arrow</span>
+                        <span className="msi" aria-hidden="true">play_arrow</span>
                       </Button>
                     </div>
                     {isOpen && (
                       <ol className="picker-steps">
                         {scenario.steps.map((step, index) => (
                           <li key={step.id}>
-                            <b>{String(index + 1).padStart(2, "0")}</b>
+                            <b>{index + 1}</b>
                             <ActionTag action={step.action} className="picker-op" />
-                            <span className="picker-target">{actionText(step)}</span>
+                            <span className="picker-target" title={actionText(step)}>{actionText(step)}</span>
                             <em className={step.connected ? "" : "unlinked"}>
                               {step.connected ? "linked" : "unlinked"}
                             </em>
@@ -231,9 +182,10 @@ export const ScenarioPickerPage = ({ folder, onOpenEditor, onRun }: Props) => {
                   </div>
                 );
               })}
+              </div>
             </>
           ) : (
-            <div className="picker-empty">파일을 선택해 주세요.</div>
+            <div className="picker-empty">저장된 시나리오를 선택해 주세요.</div>
           )}
         </section>
 
@@ -241,32 +193,33 @@ export const ScenarioPickerPage = ({ folder, onOpenEditor, onRun }: Props) => {
           <div className="picker-col-label">
             <span>실행 대상</span>
             {picked.length > 0 && (
-              <Button onClick={() => setPickedKeys(new Set())}>비우기</Button>
+              <Button onClick={() => onPick(new Set())}>비우기</Button>
             )}
           </div>
-          <div className="picker-cart-body">
+          <div className="picker-cart-body" data-ck-scroll="light">
             {picked.length === 0 ? (
               <p className="picker-cart-empty">
-                왼쪽에서 파일을 고르고, 실행할 시나리오를 선택하세요. 여러 파일에서 골라
-                한 번에 실행할 수 있습니다.
+                선택한 시나리오가 여기에 모입니다. 여러 문서에서 골라 한 번에 실행할 수 있습니다.
               </p>
             ) : (
               pickedGroups.map((group) => (
-                <div key={group.filePath}>
+                <div key={group.record.id}>
                   <div className="picker-cart-group">
-                    <span>{group.fileName}</span>
-                    <b>{group.items.length}</b>
+                    <span title={group.record.title}>{group.record.title}</span>
+                    <b>{group.scenarios.length}개</b>
                   </div>
-                  {group.items.map((item, index) => (
-                    <div className="picker-cart-item" key={keyOf(item.filePath, item.scenario)}>
-                      <b>{String(index + 1).padStart(2, "0")}</b>
-                      <span>{item.scenario.title}</span>
-                      <i>{item.scenario.steps.length} steps</i>
+                  {group.scenarios.map((item) => (
+                    <div className="picker-cart-item" key={item.id}>
+                      <b>{String(picked.indexOf(item) + 1).padStart(2, "0")}</b>
+                      <span title={item.title}>{item.title}</span>
+                      <i>{item.steps.length}</i>
                       <Button
-                        title="선택 해제"
-                        onClick={() => togglePick(item.filePath, item.scenario)}
+                        className="picker-cart-remove"
+                        title="빼기"
+                        aria-label={`${item.title} 빼기`}
+                        onClick={() => togglePick(item.id)}
                       >
-                        ✕
+                        <span className="msi" aria-hidden="true">close</span>
                       </Button>
                     </div>
                   ))}
@@ -290,7 +243,7 @@ export const ScenarioPickerPage = ({ folder, onOpenEditor, onRun }: Props) => {
               disabled={!picked.length}
               onClick={runPicked}
             >
-              <span className="msi">play_arrow</span>
+              <span className="msi" aria-hidden="true">play_arrow</span>
               {picked.length ? `${picked.length}개 시나리오 실행` : "시나리오를 선택하세요"}
             </Button>
           </footer>

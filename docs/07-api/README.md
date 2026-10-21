@@ -26,26 +26,22 @@ renderer는 Node.js·Playwright·파일 시스템에 직접 접근하지 않습�
 
 main이 모든 테스트 웹뷰의 첫 HTTP(S) 페이지에서 자동 수집을 시작하고, 페이지 이동 때마다 기록기를 다시 연결한다. 평소에는 화면을 메모리에 두고 오류 전후 5초만 저장한다. 팀 로그인 시 정상 API·이동은 메타데이터 로그만 전송하고 오류 기록은 비공개 Storage로 공유한다. 기록 시작·종료 IPC는 노출하지 않는다. 대상 페이지의 제한된 bridge가 `live-session:events`로 전달한 이벤트는 main에서 발신 웹뷰와 활성 세션 키를 대조한다. 형식·묶음 크기·세션 크기도 검사한다. 저장 위치와 수집 제한은 [폼 자동 완성 브라우저 기록](../04-pages/060-form-automation/recording/README.md)을 참고한다.
 
-### 앱·시나리오·파일
+### 앱·DB 시나리오
 
 | 공개 함수 | IPC | 입력 | 출력·용도 |
 | --- | --- | --- | --- |
-| `getAppVersion` | `app:version` | 없음 | 버전; 설정 화면에 표시 |
-| `loadScenarioMarkdown` | `scenario:load` | 없음 | 원문 또는 null |
-| `saveScenarioMarkdown` | `scenario:save` | Markdown | 기본 원문 저장 |
-| `importScenarioFile` | `scenario:import-file` | 없음 | 원문+경로 또는 null |
-| `saveImportedScenarioFile` | `scenario:save-imported-file` | Markdown | 활성 파일 경로 또는 null |
-| `exportScenarioFile` | `scenario:export-file` | Markdown | 새 파일 경로 또는 null |
-| `selectUploadFile` | `qa:select-upload-file` | 없음 | 업로드 경로 또는 null |
-| `load/saveMarkerPositions` | `marker-positions:load/save` | JSON string | marker 복원·저장 |
+| `getAppVersion` | `app:version` | 없음 | 버전 |
+| `webScenarios.list` | `web-scenario:list` | 없음 | 로그인한 프로젝트의 문서·본문·마커·작성 정보 |
+| `webScenarios.save` | `web-scenario:save` | 제목·본문·마커, 수정 시 ID·expectedUpdatedAt | 저장된 문서와 새 버전 |
+| `webScenarios.remove` | `web-scenario:remove` | ID·expectedUpdatedAt | 삭제 또는 충돌 오류 |
+| `selectUploadFile` | `qa:select-upload-file` | 없음 | 업로드 경로 또는 null (개인 PC에만 저장) |
 
-### 폴더·실행
+기존 시나리오 파일·폴더 IPC는 제거됐다. 본문·마커는 한 DB 행으로 함께 저장한다. [세부 정책](../04-pages/020-scenario-editor/03-api.md).
+
+### 실행
 
 | 공개 함수 | IPC | 입력 | 출력·효과 |
 | --- | --- | --- | --- |
-| `listScenarioFolder` | `scenario:list-folder` | 없음 | folderPath, name/path/updatedAt 목록 |
-| `chooseScenarioFolder` | `scenario:choose-folder` | 없음 | 선택 후 동일 목록 |
-| `readScenarioFile` | `scenario:read-file` | path | 원문 또는 null |
 | `inspectScenario` | `qa:inspect` | Scenario | `{id, connected}[]` |
 | `runQa` | `qa:start` | Scenario, preview·workerId | status, log, reportPath |
 | `finishQaWorker` | `qa:finish-worker` | workerId | worker 종료 |

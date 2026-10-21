@@ -9,12 +9,13 @@ import {
 // 시나리오 실행 기록(RunRecord)을 run-report.template.md 의 {{키}} 자리에 채워
 // Markdown 리포트를 만든다. 템플릿은 인자로 받아 Vite(?raw) 없이도 테스트할 수 있게 한다.
 
-type StepOutcome = "passed" | "failed" | "skipped";
+type StepOutcome = "passed" | "failed" | "skipped" | "not_run";
 
 const STEP_OUTCOME_LABEL: Record<StepOutcome, string> = {
   passed: "✅ 통과",
   failed: "❌ 실패",
-  skipped: "⏭️ 미실행",
+  skipped: "⏭️ 조건 미충족",
+  not_run: "⏹️ 미실행",
 };
 
 const RESULT_LABEL: Record<ScenarioRunResult["status"], string> = {
@@ -40,6 +41,7 @@ const cell = (value: string | undefined): string =>
 // 실패한 시나리오는 실패 지점 이전 단계까지만 통과로, 이후 단계는 실행되지 않은 것으로 본다.
 export const stepOutcomes = (result: ScenarioRunResult): StepOutcome[] => {
   const { steps } = result.scenario;
+  if (result.stepResults) return steps.map((_, index) => result.stepResults?.find(step => step.stepNo === index + 1)?.status ?? "not_run");
   if (result.status === "passed") return steps.map(() => "passed");
   if (result.status === "cancelled") return steps.map(() => "skipped");
   const failedAt = Math.min(
@@ -105,8 +107,10 @@ const detailSection = (results: ScenarioRunResult[]): string =>
                 "| STEP | 동작 | 내용 | 결과 |",
                 "| --- | --- | --- | --- |",
                 ...result.scenario.steps.map(
-                  (step, stepIndex) =>
-                    `| ${stepIndex + 1} | ${actionLabel[step.action]} | ${cell(actionText(step))} | ${STEP_OUTCOME_LABEL[outcomes[stepIndex]]} |`,
+                  (step, stepIndex) => {
+                    const detail = result.stepResults?.find(item => item.stepNo === stepIndex + 1);
+                    return `| ${stepIndex + 1} | ${actionLabel[step.action]} | ${cell(actionText(step))} | ${STEP_OUTCOME_LABEL[outcomes[stepIndex]]}${detail ? ` · ${detail.elapsedMs}ms${detail.manualVerdict ? ` · 수동 판정 ${detail.manualVerdict === "passed" ? "통과" : "실패"}` : ""}${detail.manualReason ? ` · ${cell(detail.manualReason)}` : ""}` : ""} |`;
+                  },
                 ),
               ].join("\n")
             : "_단계가 없습니다._";
@@ -144,7 +148,7 @@ const actionItems = (results: ScenarioRunResult[]): string => {
   return [
     ...failures.map(
       (result) =>
-        `- [ ] **${result.scenario.title}** STEP ${failedStepNumber(result)} 실패 원인 확인 및 이슈 등록`,
+        `- [ ] **${result.scenario.title}** ${failedStepNumber(result) ? `STEP ${failedStepNumber(result)}` : "실행 준비"} 실패 원인 확인 및 이슈 등록`,
     ),
     "- [ ] 실패 시나리오 재실행으로 재현 여부 확인",
     "- [ ] 수정 후 전체 회귀 테스트 다시 실행",
@@ -179,15 +183,15 @@ export const buildRunReportMarkdown = (
 
   return fillTemplate(template, {
     title,
-    statusIcon: record.status === "passed" ? "✅" : "❌",
-    statusLabel: record.status === "passed" ? "통과" : "실패",
+    statusIcon: record.status === "passed" ? "✅" : record.status === "cancelled" ? "⏹️" : "❌",
+    statusLabel: record.status === "passed" ? "통과" : record.status === "cancelled" ? "취소" : "실패",
     scenarioCount: String(results.length),
     passedCount: String(record.passed),
     failedCount: String(record.failed),
     stepTotal: String(outcomes.length),
     stepPassed: String(outcomes.filter((item) => item === "passed").length),
     stepFailed: String(outcomes.filter((item) => item === "failed").length),
-    stepSkipped: String(outcomes.filter((item) => item === "skipped").length),
+    stepSkipped: String(outcomes.filter((item) => item === "skipped" || item === "not_run").length),
     passRate: `${total ? Math.round((record.passed / total) * 1000) / 10 : 0}%`,
     startedAt: startedAt ? formatReportDate(startedAt) : "-",
     finishedAt: formatReportDate(finishedAt),

@@ -11,7 +11,10 @@ import { type RequestField, type VerificationOperator, type FieldState, suggeste
 import { type ResponseBadge } from "../model/step-response-model";
 import { ResponseGlobalNameField, ResponsePicker } from "./StepResponseViews";
 import { RequestBodyEditor, ValueActionModal, ScenarioInputSettingsModal } from "./StepValueModals";
+import { Modal } from "../../../../shared/ui/Modal";
 
+import { Button } from "../../../../shared/ui/Button";
+import { Input } from "../../../../shared/ui/Input";
 export function findStepOperation(scenario: Scenario, index: number, catalogs: Record<string, ApiCatalog | null>, bindings: Record<string, string>) {
   const step = scenario.steps[index];
   return catalogs[bindings[step.server] ?? step.server]?.operations.find(op => "operationId" in step.api ? op.operationId === step.api.operationId : op.path === step.api.path && op.method.toUpperCase() === step.api.method);
@@ -105,12 +108,6 @@ export function SimpleStep({ scenario, index, catalogs, bindings, scope, bridge,
     setGlobalName("");
     setError("");
   };
-  useEffect(() => {
-    if (responsePointer === null) return;
-    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") closeResponseModal(); };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [responsePointer]);
   const fields: RequestField[] = (requestOperation?.parameters ?? []).filter(p => ["path", "query", "header", "cookie"].includes(p.location)).map(p => ({ name: p.name, area: (p.location === "path" ? "pathParams" : p.location === "header" ? "headers" : p.location === "cookie" ? "cookies" : "query") as RequestArea, type: p.type, required: p.required, description: p.description, example: p.example }));
   const body = objectValue(requestOperation?.bodySchema);
   for (const [name, schema] of Object.entries(objectValue(body.properties))) fields.push({ name, area: "body", type: objectValue(schema).type ?? "string", required: requestOperation?.bodyRequired === true && (body.required ?? []).includes(name), description: typeof objectValue(schema).description === "string" ? objectValue(schema).description : undefined, example: objectValue(schema).example ?? objectValue(schema).default });
@@ -210,11 +207,11 @@ export function SimpleStep({ scenario, index, catalogs, bindings, scope, bridge,
     // Shorten only exact, resolved references; keep the original value for editing and execution.
     const linkedValue = typeof current === "string" && scenario.valueBindings.some(binding => current === `{{vars.${binding.name}}}`);
     if (compact) return <span key={fieldKey} data-summary-field={fieldKey} className="api-json-line api-json-request-line">
-      <span className="api-json-request-key-group"><button type="button" className="api-json-token api-json-request-key-token" aria-label={`${index + 1}단계 ${field.name} 키 값 연결`} title={`${field.name} · ${field.type} · 값 연결`} aria-pressed={valueMenu === fieldKey} onClick={openValueMenu}>{JSON.stringify(field.name)}</button>{missingGlobal(state) && <GlobalVariableSetupLink onConfigure={onConfigureGlobal} name={state!.detail!} />}{state && !hasUserInput && <span className={`api-field-state api-field-state-${state.kind}`} title={state.detail}><strong>{state.label}</strong>{state.detail && (state.kind === "global" || state.detail !== field.name) && <code>{state.detail}</code>}</span>}</span><code>: <span className="api-json-value-token">{hasUserInput && userInput
+      <span className="api-json-request-key-group"><Button className="api-json-token api-json-request-key-token" aria-label={`${index + 1}단계 ${field.name} 키 값 연결`} title={`${field.name} · ${field.type} · 값 연결`} aria-pressed={valueMenu === fieldKey} onClick={openValueMenu}>{JSON.stringify(field.name)}</Button>{missingGlobal(state) && <GlobalVariableSetupLink onConfigure={onConfigureGlobal} name={state!.detail!} />}{state && !hasUserInput && <span className={`api-field-state api-field-state-${state.kind}`} title={state.detail}><strong>{state.label}</strong>{state.detail && (state.kind === "global" || state.detail !== field.name) && <code>{state.detail}</code>}</span>}</span><code>: <span className="api-json-value-token">{hasUserInput && userInput
         // A runtime input: show what will be asked, and open its settings (never the raw reference).
-        ? <button type="button" className="api-json-token api-json-input-token" aria-label={`${index + 1}단계 ${field.name} 실행 중 입력 설정`} title="실행할 때 입력받는 값 · 눌러서 설정" onClick={() => { setInputTarget(fieldKey); setValueMenu(null); }}>실행 중 입력 · {userInput.label ?? userInput.name}</button>
+        ? <Button className="api-json-token api-json-input-token" aria-label={`${index + 1}단계 ${field.name} 실행 중 입력 설정`} title="실행할 때 입력받는 값 · 눌러서 설정" onClick={() => { setInputTarget(fieldKey); setValueMenu(null); }}>실행 중 입력 · {userInput.label ?? userInput.name}</Button>
         : linkedValue
-        ? <button type="button" className="api-json-token" onClick={openValueMenu} aria-label={`${field.name} 연결값 설정`}>실행 시 연결값 사용</button>
+        ? <Button className="api-json-token" onClick={openValueMenu} aria-label={`${field.name} 연결값 설정`}>실행 시 연결값 사용</Button>
         : inlineEdit === fieldKey
           ? <input className="api-json-inline-input" autoFocus onFocus={event => event.currentTarget.select()} aria-label={`${index + 1}단계 ${field.name} 값`} defaultValue={current === undefined ? "" : typeof current === "string" ? current : JSON.stringify(current)} placeholder={field.example !== undefined ? String(typeof field.example === "string" ? field.example : JSON.stringify(field.example)) : field.type}
               onKeyDown={event => {
@@ -223,10 +220,10 @@ export function SimpleStep({ scenario, index, catalogs, bindings, scope, bridge,
               }}
               onBlur={event => { commitTyped(field, event.currentTarget.value, hasUserInput && event.currentTarget.value !== inputReference); setInlineEdit(null); }} />
           // Objects and arrays are edited in the value dialog; scalars right here.
-          : <button type="button" className={`api-json-token api-json-value-edit${current === undefined ? " is-unset" : ` api-json-type-${current === null ? "null" : Array.isArray(current) ? "array" : typeof current}`}`} aria-label={`${index + 1}단계 ${field.name} 값 ${current === undefined ? "입력" : "수정"}`} title={current === undefined ? "아직 비어 있습니다 · 눌러서 입력 (흐린 값은 명세 예시이며 보내지 않습니다)" : "눌러서 수정"}
+          : <Button variant="secondary" className={`api-json-token api-json-value-edit${current === undefined ? " is-unset" : ` api-json-type-${current === null ? "null" : Array.isArray(current) ? "array" : typeof current}`}`} aria-label={`${index + 1}단계 ${field.name} 값 ${current === undefined ? "입력" : "수정"}`} title={current === undefined ? "아직 비어 있습니다 · 눌러서 입력 (흐린 값은 명세 예시이며 보내지 않습니다)" : "눌러서 수정"}
               onClick={() => { if (isStructuredRequestField(field)) openValueMenu(); else { setInlineEdit(fieldKey); setValueMenu(null); } }}>
               {current === undefined ? (field.example !== undefined ? `예: ${JSON.stringify(field.example)}` : field.type) : requestToken(current, field)}
-            </button>}</span></code>{!last && ","}
+            </Button>}</span></code>{!last && ","}
       {valueModal}{inputSettings}{scenarioLink}
     </span>;
     const structured = isStructuredRequestField(field);
@@ -261,7 +258,7 @@ export function SimpleStep({ scenario, index, catalogs, bindings, scope, bridge,
           {input}
           {missingGlobal(state) && <GlobalVariableSetupLink onConfigure={onConfigureGlobal} name={state!.detail!} />}{state && <span className={`api-field-state api-field-state-${state.kind}`} title={state.detail}><strong>{state.label}</strong>{state.detail && <code>{state.detail}</code>}</span>}
         </div>
-        <div className="api-field-actions"><button type="button" className="api-field-value-trigger" aria-expanded={valueMenu === fieldKey} onClick={openValueMenu}>값 연결</button></div>
+        <div className="api-field-actions"><Button variant="secondary" className="api-field-value-trigger" aria-expanded={valueMenu === fieldKey} onClick={openValueMenu}>값 연결</Button></div>
       </div>
       {valueModal}{inputSettings}{scenarioLink}
     </div>;
@@ -286,23 +283,22 @@ export function SimpleStep({ scenario, index, catalogs, bindings, scope, bridge,
       const count = extra.length + (staleBody ? 1 : 0);
       if (!count) return null;
       return <div className="api-warning api-extra-fields" role="status"><strong>이 API 명세에 없는 요청값 {count}개</strong><ul>
-        {staleBody && <li><code>body (요청 본문 전체)</code><button type="button" className="api-compose-link" onClick={removeBody}>제거</button></li>}
-        {extra.map(item => <li key={`${item.area}:${item.name}`}><code>{item.area}.{item.name}</code><button type="button" className="api-compose-link" onClick={() => setValue(item.area, item.name, undefined)}>제거</button></li>)}
+        {staleBody && <li><code>body (요청 본문 전체)</code><Button className="api-compose-link" onClick={removeBody}>제거</Button></li>}
+        {extra.map(item => <li key={`${item.area}:${item.name}`}><code>{item.area}.{item.name}</code><Button className="api-compose-link" onClick={() => setValue(item.area, item.name, undefined)}>제거</Button></li>)}
       </ul></div>;
     })()}
     <header className="api-simple-section-heading"><h3>응답</h3></header>
     <ResponsePicker operation={operation} spec={spec} actionLabel="설정" selectedPointer={responsePointer} showPreview={false} badges={responseBadges} onSelect={pointer => { setResponsePointer(pointer); setAction(null); setVerificationPointer(pointer); setGlobalName(existingGlobalExtraction(pointer)?.target.slice("globals.".length) || responseGlobalNameSuggestions(operation, pointer)[0]?.name || "response"); setError(""); }} />
-    {responsePointer !== null && <div className="api-value-modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) closeResponseModal(); }}>
-      <section className="api-value-modal api-response-action-modal" role="dialog" aria-modal="true" aria-label="응답값 사용 설정" onMouseDown={event => event.stopPropagation()}>
+    {responsePointer !== null && <Modal backdropClassName="api-value-modal-backdrop" className="api-value-modal api-response-action-modal" label="응답값 사용 설정" onClose={closeResponseModal}>
         <header>
           <div><p className="api-value-modal-kicker">응답값 사용</p><h2>{responsePointer || "전체 응답"}</h2><small>{index + 1}단계 · 응답 JSON</small></div>
-          <button type="button" aria-label="응답값 설정 닫기" onClick={closeResponseModal}>×</button>
+          <Button variant="ghost" iconOnly aria-label="응답값 설정 닫기" onClick={closeResponseModal}>×</Button>
         </header>
         <div className="api-value-selection-summary"><span>선택한 응답 항목</span><code>{responsePointer || "전체 응답"}</code></div>
         <p className="api-value-modal-note">응답값의 검증 또는 전역변수 저장을 설정하세요. 다른 요청에서 사용하려면 해당 요청의 ‘값 연결’을 이용하세요.</p>
         <div className="api-response-action-options">
-          <button type="button" className={action === "verify" ? "api-value-modal-option is-active" : "api-value-modal-option"} onClick={() => openResponseAction("verify")}><strong>이 값 검증</strong><small>실행 결과가 존재하거나 기대값과 일치하는지 확인</small></button>
-          <button type="button" className={action === "global" ? "api-value-modal-option is-active" : "api-value-modal-option"} onClick={() => openResponseAction("global")}><strong>전역변수로 저장</strong><small>다른 시나리오나 요청에서 재사용할 값으로 저장</small></button>
+          <Button className={action === "verify" ? "api-value-modal-option is-active" : "api-value-modal-option"} onClick={() => openResponseAction("verify")}><strong>이 값 검증</strong><small>실행 결과가 존재하거나 기대값과 일치하는지 확인</small></Button>
+          <Button className={action === "global" ? "api-value-modal-option is-active" : "api-value-modal-option"} onClick={() => openResponseAction("global")}><strong>전역변수로 저장</strong><small>다른 시나리오나 요청에서 재사용할 값으로 저장</small></Button>
         </div>
         {action === "global" && <section className="api-action-editor" aria-label="응답 전역변수 저장 설정">
           <ResponseGlobalNameField value={globalName} suggestions={responseNameSuggestions} onChange={setGlobalName} />
@@ -313,30 +309,29 @@ export function SimpleStep({ scenario, index, catalogs, bindings, scope, bridge,
             </select>
             <small>{globals.some(global => global.name === globalName) ? "선택한 기존 변수는 시나리오 실행 시 응답값으로 덮어씁니다." : "입력한 이름의 전역변수가 없으면 시나리오 실행 시 새로 추가됩니다."}</small>
           </label>
-          {verificationPointer !== null && <button type="button" className="api-primary" onClick={() => {
-            if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(globalName) || ["constructor", "prototype"].includes(globalName)) { setError("전역변수 이름은 영문으로 시작하는 영문·숫자·밑줄을 사용하세요."); return; }
-            const previous = existingGlobalExtraction(verificationPointer);
-            update({ extract: [...step.extract.filter(e => e !== previous && e.target !== `globals.${globalName}`), { source: "body", pointer: verificationPointer, target: `globals.${globalName}` }] }); closeResponseModal();
-          }}>저장 설정 적용</button>}
-          {existingGlobalExtraction(verificationPointer) && <button type="button" className="api-danger-action" onClick={() => { const existing = existingGlobalExtraction(verificationPointer); if (existing) update({ extract: step.extract.filter(extract => extract !== existing) }); closeResponseModal(); }}>전역변수 저장 해제</button>}
+          {verificationPointer !== null && <Button variant="primary" onClick={() => {
+ if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(globalName) || ["constructor", "prototype"].includes(globalName)) { setError("전역변수 이름은 영문으로 시작하는 영문·숫자·밑줄을 사용하세요."); return; }
+ const previous = existingGlobalExtraction(verificationPointer);
+ update({ extract: [...step.extract.filter(e => e !== previous && e.target !== `globals.${globalName}`), { source: "body", pointer: verificationPointer, target: `globals.${globalName}` }] }); closeResponseModal();
+ }}>저장 설정 적용</Button>}
+          {existingGlobalExtraction(verificationPointer) && <Button variant="danger" onClick={() => { const existing = existingGlobalExtraction(verificationPointer); if (existing) update({ extract: step.extract.filter(extract => extract !== existing) }); closeResponseModal(); }}>전역변수 저장 해제</Button>}
         </section>}
         {action === "verify" && verificationPointer !== null && <section className="api-verification-form" aria-label="응답 검증 설정">
           <p><strong>선택한 응답 필드</strong> · <code>{verificationPointer || "전체 응답"}</code></p>
           <label>검증 방식<select aria-label="응답 검증 방식" value={verificationOperator} onChange={e => setVerificationOperator(e.target.value as VerificationOperator)}>{(Object.keys(verificationOperatorLabels) as VerificationOperator[]).map(operator => <option key={operator} value={operator}>{verificationOperatorLabels[operator]}</option>)}</select></label>
-          {verificationOperator !== "exists" && <label>기대값<input aria-label="응답 검증 기대값" value={verificationValue} placeholder="예: success 또는 200" onChange={e => setVerificationValue(e.target.value)} /><small className="api-field-help">숫자·true/false·JSON은 그 형식으로 비교합니다. 문자열 "200"은 따옴표를 붙여 입력하세요.</small></label>}
-          <div className="api-actions"><button type="button" className="api-primary" onClick={() => {
-            if (verificationOperator !== "exists" && !verificationValue.trim()) { setError("검증할 기대값을 입력하세요."); return; }
-            const expectation = verificationOperator === "exists" ? { source: "body" as const, pointer: verificationPointer, operator: verificationOperator } : { source: "body" as const, pointer: verificationPointer, operator: verificationOperator, value: parseExpectedValue(verificationValue) };
-            const found = existingVerificationIndex(verificationPointer);
-            const current = step.expect ?? [];
-            updateExpectations(found < 0 ? [...current, expectation] : current.map((item, i) => i === found ? expectation : item)); closeResponseModal();
-          }}>{existingVerificationIndex(verificationPointer) < 0 ? "검증 추가" : "검증 수정"}</button>{existingVerificationIndex(verificationPointer) >= 0 && <button type="button" className="api-danger-action" onClick={() => { const found = existingVerificationIndex(verificationPointer); updateExpectations((step.expect ?? []).filter((_, i) => i !== found)); closeResponseModal(); }}>검증 제거</button>}</div>
+          {verificationOperator !== "exists" && <label>기대값<Input aria-label="응답 검증 기대값" value={verificationValue} placeholder="예: success 또는 200" onChange={e => setVerificationValue(e.target.value)} /><small className="api-field-help">숫자·true/false·JSON은 그 형식으로 비교합니다. 문자열 "200"은 따옴표를 붙여 입력하세요.</small></label>}
+          <div className="api-actions"><Button variant="primary" onClick={() => {
+ if (verificationOperator !== "exists" && !verificationValue.trim()) { setError("검증할 기대값을 입력하세요."); return; }
+ const expectation = verificationOperator === "exists" ? { source: "body" as const, pointer: verificationPointer, operator: verificationOperator } : { source: "body" as const, pointer: verificationPointer, operator: verificationOperator, value: parseExpectedValue(verificationValue) };
+ const found = existingVerificationIndex(verificationPointer);
+ const current = step.expect ?? [];
+ updateExpectations(found < 0 ? [...current, expectation] : current.map((item, i) => i === found ? expectation : item)); closeResponseModal();
+ }}>{existingVerificationIndex(verificationPointer) < 0 ? "검증 추가" : "검증 수정"}</Button>{existingVerificationIndex(verificationPointer) >= 0 && <Button variant="danger" onClick={() => { const found = existingVerificationIndex(verificationPointer); updateExpectations((step.expect ?? []).filter((_, i) => i !== found)); closeResponseModal(); }}>검증 제거</Button>}</div>
         </section>}
         {error && <p className="api-field-menu-error" role="alert">{error}</p>}
-        <footer><button type="button" onClick={closeResponseModal}>닫기</button></footer>
-      </section>
-    </div>}
-    <header className="api-simple-section-heading"><h3>검증</h3><button type="button" onClick={() => { setNewExpectation((step.expect ?? []).length); updateExpectations([...(step.expect ?? []), { source: "status", operator: "equals" }]); }}>+ HTTP 상태 검증</button></header>
+        <footer><Button variant="secondary" onClick={closeResponseModal}>닫기</Button></footer>
+    </Modal>}
+    <header className="api-simple-section-heading"><h3>검증</h3><Button variant="secondary" onClick={() => { setNewExpectation((step.expect ?? []).length); updateExpectations([...(step.expect ?? []), { source: "status", operator: "equals" }]); }}>+ HTTP 상태 검증</Button></header>
     <p className="api-field-help">상태 검증이 없으면 2xx 응답이면 통과합니다. 201·404처럼 특정 코드를 기대할 때만 상태 검증을 추가하세요. 값 검증은 응답 항목의 ‘설정’에서 추가합니다.</p>
     {(step.expect ?? []).map((expectation, n) => {
       const change = (patch: Partial<typeof expectation>) => updateExpectations(step.expect!.map((v, i) => i === n ? { ...v, ...patch } : v));
@@ -344,13 +339,13 @@ export function SimpleStep({ scenario, index, catalogs, bindings, scope, bridge,
       const linked = linkedValueLabel(scenario, expectation.value);
       return <details key={n} className="api-verification-item" open={newExpectation === n || undefined}><summary>검증 {n + 1} · {verificationSourceLabels[expectation.source]}{target} · {verificationOperatorLabels[expectation.operator]}{expectation.operator !== "exists" ? ` ${linked ? `[${linked}]` : expectedValueText(expectation.value)}` : ""}</summary>
       <label>검증 대상<select value={expectation.source} onChange={e => { const source = e.target.value as typeof expectation.source; change(source === "status" ? { source, pointer: undefined, header: undefined, operator: "equals", value: expectation.value ?? 200 } : { source, pointer: source === "body" ? "" : undefined, header: source === "header" ? "content-type" : undefined }); }}>{(Object.keys(verificationSourceLabels) as (keyof typeof verificationSourceLabels)[]).map(source => <option key={source} value={source}>{verificationSourceLabels[source]}</option>)}</select></label>
-      {expectation.source !== "status" && <label>{expectation.source === "body" ? "응답 경로 (JSON Pointer)" : "헤더 이름"}<input value={expectation.pointer ?? expectation.header ?? ""} onChange={e => change(expectation.source === "body" ? { pointer: e.target.value } : { header: e.target.value })} /></label>}
+      {expectation.source !== "status" && <label>{expectation.source === "body" ? "응답 경로 (JSON Pointer)" : "헤더 이름"}<Input value={expectation.pointer ?? expectation.header ?? ""} onChange={e => change(expectation.source === "body" ? { pointer: e.target.value } : { header: e.target.value })} /></label>}
       <label>검증 방식<select value={expectation.operator} onChange={e => change({ operator: e.target.value as VerificationOperator })}>{(Object.keys(verificationOperatorLabels) as VerificationOperator[]).filter(operator => expectation.source !== "status" || operator !== "exists").map(operator => <option key={operator} value={operator}>{verificationOperatorLabels[operator]}</option>)}</select></label>
       {expectation.operator !== "exists" && (linked
-        ? <div className="api-expect-linked"><span>기대값</span><span className="api-expect-linked-value"><strong>앞 단계 값</strong><code>{linked}</code><button type="button" onClick={() => setExpectLink(n)}>바꾸기</button><button type="button" onClick={() => change({ value: undefined })}>연결 해제</button></span></div>
-        : <label>기대값<span className="api-expect-value-row"><DraftInput autoFocus={newExpectation === n} required value={expectedValueText(expectation.value)} placeholder={expectation.source === "status" ? "예: 201 또는 404" : "예: success 또는 200"} onChange={e => change({ value: e.target.value === "" ? undefined : parseExpectedValue(e.target.value) })} />{index > 0 && expectation.source !== "status" && <button type="button" title="앞 단계의 요청값·응답값과 같은지 비교합니다" onClick={() => setExpectLink(n)}>앞 단계 값</button>}</span></label>)}
+        ? <div className="api-expect-linked"><span>기대값</span><span className="api-expect-linked-value"><strong>앞 단계 값</strong><code>{linked}</code><Button variant="secondary" onClick={() => setExpectLink(n)}>바꾸기</Button><Button variant="secondary" onClick={() => change({ value: undefined })}>연결 해제</Button></span></div>
+        : <label>기대값<span className="api-expect-value-row"><DraftInput autoFocus={newExpectation === n} required value={expectedValueText(expectation.value)} placeholder={expectation.source === "status" ? "예: 201 또는 404" : "예: success 또는 200"} onChange={e => change({ value: e.target.value === "" ? undefined : parseExpectedValue(e.target.value) })} />{index > 0 && expectation.source !== "status" && <Button variant="secondary" title="앞 단계의 요청값·응답값과 같은지 비교합니다" onClick={() => setExpectLink(n)}>앞 단계 값</Button>}</span></label>)}
       {expectLink === n && <ScenarioValueLink lastRun={lastRun} scenario={scenario} targetIndex={index} target={{ area: "body", name: expectation.pointer || expectation.header || "기대값", expect: n }} catalogs={catalogs} bindings={bindings} onChange={onChange} onClose={() => setExpectLink(null)} />}
-      <button type="button" className="api-danger-action" onClick={() => updateExpectations(step.expect!.filter((_, i) => i !== n))}>검증 제거</button>
+      <Button variant="danger" onClick={() => updateExpectations(step.expect!.filter((_, i) => i !== n))}>검증 제거</Button>
     </details>; })}
     {error && <p role="alert" className="api-warning">{error}</p>}
   </div>;

@@ -16,7 +16,7 @@
     "build": "npm run clean:electron && node scripts/copy-session-recorder.cjs && vite build && tsc -p tsconfig.electron.json",
     "start": "npm run build && electron .",
     "preview": "vite preview",
-    "test": "playwright test",
+    "test": "cross-env PLAYWRIGHT_BROWSERS_PATH=0 playwright test",
     "test:ui": "playwright test --ui",
     "test:api": "tsx --test tests/api-testing/*.test.ts",
     "test:report": "tsx --test tests/run-report.test.ts",

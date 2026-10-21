@@ -19,7 +19,7 @@ export const AuthFlowLayout = ({ screenLabel, steps, current, backLabel, onBack,
     <header className="auth-flow-bar">
       {backLabel && (
         <>
-          <Button className="auth-flow-back" onClick={onBack} aria-label={`${backLabel}으로 돌아가기`}>
+          <Button variant="ghost" size="small" className="auth-flow-back" onClick={onBack} aria-label={`${backLabel}으로 돌아가기`}>
             <span className="msi" aria-hidden="true">chevron_left</span>
             {backLabel}
           </Button>

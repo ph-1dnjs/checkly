@@ -1,24 +1,8 @@
+import { installAuthStub, owner } from './fixtures/auth-stub'
 import { expect, test } from '@playwright/test'
 
 test('uses the dashboard and execution navigation layout', async ({ page }) => {
-  await page.addInitScript(() => {
-    Object.defineProperty(window, 'electronAPI', {
-      value: {
-        loadScenarioMarkdown: async () => null,
-        loadMarkerPositions: async () => null,
-        saveMarkerPositions: async () => undefined,
-        listScenarioFolder: async () => ({ folderPath: null, files: [] }),
-        readScenarioFile: async () => null,
-        onManualInputRequired: () => () => undefined,
-        onManualControlRequired: () => () => undefined,
-        onManualResultRequired: () => () => undefined,
-        onQaProgress: () => () => undefined,
-        onQaPreview: () => () => undefined,
-        onQaStepPreview: () => () => undefined,
-        onRunVideo: () => () => undefined,
-      },
-    })
-  })
+  await installAuthStub(page, { enabled: true, session: owner })
   await page.goto('/')
 
   await expect(page.getByText('대시보드', { exact: true })).toBeVisible()
@@ -39,9 +23,9 @@ test('uses the dashboard and execution navigation layout', async ({ page }) => {
   await expect(page.getByRole('tab', { name: '편집' })).toHaveAttribute('aria-selected', 'true')
   await page.getByRole('tab', { name: /실행/ }).click()
 
-  await expect(page.getByText('시나리오 폴더를 선택해 주세요')).toBeVisible()
+  await expect(page.getByText('저장된 시나리오가 없습니다.')).toBeVisible()
 
-  await page.getByRole('button', { name: '시나리오 실행' }).click()
+  await page.getByRole('button', { name: '시나리오 실행', exact: true }).click()
   await expect(
     page.getByRole('heading', { name: '시나리오를 실행할 수 없습니다' }),
   ).toBeVisible()

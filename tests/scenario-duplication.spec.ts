@@ -1,24 +1,8 @@
+import { installAuthStub, owner } from './fixtures/auth-stub'
 import { expect, test } from '@playwright/test'
 
 test.beforeEach(async ({ page }) => {
-  await page.addInitScript(() => {
-    Object.defineProperty(window, 'electronAPI', {
-      value: {
-        loadScenarioMarkdown: async () => null,
-        loadMarkerPositions: async () => null,
-        saveMarkerPositions: async () => undefined,
-        listScenarioFolder: async () => ({ folderPath: null, files: [] }),
-        readScenarioFile: async () => null,
-        onManualInputRequired: () => () => undefined,
-        onManualControlRequired: () => () => undefined,
-        onManualResultRequired: () => () => undefined,
-        onQaProgress: () => () => undefined,
-        onQaPreview: () => () => undefined,
-        onQaStepPreview: () => () => undefined,
-        onRunVideo: () => () => undefined,
-      },
-    })
-  })
+  await installAuthStub(page, { enabled: true, session: owner })
   await page.goto('/')
   await page.getByRole('button', { name: '시나리오 · 편집과 실행' }).click()
   await page.getByRole('tab', { name: '편집' }).click()
@@ -41,7 +25,7 @@ test('duplicates multiple cases with defaults, tags and unique names', async ({ 
   await dialog.getByRole('button', { name: '2개 복제', exact: true }).click()
   await expect(dialog).toHaveCount(0)
   const source = page.getByRole('textbox', { name: '시나리오 Markdown 원본' })
-  await expect(source).toHaveValue([
+  await expect.poll(async () => (await source.inputValue()).replace(/^(id|code):.*\n/gm, '').replace(/ <!-- step:[a-f0-9-]{36} -->/g, '')).toBe([
     '# 시나리오: 로그인',
     'url: https://example.com',
     'tag: 인증',

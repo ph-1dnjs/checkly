@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState, type InputHTMLAttributes, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ComponentProps, type ReactNode } from "react";
 import { Button } from "../../shared/ui/Button";
+import { Input, PasswordInput as SharedPasswordInput } from "../../shared/ui/Input";
 import { copyText, type FieldCheck } from "./model";
 
 export const Wordmark = ({ className }: { className?: string }) => (
@@ -8,20 +9,14 @@ export const Wordmark = ({ className }: { className?: string }) => (
   </span>
 );
 
-type InputProps = Omit<InputHTMLAttributes<HTMLInputElement>, "onChange" | "value"> & {
+type InputProps = Omit<ComponentProps<typeof Input>, "onChange" | "value" | "size"> & {
   value: string;
   onValue: (value: string) => void;
 };
 
-/** 프로젝트 코드·닉네임처럼 철자 그대로 쓰는 값. */
-export const AuthInput = ({ onValue, className, ...rest }: InputProps) => (
-  <input
-    className={["auth-input", className].filter(Boolean).join(" ")}
-    autoComplete="off"
-    spellCheck={false}
-    onChange={(event) => onValue(event.target.value)}
-    {...rest}
-  />
+/** 프로젝트 코드·닉네임처럼 철자 그대로 쓰는 값. 시작 화면은 large 컨트롤을 쓴다. */
+export const AuthInput = ({ onValue, ...rest }: InputProps) => (
+  <Input size="large" autoComplete="off" spellCheck={false} onChange={(event) => onValue(event.target.value)} {...rest} />
 );
 
 /** 표시/숨기기 버튼이 붙은 비밀번호 입력. visible은 같은 폼의 확인 칸과 공유한다. */
@@ -29,14 +24,18 @@ export const PasswordInput = ({
   visible,
   onToggle,
   subject = "비밀번호",
+  onValue,
   ...rest
 }: Omit<InputProps, "type"> & { visible: boolean; onToggle: () => void; /** 표시/숨기기 버튼 이름에 쓴다. */ subject?: string }) => (
-  <div className="auth-password">
-    <AuthInput type={visible ? "text" : "password"} autoComplete="current-password" {...rest} />
-    <Button className="auth-password-toggle" onClick={onToggle} aria-pressed={visible} aria-label={visible ? `${subject} 숨기기` : `${subject} 표시`}>
-      {visible ? "숨기기" : "표시"}
-    </Button>
-  </div>
+  <SharedPasswordInput
+    size="large"
+    spellCheck={false}
+    visible={visible}
+    onToggleVisible={onToggle}
+    subject={subject}
+    onChange={(event) => onValue(event.target.value)}
+    {...rest}
+  />
 );
 
 export const Field = ({ label, check, className, children }: { label: string; check?: FieldCheck; className?: string; children: ReactNode }) => (
@@ -77,6 +76,7 @@ export const CopyButton = ({ value, label = "복사", className, subject }: { va
   useEffect(() => () => window.clearTimeout(timer.current), []);
   return (
     <Button
+      variant="secondary"
       className={["copy-button", className].filter(Boolean).join(" ")}
       aria-label={subject ? `${subject} ${copied ? "복사됨" : label}` : undefined}
       disabled={!value}

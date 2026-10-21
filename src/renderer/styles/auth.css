@@ -13,48 +13,39 @@
 .auth-login-brand { display:flex; flex-direction:column; align-items:center; gap:12px; }
 .auth-login-brand img { display:block; width:72px; height:72px; }
 .auth-login-brand h1 { margin:0; font-size:inherit; font-weight:inherit; line-height:1; }
-.auth-login-submit { margin-top:6px; }
-.auth-divider { display:flex; align-items:center; gap:12px; color:#8a939c; font-size:11px; }
-.auth-divider i { flex:1; height:1px; background:#e4e7ea; }
-.auth-login-alt { display:flex; flex-direction:column; gap:14px; }
-.auth-login-create { display:flex; align-items:center; justify-content:center; gap:6px; color:#8a939c; font-size:12px; }
-.auth-link { padding:0; border:0; background:none; color:#1f63ae; font-size:12px; font-weight:600; cursor:pointer; }
-.auth-link:hover { text-decoration:underline; }
+.auth-login-submit { margin-top:8px; }
+.auth-divider { display:flex; align-items:center; gap:12px; color:#8a939c; font-size:12px; }
+.auth-divider i { flex:1; height:1px; background:#e8ebee; }
+.auth-login-alt { display:flex; flex-direction:column; gap:16px; }
+.auth-login-create { display:flex; align-items:center; justify-content:center; gap:6px; color:#8a939c; font-size:13px; }
+.auth-link { padding:0; border:0; background:none; color:#1f63ae; font-size:13px; font-weight:600; cursor:pointer; text-decoration:underline; text-decoration-color:transparent; text-underline-offset:3px; transition:text-decoration-color 140ms ease; }
+.auth-link:hover { text-decoration-color:#1f63ae; }
 
 /* 시작 시 연결 실패 */
 .auth-unavailable { display:flex; flex-direction:column; align-items:center; gap:10px; padding:20px 16px; border:1px solid #e4e7ea; border-radius:4px; background:#fafbfc; text-align:center; }
 .auth-unavailable .msi { color:#8a939c; font-size:28px; }
 .auth-unavailable p { margin:0; color:#3d4650; font-size:13px; line-height:1.6; text-wrap:pretty; }
 
-/* 입력 */
+/* 입력 · 버튼: 모양과 크기는 shared/ui Input·Button(styles/controls.css, large)이 맡는다. */
 .auth-form { margin:0; display:flex; flex-direction:column; gap:10px; }
-.auth-input { display:block; width:100%; height:40px; padding:0 10px; border:1px solid #d8dde2; border-radius:4px; background:#fff; color:#14181c; font-size:13px; transition:border-color 120ms ease, box-shadow 120ms ease; }
-.auth-input.mono { font-family:D2Coding,ui-monospace,monospace; }
-.auth-input::placeholder { color:#a6aeb5; }
-.auth-input:focus { border-color:#3d8ce0; box-shadow:0 0 0 3px #edf4fc; }
-.auth-password { position:relative; }
-.auth-password .auth-input { padding-right:64px; }
-.auth-password-toggle { position:absolute; top:7px; right:5px; height:26px; display:flex; align-items:center; padding:0 8px; border:0; border-radius:4px; background:transparent; color:#5a646e; font-size:11px; white-space:nowrap; cursor:pointer; }
-.auth-password-toggle:hover { background:#f0f3f5; }
-.auth-remember { display:flex; align-items:center; gap:8px; width:fit-content; padding:2px 0; color:#3d4650; font-size:12px; cursor:pointer; user-select:none; }
-.auth-remember input { width:15px; height:15px; margin:0; accent-color:#1f63ae; cursor:pointer; }
+.auth-login-options { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+/* 비밀번호 찾기 (Checkly v30 "시작 · 로그인") */
+.auth-forgot { padding:4px 0 0; border:0; background:none; color:#5a646e; font-size:13px; cursor:pointer; text-decoration:underline; text-decoration-color:transparent; text-underline-offset:3px; transition:color 140ms ease, text-decoration-color 140ms ease; }
+.auth-forgot:hover { color:#14181c; text-decoration-color:#14181c; }
+.auth-reset-code { letter-spacing:.12em; }
+.auth-mono-strong { color:#14181c; font-family:D2Coding,ui-monospace,monospace; font-weight:700; }
+.auth-remember { display:flex; align-items:center; gap:8px; width:fit-content; padding:4px 0 0; color:#3d4650; font-size:13px; cursor:pointer; user-select:none; }
+.auth-remember input { width:16px; height:16px; margin:0; accent-color:#1f63ae; cursor:pointer; }
 .auth-field-label { padding-bottom:6px; color:#5a646e; font-size:11px; }
 .auth-field-check { min-height:19px; padding-top:6px; color:#8a939c; font-family:D2Coding,ui-monospace,monospace; font-size:11px; }
 .auth-field-check[data-tone="warn"] { color:#96690c; }
 .auth-field-check[data-tone="fail"] { color:#b32318; }
 .auth-field-check[data-tone="pass"] { color:#1e7a4a; }
 .auth-field-gap { padding-top:6px; }
-.auth-error { display:flex; align-items:center; gap:6px; color:#b32318; font-size:12px; line-height:1.5; }
-.auth-error .msi { flex:none; font-size:16px; }
+.auth-error { display:flex; align-items:center; gap:8px; padding:9px 12px; border:1px solid #f6d5d1; border-radius:8px; background:#fdf3f2; color:#b32318; font-size:12.5px; line-height:1.5; }
+.auth-error .msi { flex:none; font-size:17px; }
 
-/* 버튼 */
-.auth-btn { width:100%; height:40px; display:flex; align-items:center; justify-content:center; padding:0 14px; border-radius:4px; font-family:inherit; font-size:13px; white-space:nowrap; cursor:pointer; transition:background 120ms ease; }
-.auth-btn-primary { border:0; background:#1f63ae; color:#fff; font-weight:600; }
-.auth-btn-primary:hover { background:#17538f; }
-.auth-btn-secondary { border:1px solid #d8dde2; background:#fff; color:#14181c; font-weight:400; }
-.auth-btn-secondary.strong { font-weight:600; }
-.auth-btn-secondary:hover { background:#f5f7f8; }
-.auth-btn:disabled { opacity:.6; cursor:default; }
+.auth-btn { width:100%; }
 .auth-actions { display:grid; grid-template-columns:1fr 1fr; gap:8px; padding-top:14px; }
 
 /* 가입·생성 흐름 */
@@ -62,9 +53,7 @@
 .auth-flow-bar { height:52px; flex:none; display:flex; align-items:center; gap:12px; padding:0 20px; border-bottom:1px solid #e4e7ea; }
 .auth-flow-bar img { display:block; width:24px; height:24px; }
 .auth-flow-bar-rule { width:1px; height:16px; background:#e4e7ea; }
-.auth-flow-back { height:30px; display:flex; align-items:center; gap:2px; padding:0 10px 0 4px; border:0; border-radius:4px; background:transparent; color:#3d4650; font-size:13px; cursor:pointer; }
-.auth-flow-back:hover { background:#f5f7f8; }
-.auth-flow-back .msi { font-size:18px; }
+.auth-flow-back { gap:2px; padding-left:4px; }
 .auth-flow-body { flex:1; display:flex; justify-content:center; padding:max(40px,9vh) 24px 48px; }
 .auth-flow-columns { width:100%; max-width:600px; display:flex; flex-wrap:wrap; align-items:flex-start; gap:32px 56px; }
 .auth-flow-content { flex:1 1 300px; min-width:0; max-width:360px; display:flex; flex-direction:column; gap:32px; }
@@ -98,9 +87,5 @@
 .auth-invite .copy-button { margin-left:auto; }
 .auth-invite-note { padding-top:8px; color:#8a939c; font-size:11px; }
 
-/* 복사 버튼: 시작 화면·계정 카드는 30px 칩, 설정 행에서는 .button과 함께 쓴다. */
-.copy-button { display:inline-flex; align-items:center; gap:4px; white-space:nowrap; }
-.copy-button .msi { font-size:15px; }
-.auth-screen .copy-button { height:30px; flex:none; padding:0 10px; border:1px solid #d8dde2; border-radius:4px; background:#fff; color:#14181c; font-size:12px; cursor:pointer; }
-.auth-screen .copy-button:hover { background:#f5f7f8; }
-.auth-screen .copy-button .msi { font-size:16px; }
+/* 복사 버튼: shared Button(secondary, small)에 아이콘을 붙인다. */
+.copy-button { flex:none; }

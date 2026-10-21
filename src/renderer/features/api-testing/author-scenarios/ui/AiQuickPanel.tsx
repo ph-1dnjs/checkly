@@ -3,6 +3,7 @@ import { AiResultReview } from "./AiResultReview";
 import { problemReport } from "../model/problem-report";
 import type { ApiAiQuick, ApiEnvironmentScope, ApiProject, ApiTestingBridge, SavedApiScenario } from "../../../../../app/api-testing/shared/workspace";
 
+import { Button } from "../../../../shared/ui/Button";
 const errorText = (error: unknown) => (error as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, "");
 
 /**
@@ -86,7 +87,7 @@ export function AiQuickPanel({ project, scope, bridge, onBusy, onSaved, onOpenSp
         <div className="api-ai-composer-bar">
           {toolChoice}
           <span className="api-ai-composer-hint">⌘/Ctrl + Enter</span>
-          <button type="button" className="api-primary" disabled={pending || noSpec || !request.trim()} title={noSpec ? "명세를 먼저 가져오세요" : undefined} onClick={() => void create()}>{pending ? "시작하는 중…" : "만들기"}</button>
+          <Button variant="primary" disabled={pending || noSpec || !request.trim()} title={noSpec ? "명세를 먼저 가져오세요" : undefined} onClick={() => void create()}>{pending ? "시작하는 중…" : "만들기"}</Button>
         </div>
       </div>
       <p className="api-field-help">AI가 백엔드 코드를 읽고 질문 없이 바로 만듭니다. 결과를 확인하고 저장하세요.</p>
@@ -110,7 +111,7 @@ export function AiQuickPanel({ project, scope, bridge, onBusy, onSaved, onOpenSp
         <strong>{toolName}로 만들기</strong>
         <small className="api-field-help">{environmentName(quick.environmentId)} · {statusText}</small>
       </div>
-      <button type="button" disabled={pending || running || reviewBusy} onClick={() => void startOver()}>새로 만들기</button>
+      <Button variant="secondary" disabled={pending || running || reviewBusy} onClick={() => void startOver()}>새로 만들기</Button>
     </header>
     {quick.environmentId !== scope.environmentId && <p className="api-warning" role="note">이 결과는 {environmentName(quick.environmentId)} 환경 기준입니다. 현재 환경으로 만들려면 새로 만드세요.</p>}
     <div className="api-ai-terminal-body">
@@ -123,7 +124,7 @@ export function AiQuickPanel({ project, scope, bridge, onBusy, onSaved, onOpenSp
           {running && <div className="api-ai-quick-progress" role="status">
             <span className="api-ai-quick-spinner" aria-hidden="true" />
             <span>{toolName}가 만드는 중{quick.progress ? ` · ${quick.progress}` : "…"}</span>
-            <button type="button" disabled={pending} onClick={() => void act(() => bridge.stopAiQuick(projectId))}>중단</button>
+            <Button variant="secondary" disabled={pending} onClick={() => void act(() => bridge.stopAiQuick(projectId))}>중단</Button>
           </div>}
           {quick.status === "stopped" && <p className="api-field-help" role="status">중단했습니다.</p>}
           {quick.error && (failedWithoutResult
@@ -132,11 +133,11 @@ export function AiQuickPanel({ project, scope, bridge, onBusy, onSaved, onOpenSp
               <p>위 {toolName}의 답에서 이유를 확인한 뒤 다음 중 하나를 하세요.</p>
               <ul>
                 <li>요청이 부족했다면 아래 입력창에 더 알려 주고 <strong>다시 요청</strong>하세요. 같은 대화로 이어집니다.</li>
-                <li>필요한 API가 명세에 없다면 <button type="button" className="api-issue-step-link" onClick={onOpenSpecs}>API 문서</button>에서 명세를 다시 가져온 뒤 <strong>새로 만들기</strong>를 누르세요.</li>
+                <li>필요한 API가 명세에 없다면 <Button className="api-issue-step-link" onClick={onOpenSpecs}>API 문서</Button>에서 명세를 다시 가져온 뒤 <strong>새로 만들기</strong>를 누르세요.</li>
               </ul>
             </div>
             : <p className="api-warning" role="alert">{quick.error}</p>)}
-          {check && !running && !sideOpen && <p className="api-ai-quick-ready" role="status">{savedThis ? "저장했습니다." : `시나리오 ${check.result.drafts.length}개를 만들었습니다.`} <button type="button" className="api-issue-step-link" onClick={() => setSideOpen(true)}>결과 보기</button></p>}
+          {check && !running && !sideOpen && <p className="api-ai-quick-ready" role="status">{savedThis ? "저장했습니다." : `시나리오 ${check.result.drafts.length}개를 만들었습니다.`} <Button className="api-issue-step-link" onClick={() => setSideOpen(true)}>결과 보기</Button></p>}
         </div>
         {error && <p className="api-warning" role="alert">{error}</p>}
         {/* Before saving only: once saved, the run result's AI로 고치기 takes over. */}
@@ -146,19 +147,19 @@ export function AiQuickPanel({ project, scope, bridge, onBusy, onSaved, onOpenSp
               onChange={e => setRevision(e.target.value)} onKeyDown={onShortcut(() => void revise(), Boolean(revision.trim()) && !running)} />
             <div className="api-ai-composer-bar">
               <span className="api-ai-composer-hint">⌘/Ctrl + Enter</span>
-              <button type="button" className="api-primary" disabled={pending || running || reviewBusy || !revision.trim()} onClick={() => void revise()}>{nextLabel}</button>
+              <Button variant="primary" disabled={pending || running || reviewBusy || !revision.trim()} onClick={() => void revise()}>{nextLabel}</Button>
             </div>
           </div>}
       </div>
       {/* The result opens over the right side, from a handle that marks a result not saved yet (as in the terminal). */}
-      {check && !running && !sideOpen && <button type="button" className={`api-ai-result-handle${unsaved ? " has-pending" : ""}`} aria-label={unsaved ? "결과 열기 (저장 전)" : "결과 열기"}
-        title={unsaved ? "저장하지 않은 결과가 있습니다" : "결과 열기"} onClick={() => setSideOpen(true)}>결과{unsaved && <span className="api-ai-result-dot" aria-hidden="true" />}</button>}
+      {check && !running && !sideOpen && <Button className={`api-ai-result-handle${unsaved ? " has-pending" : ""}`} aria-label={unsaved ? "결과 열기 (저장 전)" : "결과 열기"}
+        title={unsaved ? "저장하지 않은 결과가 있습니다" : "결과 열기"} onClick={() => setSideOpen(true)}>결과{unsaved && <span className="api-ai-result-dot" aria-hidden="true" />}</Button>}
       {check && !running && sideOpen && <aside className="api-ai-terminal-side" aria-label="AI 결과">
-        <header className="api-ai-terminal-side-head"><strong>결과</strong><button type="button" className="api-icon-button" aria-label="결과 닫기" title="결과 닫기" onClick={() => setSideOpen(false)}>×</button></header>
+        <header className="api-ai-terminal-side-head"><strong>결과</strong><Button variant="ghost" iconOnly className="api-icon-button" aria-label="결과 닫기" title="결과 닫기" onClick={() => setSideOpen(false)}>×</Button></header>
         {savedThis
           ? <div className="api-ai-quick-saved">
             <p role="status">저장했습니다.</p>
-            <button type="button" className="api-primary" onClick={() => void openSaved(quick.saved?.scenarioId)}>시나리오 보기·실행</button>
+            <Button variant="primary" onClick={() => void openSaved(quick.saved?.scenarioId)}>시나리오 보기·실행</Button>
           </div>
           : <AiResultReview key={check.modifiedAt} result={check.result} scope={quickScope} bridge={bridge} onBusy={setReviewBusy}
             onSaved={first => {

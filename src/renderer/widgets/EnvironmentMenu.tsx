@@ -1,15 +1,22 @@
 import { useEffect, useRef, useState } from "react";
-import type { ApiProject } from "../../../../app/api-testing/shared/workspace";
-import { Icon } from "../../../shared/ui/Icon";
-import { ServerTag } from "../../../entities/api-testing";
+import { Icon } from "../shared/ui/Icon";
+import { ServerTag } from "../entities/api-testing";
 
+import { Button } from "../shared/ui/Button";
+import { Input } from "../shared/ui/Input";
 const hostOf = (url: string | undefined) => {
   if (!url) return "";
   try { return new URL(url).host; } catch { return url; }
 };
 
+/** API 프로젝트(서버)와 웹 시나리오(웹 엔드포인트)가 같이 쓰는 모양. baseUrls는 서버 id → 이 환경의 주소. */
+export type EnvironmentMenuProject = {
+  environments: Array<{ id: string; name: string; baseUrls: Record<string, string> }>;
+  servers: Array<{ id: string; name: string }>;
+};
+
 type Props = {
-  project: ApiProject;
+  project: EnvironmentMenuProject;
   environmentId: string;
   /** The server whose address each row shows (the API docs' server); otherwise the first one with an address. */
   serverId?: string;
@@ -21,7 +28,7 @@ type Props = {
   onAdd?: (name: string) => Promise<void>;
 };
 
-/** The header's environment switch: the current environment, and a menu of the project's environments. */
+/** The header's environment switch: the current environment, and a menu of the project's environments (API 테스트, 시나리오 편집·실행). */
 export function EnvironmentMenu({ project, environmentId, serverId, label, title, disabled = false, onSelect, onAdd }: Props) {
   const [open, setOpen] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -53,16 +60,16 @@ export function EnvironmentMenu({ project, environmentId, serverId, label, title
   };
   const serverNames = Object.fromEntries(project.servers.map(server => [server.id, server.name]));
   return <div ref={root} className="api-env-menu">
-    <button ref={trigger} type="button" className="api-env-trigger" aria-label={label} aria-haspopup="menu" aria-expanded={open} title={title ?? (current ? `${current.name} 환경` : undefined)} disabled={disabled} onClick={() => open ? close() : setOpen(true)}>
+    <Button ref={trigger} className="api-env-trigger" aria-label={label} aria-haspopup="menu" aria-expanded={open} title={title ?? (current ? `${current.name} 환경` : undefined)} disabled={disabled} onClick={() => open ? close() : setOpen(true)}>
       <span className="api-env-current">{current?.name ?? "환경 선택"}</span><Icon name="expand_more" size={16} />
-    </button>
+    </Button>
     {open && <div role="menu" aria-label="환경 선택" className="api-env-popup">
       {!project.environments.length && <p className="api-env-empty">등록된 환경이 없습니다.<br />환경을 추가하면 서버 주소와 전역변수 값을 환경별로 나눌 수 있습니다.</p>}
-      {project.environments.map(environment => <button key={environment.id} type="button" role="menuitemradio" aria-checked={environment.id === environmentId} className="api-env-item" onClick={() => { close(); onSelect(environment.id); trigger.current?.focus(); }}>
+      {project.environments.map(environment => <Button key={environment.id} role="menuitemradio" aria-checked={environment.id === environmentId} className="api-env-item" onClick={() => { close(); onSelect(environment.id); trigger.current?.focus(); }}>
         <Icon name="check" size={16} className="api-env-check" />
         <span className="api-env-name">{environment.name}</span>
         <span className="api-env-host">{rowHost(environment.baseUrls)}</span>
-      </button>)}
+      </Button>)}
       {/* With several servers, which address each one calls in the current environment (their tag colours match the steps). */}
       {project.servers.length > 1 && current && <div className="api-env-servers" aria-label="프로젝트 서버">
         {project.servers.map(server => <div key={server.id} className="api-env-server"><ServerTag server={server.id} names={serverNames} /><span className="api-env-host">{hostOf(current.baseUrls[server.id]) || "미설정"}</span></div>)}
@@ -70,9 +77,9 @@ export function EnvironmentMenu({ project, environmentId, serverId, label, title
       {onAdd && <>
         <div className="api-env-sep" role="separator" />
         {adding ? <div className="api-env-add">
-          <input autoFocus aria-label="새 환경 이름" placeholder="예: staging" value={name} disabled={saving} onChange={event => { setName(event.target.value); setError(""); }} onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); void add(); } }} />
-          <button type="button" className="api-primary" disabled={saving || !name.trim()} onClick={() => void add()}>{saving ? "추가 중…" : "추가"}</button>
-        </div> : <button type="button" role="menuitem" className="api-env-item" onClick={() => setAdding(true)}><Icon name="add" size={16} className="api-env-add-icon" />환경 추가</button>}
+          <Input autoFocus aria-label="새 환경 이름" placeholder="예: staging" value={name} disabled={saving} onChange={event => { setName(event.target.value); setError(""); }} onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); void add(); } }} />
+          <Button variant="primary" disabled={saving || !name.trim()} onClick={() => void add()}>{saving ? "추가 중…" : "추가"}</Button>
+        </div> : <Button role="menuitem" className="api-env-item" onClick={() => setAdding(true)}><Icon name="add" size={16} className="api-env-add-icon" />환경 추가</Button>}
         {error && <p className="api-env-error" role="alert">{error}</p>}
         {adding && !error && <p className="api-env-hint">서버 주소는 프로젝트 설정에서 입력합니다.</p>}
       </>}

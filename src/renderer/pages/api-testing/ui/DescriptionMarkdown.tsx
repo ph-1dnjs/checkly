@@ -2,6 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState, type ComponentType } from 
 import { createRoot, type Root } from "react-dom/client";
 import DOMPurify from "dompurify";
 
+import { Button } from "../../../shared/ui/Button";
 let engine: Promise<typeof import("mermaid")["default"]> | undefined;
 function loadEngine() {
   return engine ??= import("mermaid").then(({ default: mermaid }) => {
@@ -149,15 +150,15 @@ export function Diagram({ source, title }: DiagramDefinition) {
     if (status !== "loading") void renderDiagram();
   };
   return <div className="api-diagram">
-    <button ref={trigger} type="button" className="api-diagram-trigger" aria-haspopup="dialog" disabled={status === "loading"} onClick={open}>
+    <Button ref={trigger} className="api-diagram-trigger" aria-haspopup="dialog" title="전체 화면으로 보기" disabled={status === "loading"} onClick={open}>
       {title}{status === "loading" ? " · 그리는 중…" : ""}
-    </button>
+    </Button>
     {status === "error" && <p role="alert">다이어그램을 표시하지 못했습니다. 버튼을 다시 눌러 재시도하세요.</p>}
     <dialog ref={dialog} className="api-diagram-dialog" onClose={() => trigger.current?.focus()}>
       <div className="api-actions"><strong className="api-diagram-title">{title}</strong>
-        <button type="button" onClick={() => setZoom(v => Math.max(60, v - 20))}>축소</button><span>{zoom}%</span>
-        <button type="button" onClick={() => setZoom(v => Math.min(250, v + 20))}>확대</button>
-        <button type="button" onClick={() => dialog.current?.close()}>닫기</button>
+        <Button variant="secondary" onClick={() => setZoom(v => Math.max(60, v - 20))}>축소</Button><span>{zoom}%</span>
+        <Button variant="secondary" onClick={() => setZoom(v => Math.min(250, v + 20))}>확대</Button>
+        <Button variant="secondary" onClick={() => dialog.current?.close()}>닫기</Button>
       </div>
       <div className="api-diagram-viewport">
         {svgMarkup ? <div className="api-diagram-zoom" style={{ width: `${zoom}%`, minWidth: zoom >= 100 ? "100%" : undefined }} dangerouslySetInnerHTML={{ __html: svgMarkup }} /> : status === "error" ? <p role="alert">다이어그램을 표시하지 못했습니다. 닫고 버튼을 다시 눌러 재시도하세요.</p> : <p>다이어그램을 그리는 중…</p>}

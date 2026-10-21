@@ -34,6 +34,8 @@
 | 설정 · 계정 카드 | `projects`, `members` 조회 | 멤버 |
 | 설정 · 초대코드 재발급 | `rpc regenerate_invite_code()` | 관리자 |
 | 설정 · 로그아웃 | `auth.signOut()` | 멤버 |
+| 설정 · 멤버 · 재설정 코드 | **Edge Function `issue-reset-code`** → 6자리 코드(30분, 한 번) | 관리자 |
+| 비밀번호 찾기 1 · 계정 확인 / 2 · 재설정 코드 / 3 · 새 비밀번호 | **Edge Function `reset-password`** `step` = `lookup` → `verify` → `reset` | anon + 재설정 코드 |
 
 **Edge Function (service_role)**
 
@@ -43,6 +45,8 @@
 | `join-project` | 입력값 확인 → auth 사용자 생성 → `join_project_for(user, invite, nick)`. 실패하면 사용자 삭제 |
 | `change-nickname` | auth 이메일과 `members.nickname`을 같이 변경 (프로필 관리) |
 | `remove-member` | 관리자가 멤버를 내보냄 → auth 사용자 삭제(멤버 행은 cascade) |
+| `issue-reset-code` | 관리자가 같은 프로젝트 팀원의 재설정 코드를 발급. `auth_password_resets`에 SHA-256(user_id:code)·만료(30분)만 저장하고 원문은 응답으로 한 번만 준다. 관리자 계정은 대상이 아니다 |
+| `reset-password` | 로그인 전 비밀번호 찾기. `lookup`(계정·관리자 닉네임), `verify`(코드만 확인), `reset`(코드 확인 → Admin API로 비밀번호 변경 → 코드 삭제). 5번 틀리거나 만료되면 코드를 지우고 400 `invalid_reset_code` |
 
 ## 테이블
 
@@ -53,6 +57,7 @@
 | `endpoints` | 프론트·백엔드 등. `kind`: `web` / `api` | 이름은 프로젝트 안에서 유일 |
 | `environments` | dev / staging / prod 등 | 이름은 프로젝트 안에서 유일 |
 | `endpoint_urls` | 엔드포인트 × 환경 → `base_url`, `spec_url`(api만) | 복합 FK로 다른 프로젝트 것과 섞이지 않음 |
+| `auth_password_resets` | 팀원 비밀번호 재설정 코드(해시·만료·시도 횟수) | 멤버당 1행, RLS 정책 없음(Edge Function만 접근) |
 
 - 엔드포인트 × 환경 주소는 모든 쌍을 채우지 않아도 된다. 행이 없으면 '미설정'이다. 각 기능이 자기에게 필요한 쌍이 비어 있으면 안내한다.
 - 수정되는 테이블에는 모두 `updated_at`, `updated_by`가 있고 트리거가 채운다.
@@ -105,7 +110,7 @@ create policy "같은 프로젝트" on public.<테이블> for all to authenticat
 | `src/app/ipc/auth/types.ts` | IPC 계약(`AuthBridge`). renderer는 `window.electronAPI.auth` |
 | `src/app/ipc/auth/client.ts` | main 안의 다른 기능용: `isSupabaseEnabled`, `getSupabase`, `getCurrentSession`, `onSessionChanged` |
 | `src/app/ipc/auth/{service,settings,storage,errors}.ts` | 로그인·가입·프로필, 설정 저장, 암호화 세션 저장, 한국어 오류 변환 |
-| `supabase/functions/*` | `create-project`, `join-project`, `change-nickname`, `remove-member` |
+| `supabase/functions/*` | `create-project`, `join-project`, `change-nickname`, `remove-member`, `issue-reset-code`, `reset-password` |
 
 - IPC 채널은 `auth:<메서드>`, 세션 변경 알림은 `auth:session`. 실패는 `{ ok: false, message }`로 돌려주고 bridge가 `Error(message)`로 reject한다.
 - 프로젝트 설정 저장은 `save_project_settings(p jsonb)` 한 번으로 한다(한 트랜잭션, security invoker). main이 마지막으로 읽은 행 중 빠진 것만 지우고, 읽은 뒤 다른 팀원이 추가·수정한 행이 있으면 충돌로 거절한다.
@@ -159,11 +164,13 @@ npx tsx --test tests/auth/*.test.ts
 
 ### 1. 웹 시나리오 (담당: 팀원)
 
+2026-10-13 사용자 결정: 웹 시나리오는 DB 전용이다. 비로그인 상태에서는 로그인 안내를 표시하며 기존 시나리오 파일은 읽거나 수정하지 않는다. 기존 파일의 자동 이전은 하지 않는다. 공통 테이블은 변경하지 않는다.
+
 | 구분 | 데이터 |
 | --- | --- |
-| DB | 시나리오 본문(`.md`), 마커 위치(`marker-positions.json`) |
-| 로컬 | 영상, `report.html`, 폴더 선택(`scenario-folder.json`, 유지 여부는 담당자가 정함) |
-| 환경 | 선택한 환경의 `web` 엔드포인트 주소를 상대 경로의 기준으로 씀 (새 기능) |
+| DB | `web_scenarios`: 문서 본문·작성 정보. `web_scenario_items`·`web_scenario_steps`: 시나리오 UUID·코드·순서·웹 엔드포인트(`endpoint_id`)와 단계·마커. `web_runs`·`web_run_scenario_results`·`web_run_step_results`: 실행 환경·스냅샷·단계 결과 |
+| 로컬 | 영상, `report.html`, 프로젝트별 환경 선택. 폴더 연결과 파일 읽기·쓰기 기능은 제거 |
+| 환경 | 시나리오 본문의 `endpoint:` ID × 선택한 환경의 주소를 시작 주소로 씀 |
 
 ### 2. 폼 자동 완성 (담당: 팀원)
 
@@ -198,7 +205,7 @@ API 테스트 테이블 (`20261007000200_api_testing.sql`, `20261009000000_api_s
 
 공통 규칙
 - 토큰·비밀번호 같은 값은 `{{globals.이름}}` 변수로 빼고, 실제 값은 각자 로컬에 둔다. DB에 저장된 값은 평문이다. 예외: API 테스트의 `비밀값도 팀에 공유`(기본 켬)가 켜져 있으면 Try it out 입력값의 비밀값과 문서 계정을 DB에 평문으로 둔다(개발용 계정 전제, 운영 계정을 쓰는 프로젝트는 끈다).
-- 실행 기록은 DB에 저장하지 않는다. 웹 시나리오는 각자 PC의 `reports/`·영상, API 테스트는 화면 세션 동안의 마지막 실행과 직접 저장한 스위트 HTML 리포트만 둔다.
+- 웹 시나리오 실행 기록은 `web_runs`·`web_run_scenario_results`·`web_run_step_results`에 팀 공유한다(2026-10-14 결정). 영상·HTML 파일·단계 이미지는 각 PC에 남긴다. API 테스트는 기존 화면 세션의 마지막 실행과 직접 저장한 스위트 HTML 리포트를 유지한다.
 
 ## 열린 질문
 

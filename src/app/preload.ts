@@ -4,7 +4,7 @@ import { authBridge } from './ipc/auth/bridge'
 import { formAutomationBridge } from './ipc/form-automation/bridge'
 import { liveSessionBridge } from './ipc/live-session/bridge'
 import { qaBridge } from './ipc/qa/bridge'
-import { scenarioFileBridge } from './ipc/scenario-file/bridge'
+import { webScenarioBridge, selectUploadFile } from './ipc/web-scenario/bridge'
 import { updateBridge } from './ipc/update/bridge'
 import { windowSettingsBridge } from './ipc/window-settings/bridge'
 
@@ -17,7 +17,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   windowSettings: windowSettingsBridge,
   liveSession: liveSessionBridge,
   ...updateBridge,
-  ...scenarioFileBridge,
+  webScenarios: webScenarioBridge,
+  selectUploadFile,
   ...qaBridge,
   ...formAutomationBridge,
 })

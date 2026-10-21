@@ -1,3 +1,5 @@
+> 2026-10-13 저장 방식 변경: 웹 시나리오는 DB 전용이다. 이 문서의 기존 파일·폴더 저장 관련 서술은 [현재 저장 정책](04-pages/020-scenario-editor/03-api.md)과 [선택 화면](04-pages/030-scenario-picker/README.md)으로 대체한다.
+
 # Checkly: 시나리오 기반 QA 자동화 ‘체키’
 
 ## 시나리오 편집·실행 기획서
@@ -59,7 +61,7 @@
 
 ```markdown
 # 시나리오: 로그인 후 주문 조회
-url: https://example.com
+endpoint: 2f1c3c9e-6a55-4d8f-9d6a-1b2c3d4e5f60
 tag: regression
 
 Given `/login` 페이지로 이동한다
@@ -70,7 +72,7 @@ And 화면에 `공지`가 있는 경우 `닫기` 클릭 [대기 3초]
 Then `주문 목록` 텍스트가 보인다 [대기 10초]
 ```
 
-제목은 `# 시나리오: 제목`, 기본 주소는 소문자 `url:`, 선택적 태그는 소문자 `tag:`로 작성한다. 단계는 `Given`, `When`, `Then`, `And`, `But`, `If`로 시작하며, 접두사의 역할과 무관하게 작성된 순서대로 실행한다. 조건 분기는 `If` 자체가 아니라 ‘화면에 …가 있는 경우’ 문구로 지정한다.
+제목은 `# 시나리오: 제목`, 시작 주소는 소문자 `endpoint:`에 설정(엔드포인트 × 환경)의 웹 엔드포인트 ID로, 선택적 태그는 소문자 `tag:`로 작성한다. 본문에는 주소를 직접 쓰지 않으며, 실행 시 `endpoint:`와 선택한 환경으로 설정의 기준 주소를 찾는다. `endpoint:`가 없으면 첫 웹 엔드포인트를 쓴다. 화면 추출 모드의 `웹 엔드포인트` 선택으로 값을 바꿀 수 있다. 이전 문서의 `url:` 줄은 저장할 때 없어지고, 경로가 `/`가 아니면 첫 단계 앞에 그 경로로 이동하는 단계가 추가된다. 단계는 `Given`, `When`, `Then`, `And`, `But`, `If`로 시작하며, 접두사의 역할과 무관하게 작성된 순서대로 실행한다. 조건 분기는 `If` 자체가 아니라 ‘화면에 …가 있는 경우’ 문구로 지정한다.
 
 현재 파서는 엄격한 문법 검증기가 아니다. 알 수 없는 단계 문장이 클릭으로 해석되거나, 단계가 없는 원문도 시나리오로 인식될 수 있다. 따라서 미리보기 생성 자체를 실행 가능 판정으로 취급하지 않는다.
 
@@ -288,7 +290,7 @@ Then `주문 목록` 텍스트가 보인다 [대기 10초]
 | 원문·저장·마커 반영·복제 | [useScenarioState.ts](../src/renderer/app/hooks/useScenarioState.ts) |
 | 복제 대화상자·값·제목 | [DuplicateScenarioModal.tsx](../src/renderer/pages/editor/DuplicateScenarioModal.tsx), [scenario-duplication.ts](../src/renderer/shared/model/scenario-duplication.ts) |
 | 시나리오 문법·데이터 | [scenario.ts](../src/renderer/shared/model/scenario.ts) |
-| 파일·폴더 선택 | [ScenarioPickerPage.tsx](../src/renderer/pages/picker/ScenarioPickerPage.tsx), [fileStorage.ts](../src/app/ipc/scenario-file/fileStorage.ts) |
+| DB 문서 선택 | [ScenarioPickerPage.tsx](../src/renderer/pages/picker/ScenarioPickerPage.tsx), [store.ts](../src/app/ipc/web-scenario/store.ts) |
 | 화면 연결·저장 복귀·전역 수동 판정 | [App.tsx](../src/renderer/app/App.tsx) |
 | 실행 큐·취소·기록·세션·재실행 | [useRunOrchestration.ts](../src/renderer/app/hooks/useRunOrchestration.ts) |
 | 실행 화면·수동 조작·결과 표시 | [RunPage.tsx](../src/renderer/pages/run/RunPage.tsx) |

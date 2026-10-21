@@ -15,13 +15,15 @@
 
 ## `parseMarkdown`
 
-위치: `src/renderer/shared/model/scenario.ts`
+위치: `src/app/ipc/web-scenario/scenario.ts` (renderer 모델에서 재노출)
 
-`#~### 시나리오:` 또는 `Scenario:`에서 블록을 나누고 `url:`, `tag:`와 Given/When/Then/And/But/If 단계를 읽습니다. URL이 없으면 빈 문자열을 사용합니다. 공백뿐인 블록은 제외하지만 비어 있지 않은 임의 블록은 시나리오로 해석할 수 있으며 엄격한 유효성 검증은 하지 않습니다.
+`#~### 시나리오:` 또는 `Scenario:`에서 블록을 나누고 `endpoint:`(설정의 웹 엔드포인트 ID), `tag:`와 Given/When/Then/And/But/If 단계를 읽습니다. 이전 문서의 `url:`은 `Scenario.url`로만 읽고 없으면 빈 문자열입니다. `Scenario.url`은 실행 직전 `endpoint:`와 선택한 환경으로 해석한 시작 주소를 담습니다.
+
+`migrateLegacyUrl`(같은 파일)은 블록의 `url:` 줄을 지우고, 경로가 `/`가 아니면 첫 단계 앞에 `` Given `경로` 페이지로 이동한다 ``를 넣습니다. renderer의 저장 전 식별(`identifyMarkdown`)과 main의 `normalizeDocument`가 사용합니다. 공백뿐인 블록은 제외하지만 비어 있지 않은 임의 블록은 시나리오로 해석할 수 있으며 엄격한 유효성 검증은 하지 않습니다.
 
 ```markdown
 # 시나리오: 주문 조회
-url: https://example.com
+endpoint: 2f1c3c9e-6a55-4d8f-9d6a-1b2c3d4e5f60
 tag: regression
 
 Given `/orders` 페이지로 이동한다
@@ -52,7 +54,7 @@ Then `주문 목록` 텍스트가 보인다 [대기 10초]
 | `estimateDurationSeconds` | goto 3초, manualFill 15초, 수동 제어/판정 300초, 나머지 기본 1초 |
 | `formatDuration`, `formatClock` | 시간 표시 |
 | `markerColor`, `defaultMarkerPosition` | pin 색·기본 좌표 |
-| `applyPositions` | 제목+URL과 단계 속성으로 저장 marker 결합 |
+| `applyPositions` | 시나리오 UUID·단계 databaseId로 저장 marker 결합. 이전 문서에 한해서 필드 매칭 허용 |
 | `scenarioToMarkdown` | Scenario를 표준 문법으로 직렬화 |
 | `replaceScenarioMarkdown` | 한 블록만 원문에서 교체 |
 
@@ -62,10 +64,8 @@ Then `주문 목록` 텍스트가 보인다 [대기 10초]
 
 | 함수 | 부수 효과 |
 | --- | --- |
-| `load/saveScenarioMarkdown` | `userData/scenarios.md` |
-| `import/export/saveImportedScenarioFile` | native dialog와 외부 Markdown |
-| `load/saveMarkerPositions` | `marker-positions.json` |
-| `list/chooseScenarioFolder` | 폴더 경로 저장, Markdown 수정 시각 정렬 |
+| `WebScenarioStore.list/save/remove` | 프로젝트 DB CRUD, 수정·삭제 버전 충돌 검사 |
+| `separateUploadPaths/restoreUploadPaths` | 업로드 경로를 DB 본문에서 분리하고 프로젝트·문서별 개인 localStorage로 보관 |
 | `writeRunReport` | escaped HTML과 JSON 생성 |
 | `mergeRunVideos` | runs 경로의 WebM만 ffmpeg concat |
 
@@ -98,3 +98,5 @@ click occurrence는 1부터 시작합니다. iframe은 클릭 탐색에 포함�
 
 throw된 단계 오류는 `실행 실패: {message}` 로그와 failed status로 정규화합니다. 리포트 저장까지 실패하면 IPC가 reject될 수 있습니다. 조건은 기본 1초 또는 waitSeconds 동안 기다린 뒤 skip하며, 각 단계의 대기 의미·수동 timeout·취소 한계는 [실행 정책](../04-pages/040-scenario-run/01-overview.md)과 [예외 처리](../04-pages/040-scenario-run/04-edge-cases.md)를 봅니다.
 
+
+`normalizeDocument`는 기존 DB 문서에 시나리오·단계 UUID와 코드를 부여하고 Markdown 메타데이터와 마커를 정규화한다. `recordRun`은 실행 스냅샷을 기록하고 팀 DB 저장을 호출한다. 실제 단계 결과로 조건 미충족과 미실행을 구분한다.

@@ -10,11 +10,14 @@ type Props = {
   onEnter: (session: AuthSession) => void;
   onJoin: () => void;
   onCreate: () => void;
+  onReset: () => void;
+  /** 비밀번호 찾기를 마친 계정. 기억한 계정보다 먼저 채운다. */
+  prefill?: { projectCode: string; nickname: string } | null;
 };
 
-export const LoginPage = ({ bridge, onEnter, onJoin, onCreate }: Props) => {
-  const [code, setCode] = useState("");
-  const [nickname, setNickname] = useState("");
+export const LoginPage = ({ bridge, onEnter, onJoin, onCreate, onReset, prefill }: Props) => {
+  const [code, setCode] = useState(prefill?.projectCode ?? "");
+  const [nickname, setNickname] = useState(prefill?.nickname ?? "");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(false);
@@ -77,29 +80,34 @@ export const LoginPage = ({ bridge, onEnter, onJoin, onCreate }: Props) => {
         </div>
         <form className="auth-form" onSubmit={submit} noValidate>
           <AuthInput
-            className="mono"
+            mono
             value={code}
             onValue={edit((value) => setCode(value.toLowerCase()))}
             placeholder="프로젝트 코드"
             aria-label="프로젝트 코드"
             autoFocus={!code}
           />
-          <AuthInput className="mono" value={nickname} onValue={edit(setNickname)} placeholder="닉네임" aria-label="닉네임" autoComplete="username" />
+          <AuthInput value={nickname} onValue={edit(setNickname)} placeholder="닉네임" aria-label="닉네임" autoComplete="username" />
           <PasswordInput
-            className="mono"
             value={password}
             onValue={edit(setPassword)}
             placeholder="비밀번호"
             aria-label="비밀번호"
+            autoFocus={Boolean(prefill)}
             visible={showPassword}
             onToggle={() => setShowPassword((value) => !value)}
           />
-          <label className="auth-remember">
-            <input type="checkbox" checked={remember} onChange={(event) => setRemember(event.target.checked)} />
-            기억하기
-          </label>
+          <div className="auth-login-options">
+            <label className="auth-remember">
+              <input type="checkbox" checked={remember} onChange={(event) => setRemember(event.target.checked)} />
+              기억하기
+            </label>
+            <Button className="auth-forgot" onClick={onReset}>
+              비밀번호 찾기
+            </Button>
+          </div>
           <AuthError message={error || notice} />
-          <Button type="submit" className="auth-btn auth-btn-primary auth-login-submit" disabled={busy} aria-busy={busy}>
+          <Button type="submit" variant="primary" size="large" className="auth-btn auth-login-submit" disabled={busy} aria-busy={busy}>
             {busy ? "로그인 중…" : "로그인"}
           </Button>
         </form>
@@ -109,7 +117,7 @@ export const LoginPage = ({ bridge, onEnter, onJoin, onCreate }: Props) => {
           <i />
         </div>
         <div className="auth-login-alt">
-          <Button className="auth-btn auth-btn-secondary strong" onClick={onJoin}>
+          <Button variant="secondary" size="large" className="auth-btn" onClick={onJoin}>
             초대코드로 가입
           </Button>
           <div className="auth-login-create">

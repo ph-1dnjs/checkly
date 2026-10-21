@@ -9,13 +9,14 @@ import { GlobalVariableMenu } from "../../features/api-testing/configure-globals
 import { ApiTestingProviders } from "./ui/ApiTestingProviders";
 import { ScenarioPanel } from "./ui/ScenarioPanel";
 import { ScenarioEditorPanel } from "./ui/ScenarioEditorPanel";
-import { EnvironmentMenu } from "./ui/EnvironmentMenu";
+import { EnvironmentMenu } from "../../widgets/EnvironmentMenu";
 import { AiAuthorPanel, showAiChat } from "../../features/api-testing/author-scenarios";
 import { SpecSourcePanel } from "../../features/api-testing/configure-spec";
 import "./ui/api-testing.css";
 import type { OnRunAction } from "../../shared/model/run-action";
 import { readWorkspaceUrl, workspaceUrl, type ApiTab } from "./lib/workspace-url";
 
+import { Button } from "../../shared/ui/Button";
 /** Select value that opens the new-project form instead of switching projects. */
 const newProjectOption = "__new-project__";
 
@@ -250,7 +251,7 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
   };
   const environmentPicker = project && <EnvironmentMenu project={project} environmentId={environmentId} serverId={tab === "api" ? serverId : undefined} label={tab === "scenario-editor" ? "시나리오 전체 호출 환경" : "API 환경"} title={tab === "scenario-editor" ? "이 시나리오의 전체 API 호출 환경" : undefined} disabled={busy || loading} onSelect={id => { if (id !== environmentId) { setEnvironmentId(id); setUrl(""); } }} onAdd={locked ? undefined : addEnvironment} />;
   const valueActions = <div className="api-context-value-actions"><GlobalVariableMenu projectId={projectId} bridge={bridge} disabled={busy} /></div>;
-  const settingsButton = project && <button type="button" className="api-icon-button" aria-label="프로젝트 설정" title="프로젝트 설정" disabled={locked || loading} onClick={() => setForm("edit")}><Icon name="settings" size={16} /></button>;
+  const settingsButton = project && <Button variant="ghost" iconOnly className="api-icon-button" aria-label="프로젝트 설정" title="프로젝트 설정" disabled={locked || loading} onClick={() => setForm("edit")}><Icon name="settings" size={16} /></Button>;
   // "+ 새 프로젝트" is the list's last entry: it's rare, and the header stays one row.
   // Signed in there is only the team project: no list, no new or deleted projects.
   const projectPicker = team ? <div className="api-actions api-project-picker">
@@ -271,13 +272,13 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
   // Tabs and the server/environment context, in the header once a project is ready.
   const workbar = !form && project && ready ? {
     tabs: <div className="api-tabs" role="tablist" aria-label="API 작업 영역">
-      <button role="tab" aria-selected={tab === "scenarios" || tab === "scenario-editor"} disabled={busy} onClick={() => {
+      <Button role="tab" aria-selected={tab === "scenarios" || tab === "scenario-editor"} disabled={busy} onClick={() => {
         if (tab !== "scenario-editor") { changeTab("scenarios"); return; }
         if (scenarioDirty) setError("저장하지 않은 변경사항이 있습니다. 저장하거나 ← 목록에서 변경사항을 버리고 닫으세요.");
         else backToScenarios();
-      }}>시나리오</button>
-      <button role="tab" aria-selected={tab === "api"} disabled={locked} onClick={() => changeTab("api")}>API 문서{catalog ? <small className="api-tab-count" title={`API ${catalog.operations.length}개`}>{catalog.operations.length}</small> : null}</button>
-      <button role="tab" aria-selected={tab === "ai"} disabled={locked || (!aiHasSpec && tab !== "ai")} title={aiHasSpec ? undefined : "이 환경에 가져온 API 명세가 없습니다. API 문서에서 명세를 먼저 가져오세요"} onClick={() => changeTab("ai")}>AI 작성 도우미</button>
+      }}>시나리오</Button>
+      <Button role="tab" aria-selected={tab === "api"} disabled={locked} onClick={() => changeTab("api")}>API 문서{catalog ? <small className="api-tab-count" title={`API ${catalog.operations.length}개`}>{catalog.operations.length}</small> : null}</Button>
+      <Button role="tab" aria-selected={tab === "ai"} disabled={locked || (!aiHasSpec && tab !== "ai")} title={aiHasSpec ? undefined : "이 환경에 가져온 API 명세가 없습니다. API 문서에서 명세를 먼저 가져오세요"} onClick={() => changeTab("ai")}>AI 작성 도우미</Button>
     </div>,
     // The server picks which spec the API docs show. Scenarios choose a server per step (the composer has
     // its own picker) and the AI guide covers every server, so the other tabs leave it out.
@@ -297,7 +298,7 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
     </PageHeader>
     {error && <p className="api-warning" role="alert">{error}</p>}
     {importPlan && <ProjectImportDialog plan={importPlan.plan} onCancel={() => setImportPlan(null)} onImport={async update => { await finishImport(await bridge.importProject(importPlan.text, update)); }} />}
-    {notice && !form && (!specNotice || tab === "api") && <p className="api-page-notice" role="status">{notice}<button type="button" className="api-compose-link" onClick={() => { setNotice(""); setSpecNotice(false); }}>닫기</button></p>}
+    {notice && !form && (!specNotice || tab === "api") && <p className="api-page-notice" role="status">{notice}<Button className="api-compose-link" onClick={() => { setNotice(""); setSpecNotice(false); }}>닫기</Button></p>}
     {team && storage.importable.length > 0 && !localImportClosed && !form && <LocalProjectImport projects={storage.importable} onClose={() => setLocalImportClosed(true)} onImport={async localId => {
       const result = await bridge.importLocalProject(localId);
       await loadProjects(() => true); selectProject(result.project); setSpecNotice(false);
@@ -314,10 +315,10 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
     }} onSave={async (p, settings) => { const isNew = form === "new" || !ready; const saved = await bridge.saveProject(p); if (settings) await bridge.saveAiChatSettings(saved.id, settings); setProjects(await bridge.listProjects()); selectProject(saved); setForm(null); if (isNew) setTab("api"); }}
     onExport={async () => { const saved = await bridge.exportProject(projectId); return saved ? `저장했습니다 · ${saved}` : ""; }}
     onImport={importProject} /> : <>
-      {!project && team ? <div className="api-empty"><h2>팀 프로젝트를 불러오지 못했습니다</h2><p>네트워크·로그인 상태를 확인한 뒤 다시 시도하세요.</p><div className="api-actions"><button className="api-primary" onClick={() => { setError(""); void loadProjects(() => true); }}>다시 불러오기</button></div></div> : !project ? <div className="api-empty"><h2>API 테스트를 시작하세요</h2><p>프로젝트를 만든 뒤 API 명세(OpenAPI) 파일이나 URL을 가져오세요.</p><div className="api-actions"><button className="api-primary" onClick={() => setForm("new")}>프로젝트 만들기</button><button type="button" onClick={() => void importProject().catch(error => setError((error as Error).message))}>공유받은 파일 가져오기</button></div></div> : !ready ? <div className="api-empty">
+      {!project && team ? <div className="api-empty"><h2>팀 프로젝트를 불러오지 못했습니다</h2><p>네트워크·로그인 상태를 확인한 뒤 다시 시도하세요.</p><div className="api-actions"><Button variant="primary" onClick={() => { setError(""); void loadProjects(() => true); }}>다시 불러오기</Button></div></div> : !project ? <div className="api-empty"><h2>API 테스트를 시작하세요</h2><p>프로젝트를 만든 뒤 API 명세(OpenAPI) 파일이나 URL을 가져오세요.</p><div className="api-actions"><Button variant="primary" onClick={() => setForm("new")}>프로젝트 만들기</Button><Button variant="secondary" onClick={() => void importProject().catch(error => setError((error as Error).message))}>공유받은 파일 가져오기</Button></div></div> : !ready ? <div className="api-empty">
         <h2>팀 프로젝트에 API 서버·환경을 설정하세요</h2>
         <p>{project.servers.length ? "환경이 아직 없습니다." : "API 서버(백엔드)가 아직 없습니다."} 서버와 환경별 기본 주소를 정하면 API 명세를 가져와 테스트할 수 있습니다. 설정은 팀원 모두가 같이 씁니다.</p>
-        <div className="api-actions"><button className="api-primary" onClick={() => setForm("edit")}>API 서버·환경 설정</button><button type="button" onClick={() => void importProject().catch(error => setError((error as Error).message))}>공유받은 파일 가져오기</button></div>
+        <div className="api-actions"><Button variant="primary" onClick={() => setForm("edit")}>API 서버·환경 설정</Button><Button variant="secondary" onClick={() => void importProject().catch(error => setError((error as Error).message))}>공유받은 파일 가져오기</Button></div>
       </div> : <>
         {/* Only this area scrolls; the header row above stays in place. */}
         <div className="api-page-body">
@@ -359,8 +360,8 @@ export function ApiTestingPage({ onRunAction, bridge = window.electronAPI?.apiTe
         <h2 id="api-confirm-dialog-title">저장하지 않은 변경사항</h2>
         <p>현재 시나리오 수정 내용이 저장되지 않았습니다. 새로고침하면 수정 내용이 사라집니다.</p>
         <div className="api-actions">
-          <button type="button" onClick={() => setRefreshConfirmOpen(false)}>새로고침 취소</button>
-          <button type="button" className="api-danger-action" onClick={() => { allowNextUnloadRef.current = true; setRefreshConfirmOpen(false); window.location.reload(); }}>수정사항 버리고 새로고침</button>
+          <Button variant="secondary" onClick={() => setRefreshConfirmOpen(false)}>새로고침 취소</Button>
+          <Button variant="danger" onClick={() => { allowNextUnloadRef.current = true; setRefreshConfirmOpen(false); window.location.reload(); }}>수정사항 버리고 새로고침</Button>
         </div>
       </section>
     </div>}

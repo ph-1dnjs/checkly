@@ -19,7 +19,7 @@ export const AuthUnavailable = ({ message, retrying, onRetry }: Props) => (
           <span className="msi" aria-hidden="true">cloud_off</span>
           <p>{message}</p>
         </div>
-        <Button className="auth-btn auth-btn-primary" onClick={onRetry} disabled={retrying} aria-busy={retrying} autoFocus>
+        <Button variant="primary" size="large" className="auth-btn" onClick={onRetry} disabled={retrying} aria-busy={retrying} autoFocus>
           {retrying ? "확인하는 중…" : "다시 시도"}
         </Button>
       </div>

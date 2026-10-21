@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import type { ApiGlobal, ApiScope, ApiTestingBridge } from "../../../../../app/api-testing/shared/workspace";
 
+import { Button } from "../../../../shared/ui/Button";
+import { Input } from "../../../../shared/ui/Input";
 const NEW_TOKEN = "\u0000new";
 
 /** Connects a string global as the Bearer token for the API docs' own calls (not scenarios). */
@@ -36,7 +38,7 @@ export function RequestAuthPanel({ scope, bridge }: { scope: ApiScope; bridge: A
   return <section className="api-auth-panel">
     <div className={`api-auth-status${active ? " is-connected" : ""}`} role="status">
       {active ? <span>연결됨 · <code>{active}</code></span> : <span>연결된 토큰 없음</span>}
-      {active && <button type="button" disabled={busy} onClick={() => void perform(() => bridge.setRequestAuth(scope, null))}>연결 해제</button>}
+      {active && <Button variant="secondary" disabled={busy} onClick={() => void perform(() => bridge.setRequestAuth(scope, null))}>연결 해제</Button>}
     </div>
     {active && !strings.some(v => v.name === active) && <p className="api-warning">연결된 전역변수가 없거나 문자열이 아니어서 요청이 차단됩니다.</p>}
     <form onSubmit={e => { e.preventDefault(); void perform(async () => {
@@ -55,14 +57,14 @@ export function RequestAuthPanel({ scope, bridge }: { scope: ApiScope; bridge: A
         <option value={NEW_TOKEN}>+ 새 토큰 입력</option>
       </select></label> : null}
       {newToken && <div className="api-auth-new">
-        <label>토큰 값<input aria-label="새 API 인증 토큰" className="api-secret-input" type="text" autoComplete="off" required placeholder="Bearer 없이 토큰만" value={token} onChange={e => setToken(e.target.value)} /></label>
-        <label>저장할 전역변수 이름<input aria-label="토큰 전역변수 이름" autoComplete="off" required value={tokenName} onChange={e => setTokenName(e.target.value)} /><small>같은 이름이면 값을 덮어씁니다.</small></label>
+        <label>토큰 값<Input aria-label="새 API 인증 토큰" className="api-secret-input" type="text" autoComplete="off" required placeholder="Bearer 없이 토큰만" value={token} onChange={e => setToken(e.target.value)} /></label>
+        <label>저장할 전역변수 이름<Input aria-label="토큰 전역변수 이름" autoComplete="off" required value={tokenName} onChange={e => setTokenName(e.target.value)} /><small>같은 이름이면 값을 덮어씁니다.</small></label>
       </div>}
       {error && <p role="alert" className="api-warning">{error}</p>}
       {/* Dialog footer like the app's other dialogs: note on the left, the action on the right. */}
       <div className="api-auth-footer">
         <p className="api-auth-note">API 문서에서 직접 호출할 때만 Bearer로 붙습니다 · 앱을 끄면 초기화</p>
-        <button className="api-primary" disabled={(!newToken && !choice) || unchanged}>{newToken ? "저장 후 연결" : "연결"}</button>
+        <Button variant="primary" disabled={(!newToken && !choice) || unchanged}>{newToken ? "저장 후 연결" : "연결"}</Button>
       </div>
     </fieldset></form>
   </section>;

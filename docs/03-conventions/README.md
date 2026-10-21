@@ -60,6 +60,9 @@
 - 계산 값은 `useMemo` 또는 함수, 비동기 callback의 최신 제어 값은 `useRef`를 사용합니다.
 - 외부 상태 관리 라이브러리를 단일 기능 때문에 추가하지 않습니다.
 - CSS는 [DESIGN.md](../../DESIGN.md)의 토큰과 인접 화면 규칙을 따릅니다.
+- 버튼은 `shared/ui/Button`, 글자 입력은 `shared/ui/Input`(`PasswordInput`, `DraftInput`)만 씁니다. `<button>`·텍스트 `<input>`을 직접 쓰지 않습니다.
+- 버튼·인풋 크기는 `size="large" | "small"`(기본 small)뿐입니다. 높이·패딩·글자 크기는 `styles/controls.css`(cascade layer `controls`)가 소유하므로 화면 CSS에서 바꾸지 않습니다.
+- CSS layer 순서는 `vendor < controls-base < legacy < controls`입니다. 화면별 CSS는 `legacy`에 두고, 새 CSS 파일을 import할 때도 `layer(legacy)`(또는 `@layer legacy { }`)로 감쌉니다.
 
 ## 시나리오 모델 변경
 

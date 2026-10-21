@@ -40,9 +40,7 @@
 .picker-scenario-summary{margin-top:3px;font-size:11.5px;color:#98a0a8}
 .picker-expand{flex:none;height:26px;display:flex;align-items:center;gap:6px;padding:0 9px;border:0;background:transparent;font-family:D2Coding,ui-monospace,monospace;font-size:10.5px;color:#5a646e;cursor:pointer;transition:background .12s ease}
 .picker-expand:hover{background:#f0f3f5}
-.picker-run-only{flex:none;width:26px;height:26px;display:grid;place-items:center;border:1px solid #1f63ae;background:#fff;color:#1f63ae;cursor:pointer;transition:background .12s ease}
-.picker-run-only:hover{background:#edf4fc}
-.picker-run-only .msi{font-size:16px}
+.picker-run-only{flex:none}
 .picker-steps{margin:0;padding:2px 0 6px;list-style:none}
 .picker-steps li{display:flex;align-items:center;gap:12px;height:26px;padding:0 20px 0 51px;font-family:D2Coding,ui-monospace,monospace}
 .picker-steps b{width:14px;flex:none;font-size:10.5px;color:#bfc6cc;font-variant-numeric:tabular-nums;font-weight:400}
@@ -60,15 +58,14 @@
 .picker-cart-item b{font-family:D2Coding,ui-monospace,monospace;font-size:10.5px;color:#bfc6cc;width:16px;flex:none;font-weight:400;font-variant-numeric:tabular-nums}
 .picker-cart-item>span{font-size:12.5px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#14181c}
 .picker-cart-item i{margin-left:auto;flex:none;font-family:D2Coding,ui-monospace,monospace;font-size:10.5px;color:#8a939c;font-style:normal}
-.picker-cart-item button{flex:none;width:20px;height:20px;display:grid;place-items:center;border:0;background:none;font-size:11px;color:#98a0a8;cursor:pointer;transition:background .12s ease}
-.picker-cart-item button:hover{background:#edf0f2;color:#14181c}
+.picker-cart-item .ck-btn{flex:none}
 .picker-cart footer{flex:none;border-top:1px solid #e4e7ea;padding:14px 18px 18px;background:#fff}
 .picker-cart-stats{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:#e4e7ea;margin-bottom:12px}
 .picker-cart-stats div{display:flex;flex-direction:column;gap:4px;background:#fff;padding:10px 12px}
 .picker-cart-stats span{font-family:D2Coding,ui-monospace,monospace;font-size:10.5px;letter-spacing:.06em;color:#8a939c}
 .picker-cart-stats strong{font-size:20px;font-weight:700;letter-spacing:-.03em;font-variant-numeric:tabular-nums;color:#14181c}
-.picker-cart footer .button{width:100%;display:flex;align-items:center;justify-content:center;gap:9px}
-.picker-cart footer .button .msi{font-size:19px}
+.picker-cart footer .ck-btn{width:100%;gap:9px}
+
 .picker-empty-state{max-width:520px;margin:80px auto;text-align:center}
 .picker-empty-title{font-size:18px;font-weight:600;color:#14181c;margin-bottom:10px}
 .picker-empty-body{font-size:13px;color:#5a646e;line-height:1.7;margin-bottom:22px}

@@ -1,6 +1,6 @@
 # 시나리오 편집 — 개발·정책 문서
 
-> **범위·기준**: 2026-09-17 작업 트리의 브라우저 QA 시나리오 편집, 복제, 저장, 실행 전달을 다룹니다. API 테스트의 시나리오는 [별도 기능](../070-api-testing/README.md)입니다. 아래 정책은 현재 코드가 적용하는 규칙이며, 의도와 구현이 다른 부분은 제한으로 구분합니다.
+> **범위·기준**: 2026-10-13 작업 트리의 브라우저 QA 시나리오 편집, 복제, 저장, 실행 전달을 다룹니다. API 테스트의 시나리오는 [별도 기능](../070-api-testing/README.md)입니다. 아래 정책은 현재 코드가 적용하는 규칙이며, 의도와 구현이 다른 부분은 제한으로 구분합니다.
 
 ## 문서 목록
 
@@ -21,7 +21,7 @@
 | [scenario.ts](../../../src/renderer/shared/model/scenario.ts) | Scenario/Step 타입과 Markdown 파서 |
 | [scenario-duplication.ts](../../../src/renderer/shared/model/scenario-duplication.ts) | 복제 값 종류·기본값·이름 중복 처리 |
 | [App.tsx](../../../src/renderer/app/App.tsx) | 편집·실행 훅 연결, 복귀 확인 모달 |
-| [fileStorage.ts](../../../src/app/ipc/scenario-file/fileStorage.ts) | 기본 원문·외부 파일·좌표 읽기/쓰기 |
+| [store.ts](../../../src/app/ipc/web-scenario/store.ts) | DB 본문·좌표 CRUD 및 동시 수정 충돌 검사 |
 | [qaExecution.ts](../../../src/app/ipc/qa/qaExecution.ts) | 연결 검사와 실행 대상 탐색 |
 
 변경 완료 기준은 정상 흐름뿐 아니라 미저장 상태, 저장 취소·실패, 재시작 복원, 파싱/직렬화 차이까지 설명과 코드가 일치하는 것입니다.

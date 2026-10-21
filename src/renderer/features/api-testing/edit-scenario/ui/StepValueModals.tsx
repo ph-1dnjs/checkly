@@ -5,7 +5,10 @@ import { DraftInput, DraftTextarea } from "../../../../shared/ui/DraftFields";
 import { type RequestField, type FieldState, suggestedInputName, isStructuredRequestField, requestFieldValueMatches, templateVariable, jsonText } from "../model/step-request-model";
 import { jsonValueType } from "../model/step-response-model";
 import { useGlobalValuesVisible } from "../../../../entities/api-testing";
+import { Modal } from "../../../../shared/ui/Modal";
 
+import { Button } from "../../../../shared/ui/Button";
+import { Input } from "../../../../shared/ui/Input";
 export function RequestBodyEditor({ operation, step, update, bodyFields, renderField }: {
   operation: ApiOperation;
   step: Scenario["steps"][number];
@@ -45,7 +48,7 @@ export function RequestBodyEditor({ operation, step, update, bodyFields, renderF
     }
   };
   return <section className="api-request-json" aria-label="요청 본문 JSON">
-    <header><strong>Request body</strong><small>{operation.bodyRequired ? "required · " : ""}application/json</small>{canUseFieldEditor && fillable.length > 0 && <button type="button" className="api-compose-link api-json-fill-examples" onClick={() => update({ request: { ...step.request, body: { ...Object.fromEntries(fillable.map(field => [field.name, field.example as Json])), ...(step.request.body && typeof step.request.body === "object" && !Array.isArray(step.request.body) ? step.request.body : {}) } } })}>예시값으로 채우기 ({fillable.length})</button>}</header>
+    <header><strong>Request body</strong><small>{operation.bodyRequired ? "required · " : ""}application/json</small>{canUseFieldEditor && fillable.length > 0 && <Button className="api-compose-link api-json-fill-examples" onClick={() => update({ request: { ...step.request, body: { ...Object.fromEntries(fillable.map(field => [field.name, field.example as Json])), ...(step.request.body && typeof step.request.body === "object" && !Array.isArray(step.request.body) ? step.request.body : {}) } } })}>예시값으로 채우기 ({fillable.length})</Button>}</header>
     {canUseFieldEditor
       ? <div className="api-json-field-editor" aria-label="요청 본문 필드 편집">
         <p className="api-field-help">값을 누르면 바로 입력하고, 키를 누르면 이전 단계 값·전역변수·실행 중 입력을 고릅니다. 흐린 <span className="api-json-value-edit is-unset">예: …</span>는 명세 예시이며 채우기 전에는 보내지 않습니다.</p>
@@ -99,11 +102,11 @@ export function GlobalVariableCreateForm({ index, field, scope, bridge, onCreate
     }
   };
   return <div className="api-global-variable-form">
-    <label>변수 이름<input aria-label={`${index + 1}단계 ${field.name} 새 전역변수 이름`} value={name} disabled={saving} onChange={event => setName(event.target.value)} /></label>
+    <label>변수 이름<Input aria-label={`${index + 1}단계 ${field.name} 새 전역변수 이름`} value={name} disabled={saving} onChange={event => setName(event.target.value)} /></label>
     <label>값 형식<select aria-label={`${index + 1}단계 ${field.name} 새 전역변수 형식`} value={type} disabled={saving} onChange={event => setType(event.target.value as "string" | "json")}><option value="string">문자열</option><option value="json">JSON · 숫자, 불리언, 객체, 배열</option></select></label>
-    <label>값<span className="api-secret-field"><input aria-label={`${index + 1}단계 ${field.name} 새 전역변수 값`} className={showValues ? undefined : "api-secret-input"} type="text" autoComplete="off" spellCheck={false} value={value} disabled={saving} placeholder={type === "string" ? "값 입력" : '{"key":"value"}'} onChange={event => setValue(event.target.value)} /><button type="button" aria-pressed={showValues} onClick={toggleValues}>{showValues ? "숨기기" : "보기"}</button></span></label>
+    <label>값<span className="api-secret-field"><Input aria-label={`${index + 1}단계 ${field.name} 새 전역변수 값`} className={showValues ? undefined : "api-secret-input"} type="text" autoComplete="off" spellCheck={false} value={value} disabled={saving} placeholder={type === "string" ? "값 입력" : '{"key":"value"}'} onChange={event => setValue(event.target.value)} /><Button variant="secondary" aria-pressed={showValues} onClick={toggleValues}>{showValues ? "숨기기" : "보기"}</Button></span></label>
     {error && <p className="api-field-menu-error" role="alert">{error}</p>}
-    <div className="api-actions"><button type="button" className="api-primary" disabled={saving} onClick={() => void save()}>{saving ? "저장 중…" : "추가 후 이 키에 연결"}</button><button type="button" disabled={saving} onClick={() => { onClose(); setError(""); }}>취소</button></div>
+    <div className="api-actions"><Button variant="primary" disabled={saving} onClick={() => void save()}>{saving ? "저장 중…" : "추가 후 이 키에 연결"}</Button><Button variant="secondary" disabled={saving} onClick={() => { onClose(); setError(""); }}>취소</Button></div>
   </div>;
 }
 
@@ -129,11 +132,6 @@ export function ValueActionModal({ index, field, current, state, globalNames, ha
   const linked = state !== undefined && state.kind !== "cookie";
   const [directText, setDirectText] = useState(() => linked || current === undefined ? "" : typeof current === "string" ? current : jsonText(current));
   const [directError, setDirectError] = useState("");
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
   const applyDirectValue = () => {
     if (!directText.trim()) { onDirect(undefined); return; }
     if (field.type === "string" || !["number", "integer", "boolean", "object", "array"].includes(field.type)) { onDirect(directText); return; }
@@ -146,11 +144,10 @@ export function ValueActionModal({ index, field, current, state, globalNames, ha
   };
   const structured = isStructuredRequestField(field);
   const directPlaceholder = field.type === "string" ? "값 입력" : field.type === "object" ? '{\n  "key": "value"\n}' : field.type === "array" ? '[\n  "value"\n]' : `${field.type} 값`;
-  return <div className="api-value-modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
-    <section className="api-value-modal api-value-action-modal" role="dialog" aria-modal="true" aria-label={`${field.name} 값 설정`} onMouseDown={event => event.stopPropagation()}>
+  return <Modal backdropClassName="api-value-modal-backdrop" className="api-value-modal api-value-action-modal" label={`${field.name} 값 설정`} onClose={onClose}>
       <header>
         <div><p className="api-value-modal-kicker">값 설정</p><h2>{field.name} 값 연결</h2><small>{index + 1}단계 · {field.area} · {field.type}</small></div>
-        <button type="button" aria-label="값 설정 닫기" onClick={onClose}>×</button>
+        <Button variant="ghost" iconOnly aria-label="값 설정 닫기" onClick={onClose}>×</Button>
       </header>
       {state && <div className={`api-value-current api-value-current-${state.kind}`}><span className="api-field-state"><strong>{state.label}</strong>{state.detail && <code>{state.detail}</code>}</span><small>현재 적용 중</small></div>}
       {!state && field.area === "cookies" && <p className="api-value-modal-note">값을 입력하지 않으면 같은 서버의 앞선 응답에서 받은 쿠키를 자동으로 사용합니다.</p>}
@@ -160,24 +157,23 @@ export function ValueActionModal({ index, field, current, state, globalNames, ha
         <div>{structured
           ? <DraftTextarea aria-label={`${index + 1}단계 ${field.name} 직접 입력 JSON`} rows={4} spellCheck={false} value={directText} placeholder={directPlaceholder} onChange={event => { setDirectText(event.target.value); setDirectError(""); }} />
           : <DraftInput aria-label={`${index + 1}단계 ${field.name} 직접 입력값`} value={directText} placeholder={directPlaceholder} onChange={event => { setDirectText(event.target.value); setDirectError(""); }} onKeyDown={event => { if (event.key === "Enter" && !event.nativeEvent.isComposing) { event.preventDefault(); applyDirectValue(); } }} />}
-          <button type="button" className="api-primary" onClick={applyDirectValue}>입력값 적용</button></div>
+          <Button variant="primary" onClick={applyDirectValue}>입력값 적용</Button></div>
         {directError && <p className="api-field-menu-error" role="alert">{directError}</p>}
       </section>
       <div className="api-value-modal-options">
-        <button type="button" className="api-value-modal-option" onClick={onScenario}><strong>이전 단계 값 선택</strong><small>다른 단계의 요청·응답 JSON에서 선택</small></button>
+        <Button className="api-value-modal-option" onClick={onScenario}><strong>이전 단계 값 선택</strong><small>다른 단계의 요청·응답 JSON에서 선택</small></Button>
         <section className="api-value-modal-option api-global-variable-option" aria-label={globalCreateOpen ? "새 전역변수 추가" : "전역변수 선택"}>
-          <header><strong>{globalCreateOpen ? "새 전역변수 추가" : "전역변수 선택"}</strong>{!globalCreateOpen && <button type="button" className="api-global-variable-add" onClick={() => setGlobalCreateOpen(true)}>+ 새 변수 추가</button>}</header>
+          <header><strong>{globalCreateOpen ? "새 전역변수 추가" : "전역변수 선택"}</strong>{!globalCreateOpen && <Button variant="secondary" className="api-global-variable-add" onClick={() => setGlobalCreateOpen(true)}>+ 새 변수 추가</Button>}</header>
           {!globalCreateOpen && <>
             <small>프로젝트에 저장된 값 사용 · local/dev URL 공용</small>
             <select aria-label={`${index + 1}단계 ${field.name} 전역변수`} value={selectedGlobal} onChange={event => { if (event.target.value) onGlobal(event.target.value); }}><option value="">선택하지 않음</option>{globalNames.map(name => <option key={name} value={name}>{name}</option>)}</select>
           </>}
           {globalCreateOpen && <GlobalVariableCreateForm index={index} field={field} scope={scope} bridge={bridge} onCreated={(name, type) => { onGlobalCreated(name, type); onGlobal(name); }} onClose={() => setGlobalCreateOpen(false)} />}
         </section>
-        <button type="button" className={hasUserInput ? "api-value-modal-option is-active" : "api-value-modal-option"} onClick={onUserInput}><strong>{hasUserInput ? "실행 중 입력 설정" : "실행 중 입력으로 받기"}</strong><small>{hasUserInput ? "안내 문구·형식·필수 여부 수정" : "이 API 직전에 값을 입력받음"}</small></button>
+        <Button className={hasUserInput ? "api-value-modal-option is-active" : "api-value-modal-option"} onClick={onUserInput}><strong>{hasUserInput ? "실행 중 입력 설정" : "실행 중 입력으로 받기"}</strong><small>{hasUserInput ? "안내 문구·형식·필수 여부 수정" : "이 API 직전에 값을 입력받음"}</small></Button>
       </div>
-      <footer><button type="button" onClick={onClose}>닫기</button></footer>
-    </section>
-  </div>;
+      <footer><Button variant="secondary" onClick={onClose}>닫기</Button></footer>
+  </Modal>;
 }
 
 export function ScenarioInputSettingsModal({ index, field, userInput, onChange, onRemove, onClose }: {
@@ -188,24 +184,17 @@ export function ScenarioInputSettingsModal({ index, field, userInput, onChange, 
   onRemove: () => void;
   onClose: () => void;
 }) {
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
-  return <div className="api-value-modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
-    <section className="api-value-modal api-input-settings-modal" role="dialog" aria-modal="true" aria-label={`${field.name} 실행 중 입력 설정`} onMouseDown={event => event.stopPropagation()}>
+  return <Modal backdropClassName="api-value-modal-backdrop" className="api-value-modal api-input-settings-modal" label={`${field.name} 실행 중 입력 설정`} onClose={onClose}>
       <header>
         <div><p className="api-value-modal-kicker">실행 중 입력</p><h2>{field.name} 입력 설정</h2><small>{index + 1}단계 · {field.area} · {field.type}</small></div>
-        <button type="button" aria-label="실행 중 입력 설정 닫기" onClick={onClose}>×</button>
+        <Button variant="ghost" iconOnly aria-label="실행 중 입력 설정 닫기" onClick={onClose}>×</Button>
       </header>
       <p className="api-value-modal-note">이 단계의 API를 호출하기 직전에 값을 입력받아 <code>{field.name}</code>에 넣습니다. 입력한 값은 시나리오에 저장하지 않습니다.</p>
-      <label>입력 안내 문구<input aria-label={`${index + 1}단계 ${field.name} 실행 중 입력 안내`} value={userInput.label ?? ""} placeholder={`${field.name} 입력`} onChange={event => onChange({ label: event.target.value || undefined })} /></label>
+      <label>입력 안내 문구<Input aria-label={`${index + 1}단계 ${field.name} 실행 중 입력 안내`} value={userInput.label ?? ""} placeholder={`${field.name} 입력`} onChange={event => onChange({ label: event.target.value || undefined })} /></label>
       <div className="api-input-settings-grid">
         <label>값 형식<select aria-label={`${index + 1}단계 ${field.name} 실행 중 입력 형식`} value={userInput.type} onChange={event => onChange({ type: event.target.value as ScenarioInput["type"] })}><option value="string">문자열</option><option value="number">숫자</option><option value="boolean">불리언</option><option value="object">JSON 객체</option><option value="array">JSON 배열</option></select></label>
         <label className="api-check-row api-input-required"><input type="checkbox" checked={userInput.required} onChange={event => onChange({ required: event.target.checked })} />필수 입력 (비우면 실행 중단)</label>
       </div>
-            <footer><button type="button" className="api-danger-action" onClick={onRemove}>실행 중 입력 해제</button><button type="button" className="api-primary" onClick={onClose}>완료</button></footer>
-    </section>
-  </div>;
+            <footer><Button variant="danger" onClick={onRemove}>실행 중 입력 해제</Button><Button variant="primary" onClick={onClose}>완료</Button></footer>
+  </Modal>;
 }

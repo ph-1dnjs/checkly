@@ -405,6 +405,13 @@ verify_jwt = false
 [functions.remove-member]
 verify_jwt = false
 
+# 비밀번호 찾기: reset-password는 로그인 전 호출, issue-reset-code는 함수가 사용자 JWT를 직접 확인한다.
+[functions.issue-reset-code]
+verify_jwt = false
+
+[functions.reset-password]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327

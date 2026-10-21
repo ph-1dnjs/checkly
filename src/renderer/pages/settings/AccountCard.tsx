@@ -5,7 +5,7 @@ import { errorMessage, formatDate, roleLabel, type AuthAccount } from "../auth/m
 import { ProjectSwitchModal } from "./ProjectSwitchModal";
 import type { ProjectInfoState } from "./useProjectInfo";
 
-/** 설정 맨 위 계정 카드: 왼쪽 어두운 면(이니셜·닉네임·역할·로그아웃), 오른쪽 소속 프로젝트·코드. */
+/** 설정 맨 위 계정 카드: 왼쪽 회색 면(이니셜·닉네임·역할·로그아웃), 오른쪽 소속 프로젝트·코드. */
 export const AccountCard = ({ account, project }: { account: AuthAccount; project: ProjectInfoState }) => {
   const { session } = account;
   const [switching, setSwitching] = useState(false);
@@ -35,7 +35,7 @@ export const AccountCard = ({ account, project }: { account: AuthAccount; projec
           <div className="account-nick">{session.nickname}</div>
           <div className="account-role">{roleLabel(session.role)}</div>
         </div>
-        <Button className="account-logout" onClick={() => void signOut()} disabled={signingOut}>
+        <Button variant="secondary" className="account-logout" onClick={() => void signOut()} disabled={signingOut}>
           <span className="msi" aria-hidden="true">logout</span>
           로그아웃
         </Button>
@@ -54,7 +54,7 @@ export const AccountCard = ({ account, project }: { account: AuthAccount; projec
             </div>
             <div className="account-meta">{meta}</div>
           </div>
-          <Button className="account-chip" onClick={() => setSwitching(true)}>
+          <Button variant="secondary" className="account-chip" onClick={() => setSwitching(true)}>
             <span className="msi" aria-hidden="true">swap_horiz</span>
             프로젝트 변경
           </Button>

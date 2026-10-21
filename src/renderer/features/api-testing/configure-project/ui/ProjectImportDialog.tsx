@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { ApiProjectImportPlan, ApiShareDiff } from "../../../../../app/api-testing/shared/workspace";
 
+import { Button } from "../../../../shared/ui/Button";
 type Update = { projectId: string; scenarioIds: string[]; suiteIds: string[] };
 
 function DiffSummary({ label, diff }: { label: string; diff: ApiShareDiff }) {
@@ -46,7 +47,7 @@ export function ProjectImportDialog({ plan, onCancel, onImport }: {
     <section className="api-value-modal api-project-import-dialog" role="dialog" aria-modal="true" aria-label="프로젝트 가져오기" onMouseDown={event => event.stopPropagation()}>
       <header>
         <div><p className="api-value-modal-kicker">프로젝트 가져오기</p><h2>{plan.name}</h2><small>시나리오 {plan.scenarios}개 · 스위트 {plan.suites}개</small></div>
-        <button type="button" aria-label="프로젝트 가져오기 닫기" disabled={busy} onClick={onCancel}>×</button>
+        <Button variant="ghost" iconOnly aria-label="프로젝트 가져오기 닫기" disabled={busy} onClick={onCancel}>×</Button>
       </header>
       <fieldset disabled={busy}>
         <label className="api-import-option"><input type="radio" name="api-import-mode" checked={mode === "update"} onChange={() => setMode("update")} />
@@ -73,8 +74,8 @@ export function ProjectImportDialog({ plan, onCancel, onImport }: {
       </fieldset>
       {error && <p role="alert" className="api-warning">{error}</p>}
       <footer>
-        <button type="button" disabled={busy} onClick={onCancel}>취소</button>
-        <button type="button" className="api-primary" disabled={busy} onClick={() => void submit()}>{busy ? "가져오는 중…" : mode === "update" ? "업데이트" : "새 프로젝트로 가져오기"}</button>
+        <Button variant="secondary" disabled={busy} onClick={onCancel}>취소</Button>
+        <Button variant="primary" disabled={busy} onClick={() => void submit()}>{busy ? "가져오는 중…" : mode === "update" ? "업데이트" : "새 프로젝트로 가져오기"}</Button>
       </footer>
     </section>
   </div>;

@@ -12,7 +12,7 @@ export type AuthAccount = {
   updateSession: (session: AuthSession) => void;
 };
 
-export type AuthMode = "login" | "join" | "create";
+export type AuthMode = "login" | "join" | "create" | "reset";
 
 export const PASSWORD_MIN = 6;
 export const PROJECT_CODE_PATTERN = /^[a-z0-9-]{3,32}$/;
@@ -21,6 +21,10 @@ export const INVITE_PATTERN = /^[A-Z]{3}-[A-Z0-9]{6}$/;
 export const PROJECT_CODE_HINT = "영문 소문자·숫자·하이픈 3–32자";
 export const NICKNAME_HINT = "영문 소문자로 시작 · 영문·숫자·_ 3–20자";
 export const INVALID_INVITE = "유효하지 않은 초대코드입니다.";
+export const RESET_CODE_PATTERN = /^\d{6}$/;
+
+/** 재설정 코드 입력 중: 숫자만 6자리까지. */
+export const normalizeResetCode = (value: string): string => value.replace(/\D+/g, "").slice(0, 6);
 
 /** 입력 중: 공백 제거 + 대문자. */
 export const normalizeInvite = (value: string): string => value.replace(/\s+/g, "").toUpperCase();

@@ -6,12 +6,14 @@ import { type ResponseGlobalNameSuggestion } from "../lib/response-global-name";
 import { JsonCode } from "../../../../entities/api-testing";
 import { responseDocuments, type ResponseField, type ResponseBadge, responseFieldKey, jsonPointerValue, responseFieldsFromValue, responseFieldsWithoutArrayItems, responseToken } from "../model/step-response-model";
 
+import { Button } from "../../../../shared/ui/Button";
+import { Input } from "../../../../shared/ui/Input";
 export function ResponseGlobalNameField({ value, suggestions, onChange }: { value: string; suggestions: ResponseGlobalNameSuggestion[]; onChange: (value: string) => void }) {
   return <label>전역변수 이름
-    <input aria-label="응답 전역변수 이름" value={value} onChange={event => onChange(event.target.value)} placeholder="예: accessToken" />
+    <Input aria-label="응답 전역변수 이름" value={value} onChange={event => onChange(event.target.value)} placeholder="예: accessToken" />
     <span className="api-global-name-quick-label">빠른 설정</span>
     <span className="api-global-name-quick" aria-label="전역변수 이름 빠른 설정">
-      {suggestions.map(suggestion => <button type="button" key={suggestion.id} className={value === suggestion.name ? "is-selected" : ""} title={suggestion.detail} onClick={() => onChange(suggestion.name)}><strong>{suggestion.label}</strong><code>{suggestion.name}</code></button>)}
+      {suggestions.map(suggestion => <Button key={suggestion.id} className={value === suggestion.name ? "is-selected" : ""} title={suggestion.detail} onClick={() => onChange(suggestion.name)}><strong>{suggestion.label}</strong><code>{suggestion.name}</code></Button>)}
     </span>
     <small className="api-global-name-help">필드명 또는 엔드포인트 경로를 기준으로 자동 입력할 수 있습니다.</small>
   </label>;
@@ -32,7 +34,7 @@ export function ResponseJson({ fields, preview, onSelect, selected, badges }: { 
     const token = compactContainer ? field.type === "array" ? "[]" : "{}" : responseToken(value, field.type);
     const responseBadges = badges?.(field.pointer) ?? [];
     return <span key={field.pointer} data-summary-field={field.pointer ? `response:body:${field.pointer}` : undefined}>
-      {field.pointer ? <><button type="button" className="api-json-token api-json-key-token" aria-label={`${field.pointer} 키 선택`} aria-pressed={selected === field.pointer} onClick={() => onSelect(field.pointer)}>{responseFieldKey(field.pointer)}</button><ResponseBadgeList badges={responseBadges} /><code>: <span className={`api-json-value-token api-json-type-${field.type}`}>{token}</span></code></> : <><button type="button" className="api-json-token api-json-root-token" aria-label="전체 응답 선택" aria-pressed={selected === field.pointer} onClick={() => onSelect(field.pointer)}>{token}</button><ResponseBadgeList badges={responseBadges} /></>}
+      {field.pointer ? <><Button className="api-json-token api-json-key-token" aria-label={`${field.pointer} 키 선택`} aria-pressed={selected === field.pointer} onClick={() => onSelect(field.pointer)}>{responseFieldKey(field.pointer)}</Button><ResponseBadgeList badges={responseBadges} /><code>: <span className={`api-json-value-token api-json-type-${field.type}`}>{token}</span></code></> : <><Button className="api-json-token api-json-root-token" aria-label="전체 응답 선택" aria-pressed={selected === field.pointer} onClick={() => onSelect(field.pointer)}>{token}</Button><ResponseBadgeList badges={responseBadges} /></>}
       {children.map((child, i) => <span className="api-json-line" key={child.pointer}>{render(child)}{i < children.length - 1 ? "," : ""}</span>)}
       {container && !compactContainer && <span>{field.type === "array" ? "]" : "}"}</span>}
     </span>;

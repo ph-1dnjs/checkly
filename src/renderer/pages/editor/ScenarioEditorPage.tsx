@@ -1,39 +1,64 @@
-import { useRef, useState, type MouseEvent } from "react";
+import { Fragment, useEffect, useRef, useState, type ReactNode, type MouseEvent } from "react";
 import {
-  actionLabel,
   actionText,
-  defaultMarkerPosition,
-  markerColor,
   type Action,
   type Scenario,
   type Step,
 } from "../../shared/model/scenario";
 import { ActionTag } from "../../shared/ui/ActionTag";
 import { Button } from "../../shared/ui/Button";
-import {
-  ScenarioFileList,
-  type ScenarioFileEntry,
-} from "../../entities/scenario-folder";
 import { DuplicateScenarioModal } from "./DuplicateScenarioModal";
+import { MarkerEditForm } from "./MarkerEditForm";
 
 type Device = "mobile" | "tablet" | "desktop";
 
-const DEVICES: Array<{ id: Device; label: string; w: string; h: string; frame: string }> = [
-  { id: "mobile", label: "모바일", w: "9px", h: "14px", frame: "390px" },
-  { id: "tablet", label: "태블릿", w: "13px", h: "14px", frame: "834px" },
-  { id: "desktop", label: "데스크톱", w: "16px", h: "11px", frame: "100%" },
+const DEVICES: Array<{ id: Device; label: string; icon: string; frame: string }> = [
+  { id: "mobile", label: "모바일 390px", icon: "smartphone", frame: "390px" },
+  { id: "tablet", label: "태블릿 834px", icon: "tablet_mac", frame: "834px" },
+  { id: "desktop", label: "데스크톱 전체 폭", icon: "desktop_windows", frame: "100%" },
 ];
+
+/** 빈 문서의 PREVIEW에 보여 주는 작성 문법: [이름, 키워드, 나머지] */
+const GRAMMAR: Array<[string, string, string]> = [
+  ["제목", "#", " 시나리오: 제목"],
+  ["엔드포인트", "endpoint:", " <엔드포인트 ID>"],
+  ["태그", "tag:", " regression"],
+  ["이동", "Given", " `/login` 페이지로 이동한다"],
+  ["입력", "And", " `아이디`에 `값` 입력"],
+  ["클릭", "When", " `로그인` 클릭 [대기 10초]"],
+  ["순번", "And", " `삭제` [2번째] 클릭"],
+  ["확인", "Then", " `주문 목록` 텍스트가 보인다"],
+  ["수동", "And", " `인증번호` 수동 입력 [안내 문구]"],
+  ["조건", "And", " 화면에 `공지`가 있는 경우 `닫기` 클릭"],
+];
+
+const SAMPLE_STEPS = [
+  "Given `/login` 페이지로 이동한다",
+  "And `아이디`에 `user@example.com` 입력",
+  "And `비밀번호` 수동 입력 [테스트 계정 비밀번호]",
+  "When `로그인` 클릭 [대기 10초]",
+  "Then `마이페이지` 텍스트가 보인다",
+];
+
+const KEYWORD = /^(Given|When|Then|And|But|If)\b/;
+const LINKED = "#3d8ce0";
+const UNLINKED = "#c08a15";
+const pad2 = (value: number) => String(value).padStart(2, "0");
+const hostOf = (url: string) => {
+  try { return new URL(url).host; } catch { return url; }
+};
 
 type Props = {
   mode: "text" | "marker";
   scenario: Scenario;
   sourceMarkdown: string;
-  scenarioFilePath: string | null;
-  files: ScenarioFileEntry[];
-  fileCache: Record<string, Scenario[]>;
-  pickedCountByFile: Record<string, number>;
-  onOpenFile: (filePath: string) => void;
-  onChooseFolder: () => void;
+  sidebar: ReactNode;
+  /** 현재 시나리오의 엔드포인트와 선택한 환경으로 해석한 기준 주소. */
+  baseUrl: string;
+  /** 엔드포인트별 기준 주소 (PREVIEW 행의 주소 표시) */
+  resolveBaseUrl: (endpointId?: string) => string;
+  webEndpoints: Array<{ id: string; name: string }>;
+  defaultEndpointId: string;
   previews: Scenario[];
   markerScenarioId: string;
   selectedId: string;
@@ -46,8 +71,9 @@ type Props = {
   onSourceChange: (markdown: string) => void;
   onScenarioChange: (scenario: Scenario) => void;
   onBeginMarkerPlacement: () => void;
+  onCancelMarkerPlacement: () => void;
   onToggleMarkersVisible: () => void;
-  onPlaceMarker: (position: { x: number; y: number; target: string; action: Action }) => void;
+  onPlaceMarker: (position: { x: number; y: number; target: string; action: Action; markerViewport?: Step["markerViewport"]; markerPageUrl?: string }) => void;
   onDeleteLast: () => void;
   onClearSteps: () => void;
   onSelectStep: (id: string) => void;
@@ -68,12 +94,11 @@ export const ScenarioEditorPage = ({
   mode,
   scenario,
   sourceMarkdown,
-  scenarioFilePath,
-  files,
-  fileCache,
-  pickedCountByFile,
-  onOpenFile,
-  onChooseFolder,
+  sidebar,
+  baseUrl,
+  resolveBaseUrl,
+  webEndpoints,
+  defaultEndpointId,
   previews,
   markerScenarioId,
   selectedId,
@@ -86,6 +111,7 @@ export const ScenarioEditorPage = ({
   onSourceChange,
   onScenarioChange,
   onBeginMarkerPlacement,
+  onCancelMarkerPlacement,
   onToggleMarkersVisible,
   onPlaceMarker,
   onDeleteLast,
@@ -121,6 +147,15 @@ export const ScenarioEditorPage = ({
     moved: boolean;
   } | null>(null);
   const targetFrameRef = useRef<Electron.WebviewTag | null>(null);
+
+  useEffect(() => {
+    if (!isAddingMarker) return;
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onCancelMarkerPlacement();
+    };
+    window.addEventListener("keydown", escape);
+    return () => window.removeEventListener("keydown", escape);
+  }, [isAddingMarker, onCancelMarkerPlacement]);
 
   const clearStepDrag = () => {
     stepDrag.current = null;
@@ -177,39 +212,72 @@ export const ScenarioEditorPage = ({
     } catch {
       // 웹뷰가 아직 로드되지 않았거나 접근할 수 없는 경우 직접 입력으로 이어집니다.
     }
-    onPlaceMarker({ x, y, ...marker });
+    onPlaceMarker({ x, y, ...marker, markerViewport: device, markerPageUrl: targetFrameRef.current?.getURL?.() || baseUrl });
   };
 
-  const lineCount = sourceMarkdown.split("\n").length;
+  const lines = sourceMarkdown.split("\n");
+  const stepTotal = previews.reduce((total, item) => total + item.steps.length, 0);
+  const editorEmpty = stepTotal === 0;
+  const fillSample = () => {
+    const sample = SAMPLE_STEPS.join("\n");
+    onSourceChange(
+      previews.length
+        ? `${sourceMarkdown.trimEnd()}\n\n${sample}\n`
+        : `# 시나리오: 로그인 확인${defaultEndpointId ? `\nendpoint: ${defaultEndpointId}` : ""}\ntag: smoke\n\n${sample}\n`,
+    );
+  };
+  const endpointName = (id?: string) =>
+    webEndpoints.find((item) => item.id === (id ?? defaultEndpointId))?.name ?? "웹 엔드포인트 없음";
+  const previewAddress = (item: Scenario) => {
+    const base = resolveBaseUrl(item.endpointId);
+    const path = item.steps.find((step) => step.action === "goto")?.target ?? "";
+    return [endpointName(item.endpointId), base ? `${hostOf(base)}${path.startsWith("/") ? path : ""}` : ""].filter(Boolean).join(" · ");
+  };
+
+  const editingId = markerDialog && !pendingMarker ? markerDialog.id : null;
+  const deviceFrame = DEVICES.find((d) => d.id === device) ?? DEVICES[2];
+  const unlinkedCount = scenario.steps.filter((step) => !step.connected).length;
+  const pinColor = (step: Step) => (step.connected ? LINKED : UNLINKED);
+  const markerTargetUrl = (() => { try { return baseUrl ? new URL(scenario.url || "/", baseUrl).href : ""; } catch { return ""; } })();
+  const toggleMarker = (step: Step) => {
+    onSelectStep(step.id);
+    if (editingId === step.id) onCloseMarkerDialog();
+    else onEditStep(step);
+  };
+  const markerForm = (marker: Step, isNew: boolean) => (
+    <MarkerEditForm
+      marker={marker}
+      isNew={isNew}
+      onChange={onUpdateMarkerDialog}
+      onSelectUploadFile={onSelectUploadFile}
+      onCancel={onCloseMarkerDialog}
+      onComplete={onCompleteMarkerDialog}
+    />
+  );
+  const visiblePins = [...scenario.steps, ...(pendingMarker ? [pendingMarker] : [])];
 
   return (
     <>
     {mode === "text" ? (
       <div className="ws-editor">
-        <ScenarioFileList
-          files={files}
-          fileCache={fileCache}
-          activePath={scenarioFilePath}
-          pickedCountByFile={pickedCountByFile}
-          onSelect={onOpenFile}
-          onChooseFolder={onChooseFolder}
-        />
+        {sidebar}
         <section className="ws-editor-source">
           <div className="ws-col-label">
             <span>MARKDOWN</span>
             <span>
-              {lineCount} lines · {previews.length} scenarios
+              {lines.length} lines · {previews.length} scenarios
             </span>
           </div>
           <div className="markdown-editor-body">
             <ol className="markdown-line-numbers" aria-hidden="true" ref={lineNumbersRef}>
-              {sourceMarkdown.split("\n").map((_, index) => <li key={index}>{index + 1}</li>)}
+              {lines.map((_, index) => <li key={index}>{index + 1}</li>)}
             </ol>
             <textarea
               className="scenario-source"
               data-ck-scroll="light"
               value={sourceMarkdown}
               spellCheck={false}
+              placeholder={"# 시나리오: 제목\nendpoint: <엔드포인트 ID>\n\nGiven `/login` 페이지로 이동한다"}
               onChange={(event) => onSourceChange(event.target.value)}
               onScroll={(event) => {
                 if (lineNumbersRef.current)
@@ -222,21 +290,39 @@ export const ScenarioEditorPage = ({
         <aside className="ws-editor-preview">
           <div className="ws-col-label">
             <span>PREVIEW</span>
-            <span>파싱 결과</span>
+            <span>{previews.length ? `${previews.length} scenarios · ${stepTotal} steps` : "시나리오 없음"}</span>
           </div>
           <div className="ws-preview-body" data-ck-scroll="light">
-            {previews.length === 0 && (
-              <div className="preview-empty">
-                <strong>시나리오 형식을 인식하지 못했습니다.</strong>
-                <p>
-                  <code># 시나리오: 제목</code>과{" "}
-                  <code>Given /login 페이지로 이동</code> 형식으로 작성해
-                  주세요.
+            {editorEmpty && (
+              <div className="ws-grammar">
+                <div className="ws-grammar-head">
+                  <strong>
+                    {previews.length === 0
+                      ? "시나리오 형식을 인식하지 못했습니다."
+                      : "작성 문법"}
+                  </strong>
+                  <Button variant="secondary" onClick={fillSample}>
+                    <span className="msi" aria-hidden="true">note_add</span>
+                    예시 넣기
+                  </Button>
+                </div>
+                <dl className="ws-grammar-table">
+                  {GRAMMAR.map(([label, keyword, rest]) => (
+                    <Fragment key={label}>
+                      <dt>{label}</dt>
+                      <dd title={`${keyword}${rest}`}><b>{keyword}</b>{rest}</dd>
+                    </Fragment>
+                  ))}
+                </dl>
+                <p className="ws-grammar-note">
+                  Given · When · Then · And 로 시작하는 줄이 단계가 되며, 작성 순서대로 실행됩니다.
                 </p>
               </div>
             )}
-            {previews.map((preview, index) => {
+            {(editorEmpty ? [] : previews).map((preview) => {
               const isOpen = openPreviewIds.has(preview.id);
+              const unlinked = preview.steps.filter((step) => !step.connected).length;
+              const address = previewAddress(preview);
               return (
                 <div className="ws-preview-item" key={preview.id}>
                   <div
@@ -253,31 +339,36 @@ export const ScenarioEditorPage = ({
                       }
                     }}
                   >
-                    <b>{String(index + 1).padStart(2, "0")}</b>
+                    <span className="msi ws-preview-caret" aria-hidden="true">
+                      {isOpen ? "expand_more" : "chevron_right"}
+                    </span>
                     <div>
-                      <h2>{preview.title}</h2>
-                      <p>{preview.url}</p>
+                      <div className="ws-preview-title">
+                        <h2 title={preview.title}>{preview.title}</h2>
+                        {preview.tag && <em className="ws-tag">{preview.tag}</em>}
+                      </div>
+                      <p title={address}>{address}</p>
                     </div>
-                    <span className="ws-preview-count">{preview.steps.length}개 단계</span>
-                    <Button
+                    <span className="ws-preview-count">{preview.steps.length}단계</span>
+                    {unlinked > 0 && <span className="ws-preview-unlinked" title="선택자 미연결 단계">미연결 {unlinked}</span>}
+                    <Button variant="secondary"
                       className="ws-preview-dup"
-                      title="값을 변경해 새 템플릿으로 복제합니다"
+                      title="입력값만 바꿔 케이스 복제"
+                      aria-label="템플릿 복제"
                       onClick={(event) => {
                         event.stopPropagation();
                         setDupTarget(preview);
                       }}
                     >
-                      템플릿 복제
+                      <span className="msi" aria-hidden="true">content_copy</span>
+                      복제
                     </Button>
-                    <span className="ws-preview-caret" aria-hidden="true">
-                      {isOpen ? "▾" : "▸"}
-                    </span>
                   </div>
                   {isOpen && (
                     <ol className="ws-steps">
                       {preview.steps.map((step, stepIndex) => (
                         <li key={step.id}>
-                          <b>{String(stepIndex + 1).padStart(2, "0")}</b>
+                          <b>{stepIndex + 1}</b>
                           <ActionTag action={step.action} />
                           <span className="ws-step-target" title={actionText(step)}>
                             {actionText(step)}
@@ -292,14 +383,6 @@ export const ScenarioEditorPage = ({
                 </div>
               );
             })}
-            <div className="ws-parse-rule">
-              <strong>파싱 규칙</strong>
-              <p>
-                Given · When · Then · And 로 시작하는 줄만 단계로 읽습니다.
-                백틱으로 감싼 값은 선택자·입력값이 되고,{" "}
-                <code>[대기 3초]</code>는 대기 시간으로 분리됩니다.
-              </p>
-            </div>
           </div>
         </aside>
       </div>
@@ -307,448 +390,283 @@ export const ScenarioEditorPage = ({
       <div className="extract-shell">
         <div className="extract-topbar">
           <div className="extract-navbtns">
-            <Button
+            <Button variant="ghost" iconOnly
               className="extract-navbtn"
-              title="이전"
+              title="뒤로"
+              aria-label="뒤로"
               onClick={() => targetFrameRef.current?.goBack()}
             >
-              <span className="extract-chevron extract-chevron-back" />
+              <span className="msi" aria-hidden="true">arrow_back</span>
             </Button>
-            <Button
+            <Button variant="ghost" iconOnly
               className="extract-navbtn"
               title="앞으로"
+              aria-label="앞으로"
               onClick={() => targetFrameRef.current?.goForward()}
             >
-              <span className="extract-chevron extract-chevron-forward" />
+              <span className="msi" aria-hidden="true">arrow_forward</span>
+            </Button>
+            <Button variant="ghost" iconOnly
+              className="extract-navbtn"
+              title="새로고침"
+              aria-label="대상 페이지 새로고침"
+              onClick={() => targetFrameRef.current?.reload()}
+            >
+              <span className="msi" aria-hidden="true">refresh</span>
             </Button>
           </div>
-          <div className="extract-url">
-            <span className="extract-url-dot" />
-            <input
-              value={scenario.url}
-              onChange={(event) =>
-                onScenarioChange({ ...scenario, url: event.target.value })
-              }
-              aria-label="대상 URL"
-            />
+          <div className="extract-url" title={markerTargetUrl || undefined}>
+            <span className="msi extract-url-lock" aria-hidden="true">lock</span>
+            <span className="extract-url-endpoint">
+              <select
+                value={scenario.endpointId ?? defaultEndpointId}
+                onChange={(event) =>
+                  onScenarioChange({ ...scenario, endpointId: event.target.value })
+                }
+                aria-label="웹 엔드포인트"
+              >
+                {scenario.endpointId && !webEndpoints.some((item) => item.id === scenario.endpointId) && (
+                  <option value={scenario.endpointId}>(설정에 없는 엔드포인트)</option>
+                )}
+                {webEndpoints.map((item) => (
+                  <option key={item.id} value={item.id}>{item.name}</option>
+                ))}
+              </select>
+              <span className="msi" aria-hidden="true">expand_more</span>
+            </span>
+            <span className="extract-url-base" title={baseUrl || undefined}>
+              {baseUrl || "설정에서 이 엔드포인트의 환경별 주소를 넣어 주세요."}
+            </span>
           </div>
-          <div className="extract-devices">
+          <div className="extract-devices" role="group" aria-label="화면 폭">
             {DEVICES.map((d) => (
               <Button
                 key={d.id}
                 className={device === d.id ? "active" : ""}
+                aria-pressed={device === d.id}
                 title={d.label}
+                aria-label={d.label}
                 onClick={() => setDevice(d.id)}
               >
-                <span style={{ width: d.w, height: d.h }} />
+                <span className="msi" aria-hidden="true">{d.icon}</span>
               </Button>
             ))}
           </div>
-          {previews.length > 1 && (
-            <label className="extract-marker-scenario">
-              마커 대상
-              <select
-                value={markerScenarioId}
-                onChange={(event) => onSelectMarkerScenario(event.target.value)}
-              >
-                {previews.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.title}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
         </div>
 
         <div className="extract-body">
           <aside className="extract-markers">
+            <label className="extract-target-picker">
+              <span>편집 대상</span>
+              <span className="extract-target-select">
+                <select
+                  value={markerScenarioId}
+                  disabled={previews.length < 2}
+                  onChange={(event) => onSelectMarkerScenario(event.target.value)}
+                >
+                  {previews.map((item, index) => (
+                    <option key={item.id} value={item.id}>
+                      {pad2(index + 1)}  {item.title}
+                    </option>
+                  ))}
+                  {!previews.length && <option value="">시나리오 없음</option>}
+                </select>
+                <span className="msi" aria-hidden="true">unfold_more</span>
+              </span>
+            </label>
             <div className="extract-col-label">
               <span>MARKERS</span>
               <span className="extract-col-meta">{scenario.steps.length}개</span>
             </div>
-            <div className="extract-markers-list">
-              {scenario.steps.map((step) => (
-                <div
-                  key={step.id}
-                  className={`extract-marker-row${selectedId === step.id ? " selected" : ""}${draggedStepId === step.id ? " dragging" : ""}`}
-                  data-step-id={step.id}
-                >
-                  <Button
-                    className="extract-marker-drag"
-                    aria-label={`${step.id}번 단계 순서 변경`}
-                    onPointerDown={(event) => {
-                      stepDrag.current = {
-                        id: step.id,
-                        pointerId: event.pointerId,
-                        startX: event.clientX,
-                        startY: event.clientY,
-                        moved: false,
-                      };
-                      event.currentTarget.setPointerCapture(event.pointerId);
-                    }}
-                    onPointerMove={(event) => {
-                      const drag = stepDrag.current;
-                      if (!drag || drag.pointerId !== event.pointerId) return;
-                      if (
-                        !drag.moved &&
-                        Math.hypot(
-                          event.clientX - drag.startX,
-                          event.clientY - drag.startY,
-                        ) > 5
-                      ) {
-                        drag.moved = true;
-                        setDraggedStepId(drag.id);
-                      }
-                    }}
-                    onPointerUp={(event) => {
-                      const drag = stepDrag.current;
-                      if (!drag || drag.pointerId !== event.pointerId) return;
-                      event.currentTarget.releasePointerCapture(event.pointerId);
-                      if (drag.moved) {
-                        const target = document
-                          .elementFromPoint(event.clientX, event.clientY)
-                          ?.closest<HTMLDivElement>("[data-step-id]");
-                        const targetId = target?.dataset.stepId;
-                        if (targetId) onReorderSteps(drag.id, targetId);
-                        event.preventDefault();
-                      }
-                      clearStepDrag();
-                    }}
-                    onPointerCancel={clearStepDrag}
-                  >
-                    <span className="msi" aria-hidden="true">drag_indicator</span>
-                  </Button>
-                  <Button
-                    className="extract-marker-main"
-                    onClick={() => onSelectStep(step.id)}
-                  >
-                    <b>{step.id}</b>
-                    <span className="extract-marker-meta">
-                      <ActionTag action={step.action} className="extract-marker-op" />
-                      <span className="extract-marker-target">{step.target}</span>
-                    </span>
-                  </Button>
-                  <span className={`extract-marker-link${step.connected ? "" : " unlinked"}`}>
-                    {step.connected ? "연결됨" : "미연결"}
-                  </span>
-                  <Button
-                    className="extract-marker-edit"
-                    onClick={() => onEditStep(step)}
-                    aria-label="단계 편집"
-                  >
-                    <span className="msi" aria-hidden="true">edit</span>
-                  </Button>
-                  <Button
-                    className="extract-marker-delete"
-                    onClick={() => onDeleteStep(step.id)}
-                    aria-label="단계 삭제"
-                  >
-                    <span className="msi" aria-hidden="true">delete</span>
-                  </Button>
+            <div className="extract-markers-list" data-ck-scroll="light">
+              {!scenario.steps.length && !pendingMarker && (
+                <div className="extract-markers-empty">
+                  <span className="msi" aria-hidden="true">ads_click</span>
+                  <p>마커 추가를 누르고 화면에서 요소를 선택하세요.</p>
                 </div>
-              ))}
+              )}
+              {scenario.steps.map((step) => {
+                const editing = editingId === step.id;
+                return (
+                  <div
+                    key={step.id}
+                    className={`extract-marker-item${selectedId === step.id || editing ? " selected" : ""}${draggedStepId === step.id ? " dragging" : ""}`}
+                    data-step-id={step.id}
+                  >
+                    <div className="extract-marker-row">
+                      <Button
+                        className="extract-marker-drag"
+                        aria-label={`${step.id}번 단계 순서 변경`}
+                        title="드래그해 순서 변경"
+                        onPointerDown={(event) => {
+                          stepDrag.current = {
+                            id: step.id,
+                            pointerId: event.pointerId,
+                            startX: event.clientX,
+                            startY: event.clientY,
+                            moved: false,
+                          };
+                          event.currentTarget.setPointerCapture(event.pointerId);
+                        }}
+                        onPointerMove={(event) => {
+                          const drag = stepDrag.current;
+                          if (!drag || drag.pointerId !== event.pointerId) return;
+                          if (
+                            !drag.moved &&
+                            Math.hypot(
+                              event.clientX - drag.startX,
+                              event.clientY - drag.startY,
+                            ) > 5
+                          ) {
+                            drag.moved = true;
+                            setDraggedStepId(drag.id);
+                          }
+                        }}
+                        onPointerUp={(event) => {
+                          const drag = stepDrag.current;
+                          if (!drag || drag.pointerId !== event.pointerId) return;
+                          event.currentTarget.releasePointerCapture(event.pointerId);
+                          if (drag.moved) {
+                            const target = document
+                              .elementFromPoint(event.clientX, event.clientY)
+                              ?.closest<HTMLDivElement>("[data-step-id]");
+                            const targetId = target?.dataset.stepId;
+                            if (targetId) onReorderSteps(drag.id, targetId);
+                            event.preventDefault();
+                          }
+                          clearStepDrag();
+                        }}
+                        onPointerCancel={clearStepDrag}
+                      >
+                        <span className="msi" aria-hidden="true">drag_indicator</span>
+                      </Button>
+                      <Button
+                        className="extract-marker-main"
+                        aria-expanded={editing}
+                        title={`${step.target} · 눌러서 편집`}
+                        onClick={() => toggleMarker(step)}
+                      >
+                        <b style={{ background: pinColor(step) }}>{step.id}</b>
+                        <ActionTag action={step.action} className="extract-marker-op" />
+                        <span className="extract-marker-target">{step.target}</span>
+                      </Button>
+                      <span className={`extract-marker-link${step.connected ? "" : " unlinked"}`}>
+                        {step.connected ? "linked" : "unlinked"}
+                      </span>
+                      <Button
+                        className="extract-marker-delete"
+                        onClick={() => onDeleteStep(step.id)}
+                        aria-label="단계 삭제"
+                        title="삭제"
+                      >
+                        <span className="msi" aria-hidden="true">close</span>
+                      </Button>
+                    </div>
+                    {editing && markerDialog && markerForm(markerDialog, false)}
+                  </div>
+                );
+              })}
+              {pendingMarker && (
+                <div className="extract-marker-item selected pending">
+                  <div className="extract-marker-row">
+                    <span className="extract-marker-drag" aria-hidden="true">
+                      <span className="msi">drag_indicator</span>
+                    </span>
+                    <span className="extract-marker-main">
+                      <b style={{ background: LINKED }}>{pendingMarker.id}</b>
+                      <ActionTag action={pendingMarker.action} className="extract-marker-op" />
+                      <span className="extract-marker-target">{pendingMarker.target || "새 마커"}</span>
+                    </span>
+                  </div>
+                  {markerForm(pendingMarker, true)}
+                </div>
+              )}
             </div>
-            <Button
-              className="extract-add-marker"
-              onClick={onBeginMarkerPlacement}
-            >
-              + 마커 추가
-            </Button>
+            <div className="extract-marker-tools">
+              <Button
+                variant={isAddingMarker ? "secondary" : "primary"}
+                className="extract-add-marker"
+                aria-pressed={isAddingMarker}
+                onClick={isAddingMarker ? onCancelMarkerPlacement : onBeginMarkerPlacement}
+              >
+                <span className="msi" aria-hidden="true">{isAddingMarker ? "close" : "add"}</span>
+                {isAddingMarker ? "선택 중 · Esc" : "마커 추가"}
+              </Button>
+              <Button variant="secondary" iconOnly
+                aria-pressed={!markersVisible}
+                aria-label={markersVisible ? "마커 숨기기" : "마커 보이기"}
+                title={markersVisible ? "마커 숨기기" : "마커 보이기"}
+                onClick={onToggleMarkersVisible}
+              >
+                <span className="msi" aria-hidden="true">{markersVisible ? "visibility_off" : "visibility"}</span>
+              </Button>
+              <Button variant="secondary" iconOnly aria-label="마지막 마커 삭제" title="마지막 마커 삭제" disabled={!scenario.steps.length} onClick={onDeleteLast}>
+                <span className="msi" aria-hidden="true">backspace</span>
+              </Button>
+              <Button variant="secondary" iconOnly className="extract-clear" aria-label="전체 초기화" title="전체 초기화" disabled={!scenario.steps.length} onClick={onClearSteps}>
+                <span className="msi" aria-hidden="true">delete_sweep</span>
+              </Button>
+            </div>
           </aside>
 
           <div className="extract-canvas">
-            <div className="extract-frame" style={{ width: DEVICES.find((d) => d.id === device)?.frame }}>
-              <webview
-                ref={targetFrameRef}
-                className="extract-target"
-                src={scenario.url}
-                aria-label="시나리오 대상 페이지"
-              />
-              <div className="extract-fallback">
-                <div className="extract-fallback-title">Electron 대상 페이지</div>
-                <p>
-                  데스크톱 웹뷰에서 대상 URL을 열었습니다. 연결 상태는
-                  Playwright로 확인합니다.
-                </p>
-              </div>
-              {isAddingMarker && (
-                <div
-                  className="extract-placement-layer"
-                  onClick={(event) => void placeMarkerAt(event)}
-                  aria-label="마커를 추가할 위치"
+            <div className="extract-stage">
+              <div
+                className={`extract-frame${isAddingMarker ? " picking" : ""}`}
+                style={{ width: deviceFrame.frame }}
+              >
+                <webview
+                  ref={targetFrameRef}
+                  className="extract-target"
+                  src={markerTargetUrl || "about:blank"}
+                  aria-label="시나리오 대상 페이지"
                 />
-              )}
-              {markersVisible && scenario.steps.map((step, index) => {
-                const position =
-                  step.x === undefined || step.y === undefined
-                    ? defaultMarkerPosition(index)
-                    : { x: step.x, y: step.y };
-                return (
-                  step.connected && (
+                {!baseUrl && (
+                  <div className="extract-fallback">
+                    <div className="extract-fallback-title">대상 페이지 주소가 없습니다</div>
+                    <p>설정 &gt; 엔드포인트 × 환경에서 이 엔드포인트의 주소를 넣으면 여기에서 페이지를 열어 마커를 찍을 수 있습니다.</p>
+                  </div>
+                )}
+                {isAddingMarker && (
+                  <>
+                    <div
+                      className="extract-placement-layer"
+                      onClick={(event) => void placeMarkerAt(event)}
+                      aria-label="마커를 추가할 위치"
+                    />
+                    <div className="extract-picking-hint" role="status">
+                      <i aria-hidden="true" />요소를 클릭해 마커 추가<span>Esc 취소</span>
+                    </div>
+                  </>
+                )}
+                {markersVisible && visiblePins.map((step) => {
+                  if (step.x === undefined || step.y === undefined || (step.markerViewport && step.markerViewport !== device)) return null;
+                  const selected = selectedId === step.id || editingId === step.id || step === pendingMarker;
+                  return (
                     <Button
-                      key={step.id}
-                      className={
-                        "extract-pin" + (selectedId === step.id ? " selected" : "")
-                      }
+                      key={step === pendingMarker ? "pending" : step.id}
+                      className={"extract-pin" + (step.connected ? "" : " unlinked") + (selected ? " selected" : "")}
                       style={{
-                        left: `${position.x}%`,
-                        top: `${position.y}%`,
-                        backgroundColor: step.color ?? markerColor(index),
+                        left: `${step.x}%`,
+                        top: `${step.y}%`,
                       }}
-                      onClick={() => onSelectStep(step.id)}
+                      onClick={() => { if (step !== pendingMarker) toggleMarker(step); }}
                       aria-label={`${step.id}번 ${step.target} 마커`}
+                      title={step.target}
                     >
                       {step.id}
                     </Button>
-                  )
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
-            <div className="extract-pinmode">
-              <strong>{isAddingMarker ? "위치 선택 중" : "핀 수정 중"}</strong>
-              <Button onClick={onBeginMarkerPlacement}>
-                {isAddingMarker ? "다시 선택" : "마커 추가"}
-              </Button>
-              <Button
-                aria-pressed={markersVisible}
-                onClick={onToggleMarkersVisible}
-              >
-                {markersVisible ? "마커 숨기기" : "마커 보이기"}
-              </Button>
-              <Button onClick={onDeleteLast}>
-                마지막 삭제
-              </Button>
-              <Button onClick={onClearSteps}>
-                전체 초기화
-              </Button>
-            </div>
-          </div>
-        </div>
-      </div>
-    )}
-    {markerDialog && (
-      <div
-        className="modal-backdrop"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="marker-action-title"
-      >
-        <div className="manual-modal marker-action-modal">
-          <p className="eyebrow">
-            {pendingMarker ? "NEW MARKER" : "EDIT MARKER"} · STEP{" "}
-            {markerDialog.id}
-          </p>
-          <h2 id="marker-action-title">마커 액션 정의</h2>
-          <p>선택한 위치에서 실행할 액션을 설정해 주세요.</p>
-          <label>
-            액션
-            <select
-              value={markerDialog.action}
-              onChange={(event) =>
-                onUpdateMarkerDialog({ action: event.target.value as Action })
-              }
-            >
-              {Object.entries(actionLabel).map(([value, name]) => (
-                <option value={value} key={value}>
-                  {name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            라벨
-            <input
-              autoFocus
-              value={markerDialog.target}
-              onChange={(event) =>
-                onUpdateMarkerDialog({ target: event.target.value })
-              }
-              placeholder="예: 로그인 버튼"
-            />
-          </label>
-          {["fill", "manualFill", "fileUpload", "select"].includes(markerDialog.action) && (
-            <div className="input-target-alert" role="alert">
-              <strong>입력 대상 확인</strong>
-              <span>
-                라벨 또는 CSS 대상은 페이지의 실제 입력/선택 요소와 일치해야 합니다.
-                다르면 실행 단계가 실패할 수 있습니다.
+            <div className="extract-status">
+              <span className={`extract-status-dot${baseUrl ? "" : " off"}`}>{baseUrl ? "대상 연결됨" : "대상 주소 없음"}</span>
+              <span className="mono">{deviceFrame.label}</span>
+              <span className={`mono extract-status-unlinked${unlinkedCount ? " warn" : ""}`}>
+                {unlinkedCount ? `선택자 미연결 ${unlinkedCount}` : "모든 마커 연결됨"}
               </span>
             </div>
-          )}
-          <fieldset className="execution-condition">
-            <legend>실행 조건</legend>
-            <div className="execution-condition-options">
-              <label>
-                <input
-                  type="radio"
-                  name="execution-condition"
-                  checked={markerDialog.condition !== undefined}
-                  onChange={() => onUpdateMarkerDialog({ condition: "" })}
-                />
-                Y
-              </label>
-              <label>
-                <input
-                  type="radio"
-                  name="execution-condition"
-                  checked={markerDialog.condition === undefined}
-                  onChange={() => onUpdateMarkerDialog({ condition: undefined })}
-                />
-                N
-              </label>
-            </div>
-            {markerDialog.condition !== undefined && (
-              <label className="execution-condition-input">
-                실행 조건
-                <input
-                  value={markerDialog.condition}
-                  onChange={(event) =>
-                    onUpdateMarkerDialog({ condition: event.target.value })
-                  }
-                  placeholder="예: 로그인 완료"
-                />
-                <small>화면에 이 텍스트가 보일 때만 실행합니다.</small>
-              </label>
-            )}
-          </fieldset>
-          {["click", "expectText"].includes(markerDialog.action) && (
-            <>
-              {markerDialog.action === "expectText" && (
-                <div className="input-target-alert" role="alert">
-                  <strong>확인할 결과 텍스트 입력</strong>
-                  <span>
-                    라벨에 실행 후 화면에 표시되어야 하는 텍스트를 입력해 주세요.
-                    해당 텍스트를 찾지 못하면 결과 확인 단계가 실패합니다.
-                  </span>
-                </div>
-              )}
-              <label>
-                {markerDialog.action === "click" ? "클릭 대상 대기 시간 (초)" : "결과 확인 대기 시간 (초)"}
-                <input
-                  type="number"
-                  min="1"
-                  value={markerDialog.waitSeconds ?? 10}
-                  onChange={(event) =>
-                    onUpdateMarkerDialog({
-                      waitSeconds: Math.max(1, Number(event.target.value) || 10),
-                    })
-                  }
-                />
-                <small>{markerDialog.action === "click" ? "클릭 대상이 준비될 때까지 기다립니다. 기본값은 10초입니다." : "기본 대기 시간은 10초입니다."}</small>
-              </label>
-            </>
-          )}
-          {markerDialog.action === "click" && (
-            <label>
-              동일 대상 순서
-              <input
-                type="number"
-                min="1"
-                value={markerDialog.occurrence ?? 1}
-                onChange={(event) => {
-                  const occurrence = Math.max(
-                    1,
-                    Number(event.target.value) || 1,
-                  );
-                  onUpdateMarkerDialog({
-                    occurrence: occurrence === 1 ? undefined : occurrence,
-                  });
-                }}
-              />
-              <small>
-                같은 이름의 클릭 대상이 여러 개면 클릭할 순서를 지정합니다.
-              </small>
-            </label>
-          )}
-          {["fill", "select", "fileUpload"].includes(markerDialog.action) && (
-            <label>
-              {markerDialog.action === "fileUpload" ? "업로드할 파일" : markerDialog.action === "select" ? "선택할 값" : "값"}
-              <div className={markerDialog.action === "fileUpload" ? "file-upload-value" : undefined}>
-                <input
-                  value={markerDialog.value ?? ""}
-                  onChange={(event) =>
-                    onUpdateMarkerDialog({ value: event.target.value })
-                  }
-                  placeholder={markerDialog.action === "fileUpload" ? "파일 경로를 입력하거나 선택하세요" : "입력 또는 선택할 값"}
-                />
-                {markerDialog.action === "fileUpload" && (
-                  <Button
-                    variant="secondary"
-                    onClick={() => void onSelectUploadFile().then((filePath) => {
-                      if (filePath) onUpdateMarkerDialog({ value: filePath });
-                    })}
-                  >
-                    파일 선택
-                  </Button>
-                )}
-              </div>
-              {markerDialog.action === "fileUpload" && (
-                <small>테스트를 실행할 컴퓨터에서 접근 가능한 파일을 선택하세요.</small>
-              )}
-            </label>
-          )}
-          {markerDialog.action === "manualFill" && (
-            <label>
-              안내 문구
-              <input
-                value={markerDialog.prompt ?? ""}
-                onChange={(event) =>
-                  onUpdateMarkerDialog({
-                    prompt: event.target.value,
-                    required: true,
-                  })
-                }
-                placeholder="사용자에게 표시할 안내"
-              />
-            </label>
-          )}
-          {markerDialog.action === "manualControl" && (
-            <>
-              <div className="input-target-alert" role="alert">
-                <strong>브라우저 직접 제어</strong>
-                <span>실행 시 별도 Chromium 창이 열립니다. 결제 모달·팝업을 직접 조작한 뒤 앱에서 계속을 선택하세요. 이 시나리오에서는 미리보기와 실패 영상이 저장되지 않습니다.</span>
-              </div>
-              <label>
-                안내 문구
-                <input
-                  value={markerDialog.prompt ?? ""}
-                  onChange={(event) => onUpdateMarkerDialog({ prompt: event.target.value })}
-                  placeholder="예: 나이스페이 테스트 결제를 완료한 뒤 계속을 누르세요"
-                />
-              </label>
-            </>
-          )}
-          {markerDialog.action === "manualResult" && (
-            <>
-              <div className="input-target-alert" role="alert">
-                <strong>진행자 수동 판정</strong>
-                <span>결제 등 자동 확인이 어려운 단계입니다. 실행 시 최대 5분 동안 성공 또는 실패를 직접 선택합니다.</span>
-              </div>
-              <label>
-                안내 문구
-                <input
-                  value={markerDialog.prompt ?? ""}
-                  onChange={(event) => onUpdateMarkerDialog({ prompt: event.target.value })}
-                  placeholder="예: 나이스페이 결제 후 결과를 선택해 주세요"
-                />
-              </label>
-            </>
-          )}
-          <div className="modal-actions">
-            <Button
-              variant="secondary"
-              onClick={onCloseMarkerDialog}
-            >
-              취소
-            </Button>
-            <Button
-              variant="primary"
-              onClick={onCompleteMarkerDialog}
-              disabled={!markerDialog.target.trim()}
-            >
-              마커 편집 완료
-            </Button>
           </div>
         </div>
       </div>

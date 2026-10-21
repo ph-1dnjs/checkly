@@ -1,4 +1,4 @@
-import type { RunProgress, Scenario, Step } from "../scenario";
+import type { RunProgress, RunStepResult, Scenario, Step } from "../scenario";
 
 // src/app/ipc/qa/bridge.ts 가 preload에서 노출하는 API.
 export type QaApi = {
@@ -8,7 +8,7 @@ export type QaApi = {
   runQa: (
     value: Scenario,
     options?: { preview?: boolean; workerId?: string },
-  ) => Promise<{ status: string; log: string[] }>;
+  ) => Promise<{ status: string; log: string[]; stepResults?: RunStepResult[]; failedStepIndex?: number }>;
   finishQaWorker: (workerId: string) => Promise<void>;
   downloadRunVideo: (value: string) => Promise<string | null>;
   mergeRunVideos: (values: string[]) => Promise<string | null>;

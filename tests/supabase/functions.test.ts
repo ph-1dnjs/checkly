@@ -229,6 +229,40 @@ test("팀 프로젝트 계정 Edge Function", async (t: TestContext) => {
     assert.equal(row?.nickname, "jisoo2");
   });
 
+  await t.test("비밀번호 찾기: 관리자 발급(issue-reset-code) → reset-password lookup·verify·reset", async () => {
+    assertError(await invoke(member.client, "issue-reset-code", { userId: member.userId }), 403, "owner_only");
+    assertError(await invoke(owner.client, "issue-reset-code", { userId: owner.userId }), 400, "invalid_input");
+    const issued = await invoke(owner.client, "issue-reset-code", { userId: member.userId });
+    assert.equal(issued.status, 200, JSON.stringify(issued.body));
+    assert.match(issued.body.code, /^\d{6}$/);
+    // 코드 원문은 남기지 않는다. 테이블은 anon·authenticated에게 보이지 않는다.
+    const { data: stored } = await admin.from("auth_password_resets").select("code_hash").eq("user_id", member.userId).single();
+    assert.notEqual(stored?.code_hash, issued.body.code);
+    assert.deepEqual((await member.client.from("auth_password_resets").select("user_id")).data, []);
+
+    const account = { projectCode: codeA, nickname: "jisoo2" };
+    assertError(await invoke(anon(), "reset-password", { step: "lookup", projectCode: codeA, nickname: "nobody" }), 404, "not_found");
+    assertError(await invoke(anon(), "reset-password", { step: "lookup", projectCode: codeA, nickname: "minsu" }), 400, "invalid_input");
+    assert.deepEqual(await invoke(anon(), "reset-password", { step: "lookup", ...account }), {
+      status: 200,
+      body: { ...account, ownerNickname: "minsu" },
+    });
+    const wrong = issued.body.code === "000000" ? "111111" : "000000";
+    assertError(await invoke(anon(), "reset-password", { step: "verify", ...account, code: wrong }), 400, "invalid_reset_code");
+    assert.equal((await invoke(anon(), "reset-password", { step: "verify", ...account, code: issued.body.code })).status, 200);
+    assertError(await invoke(anon(), "reset-password", { step: "reset", ...account, code: issued.body.code, password: "123" }), 400, "weak_password");
+    assert.equal((await invoke(anon(), "reset-password", { step: "reset", ...account, code: issued.body.code, password: "reset-pass1" })).status, 200);
+    assert.ifError((await signIn("jisoo2", codeA, "reset-pass1")).error);
+    // 한 번 쓴 코드는 지워진다.
+    assertError(await invoke(anon(), "reset-password", { step: "verify", ...account, code: issued.body.code }), 400, "invalid_reset_code");
+
+    // 다섯 번 틀리면 맞는 코드도 쓸 수 없다.
+    const again = await invoke(owner.client, "issue-reset-code", { userId: member.userId });
+    const miss = again.body.code === "000000" ? "111111" : "000000";
+    for (let i = 0; i < 5; i++) await invoke(anon(), "reset-password", { step: "verify", ...account, code: miss });
+    assertError(await invoke(anon(), "reset-password", { step: "verify", ...account, code: again.body.code }), 400, "invalid_reset_code");
+  });
+
   const codeB = newCode();
   let projectB = "";
   let ownerB: Awaited<ReturnType<typeof signedIn>>;

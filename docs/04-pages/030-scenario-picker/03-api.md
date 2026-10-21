@@ -1,10 +1,5 @@
-# [IPC 연동] 시나리오 선택
+# 데이터·IPC
 
-| IPC | 입력 | 출력 | 실패·취소 |
-| --- | --- | --- | --- |
-| `scenario:list-folder` | 없음 | folderPath, file 목록 | 경로·읽기 오류면 null+빈 목록 |
-| `scenario:choose-folder` | 없음 | 선택 후 목록 | 취소면 기존 저장 폴더 목록 |
-| `scenario:read-file` | 절대 path | 원문 또는 null | read 오류면 null |
+`window.electronAPI.webScenarios.list()`가 현재 프로젝트의 문서 본문·마커·작성 정보를 한 번에 가져온다. `recordScenarios`는 UUID를 파서 source로 넘겨 블록 ID를 생성하고 마커를 결합한다.
 
-file 목록은 name, path, ISO updatedAt을 포함합니다. renderer는 목록의 각 파일을 병렬로 읽어 parser 결과를 cache합니다.
-
+`auth.getProjectSettings()`로 환경을 읽는다. 인증, RLS, 저장 충돌, 비로그인 정책은 [편집 저장 정책](../020-scenario-editor/03-api.md)을 따른다. 기존 `scenario:list-folder`, `scenario:choose-folder`, `scenario:read-file` 채널은 제거됐다.

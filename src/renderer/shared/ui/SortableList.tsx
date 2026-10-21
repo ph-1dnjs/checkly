@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Icon } from "./Icon";
 
+import { Button } from "./Button";
 type Props<T> = {
   items: T[];
   /** Stable per item across reorders; used for animation and focus. */
@@ -130,7 +131,7 @@ export function SortableList<T>({ items, itemKey, itemLabel, disabled = false, o
             const to = Math.min(items.length - 1, after ? base + 1 : base);
             if (to !== current.to) updateDrag({ ...current, to });
           }}>
-          <button type="button" className="api-sort-handle" data-sort-handle disabled={disabled} draggable={!disabled}
+          <Button className="api-sort-handle" data-sort-handle disabled={disabled} draggable={!disabled}
             aria-label={`${itemLabel(item, index)} 순서 변경`} title="드래그하거나 ↑·↓ 키로 순서 변경"
             onDragStart={event => {
               const row = event.currentTarget.closest("li");
@@ -155,7 +156,7 @@ export function SortableList<T>({ items, itemKey, itemLabel, disabled = false, o
               if (to < 0 || to >= items.length) return;
               focusKey.current = key;
               commit(index, to, key);
-            }}><Icon name="drag_indicator" size={16} /></button>
+            }}><Icon name="drag_indicator" size={16} /></Button>
           {renderItem(item, index, position)}
         </li>;
       })}

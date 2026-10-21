@@ -8,6 +8,8 @@ import {
   type ReactElement,
 } from "react";
 
+import { Button } from "../../shared/ui/Button";
+import { Input } from "../../shared/ui/Input";
 type Point = { x: number; y: number };
 type Selection = { start: Point; end: Point };
 type DrawCommand =
@@ -426,7 +428,7 @@ export const ScreenshotEditor = ({
           style={{ left: textDraft.screenX, top: textDraft.screenY, color: textDraft.color }}
           onPointerDown={(event) => event.stopPropagation()}
         >
-          <input
+          <Input
             ref={textInputRef}
             aria-label="캡처에 넣을 텍스트"
             placeholder="텍스트 입력 후 Enter"
@@ -438,8 +440,8 @@ export const ScreenshotEditor = ({
               if (event.key === "Escape") { event.preventDefault(); setTextDraft(null); }
             }}
           />
-          <button aria-label="텍스트 적용" disabled={!textDraft.value.trim()} onClick={() => commitText(textDraft.value)}><MaterialIcon name="check" /></button>
-          <button aria-label="텍스트 입력 취소" onClick={() => setTextDraft(null)}><MaterialIcon name="close" /></button>
+          <Button variant="ghost" iconOnly aria-label="텍스트 적용" disabled={!textDraft.value.trim()} onClick={() => commitText(textDraft.value)}><MaterialIcon name="check" /></Button>
+          <Button variant="ghost" iconOnly aria-label="텍스트 입력 취소" onClick={() => setTextDraft(null)}><MaterialIcon name="close" /></Button>
         </div>
       )}
       <div className="fa-capture-toolbar">
@@ -453,7 +455,7 @@ export const ScreenshotEditor = ({
             ["text", "title", "텍스트"],
             ["eraser", "ink_eraser", "지우개"],
           ] as Array<[Tool, string, string]>).map(([value, icon, label]) => (
-            <button
+            <Button
               key={value}
               aria-pressed={tool === value}
               className={tool === value ? "active" : ""}
@@ -463,12 +465,12 @@ export const ScreenshotEditor = ({
                 setTextDraft(null);
                 setTool(value);
               }}
-            ><MaterialIcon name={icon} /> {label}</button>
+            ><MaterialIcon name={icon} /> {label}</Button>
           ))}
         </div>
         <div className="fa-capture-colors" role="group" aria-label="주석 색상">
           {["#ef4454", "#ffbf2f", "#2e7cf6", "#ffffff"].map((value) => (
-            <button
+            <Button
               key={value}
               aria-label={`${value} 색상`}
               disabled={tool === "eraser" || tool === "crop"}
@@ -479,11 +481,11 @@ export const ScreenshotEditor = ({
           ))}
         </div>
         <label className="fa-capture-size">굵기<input disabled={tool === "crop"} type="range" min="3" max="14" value={brushSize} onChange={(event) => setBrushSize(Number(event.target.value))} /></label>
-        <button className="fa-capture-undo" disabled={!commands.length} onClick={() => setCommands((items) => items.slice(0, -1))}><MaterialIcon name="undo" /> 실행 취소</button>
-        <button className="fa-capture-reset" disabled={!cropped && !commands.length} onClick={resetCapture}><MaterialIcon name="fullscreen" /> 전체 화면</button>
+        <Button variant="ghost" className="fa-capture-undo" title="실행 취소 · ⌘/Ctrl Z" disabled={!commands.length} onClick={() => setCommands((items) => items.slice(0, -1))}><MaterialIcon name="undo" /> 실행 취소</Button>
+        <Button variant="ghost" className="fa-capture-reset" title="자르기 전 원본으로" disabled={!cropped && !commands.length} onClick={resetCapture}><MaterialIcon name="fullscreen" /> 전체 화면</Button>
         <span className="fa-capture-divider" />
-        <button className="fa-capture-cancel" onClick={onCancel}>취소</button>
-        <button className="fa-capture-complete" disabled={!ready || copying || Boolean(textDraft)} onClick={() => void copyCapture()}><MaterialIcon name="content_copy" /> {copying ? "복사 중…" : "완료 · 클립보드 복사"}</button>
+        <Button variant="ghost" className="fa-capture-cancel" onClick={onCancel}>취소</Button>
+        <Button variant="primary" className="fa-capture-complete" disabled={!ready || copying || Boolean(textDraft)} onClick={() => void copyCapture()}><MaterialIcon name="content_copy" /> {copying ? "복사 중…" : "완료 · 클립보드 복사"}</Button>
       </div>
     </div>
   );

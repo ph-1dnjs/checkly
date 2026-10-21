@@ -16,6 +16,8 @@ export type AuthStubOptions = {
   signOutNotice?: string
   /** 설정 PROJECT의 "비밀값도 팀에 공유"용으로 apiTesting bridge의 팀 설정 두 메서드만 둔다. */
   teamSettings?: boolean
+  webScenarioConflict?: boolean
+  webScenarioOffline?: boolean
 }
 
 export const owner: AuthSession = {
@@ -132,6 +134,30 @@ export async function installAuthStub(page: Page, options: AuthStubOptions) {
         emit(next)
         return next
       },
+      // 비밀번호 찾기: 관리자가 발급한 코드는 '482913'으로 둔다. 관리자 계정(minsu)은 받을 수 없다.
+      findResetAccount: async (input: { projectCode: string; nickname: string }) => {
+        record('findResetAccount', input)
+        await wait()
+        if (input.projectCode !== 'checkly-team' || !members.some((member) => member.nickname === input.nickname)) {
+          throw new Error('프로젝트 코드 또는 닉네임이 올바르지 않습니다.')
+        }
+        if (input.nickname === 'minsu') throw new Error('관리자 계정은 재설정 코드를 받을 수 없습니다. 운영자에게 문의하세요.')
+        return { projectCode: input.projectCode, nickname: input.nickname, ownerNickname: 'minsu' }
+      },
+      verifyResetCode: async (input: { code: string }) => {
+        record('verifyResetCode', input)
+        await wait()
+        if (input.code !== '482913') throw new Error('재설정 코드가 올바르지 않거나 만료되었습니다. 관리자에게 새 코드를 받아 주세요.')
+      },
+      resetPassword: async (input: unknown) => {
+        record('resetPassword', input)
+        await wait()
+      },
+      issueResetCode: async (userId: string) => {
+        record('issueResetCode', userId)
+        await wait()
+        return { code: '482913', expiresAt: '2026-10-20T09:30:00.000Z' }
+      },
       getProject: async () => ({ id: 'p-team', code: 'checkly-team', inviteCode, createdAt: '2026-03-04T09:00:00.000Z', members }),
       regenerateInviteCode: async () => {
         record('regenerateInviteCode', null)
@@ -189,11 +215,46 @@ export async function installAuthStub(page: Page, options: AuthStubOptions) {
       value: {
         ...(options.enabled === 'missing' ? {} : { auth }),
         ...(options.teamSettings ? { apiTesting } : {}),
-        loadScenarioMarkdown: async () => null,
-        loadMarkerPositions: async () => null,
-        saveMarkerPositions: async () => undefined,
-        listScenarioFolder: async () => ({ folderPath: null, files: [] }),
-        readScenarioFile: async () => null,
+        webScenarios: {
+          listRuns: async () => {
+            record('webScenarios.listRuns', null)
+            return JSON.parse(store.getItem('web-runs') ?? '[]')
+          },
+          saveRun: async (input: any) => {
+            record('webScenarios.saveRun', input)
+            const rows = JSON.parse(store.getItem('web-runs') ?? '[]')
+            store.setItem('web-runs', JSON.stringify([input, ...rows]))
+          },
+          list: async () => {
+            record('webScenarios.list', null)
+            if (options.webScenarioOffline) throw new Error('서버에 연결할 수 없습니다. 잠시 후 다시 시도하세요.')
+            return JSON.parse(store.getItem('web-scenarios') ?? '[]')
+          },
+          save: async (input: any) => {
+            record('webScenarios.save', input)
+            if (options.webScenarioConflict && input.id) throw new Error('다른 팀원이 먼저 수정했습니다. 새로 불러온 뒤 다시 저장하세요.')
+            const rows = JSON.parse(store.getItem('web-scenarios') ?? '[]')
+            const identities = new Map<string, string>()
+            if (!input.id) {
+              for (const match of input.markdown.matchAll(/(?:^id: |<!-- step:)([a-f0-9-]{36})/gm)) identities.set(match[1], crypto.randomUUID())
+            }
+            const markdown = input.markdown.replace(/(^id: |<!-- step:)([a-f0-9-]{36})/gm,
+              (_match: string, prefix: string, id: string) => prefix + (identities.get(id) ?? id))
+            const positions = JSON.stringify(Object.fromEntries(Object.entries(JSON.parse(input.positions)).map(([id, points]) => [
+              identities.get(id) ?? id, (points as any[]).map(point => ({ ...point, databaseId: identities.get(point.databaseId) ?? point.databaseId })),
+            ])))
+            const row = { ...input, markdown, positions, id: input.id ?? crypto.randomUUID(), updatedAt: new Date().toISOString(), createdBy: 'minsu', updatedBy: 'minsu' }
+            store.setItem('web-scenarios', JSON.stringify([row, ...rows.filter((item: any) => item.id !== row.id)]))
+            return row
+          },
+          remove: async (id: string, version: string) => {
+            record('webScenarios.remove', { id, version })
+            if (options.webScenarioConflict) throw new Error('다른 팀원이 먼저 수정했습니다. 새로 불러온 뒤 다시 저장하세요.')
+            const rows = JSON.parse(store.getItem('web-scenarios') ?? '[]')
+            store.setItem('web-scenarios', JSON.stringify(rows.filter((item: any) => item.id !== id)))
+          },
+        },
+        inspectScenario: async () => [],
         onManualInputRequired: off,
         onManualControlRequired: off,
         onManualResultRequired: off,

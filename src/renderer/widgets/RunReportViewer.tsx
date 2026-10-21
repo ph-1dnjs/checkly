@@ -75,6 +75,8 @@ export const RunReportViewer = ({ record, onClose, onDownload }: Props) => {
             </Button>
           </div>
           <Button
+            variant="ghost"
+            iconOnly
             className="run-report-drawer-close"
             onClick={onClose}
             aria-label="닫기"

@@ -1,6 +1,8 @@
 import { useState } from "react";
 import type { ApiAiChatSettings, ApiProject, ApiTestingBridge } from "../../../../../app/api-testing/shared/workspace";
 
+import { Button } from "../../../../shared/ui/Button";
+import { Input } from "../../../../shared/ui/Input";
 export function ProjectAiSettings({ project, settings, drafts, onDrafts, onChange, chooseDirectories }: {
   project: ApiProject; settings: ApiAiChatSettings;
   drafts: Record<string, string>; onDrafts: (drafts: Record<string, string>) => void;
@@ -18,17 +20,17 @@ export function ProjectAiSettings({ project, settings, drafts, onDrafts, onChang
     {project.servers.map(server => <div key={server.id} className="api-ai-chat-folder-server">
       <span>{server.name || "새 서버"}</span>
       {(folders[server.id] ?? []).length > 0 && <ul>{folders[server.id].map(folder => <li key={folder}><code title={folder}>{folder}</code>
-        <button type="button" aria-label={`${server.name} 폴더 ${folder} 제거`} onClick={() => onChange({ ...settings, folders: { ...folders, [server.id]: folders[server.id].filter(item => item !== folder) } })}>제거</button>
+        <Button variant="secondary" aria-label={`${server.name} 폴더 ${folder} 제거`} onClick={() => onChange({ ...settings, folders: { ...folders, [server.id]: folders[server.id].filter(item => item !== folder) } })}>제거</Button>
       </li>)}</ul>}
       <div className="api-actions">
-        <button type="button" disabled={choosing} onClick={async () => {
+        <Button variant="secondary" disabled={choosing} onClick={async () => {
           setChoosing(true); setError("");
           try { add(server.id, await chooseDirectories()); } catch (e) { setError((e as Error).message); } finally { setChoosing(false); }
-        }}>폴더 선택…</button>
-        <input aria-label={`${server.name || "새 서버"} 폴더 경로`} placeholder="또는 절대 경로 입력" value={drafts[server.id] ?? ""}
+        }}>폴더 선택…</Button>
+        <Input aria-label={`${server.name || "새 서버"} 폴더 경로`} placeholder="또는 절대 경로 입력" value={drafts[server.id] ?? ""}
           onChange={e => onDrafts({ ...drafts, [server.id]: e.target.value })}
           onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); if (drafts[server.id]?.trim()) { add(server.id, [drafts[server.id].trim()]); onDrafts({ ...drafts, [server.id]: "" }); } } }} />
-        <button type="button" disabled={!drafts[server.id]?.trim()} onClick={() => { add(server.id, [drafts[server.id].trim()]); onDrafts({ ...drafts, [server.id]: "" }); }}>추가</button>
+        <Button variant="secondary" disabled={!drafts[server.id]?.trim()} onClick={() => { add(server.id, [drafts[server.id].trim()]); onDrafts({ ...drafts, [server.id]: "" }); }}>추가</Button>
       </div>
     </div>)}
     {error && <p className="api-warning" role="alert">{error}</p>}

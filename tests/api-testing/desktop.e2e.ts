@@ -703,9 +703,9 @@ process.stdin.on("data", chunk => {
     await page.getByRole("button", { name: "+ 새 스위트", exact: true }).click();
     await page.getByLabel("스위트 이름", { exact: true }).fill("화면에서 만든 스위트");
     // One AI 로그인 to pick: the earlier same-name draft was not saved.
-    await expect(page.getByRole("combobox", { name: /^시나리오 추가/ }).locator("option", { hasText: "AI 로그인" })).toHaveCount(1);
-    await page.getByRole("combobox", { name: /^시나리오 추가/ }).selectOption({ label: "AI 로그인" });
-    await page.getByRole("combobox", { name: /^시나리오 추가/ }).selectOption({ label: "AI 로그인" });
+    await expect(page.getByRole("combobox", { name: /시나리오 추가/ }).locator("option", { hasText: "AI 로그인" })).toHaveCount(1);
+    await page.getByRole("combobox", { name: /시나리오 추가/ }).selectOption({ label: "AI 로그인" });
+    await page.getByRole("combobox", { name: /시나리오 추가/ }).selectOption({ label: "AI 로그인" });
     await expect(page.locator(".api-suite-order")).toHaveText(["1AI 로그인", "2AI 로그인"]);
     await page.getByRole("button", { name: "스위트 저장", exact: true }).click();
     await expect(page.getByRole("region", { name: "스위트 구성" })).toContainText("2개 시나리오");
@@ -852,6 +852,18 @@ process.stdin.on("data", chunk => {
     await expect(restored.getByText("명세에 없는 API입니다", { exact: false })).toBeVisible();
     await restored.getByRole("button", { name: "2단계 API 바꾸기", exact: true }).click();
     const replaceDialog = restored.getByRole("dialog", { name: "2단계 API 바꾸기" });
+    // Shared modal: content interaction stays open; backdrop, Escape and close dismiss it.
+    await replaceDialog.getByLabel("바꿀 API 검색").click();
+    await expect(replaceDialog).toBeVisible();
+    await restored.locator(".api-value-modal-backdrop").click({ position: { x: 2, y: 2 } });
+    await expect(replaceDialog).toHaveCount(0);
+    await restored.getByRole("button", { name: "2단계 API 바꾸기", exact: true }).click();
+    await restored.keyboard.press("Escape");
+    await expect(replaceDialog).toHaveCount(0);
+    await restored.getByRole("button", { name: "2단계 API 바꾸기", exact: true }).click();
+    await replaceDialog.getByRole("button", { name: "API 바꾸기 닫기", exact: true }).click();
+    await expect(replaceDialog).toHaveCount(0);
+    await restored.getByRole("button", { name: "2단계 API 바꾸기", exact: true }).click();
     await replaceDialog.getByLabel("바꿀 API 검색").fill("products");
     await replaceDialog.getByRole("button", { name: /\/products\/\{id\}/ }).click();
     await expect(restored.getByText("명세에 없는 API입니다", { exact: false })).toHaveCount(0);

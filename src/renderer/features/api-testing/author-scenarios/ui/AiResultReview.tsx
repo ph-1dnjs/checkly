@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { YamlCode } from "../../../../entities/api-testing";
 import type { ApiAiImportResult, ApiEnvironmentScope, ApiTestingBridge, SavedApiScenario } from "../../../../../app/api-testing/shared/workspace";
 
+import { Button } from "../../../../shared/ui/Button";
 const errorText = (error: unknown) => (error as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, "");
 
 /** Which drafts start chosen: a name already saved usually means the same result again, so only a clean update of the one saved scenario is chosen. */
@@ -96,6 +97,6 @@ export function AiResultReview({ result, scope, bridge, onBusy, onSaved, notes, 
     </div>}
     {error && <p className="api-warning" role="alert">{error}</p>}
     {message && <p className="api-ai-step-status" role="status">{message}</p>}
-    <div className="api-actions"><button type="button" className="api-primary" disabled={saving || readOnly || (!chosen.length && !suiteReuses)} onClick={() => void save()}>{saving ? "저장 중…" : "선택한 것 저장"}</button></div>
+    <div className="api-actions"><Button variant="primary" disabled={saving || readOnly || (!chosen.length && !suiteReuses)} onClick={() => void save()}>{saving ? "저장 중…" : "선택한 것 저장"}</Button></div>
   </section>;
 }

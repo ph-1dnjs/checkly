@@ -2,7 +2,7 @@ import { createPortal } from "react-dom";
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties, type ReactNode } from "react";
 import { ResizeHandle, useStoredWidth } from "../../../shared/ui/ResizeHandle";
 import SwaggerUI from "swagger-ui-react";
-import "swagger-ui-react/swagger-ui.css";
+import "./swagger-vendor.css";
 import type { Scenario } from "../../../../app/api-testing/shared/scenario";
 import type { ApiCatalog, ApiDocInput, ApiScope, ApiTestingBridge, ApiSidebarMetadata } from "../../../../app/api-testing/shared/workspace";
 import { issueGlobal } from "../../../../app/api-testing/shared/preflight-issues";
@@ -24,6 +24,7 @@ import { buildSpec } from "../lib/swagger-request";
 import { submitMethods, createSwaggerPlugin } from "./swagger-plugin";
 import { LoadingSpinner } from "../../../shared/ui/LoadingSpinner";
 
+import { Button } from "../../../shared/ui/Button";
 const StableSwaggerUI = memo(SwaggerUI);
 const emptyCatalogs: Record<string, ApiCatalog | null> = {};
 
@@ -295,7 +296,7 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
   }, [bridge, onBusy, onRunAction, ownsRunAction, scope.environmentId, scope.projectId, scope.serverId]);
 
   const toolbarElement = <div className={`api-actions${composing ? " api-compose-toolbar" : ""}`} ref={composeToolbar}>
-    {composeOnly || initialEdit ? <button type="button" disabled={saving || (!composing && busy)} aria-pressed={composing} onClick={() => {
+    {composeOnly || initialEdit ? <Button disabled={saving || (!composing && busy)} aria-pressed={composing} onClick={() => {
       if (composing && dirty) { setConfirmClose(true); return; }
       if (composing) {
         setComposing(false);
@@ -304,21 +305,21 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
         setComposing(true);
       }
       if (ownsRunAction) onRunAction(null);
-    }} aria-label={composing ? "시나리오 목록으로" : undefined} title={composing ? "시나리오 목록으로" : undefined} className={composing ? "api-compose-back" : undefined}>{composing ? <Icon name="arrow_back" size={20} /> : "수정"}</button> : null}
+    }} aria-label={composing ? "시나리오 목록으로" : undefined} title={composing ? "시나리오 목록으로" : undefined} className={composing ? "api-compose-back" : undefined}>{composing ? <Icon name="arrow_back" size={20} /> : "수정"}</Button> : null}
     {composing && <div className="api-compose-heading">
       <strong className="api-compose-title" title={saved ? `시나리오 수정 · ${saved.name}` : "새 시나리오"}>{saved ? `시나리오 수정 · ${saved.name}` : "새 시나리오"}</strong>
       <span className="api-compose-status" data-state={!draft.steps.length ? "empty" : dirty ? "dirty" : saved ? saved.draft ? "draft" : "saved" : "new"}><span role="status">{draft.steps.length ? `${draft.steps.length}개 단계` : "API를 선택하세요"}{draft.steps.length ? dirty ? " · 저장 안 됨" : saved ? saved.draft ? " · 초안 저장됨 (실행 불가)" : " · 저장됨" : "" : ""}</span></span>
     </div>}
     {composing && <nav className="api-compose-steps" aria-label="시나리오 작성 단계">
-      <button type="button" aria-current={composeView === "select" ? "step" : undefined} disabled={saving} onClick={() => setComposeView("select")} title="API 추가·삭제와 순서 정하기"><span>1</span>API 선택</button>
+      <Button aria-current={composeView === "select" ? "step" : undefined} disabled={saving} onClick={() => setComposeView("select")} title="API 추가·삭제와 순서 정하기"><span>1</span>API 선택</Button>
       <Icon name="expand_more" size={14} className="api-compose-step-separator" />
-      <button type="button" aria-current={composeView === "edit" ? "step" : undefined} disabled={saving || !draft.steps.length} onClick={() => setComposeView("edit")} title="요청값·응답 연결·검증 설정 후 저장"><span>2</span>값 설정</button>
+      <Button aria-current={composeView === "edit" ? "step" : undefined} disabled={saving || !draft.steps.length} onClick={() => setComposeView("edit")} title="요청값·응답 연결·검증 설정 후 저장"><span>2</span>값 설정</Button>
     </nav>}
     {composing && toolbarContext}
     {composing && <div className="api-compose-head-actions">
       <span className="api-compose-head-sep" aria-hidden="true" />
-      <button type="button" disabled={saving || !draft.steps.length} title="API 존재 · 필수 요청값 · 참조 순서를 확인하고 저장합니다" onClick={() => submitFromHeader(false)}><Icon name="save" size={16} />저장</button>
-      {onExecuteSaved && <button type="button" className="api-primary" disabled={saving || !draft.steps.length} title="검사를 통과하면 저장한 뒤 실행합니다" onClick={() => submitFromHeader(true)}><Icon name="play_arrow" size={16} />실행</button>}
+      <Button variant="secondary" disabled={saving || !draft.steps.length} title="API 존재 · 필수 요청값 · 참조 순서를 확인하고 저장합니다" onClick={() => submitFromHeader(false)}><Icon name="save" size={16} />저장</Button>
+      {onExecuteSaved && <Button variant="primary" disabled={saving || !draft.steps.length} title="검사를 통과하면 저장한 뒤 실행합니다" onClick={() => submitFromHeader(true)}><Icon name="play_arrow" size={16} />실행</Button>}
     </div>}
   </div>;
   return <section className="api-documentation api-swagger-ui" aria-label="API 문서 목록" onClick={handleSwaggerClick}
@@ -344,8 +345,8 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
         <h2 id="api-compose-close-title">저장하지 않은 변경사항</h2>
         <p>현재 시나리오 수정 내용이 저장되지 않았습니다. 닫으면 수정 내용이 사라집니다.</p>
         <div className="api-actions">
-          <button type="button" autoFocus onClick={() => setConfirmClose(false)}>계속 작성</button>
-          <button type="button" className="api-danger-action" onClick={() => { newScenario(); setComposing(false); onCloseComposer?.(); }}>변경사항 버리고 닫기</button>
+          <Button variant="secondary" autoFocus onClick={() => setConfirmClose(false)}>계속 작성</Button>
+          <Button variant="danger" onClick={() => { newScenario(); setComposing(false); onCloseComposer?.(); }}>변경사항 버리고 닫기</Button>
         </div>
       </section>
     </div>}
@@ -360,7 +361,7 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
           window.history.replaceState(window.history.state, "", `${window.location.pathname}${window.location.search}#/`);
         }}>{project.servers.map(server => <option key={server.id} value={server.id}>{server.name}</option>)}</select></label>
         <code>{displayBaseUrl || "기본 주소 없음"}</code>
-        {composeCatalogLoading && <small>명세를 불러오는 중…</small>}
+        {composeCatalogLoading ? <small>명세를 불러오는 중…</small> : <small className="api-compose-server-note">보기·추가 전용 · 요청값은 ② 값 설정에서</small>}
       </div>}
       {displayCatalog ? <StableSwaggerUI
         key={`${scope.environmentId}:${composeServerId}:${displayCatalog.importedAt}`}
@@ -382,7 +383,7 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
         supportedSubmitMethods={composing ? [] : submitMethods}
         showExtensions={false}
         showCommonExtensions={false}
-      /> : composeCatalogLoading ? <LoadingSpinner label="선택한 서버의 API 문서를 준비하는 중…" /> : <div className="api-empty api-compose-server-empty"><h2>API 명세를 가져오세요</h2><p>선택한 서버·환경에 API 명세가 없습니다.</p>{onOpenSpecs && <div className="api-actions"><button type="button" className="api-primary" onClick={onOpenSpecs}>API 문서로 이동</button></div>}</div>}
+      /> : composeCatalogLoading ? <LoadingSpinner label="선택한 서버의 API 문서를 준비하는 중…" /> : <div className="api-empty api-compose-server-empty"><h2>API 명세를 가져오세요</h2><p>선택한 서버·환경에 API 명세가 없습니다.</p>{onOpenSpecs && <div className="api-actions"><Button variant="primary" onClick={onOpenSpecs}>API 문서로 이동</Button></div>}</div>}
     </div>
     {composing && composeView === "select" && <aside className="api-selection-basket" aria-label="선택한 API" data-scroll="light">
       <h2>선택한 API · {draft.steps.length}개</h2>
@@ -393,7 +394,7 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
       }} />
       {activeStepId && draft.steps.some(step => step.id === activeStepId) && <p className="api-field-help">{draft.steps.findIndex(step => step.id === activeStepId) + 1}단계를 문서에서 보는 중입니다.</p>}
       {notice && <p role="status">{notice}</p>}
-      <button type="button" className="api-primary" disabled={saving || !draft.steps.length} onClick={() => setComposeView("edit")}>선택 및 순서 설정 완료</button>
+      <Button variant="primary" disabled={saving || !draft.steps.length} onClick={() => setComposeView("edit")}>선택 및 순서 설정 완료</Button>
     </aside>}
     {/* Only step 2 is resizable: step 1's Swagger | list ratio stays fixed. */}
     {composing && composeView === "edit" && <ResizeHandle label="설정 요약 폭" container={layoutRef} pane=".api-settings-summary" min={240} max={0.6} onChange={setSummaryWidth} />}
@@ -401,7 +402,7 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
     {composing && <aside hidden={composeView !== "edit"} className="api-compose-editor" aria-label="Swagger 시나리오 작성" data-scroll="light" onChangeCapture={() => { setDirty(true); setNotice(""); }}>
       <div ref={editorFormHost}><ScenarioBuilder catalogLoading={composeCatalogLoading} globalRevision={globalAccess.revision} onConfigureGlobal={globalAccess.open} key={editorVersion} suppliedCatalogs={composeCatalogs} value={draft} onChange={changeDraft} Markdown={Markdown} onStepFocus={step => setActiveStepId(step.id)} saving={saving} bindings={{}} project={project} scope={scope} bridge={bridge}
         metadata={onSidebarGroupPathChange && <SidebarMetadataFields groupPath={sidebarGroupPath ?? []} existingGroupPaths={sidebarGroupPaths} disabled={saving} onGroupPathChange={value => { onSidebarGroupPathChange(value); setDirty(true); setNotice(""); }} />}
-        actions={onExecuteSaved && <button type="button" disabled={saving || !draft.steps.length} onClick={saveAndRun}>저장 후 실행</button>}
+        actions={onExecuteSaved && <Button variant="secondary" disabled={saving || !draft.steps.length} onClick={saveAndRun}>저장 후 실행</Button>}
         onApply={async yaml => {
         const execute = runAfterSave.current;
         runAfterSave.current = false;

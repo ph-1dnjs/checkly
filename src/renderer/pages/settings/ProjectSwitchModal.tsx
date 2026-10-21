@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Button } from "../../shared/ui/Button";
+import { Input } from "../../shared/ui/Input";
 import type { RecentProject } from "../../shared/model/electron-api/auth";
 import { errorMessage, formatDate, type AuthAccount } from "../auth/model";
 import { SettingsDialog } from "./SettingsDialog";
@@ -85,7 +86,7 @@ export const ProjectSwitchModal = ({ account, onClose }: Props) => {
             <span className="msi" aria-hidden="true">group_add</span>
             초대코드로 가입
           </Button>
-          <Button variant="default" className="settings-dialog-push" onClick={onClose}>
+          <Button variant="secondary" className="settings-dialog-push" onClick={onClose}>
             취소
           </Button>
           <Button type="submit" variant="primary" disabled={busy || !projects} aria-busy={busy}>
@@ -132,8 +133,7 @@ export const ProjectSwitchModal = ({ account, onClose }: Props) => {
         <div className="settings-dialog-body">
           <label className="settings-dialog-field">
             <span>닉네임</span>
-            <input
-              className="settings-input"
+            <Input
               value={nickname}
               onChange={(event) => {
                 setNickname(event.target.value);
@@ -148,8 +148,7 @@ export const ProjectSwitchModal = ({ account, onClose }: Props) => {
             <span>
               비밀번호 · <code>{pick}</code>
             </span>
-            <input
-              className="settings-input"
+            <Input
               type="password"
               value={password}
               onChange={(event) => {

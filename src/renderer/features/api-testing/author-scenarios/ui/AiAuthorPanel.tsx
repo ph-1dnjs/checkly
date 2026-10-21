@@ -9,6 +9,7 @@ import { Icon } from "../../../../shared/ui/Icon";
 import { aiToolNames, backendFolderCount, chatTool } from "../../../../entities/api-testing";
 import type { ApiAiChatSettings, ApiAiChatStatus, ApiAiImportResult, ApiCatalog, ApiEnvironmentScope, ApiProject, ApiTestingBridge, SavedApiScenario } from "../../../../../app/api-testing/shared/workspace";
 
+import { Button } from "../../../../shared/ui/Button";
 const errorText = (error: unknown) => (error as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, "");
 
 /**
@@ -111,7 +112,7 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved, onConfi
   const problems = result ? problemReport(result) : "";
   const toolChoice = chatStatus && chatSettings && tools.length > 1 && <div className="api-ai-tool-row">
           <AiToolSettings projectId={project.id} bridge={bridge} status={chatStatus} settings={chatSettings} disabled={busy} onBusy={setSettingsBusy} onSaved={setChatSettings} />
-          <button type="button" className="api-icon-button api-ai-refresh" aria-label="AI 다시 확인" title="AI 다시 확인" disabled={busy} onClick={() => setStatusRevision(value => value + 1)}><Icon name="refresh" size={16} /></button>
+          <Button variant="ghost" iconOnly className="api-icon-button api-ai-refresh" aria-label="AI 다시 확인" title="AI 다시 확인" disabled={busy} onClick={() => setStatusRevision(value => value + 1)}><Icon name="refresh" size={16} /></Button>
         </div>;
   const specNote = noSpec ? "가져온 명세가 없어 AI에게 줄 API가 없습니다. API 문서 탭에서 명세를 가져오세요." : specWarnings.join(" · ");
   const usable = operations.filter(operation => !operation.unavailable).length;
@@ -124,10 +125,10 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved, onConfi
     {/* Two ways as tabs; the AI choice sits next to the chat's start button. */}
     {checkingAi ? <p role="status" className="api-field-help">설치된 AI를 확인하는 중…</p> : <div className="api-ai-author-heading">
       <div className="api-ai-mode" role="tablist" aria-label="작성 방식">
-        <button type="button" role="tab" aria-selected={view === "chat"} disabled={busy} onClick={() => choose("chat")}>앱에서 AI와 대화</button>
-        <button type="button" role="tab" aria-selected={view === "copy"} disabled={busy} onClick={() => choose("copy")}>내 AI 앱에서 쓰기</button>
+        <Button role="tab" aria-selected={view === "chat"} disabled={busy} onClick={() => choose("chat")}>앱에서 AI와 대화</Button>
+        <Button role="tab" aria-selected={view === "copy"} disabled={busy} onClick={() => choose("copy")}>내 AI 앱에서 쓰기</Button>
       </div>
-      {view === "chat" && chatReady && <button type="button" className="api-ai-style-toggle" disabled={busy} onClick={() => chooseStyle(style === "quick" ? "terminal" : "quick")}>{style === "quick" ? "터미널로 보기" : "간단히 보기"}</button>}
+      {view === "chat" && chatReady && <Button className="api-ai-style-toggle" disabled={busy} onClick={() => chooseStyle(style === "quick" ? "terminal" : "quick")}>{style === "quick" ? "터미널로 보기" : "간단히 보기"}</Button>}
     </div>}
     {checkingAi ? null : view === "chat" ? <>
       {!chatReady ? <section className="api-ai-chat-requirements" aria-label="앱에서 AI와 대화 준비">
@@ -136,12 +137,12 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved, onConfi
           <li className={tool ? "is-ok" : "is-missing"}>
             <span>AI</span>
             <strong title={tools.map(item => `${aiToolNames[item.tool]} ${item.version}`).join("\n") || undefined}>{tools.length ? tools.map(item => aiToolNames[item.tool]).join(" · ") : "없음"}</strong>
-            <button type="button" className="api-icon-button" aria-label="AI 다시 확인" title="AI 다시 확인" disabled={busy} onClick={() => setStatusRevision(value => value + 1)}><Icon name="refresh" size={16} /></button>
+            <Button variant="ghost" iconOnly className="api-icon-button" aria-label="AI 다시 확인" title="AI 다시 확인" disabled={busy} onClick={() => setStatusRevision(value => value + 1)}><Icon name="refresh" size={16} /></Button>
           </li>
           <li className={backendFolderCount(chatSettings) ? "is-ok" : "is-missing"}>
             <span>백엔드 코드 폴더</span>
             <strong>{backendFolderCount(chatSettings) ? `${backendFolderCount(chatSettings)}개` : "없음"}</strong>
-            {tools.length > 0 && <button type="button" className="api-issue-step-link" disabled={busy} onClick={onConfigureProject}>설정하기</button>}
+            {tools.length > 0 && <Button className="api-issue-step-link" disabled={busy} onClick={onConfigureProject}>설정하기</Button>}
           </li>
         </ul>
         {!tools.length && <p className="api-field-help">{chatStatus?.error ?? "Claude Code나 Codex CLI를 설치한 뒤 다시 확인하세요"}</p>}
@@ -158,8 +159,8 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved, onConfi
           <ApiPicker operations={operations} servers={Object.fromEntries(project.servers.map(server => [server.id, server.name]))} picked={picked} disabled={busy} onChange={next => { setGuide(null); setPicked(next); }} />
         </details>}
         <div className="api-actions">
-          <button type="button" className="api-primary" disabled={busy || noSpec} onClick={() => void act(async () => { await bridge.copyAiPrompt(guideRequest()); setMessage("가이드를 복사했습니다. AI에 붙여넣으세요."); }, 1)}>AI 가이드 복사</button>
-          <button type="button" aria-expanded={guide !== null} disabled={busy || noSpec} onClick={() => void act(async () => { if (guide !== null) { setGuide(null); return; } const text = await bridge.getAiPrompt(guideRequest()); if (live.current) setGuide(text); }, 1)}>{guide === null ? "가이드 보기" : "가이드 닫기"}</button>
+          <Button variant="primary" disabled={busy || noSpec} onClick={() => void act(async () => { await bridge.copyAiPrompt(guideRequest()); setMessage("가이드를 복사했습니다. AI에 붙여넣으세요."); }, 1)}>AI 가이드 복사</Button>
+          <Button variant="secondary" aria-expanded={guide !== null} disabled={busy || noSpec} onClick={() => void act(async () => { if (guide !== null) { setGuide(null); return; } const text = await bridge.getAiPrompt(guideRequest()); if (live.current) setGuide(text); }, 1)}>{guide === null ? "가이드 보기" : "가이드 닫기"}</Button>
         </div>
         {status(1)}
         {guide !== null && <pre className="api-ai-author-guide" aria-label="AI 가이드 내용">{guide}</pre>}
@@ -170,19 +171,19 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved, onConfi
       <li>
         <header><strong>결과 불러오기</strong><span>검사 결과를 보고 저장할 시나리오를 고릅니다.</span></header>
         <div className="api-actions">
-          <button type="button" className="api-primary" disabled={busy} onClick={() => void loadResult()}>{checking ? "검사 중…" : "AI 결과 불러오기"}</button>
+          <Button variant="primary" disabled={busy} onClick={() => void loadResult()}>{checking ? "검사 중…" : "AI 결과 불러오기"}</Button>
         </div>
         <details className="api-ai-author-paste"><summary>또는 YAML 직접 붙여넣기·파일 가져오기</summary>
           <textarea aria-label="AI가 만든 YAML" rows={10} value={answer} disabled={busy} placeholder="AI가 대화에 출력한 답이나 시나리오 YAML을 그대로 붙여넣으세요." onChange={e => { setAnswer(e.target.value); setResult(null); }} />
           <div className="api-actions">
-            <button type="button" disabled={busy || !answer.trim()} onClick={() => void check()}>검사</button>
-            <button type="button" disabled={busy} onClick={() => void act(async () => { const text = await bridge.readScenarioFile(); if (text !== null && live.current) { setAnswer(text); setResult(null); } })}>YAML 파일 가져오기</button>
+            <Button variant="secondary" disabled={busy || !answer.trim()} onClick={() => void check()}>검사</Button>
+            <Button variant="secondary" disabled={busy} onClick={() => void act(async () => { const text = await bridge.readScenarioFile(); if (text !== null && live.current) { setAnswer(text); setResult(null); } })}>YAML 파일 가져오기</Button>
           </div>
         </details>
         {status(3)}
         {result && <AiResultReview key={resultKey} result={result} scope={scope} bridge={bridge} onBusy={setReviewBusy} onSaved={onSaved}
           notes={problems && <div className="api-ai-author-notes">검사에서 문제가 나왔습니다. 문제를 복사해 AI에 붙여넣고, AI가 고쳐 저장하면 다시 불러오세요. 그대로 저장하면 초안이 됩니다.
-            <div className="api-actions"><button type="button" onClick={() => void act(async () => { await navigator.clipboard.writeText(problems); setMessage("문제를 복사했습니다. AI에 붙여넣으세요."); })}>문제 복사</button></div>
+            <div className="api-actions"><Button variant="secondary" onClick={() => void act(async () => { await navigator.clipboard.writeText(problems); setMessage("문제를 복사했습니다. AI에 붙여넣으세요."); })}>문제 복사</Button></div>
           </div>} />}
       </li>
     </ol>}

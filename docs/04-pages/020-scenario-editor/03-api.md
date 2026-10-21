@@ -1,59 +1,27 @@
 # IPC·데이터·저장 정책
 
-> **범위**: `useScenarioState` → `window.electronAPI` → preload → main → `fileStorage`/`qaExecution`. 외부 HTTP API가 아닌 Electron IPC 계약입니다.
+웹 시나리오는 로그인한 팀 프로젝트의 Supabase DB만 사용한다. 렌더러에는 세션 토큰을 노출하지 않는다.
 
-## IPC 계약
-
-| 공개 함수 / IPC | 입력 → 출력 | 시점·효과 |
+| bridge / IPC | 입력 | 결과 |
 | --- | --- | --- |
-| loadScenarioMarkdown / `scenario:load` | 없음 → string 또는 null | 앱 시작, 기본 파일 읽기 |
-| saveScenarioMarkdown / `scenario:save` | Markdown → void | 불러오기·명시 저장·마커 저장 |
-| importScenarioFile / `scenario:import-file` | 없음 → `{markdown,filePath}` 또는 null | md/markdown 파일 dialog, main 활성 경로 변경 |
-| saveImportedScenarioFile / `scenario:save-imported-file` | Markdown → path 또는 null | main의 활성 경로 덮어쓰기; 활성 경로 없으면 null |
-| exportScenarioFile / `scenario:export-file` | Markdown → path 또는 null | 기본 이름 scenario.md로 저장 dialog; 성공하면 활성 경로 변경 |
-| selectUploadFile / `qa:select-upload-file` | 없음 → path 또는 null | 업로드 파일 경로 선택; 파일을 앱 저장소로 복사하지 않음 |
-| loadMarkerPositions / `marker-positions:load` | 없음 → JSON string 또는 null | 앱 시작 |
-| saveMarkerPositions / `marker-positions:save` | JSON string → void | 로드 완료 후 좌표 store 변경 시 자동 저장 |
-| inspectScenario / `qa:inspect` | Scenario → `{id,connected}[]` | 별도 headless 기본 URL 검사 |
+| `webScenarios.list` / `web-scenario:list` | 없음 | 현재 프로젝트 문서 목록(생성순), 본문·마커·작성 정보 |
+| `webScenarios.save` / `web-scenario:save` | `title`, `markdown`, `positions`, 선택적 `id`, `expectedUpdatedAt` | 저장된 문서와 새 `updatedAt` |
+| `webScenarios.remove` / `web-scenario:remove` | ID, 읽은 `updatedAt` | 성공 또는 충돌 오류 |
+| `selectUploadFile` / `qa:select-upload-file` | 없음 | 업로드할 파일 경로 또는 null |
+| `auth.getProjectSettings` | 없음 | 공통 엔드포인트·환경·주소 |
 
-브리지·등록 근거: [scenario-file/bridge.ts](../../../src/app/ipc/scenario-file/bridge.ts), [scenario-file/index.ts](../../../src/app/ipc/scenario-file/index.ts). `loadScenarioMarkdown`·`loadMarkerPositions`는 파일 없음과 권한 오류를 구분하지 않고 null로 반환합니다. 반면 `importScenarioFile`은 선택 파일의 읽기 실패를 reject하며, 쓰기도 reject합니다. dialog 취소는 null입니다.
+구현: `src/app/ipc/web-scenario/{index,bridge,store,types}.ts`.
 
-## 메모리 모델
+`web_scenarios`의 한 행은 Markdown 문서 하나다. 기존 문법과 템플릿 복제를 지원하기 위해 여러 시나리오 블록을 포함할 수 있고, 목록 제목은 첫 블록 제목이다. 문서 ID는 DB UUID로서 제목 변경 후에도 유지된다. 블록은 `id:` UUID로 구분하고 `code:`는 사용자용 번호다. 단계 줄 끝의 `<!-- step:UUID -->`로 단계 ID를 유지한다. ID 없는 기존 DB 문서는 최초 조회 시 변환하며 기존 로컬 파일은 읽지 않는다.
 
-| 값 | 역할·수명 |
-| --- | --- |
-| sourceMarkdown | 현재 전체 원문; 실행 스냅샷·복제도 여기에 반영 |
-| savedMarkdown | 마지막 성공한 로드/불러오기/저장 원문; dirty 비교 기준 |
-| scenario | 현재 마커 편집 객체; sourceMarkdown과 별도로 변경 가능 |
-| previews | 원문을 parseMarkdown한 Scenario 배열 |
-| executableScenarios | previews에 좌표·occurrence 등을 재결합한 배열 |
-| scenarioFilePath / activeScenarioFilePath | renderer/main의 활성 외부 파일 경로; 각각 메모리이며 재시작 시 소실 |
-| positionStore / positionsLoaded | 전체 좌표 사전 / 초기 로드 완료 가드 |
+본문과 정규화 시나리오·단계는 `save_web_scenario_document` RPC 한 트랜잭션으로 저장한다. 단계의 좌표는 `web_scenario_steps.marker_x/y`(소수 1자리 %)에 저장하고 viewport·페이지 URL을 함께 기록한다. 단계 ID로 복원하며 제목·URL·입력값 변경이나 드래그 정렬에 영향을 받지 않는다. 이전 JSON의 필드 매칭은 최초 변환 때만 사용한다. 마커 자동 저장은 없다. 수정·삭제는 `project_id`, `id`, `updated_at`을 모두 조건으로 하며 0행이면 충돌이다. 삭제는 문서와 하위 시나리오의 `deleted_at`을 갱신하고 과거 실행 FK·스냅샷을 유지한다. 읽은 버전은 목록 새로고침만으로 갱신하지 않고, 문서를 다시 열 때 갱신한다. 에디터 새로고침은 미저장 확인 후 열린 문서도 재조회 결과로 교체한다.
 
-`Scenario`는 id/title/url/steps와 선택 tag, `Step`은 id/action/target과 선택 필드 connected/value/prompt/required/condition/waitSeconds/occurrence/x/y/color를 가집니다. `connected`와 좌표는 실행 성공 여부나 클릭 실행 좌표가 아닙니다. 자동 실행은 target locator를 사용합니다.
+`project_id`는 main의 로그인 세션에서 정한다. RLS는 `my_project_id()`로 격리하고 `created_by`/`updated_by`는 DB 트리거가 채운다. 목록의 작성자 이름은 프로젝트 멤버에서 조회하고 탈퇴한 사용자는 `(나간 멤버)`로 표시한다. 세션 캐시는 두지 않으며 로그아웃은 Workspace를 제거하고 프로젝트 전환은 앱을 다시 불러온다.
 
-## 영속 저장
+비로그인 상태는 로그인 안내만 표시한다. 기존 폴더 연결·시나리오 파일 불러오기·내보내기·다른 이름 저장 IPC는 삭제됐다. 기존 사용자 파일은 삭제·이전하지 않는다. 영상·실행 리포트는 계속 로컬에 남는다.
 
-모든 `userData` 경로는 Electron `app.getPath('userData')` 기준입니다. 프로젝트 디렉터리나 localStorage가 기준 저장소가 아닙니다.
+선택한 환경은 `web-scenario-environment:<projectId>` localStorage에 개인별 저장한다. 웹 엔드포인트는 개인 선택이 아니라 시나리오 본문의 `endpoint:` ID로 정하며, 화면 추출 모드 상단의 `웹 엔드포인트` 선택이 이 값을 바꾼다. 실행·화면 추출은 `endpoint:` × 선택한 환경의 설정 주소를 시작 주소로 쓴다. `endpoint:`가 없으면 첫 웹 엔드포인트를 쓰고, 설정에서 지워진 ID이거나 주소가 없으면 실행을 차단하고 안내를 표시한다. DB의 `web_scenario_items.endpoint_id`에는 같은 프로젝트의 웹 엔드포인트일 때만 연결되고 아니면 null이다.
 
-| 데이터 | 파일·형식 | 쓰기·복원 정책 |
-| --- | --- | --- |
-| 기본 원문 | `userData/scenarios.md`, UTF-8 | 명시 저장/불러오기 때 전체 덮어쓰기. 앱 시작에 전체 원문과 첫 시나리오 복원 |
-| 외부 원문 | 선택한 `.md`/`.markdown`, UTF-8 | 활성 경로가 있으면 덮어쓰기. 재시작 후 연결 복원 없음 |
-| 마커 | `userData/marker-positions.json`, JSON | 로드 완료 이후 store 변경마다 전체 덮어쓰기 |
-| 업로드 파일 | 사용자가 선택한 원래 경로 | 경로만 value에 기록. 파일 자체 관리·복사 없음 |
+업로드 단계의 PC 파일 경로는 공유 전 빈 값으로 분리한다. 원래 값은 `web-scenario-uploads:<projectId>:<documentId>` localStorage에 저장해 같은 PC에서 복원하며 다른 PC에서는 파일을 다시 선택해야 한다. 파일 자체를 업로드하거나 복사하지 않는다.
 
-좌표 키는 `제목 + "\n" + URL`입니다. 각 항목에는 action, target, value, prompt, condition, waitSeconds, occurrence, x, y, color를 저장하며, x/y가 없는 단계는 저장 배열에서 제외합니다. 복원은 action/target/value/prompt/condition/waitSeconds가 같은 **첫 항목**을 찾아 occurrence/x/y/color를 덮어씁니다. 단계 ID·순서·occurrence는 매칭 키가 아닙니다. 같은 제목/URL이나 같은 속성의 반복 단계는 구분이 어려울 수 있습니다.
-
-마커 편집 객체의 제목·URL 변경은 새 키를 만들며 기존 키의 정리 로직은 없습니다. 텍스트에서 제목·URL 또는 단계 매칭 속성을 바꾸면 이전 좌표와 매칭되지 않아 기본 pin 위치로 표시될 수 있습니다. 로드 완료 전에는 좌표 쓰기를 막지만, JSON 파싱 실패 후에도 finally에서 로드 완료로 전환되어 빈 store 기반 쓰기가 진행될 수 있습니다.
-
-`JSON.parse` 후 타입 단언만 수행하고 좌표 사전의 구조·배열·수치 범위를 검증하지 않습니다. 문법상 유효한 JSON이라도 `null`이나 잘못된 항목 타입이면 복원·렌더링에서 오류가 날 수 있습니다.
-
-외부 활성 경로는 renderer와 main에 각각 존재합니다. import는 **파일 읽기 전에** main의 경로를 바꾸므로 읽기에 실패하면 renderer는 이전 경로, main은 실패한 새 경로를 가리킬 수 있습니다. 저장 IPC는 renderer 경로를 전달받지 않고 main 경로를 사용합니다.
-
-## 저장 일관성과 정보 취급
-
-- 텍스트 저장은 **외부 파일 → 기본 파일**, 마커 저장은 **기본 파일 → 외부 파일** 순서입니다. 트랜잭션·롤백·원자적 교체·쓰기 직렬화·동시 편집 충돌 감지는 없습니다. 중간 실패 시 두 파일의 내용이 다를 수 있습니다.
-- 좌표 파일은 독립 자동 저장입니다. 원문 미저장/저장 취소가 좌표 저장 취소를 뜻하지 않습니다.
-- 원문 입력값과 업로드 절대 경로는 평문으로 저장됩니다. 좌표 JSON에도 value/prompt/condition 등 메타데이터가 들어갑니다. 별도 암호화·마스킹·자동 보존기한은 구현되어 있지 않습니다.
-- 수동 입력의 실제 제출값은 원문으로 자동 반영하지 않습니다. 실행 화면 캡처·영상에 관한 제한은 [실행 저장 정책](../040-scenario-run/03-api.md)을 봅니다.
+마커는 찍었던 화면 폭(mobile 390 / tablet 834 / desktop)에서 표시하며 다른 폭에서는 숨긴다. 화면 URL은 마커를 찍은 당시의 정보로 보존한다.

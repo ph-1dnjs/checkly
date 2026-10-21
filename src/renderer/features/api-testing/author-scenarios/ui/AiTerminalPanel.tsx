@@ -6,6 +6,7 @@ import { AiResultReview } from "./AiResultReview";
 import { problemReport } from "../model/problem-report";
 import type { ApiAiImportResult, ApiAiTerminal, ApiEnvironmentScope, ApiProject, ApiTestingBridge, SavedApiScenario } from "../../../../../app/api-testing/shared/workspace";
 
+import { Button } from "../../../../shared/ui/Button";
 const errorText = (error: unknown) => (error as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, "");
 /** Pasted as one block so a multi-line problem list is not sent line by line. */
 const paste = (text: string) => `\x1b[200~${text}\x1b[201~`;
@@ -154,11 +155,11 @@ export function AiTerminalPanel({ project, scope, bridge, onBusy, onSaved, toolN
           <strong>{session.tool === "claude" ? "Claude" : "Codex"} 대화</strong>
           <small className="api-field-help">{environmentName(session.environmentId)} · {session.running ? "실행 중" : "종료됨"}</small>
         </div>
-        {!session.running && <button type="button" className="api-primary" disabled={pending !== null || differentEnvironment} title={differentEnvironment ? "대화를 시작한 환경으로 바꾸거나 대화를 초기화하세요" : undefined} onClick={() => void start(true)}>{pending === "starting" ? "여는 중…" : "이어서 열기"}</button>}
-        <button type="button" disabled={pending !== null} onClick={() => void clear()}>{pending === "clearing" ? "초기화하는 중…" : "대화 초기화"}</button>
+        {!session.running && <Button variant="primary" disabled={pending !== null || differentEnvironment} title={differentEnvironment ? "대화를 시작한 환경으로 바꾸거나 대화를 초기화하세요" : undefined} onClick={() => void start(true)}>{pending === "starting" ? "여는 중…" : "이어서 열기"}</Button>}
+        <Button variant="secondary" disabled={pending !== null} onClick={() => void clear()}>{pending === "clearing" ? "초기화하는 중…" : "대화 초기화"}</Button>
       </> : <>
         {toolChoice}
-        <button type="button" className="api-primary" disabled={loading || pending !== null || noSpec} title={noSpec ? "명세를 먼저 가져오세요" : undefined} onClick={() => void start(false)}>{loading ? "불러오는 중…" : pending === "starting" ? "시작하는 중…" : "대화 시작"}</button>
+        <Button variant="primary" disabled={loading || pending !== null || noSpec} title={noSpec ? "명세를 먼저 가져오세요" : undefined} onClick={() => void start(false)}>{loading ? "불러오는 중…" : pending === "starting" ? "시작하는 중…" : "대화 시작"}</Button>
       </>}
     </header>
     {!loading && !session && <div className="api-ai-chat-empty">
@@ -170,10 +171,10 @@ export function AiTerminalPanel({ project, scope, bridge, onBusy, onSaved, toolN
     <div className="api-ai-terminal-body">
     <div className={`api-ai-terminal-screen${session ? "" : " is-idle"}`} ref={host} aria-label="AI 터미널 화면" onMouseDown={() => terminal.current?.focus()} />
     {/* The results panel opens from a handle on the terminal's right edge, which marks a result not saved yet. */}
-    {session && !sideOpen && <button type="button" className={`api-ai-result-handle${unsaved ? " has-pending" : ""}`} aria-label={unsaved ? "결과 열기 (저장 전)" : "결과 열기"}
-      title={unsaved ? "저장하지 않은 결과가 있습니다" : "결과 열기"} onClick={() => setSideOpen(true)}>결과{unsaved && <span className="api-ai-result-dot" aria-hidden="true" />}</button>}
+    {session && !sideOpen && <Button className={`api-ai-result-handle${unsaved ? " has-pending" : ""}`} aria-label={unsaved ? "결과 열기 (저장 전)" : "결과 열기"}
+      title={unsaved ? "저장하지 않은 결과가 있습니다" : "결과 열기"} onClick={() => setSideOpen(true)}>결과{unsaved && <span className="api-ai-result-dot" aria-hidden="true" />}</Button>}
     {session && sideOpen && <aside className="api-ai-terminal-side" aria-label="AI 결과">
-    <header className="api-ai-terminal-side-head"><strong>결과</strong><button type="button" className="api-icon-button" aria-label="결과 닫기" title="결과 닫기" onClick={() => setSideOpen(false)}>×</button></header>
+    <header className="api-ai-terminal-side-head"><strong>결과</strong><Button variant="ghost" iconOnly className="api-icon-button" aria-label="결과 닫기" title="결과 닫기" onClick={() => setSideOpen(false)}>×</Button></header>
     {!check && !checkError && <div className="api-ai-terminal-waiting">
       <p>AI가 결과 파일을 저장하면 여기서 바로 검사하고 저장할 항목을 고를 수 있습니다.</p>
       {session.running && <p className="api-field-help">처음 열 때 폴더 신뢰 질문이 나오면 Checkly 전용 폴더이니 &lsquo;Yes, I trust this folder&rsquo;를 고르세요.</p>}
@@ -182,7 +183,7 @@ export function AiTerminalPanel({ project, scope, bridge, onBusy, onSaved, toolN
     {check && <section className="api-ai-terminal-result" aria-label="AI 결과 검사">
       <p className="api-field-help">AI가 {new Date(check.modifiedAt).toLocaleTimeString()}에 저장한 결과를 검사했습니다.</p>
       {savedThis
-        ? <p className="api-ai-step-status" role="status">저장했습니다 · <button type="button" className="api-issue-step-link" onClick={() => void openSaved()}>시나리오 보기</button></p>
+        ? <p className="api-ai-step-status" role="status">저장했습니다 · <Button className="api-issue-step-link" onClick={() => void openSaved()}>시나리오 보기</Button></p>
         : <AiResultReview key={check.modifiedAt} result={check.result} scope={sessionScope} bridge={bridge} onBusy={onBusy}
           onSaved={first => {
             onBusy(false);
@@ -193,7 +194,7 @@ export function AiTerminalPanel({ project, scope, bridge, onBusy, onSaved, toolN
             void bridge.refreshAiTerminalFiles(sessionScope).catch(() => undefined);
           }}
           notes={report && <div className="api-ai-author-notes">검사에서 문제가 나왔습니다. AI에 보내면 고쳐서 같은 파일에 다시 저장합니다. 그대로 저장하면 초안이 됩니다.
-            <div className="api-actions"><button type="button" disabled={!session?.running || sent === check.modifiedAt} onClick={() => sendProblems(report)}>{sent === check.modifiedAt ? "AI에 보냈습니다" : "문제를 AI에 보내기"}</button></div>
+            <div className="api-actions"><Button variant="secondary" disabled={!session?.running || sent === check.modifiedAt} onClick={() => sendProblems(report)}>{sent === check.modifiedAt ? "AI에 보냈습니다" : "문제를 AI에 보내기"}</Button></div>
           </div>} />}
     </section>}
     </aside>}

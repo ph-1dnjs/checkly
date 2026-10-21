@@ -25,6 +25,12 @@ export type InvitePreview = {
   createdAt: string;
 };
 
+/** 비밀번호 찾기 1단계 "계정 확인". 재설정 코드는 관리자가 설정 > 멤버에서 발급한다. */
+export type ResetAccount = { projectCode: string; nickname: string; ownerNickname: string };
+
+/** 관리자가 발급한 재설정 코드(6자리 숫자). 30분 동안 한 번만 쓸 수 있다. */
+export type IssuedResetCode = { code: string; expiresAt: string };
+
 export type ProjectMember = {
   userId: string;
   nickname: string;
@@ -91,11 +97,20 @@ export type AuthBridge = {
   /** 초대코드로 가입하고 그 계정으로 로그인까지 한다. */
   joinProject(input: { inviteCode: string; nickname: string; password: string }): Promise<AuthSession>;
 
+  /** 비밀번호 찾기(로그인 전). 없는 계정·관리자 계정이면 거절한다. */
+  findResetAccount(input: { projectCode: string; nickname: string }): Promise<ResetAccount>;
+  /** 재설정 코드가 맞는지만 확인한다(코드는 그대로 남는다). 틀리면 시도 횟수가 줄어든다. */
+  verifyResetCode(input: { projectCode: string; nickname: string; code: string }): Promise<void>;
+  /** 코드를 확인하고 새 비밀번호로 바꾼다. 성공하면 코드는 지워진다. 로그인은 하지 않는다. */
+  resetPassword(input: { projectCode: string; nickname: string; code: string; password: string }): Promise<void>;
+
   getProject(): Promise<ProjectInfo>;
   /** 관리자만. */
   regenerateInviteCode(): Promise<string>;
   /** 관리자만. 관리자 자신은 내보낼 수 없다. */
   removeMember(userId: string): Promise<void>;
+  /** 관리자만. 멤버의 비밀번호 재설정 코드를 새로 발급한다(이전 코드는 무효). */
+  issueResetCode(userId: string): Promise<IssuedResetCode>;
   changeNickname(nickname: string): Promise<AuthSession>;
   changePassword(input: { currentPassword: string; newPassword: string }): Promise<void>;
 

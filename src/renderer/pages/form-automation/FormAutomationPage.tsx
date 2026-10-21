@@ -60,6 +60,8 @@ import {
   type OverrideRule,
 } from "./liveQa";
 
+import { Button } from "../../shared/ui/Button";
+import { Input } from "../../shared/ui/Input";
 type WebviewElement = HTMLElement & {
   canGoBack: () => boolean;
   canGoForward: () => boolean;
@@ -137,7 +139,7 @@ const CaseValueInput = ({
   if (field.type === "date-trigger" && isDateRange(value)) {
     return (
       <div className="fa-date-range">
-        <input
+        <Input
           aria-label={`${field.label || field.name} 시작일`}
           type="date"
           disabled={disabled}
@@ -145,7 +147,7 @@ const CaseValueInput = ({
           onChange={(event) => onChange({ ...value, start: event.target.value })}
         />
         <span>~</span>
-        <input
+        <Input
           aria-label={`${field.label || field.name} 종료일`}
           type="date"
           disabled={disabled}
@@ -157,7 +159,7 @@ const CaseValueInput = ({
   }
   if (field.type === "date-trigger") {
     return (
-      <input
+      <Input
         aria-label={`${field.label || field.name} 값`}
         type="date"
         disabled={disabled}
@@ -211,7 +213,7 @@ const CaseValueInput = ({
   }
   if (field.type === "select-multiple" || field.type === "checkbox-group" || Array.isArray(value)) {
     return (
-      <input
+      <Input
         aria-label={`${field.label || field.name} 값`}
         disabled={disabled}
         value={(Array.isArray(value) ? value : []).join(", ")}
@@ -231,11 +233,9 @@ const CaseValueInput = ({
       />
     );
   }
-  const inputType = ["date", "datetime-local", "email", "month", "number", "password", "tel", "time", "url"].includes(field.type)
-    ? field.type
-    : "text";
+  const inputType = (["date", "datetime-local", "email", "month", "number", "password", "tel", "time", "url"] as const).find((type) => type === field.type) ?? "text";
   return (
-    <input
+    <Input
       aria-label={`${field.label || field.name} 값`}
       type={inputType}
       disabled={disabled}
@@ -582,7 +582,11 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
         loadStartedAtRef.current.set(tabId, Date.now());
         updateBrowserTab(tabId, { state: "loading" });
       };
-      const failed = () => updateBrowserTab(tabId, { state: "error" });
+      const failed = (event: Event & { errorCode?: number; isMainFrame?: boolean }) => {
+        // 리다이렉트·SPA 이동으로 중단된 로드(ERR_ABORTED)와 하위 프레임 실패는 페이지 실패로 보지 않는다.
+        if (event.errorCode === -3 || event.isMainFrame === false) return;
+        updateBrowserTab(tabId, { state: "error" });
+      };
       const navigated = (event: Event & { url?: string }) => {
         const url = event.url || currentWebviewUrl(webview, sessionForTab().url);
         // The webview owns in-page navigation. Updating its src here reloads SPA routes
@@ -1142,10 +1146,10 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
       <PageHeader icon="dynamic_form" title="폼 자동 완성" className="form-automation-header">
         <div className="fa-header-actions">
           <span className="ls-auto-recording">오류 전 10초 · 후 5초 저장</span>
-          <button className="button fa-header-action secondary" onClick={() => setRecordingsOpen(true)}><MaterialIcon name="history" /> 브라우저 기록</button>
-          <button className="button fa-header-action secondary" onClick={onNative}><MaterialIcon name="smartphone" /> 모바일 앱</button>
-          <button
-            className="button fa-header-action secondary"
+          <Button variant="secondary" className="fa-header-action" onClick={() => setRecordingsOpen(true)}><MaterialIcon name="history" /> 브라우저 기록</Button>
+          <Button variant="secondary" className="fa-header-action" onClick={onNative}><MaterialIcon name="smartphone" /> 모바일 앱</Button>
+          <Button variant="secondary"
+            className="fa-header-action"
             disabled={captureBusy}
             onClick={() => void startCapture()}
             aria-label="화면 캡처"
@@ -1154,10 +1158,10 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
           >
             <MaterialIcon name="photo_camera" /> {captureBusy ? "캡처 중…" : "화면 캡처"}
             {!captureBusy && <span className="fa-shortcut-hint" aria-hidden="true">⌘/Ctrl ⇧ S</span>}
-          </button>
-          <button className="button button-primary fa-header-action" onClick={() => void autofill()} disabled={!draftFieldCount}>
+          </Button>
+          <Button variant="primary" className="fa-header-action" onClick={() => void autofill()} disabled={!draftFieldCount}>
             <MaterialIcon name="auto_fix_high" /> 선택 케이스 자동 입력
-          </button>
+          </Button>
         </div>
       </PageHeader>
 
@@ -1192,7 +1196,7 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
                   >
                     <span className="fa-tab-grip"><MaterialIcon name="drag_indicator" /></span>
                     {editingTabId === tab.id ? (
-                      <input
+                      <Input
                         autoFocus
                         aria-label={`${tab.name} 탭 이름`}
                         value={editingTabName}
@@ -1208,7 +1212,7 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
                         }}
                       />
                     ) : (
-                      <button
+                      <Button
                         className="fa-session-main"
                         role="tab"
                         aria-selected={tab.id === activeTab.id}
@@ -1217,19 +1221,19 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
                       >
                         <span className="fa-session-number">{index + 1}</span>
                         <span><strong>{tab.name}</strong><small>{BROWSER_IDENTITY_LABELS[tab.browserIdentity || "electron"]} · {urlHost(tab.currentPageUrl || tab.url)}</small></span>
-                      </button>
+                      </Button>
                     )}
                     {editingTabId !== tab.id && (
-                      <button
+                      <Button variant="ghost" iconOnly
                         className="fa-tab-icon"
                         aria-label={`${tab.name} 이름 수정`}
                         onClick={() => { setEditingTabId(tab.id); setEditingTabName(tab.name); }}
-                      ><MaterialIcon name="edit" /></button>
+                      ><MaterialIcon name="edit" /></Button>
                     )}
                     {browserTabs.length > 1 && editingTabId !== tab.id && (
-                      <button className="fa-tab-icon" aria-label={`${tab.name} 닫기`} onClick={() => closeBrowserTab(tab.id)}>
+                      <Button variant="ghost" iconOnly className="fa-tab-icon" aria-label={`${tab.name} 닫기`} onClick={() => closeBrowserTab(tab.id)}>
                         <MaterialIcon name="close" />
-                      </button>
+                      </Button>
                     )}
                   </div>
                 );
@@ -1244,22 +1248,21 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
               >
                 {Object.entries(BROWSER_IDENTITY_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
               </select>
-              <button className="fa-session-add" onClick={() => addBrowserTab(newSessionIdentity)} disabled={browserTabs.length >= MAX_FORM_SESSIONS}>
+              <Button variant="ghost" className="fa-session-add" onClick={() => addBrowserTab(newSessionIdentity)} disabled={browserTabs.length >= MAX_FORM_SESSIONS}>
                 <MaterialIcon name="add" /> 새 세션
-              </button>
+              </Button>
             </div>
           </div>
 
           <div className="fa-browser-toolbar">
             <div className="fa-browser-actions">
-              <button disabled={!activeTab.history.back} onClick={() => activeWebview()?.goBack()} aria-label="뒤로가기"><MaterialIcon name="arrow_back" /></button>
-              <button disabled={!activeTab.history.forward} onClick={() => activeWebview()?.goForward()} aria-label="앞으로가기"><MaterialIcon name="arrow_forward" /></button>
-              <button onClick={() => activeWebview()?.reload()} aria-label="새로고침" title="새로고침 (⌘R / Ctrl+R)"><MaterialIcon name={activeTab.state === "loading" ? "progress_activity" : "refresh"} /></button>
+              <Button variant="ghost" iconOnly disabled={!activeTab.history.back} onClick={() => activeWebview()?.goBack()} aria-label="뒤로가기"><MaterialIcon name="arrow_back" /></Button>
+              <Button variant="ghost" iconOnly disabled={!activeTab.history.forward} onClick={() => activeWebview()?.goForward()} aria-label="앞으로가기"><MaterialIcon name="arrow_forward" /></Button>
+              <Button variant="ghost" iconOnly onClick={() => activeWebview()?.reload()} aria-label="새로고침" title="새로고침 (⌘R / Ctrl+R)"><MaterialIcon name={activeTab.state === "loading" ? "progress_activity" : "refresh"} /></Button>
             </div>
             <form className="fa-address-bar" onSubmit={(event) => { event.preventDefault(); navigate(); }}>
-              <MaterialIcon name="lock" />
-              <input value={draftUrl} onChange={(event) => setDraftUrl(event.target.value)} aria-label="대상 사이트 주소" />
-              <button type="submit">이동</button>
+              <Input mono leading={<MaterialIcon name="lock" />} value={draftUrl} onChange={(event) => setDraftUrl(event.target.value)} aria-label="대상 사이트 주소" />
+              <Button variant="secondary" type="submit">이동</Button>
             </form>
             <span className={`fa-status ${activeTab.state}`}>
               {activeTab.state === "ready" ? "연결됨" : activeTab.state === "error" ? "연결 실패" : "로딩 중"}
@@ -1275,15 +1278,15 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
               </select>
             </label>
             <span className="fa-browser-engine-note">Chromium 웹뷰</span>
-            <div className="fa-zoom" aria-label="브라우저 화면 배율">
-              <button aria-label="화면 축소" disabled={zoomPercent <= 50} onClick={() => setZoomPercent((value) => Math.max(50, value - 5))}><MaterialIcon name="remove" /></button>
-              <button className="fa-zoom-value" title="100%로 초기화" onClick={() => setZoomPercent(100)}>{zoomPercent}%</button>
-              <button aria-label="화면 확대" disabled={zoomPercent >= 125} onClick={() => setZoomPercent((value) => Math.min(125, value + 5))}><MaterialIcon name="add" /></button>
+            <div className="fa-zoom" aria-label="브라우저 화면 배율" title="화면 배율 50–125%">
+              <Button variant="ghost" iconOnly aria-label="화면 축소" disabled={zoomPercent <= 50} onClick={() => setZoomPercent((value) => Math.max(50, value - 5))}><MaterialIcon name="remove" /></Button>
+              <Button className="fa-zoom-value" title="100%로 초기화" onClick={() => setZoomPercent(100)}>{zoomPercent}%</Button>
+              <Button variant="ghost" iconOnly aria-label="화면 확대" disabled={zoomPercent >= 125} onClick={() => setZoomPercent((value) => Math.min(125, value + 5))}><MaterialIcon name="add" /></Button>
             </div>
-            <button className={`fa-focus${focusMode ? " active" : ""}`} onClick={() => setFocusMode((value) => !value)}>
+            <Button variant="ghost" className={`fa-focus${focusMode ? " active" : ""}`} onClick={() => setFocusMode((value) => !value)}>
               <MaterialIcon name={focusMode ? "close_fullscreen" : "open_in_full"} />
               {focusMode ? "패널 열기" : "크게 보기"}
-            </button>
+            </Button>
           </div>
 
           <div className="fa-viewport-toolbar">
@@ -1320,16 +1323,38 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
                 />
               ))}
             </div>
+            {activeTab.state === "error" && (
+              <div className="fa-browser-overlay" role="alert">
+                <MaterialIcon name="wifi_off" />
+                <strong>페이지를 불러오지 못했습니다</strong>
+                <span>{urlHost(activeTab.currentPageUrl || activeTab.url)}</span>
+                <Button variant="secondary" onClick={() => activeWebview()?.reload()}><MaterialIcon name="refresh" /> 다시 시도</Button>
+              </div>
+            )}
+            {!window.electronAPI && (
+              <div className="fa-electron-only" role="note">
+                <b>ELECTRON ONLY</b>
+                <span>자동 입력은 Electron 앱에서만 동작합니다. 이 환경에서는 화면 구성만 확인할 수 있습니다.</span>
+              </div>
+            )}
           </div>
         </section>
 
-        <div className="fa-inspector-resizer" onMouseDown={startInspectorResize} title="드래그해서 패널 너비 조절"><span /></div>
+        <div
+          className="fa-inspector-resizer"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="검사 패널 너비 조절"
+          title="드래그해 너비 조절 · 더블클릭 기본 너비"
+          onMouseDown={startInspectorResize}
+          onDoubleClick={() => setInspectorWidth(420)}
+        ><span /></div>
 
-        <aside className="fa-inspector">
+        <aside className="fa-inspector" aria-label="검사 패널">
           <div className="fa-inspector-tabs">
-            <button className={drawerTab === "network" ? `active${activeErrorCount ? " has-error" : ""}` : ""} onClick={() => setDrawerTab("network")}><MaterialIcon name="lan" /> 네트워크 <b>{activeErrorCount || activeNetworkEvents.length}</b></button>
-            <button className={drawerTab === "cases" ? "active" : ""} onClick={() => { setDrawerTab("cases"); if (!discoveredFields.length) void discoverFields(true); }}><MaterialIcon name="auto_awesome" /> 자동 입력 <b>{availableCases.length}</b></button>
-            <button className={drawerTab === "override" ? "active" : ""} onClick={() => setDrawerTab("override")}><MaterialIcon name="tune" /> 오버라이드 <b>{overrides.filter((item) => item.enabled).length}</b></button>
+            <Button className={drawerTab === "network" ? `active${activeErrorCount ? " has-error" : ""}` : ""} onClick={() => setDrawerTab("network")}><MaterialIcon name="lan" /> 네트워크 <b>{activeErrorCount || activeNetworkEvents.length}</b></Button>
+            <Button className={drawerTab === "cases" ? "active" : ""} onClick={() => { setDrawerTab("cases"); if (!discoveredFields.length) void discoverFields(true); }}><MaterialIcon name="auto_awesome" /> 자동 입력 <b>{availableCases.length}</b></Button>
+            <Button className={drawerTab === "override" ? "active" : ""} onClick={() => setDrawerTab("override")}><MaterialIcon name="tune" /> 오버라이드 <b>{overrides.filter((item) => item.enabled).length}</b></Button>
           </div>
           {drawerTab === "network" ? (
             <NetworkPanel
@@ -1379,7 +1404,7 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
             <>
           <div className="fa-inspector-heading">
             <div><strong>폼·검색 자동 입력 케이스</strong><span>일반 입력, 라벨, 날짜 선택과 유효성 조건 감지</span></div>
-            <button onClick={() => void discoverFields(true)}><MaterialIcon name="refresh" /> 다시 감지</button>
+            <Button variant="secondary" onClick={() => void discoverFields(true)}><MaterialIcon name="refresh" /> 다시 감지</Button>
           </div>
           <div className="fa-case-scope">
             <MaterialIcon name="language" />
@@ -1387,15 +1412,15 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
             <em>{scopedCases.length}개 저장</em>
           </div>
           <div className="fa-case-filters" role="group" aria-label="케이스 유형 필터">
-            <button className={caseFilter === "all" ? "active" : ""} onClick={() => setCaseFilter("all")}>전체 <b>{availableCases.length}</b></button>
-            <button className={caseFilter === "success" ? "active success" : "success"} onClick={() => setCaseFilter("success")}>성공 <b>{counts.success}</b></button>
-            <button className={caseFilter === "failure" ? "active failure" : "failure"} onClick={() => setCaseFilter("failure")}>실패 <b>{counts.failure}</b></button>
+            <Button className={caseFilter === "all" ? "active" : ""} onClick={() => setCaseFilter("all")}>전체 <b>{availableCases.length}</b></Button>
+            <Button className={caseFilter === "success" ? "active success" : "success"} onClick={() => setCaseFilter("success")}>성공 <b>{counts.success}</b></Button>
+            <Button className={caseFilter === "failure" ? "active failure" : "failure"} onClick={() => setCaseFilter("failure")}>실패 <b>{counts.failure}</b></Button>
           </div>
           <div className="fa-case-list" style={caseListHeightPreview !== null || caseListHeight !== null
             ? { height: caseListHeightPreview ?? caseListHeight ?? undefined, maxHeight: "none" }
             : undefined}>
             {visibleCases.length ? visibleCases.map((item) => (
-              <button
+              <Button
                 key={item.id}
                 className={`fa-case-card ${item.kind}${item.generated ? " detected" : ""}${selectedCaseId === item.id ? " selected" : ""}`}
                 onClick={() => selectCase(item)}
@@ -1403,7 +1428,7 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
                 <span className="fa-case-icon"><MaterialIcon name={item.kind === "success" ? "check_circle" : "error"} /></span>
                 <span><strong>{item.name}</strong><small>{item.screen} · {caseValueCount(item)}개 값</small></span>
                 <span className="fa-case-badges"><b>{item.kind === "success" ? "성공" : "실패"}</b><em>{item.generated ? "자동" : "저장"}</em></span>
-              </button>
+              </Button>
             )) : (
               <div className="fa-case-empty"><MaterialIcon name="auto_awesome" /><strong>현재 화면에 자동 입력 케이스가 없습니다</strong><span>입력 화면을 연 뒤 다시 감지해 주세요.</span></div>
             )}
@@ -1424,14 +1449,14 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
             <div className="fa-values">
               <div className="fa-values-title"><strong>케이스 입력값 편집</strong><span>{selectedCase.fieldMeta.length}개 중 {draftFieldCount}개 입력</span></div>
               <div className="fa-case-meta">
-                <label><span>케이스 제목</span><input maxLength={80} value={caseDraftName} onChange={(event) => setCaseDraftName(event.target.value)} /></label>
+                <label><span>케이스 제목</span><Input maxLength={80} value={caseDraftName} onChange={(event) => setCaseDraftName(event.target.value)} /></label>
                 <label><span>케이스 유형</span><select value={caseDraftKind} onChange={(event) => setCaseDraftKind(event.target.value as "success" | "failure")}><option value="success">성공 · 정상값</option><option value="failure">실패 · 오류값</option></select></label>
               </div>
               <div className="fa-field-selection-tools">
                 <span>체크 해제한 필드는 변경하지 않습니다.</span>
                 <div>
-                  <button type="button" onClick={() => setCaseDraftExcludedFields([])} disabled={draftFieldCount === selectedCase.fieldMeta.length}>전체 선택</button>
-                  <button type="button" onClick={() => setCaseDraftExcludedFields(selectedCase.fieldMeta.map((field) => field.name))} disabled={!draftFieldCount}>전체 해제</button>
+                  <Button variant="ghost" onClick={() => setCaseDraftExcludedFields([])} disabled={draftFieldCount === selectedCase.fieldMeta.length}>전체 선택</Button>
+                  <Button variant="ghost" onClick={() => setCaseDraftExcludedFields(selectedCase.fieldMeta.map((field) => field.name))} disabled={!draftFieldCount}>전체 해제</Button>
                 </div>
               </div>
               {selectedCase.fieldMeta.map((field) => (
@@ -1458,17 +1483,17 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
                 </div>
               ))}
               <div className="fa-values-actions">
-                {selectedCase.userSaved && <button className="danger" onClick={deleteCase}><MaterialIcon name="delete" /> 삭제</button>}
-                <button onClick={() => { setCaseDraftName(selectedCase.userSaved ? selectedCase.name : `${selectedCase.name} · 저장본`); setCaseDraftKind(selectedCase.kind); setCaseDraftFields(cloneFields(selectedCase.fields)); setCaseDraftExcludedFields(Array.isArray(selectedCase.excludedFields) ? [...selectedCase.excludedFields] : []); }}><MaterialIcon name="restore" /> 원본 복구</button>
-                <button className="save" onClick={saveCase}><MaterialIcon name="save" /> {selectedCase.userSaved ? "수정값 저장" : "새 케이스로 저장"}</button>
+                {selectedCase.userSaved && <Button variant="danger" className="danger" onClick={deleteCase}><MaterialIcon name="delete" /> 삭제</Button>}
+                <Button variant="secondary" onClick={() => { setCaseDraftName(selectedCase.userSaved ? selectedCase.name : `${selectedCase.name} · 저장본`); setCaseDraftKind(selectedCase.kind); setCaseDraftFields(cloneFields(selectedCase.fields)); setCaseDraftExcludedFields(Array.isArray(selectedCase.excludedFields) ? [...selectedCase.excludedFields] : []); }}><MaterialIcon name="restore" /> 원본 복구</Button>
+                <Button variant="secondary" className="save" onClick={saveCase}><MaterialIcon name="save" /> {selectedCase.userSaved ? "수정값 저장" : "새 케이스로 저장"}</Button>
               </div>
             </div>
           )}
 
           <div className="fa-inspector-footer">
-            <button className="primary" onClick={() => void autofill()} disabled={!draftFieldCount}><MaterialIcon name="auto_fix_high" /> 선택한 {draftFieldCount}개 필드 입력</button>
-            <button onClick={() => void clearAutofill()} disabled={!draftFieldCount}><MaterialIcon name="restart_alt" /> 선택 필드 초기화</button>
-            <button onClick={() => void createCaseFromCurrentPage()}><MaterialIcon name="add" /> 현재 화면 케이스 만들기</button>
+            <Button variant="primary" className="primary" onClick={() => void autofill()} disabled={!draftFieldCount}><MaterialIcon name="auto_fix_high" /> 선택한 {draftFieldCount}개 필드 입력</Button>
+            <Button variant="secondary" title="현재 입력값 초기화" onClick={() => void clearAutofill()} disabled={!draftFieldCount}><MaterialIcon name="restart_alt" /> 선택 필드 초기화</Button>
+            <Button variant="secondary" onClick={() => void createCaseFromCurrentPage()}><MaterialIcon name="add" /> 현재 화면 케이스 만들기</Button>
           </div>
             </>
           )}

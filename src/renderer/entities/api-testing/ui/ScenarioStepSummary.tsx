@@ -7,6 +7,7 @@ import { responseFields } from "../lib/response-fields";
 import { GlobalVariableSetupLink } from "./GlobalVariableSetupLink";
 import { expectedValueText, linkedValueLabel, verificationOperatorLabels, verificationSourceLabels } from "../../../../app/api-testing/shared/scenario";
 
+import { Button } from "../../../shared/ui/Button";
 const jsonKind = (value: unknown) => value === null ? "null" : typeof value === "string" ? "string" : typeof value === "number" ? "number" : typeof value === "boolean" ? "boolean" : "string";
 
 type ApiOperation = ApiCatalog["operations"][number];
@@ -41,7 +42,7 @@ export function ScenarioStepSummary({ scenario, stepIndex, operation, catalog, g
   scenario.steps.slice(0, stepIndex).forEach(previous => previous.extract.forEach(extract => { if (extract.target.startsWith("globals.")) availableGlobals.add(extract.target.slice(8)); }));
   const isMissingGlobal = (field: typeof fields[number]) => Boolean(field.global && (missingGlobals.has(field.global) || (globals && !availableGlobals.has(field.global))));
   const action = (content: ReactNode, className: string, onClick?: () => void, label?: string) => onClick
-    ? <button type="button" className={className} onClick={onClick} aria-label={label}>{content}</button>
+    ? <Button className={className} onClick={onClick} aria-label={label}>{content}</Button>
     : <span className={className}>{content}</span>;
   const fieldContent = (field: typeof fields[number]) => {
     const value = field.direct
@@ -68,7 +69,7 @@ export function ScenarioStepSummary({ scenario, stepIndex, operation, catalog, g
       const badgeClass = `api-response-json-badge ${isGlobal ? "is-global" : "is-save"}`;
       const badgeLabel = isGlobal ? "전역변수 저장" : "값 저장";
       const content = onSelect
-        ? <button type="button" className={badgeClass} title={`${badgeLabel} → ${target}`} aria-label={`${badgeLabel}: ${target}`} onClick={() => onSelect(step.id, responseField)}>{badgeLabel} → <code>{target}</code></button>
+        ? <Button className={badgeClass} title={`${badgeLabel} → ${target}`} aria-label={`${badgeLabel}: ${target}`} onClick={() => onSelect(step.id, responseField)}>{badgeLabel} → <code>{target}</code></Button>
         : <span className={badgeClass} title={`${badgeLabel} → ${target}`}>{badgeLabel} → <code>{target}</code></span>;
       return { path: extract.pointer !== undefined ? extract.pointer.split("/").slice(1).map(part => part.replace(/~1/g, "/").replace(/~0/g, "~")) : [extract.header ?? "응답"], content };
     })} /></>}

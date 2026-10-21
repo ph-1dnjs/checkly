@@ -91,7 +91,7 @@ export const CreateFlow = ({ bridge, backLabel, onBack, onEnter }: Props) => {
           <form className="auth-form" onSubmit={submit} noValidate>
             <Field label="프로젝트 코드" check={codeCheck}>
               <AuthInput
-                className="mono"
+                mono
                 value={code}
                 onValue={edit((value) => setCode(value.toLowerCase()))}
                 placeholder="checkly-team"
@@ -101,11 +101,11 @@ export const CreateFlow = ({ bridge, backLabel, onBack, onEnter }: Props) => {
               />
             </Field>
             <Field label="닉네임" check={nickCheck}>
-              <AuthInput className="mono" value={nickname} onValue={edit(setNickname)} placeholder="hyewon" aria-label="닉네임" />
+              <AuthInput mono value={nickname} onValue={edit(setNickname)} placeholder="hyewon" aria-label="닉네임" />
             </Field>
             <Field label="비밀번호">
               <PasswordInput
-                className="mono"
+                mono
                 value={password}
                 onValue={edit(setPassword)}
                 placeholder={`${PASSWORD_MIN}자 이상`}
@@ -117,7 +117,7 @@ export const CreateFlow = ({ bridge, backLabel, onBack, onEnter }: Props) => {
             </Field>
             <Field label="비밀번호 확인" className="auth-field-gap">
               <AuthInput
-                className="mono"
+                mono
                 type={showPassword ? "text" : "password"}
                 value={confirm}
                 onValue={edit(setConfirm)}
@@ -128,7 +128,7 @@ export const CreateFlow = ({ bridge, backLabel, onBack, onEnter }: Props) => {
             </Field>
             <Field label="생성 코드" className="auth-field-gap" check={{ text: "운영자에게 받은 코드", tone: "hint", ok: true }}>
               <PasswordInput
-                className="mono"
+                mono
                 value={createCode}
                 onValue={edit(setCreateCode)}
                 placeholder="코드 입력"
@@ -142,10 +142,10 @@ export const CreateFlow = ({ bridge, backLabel, onBack, onEnter }: Props) => {
             </Field>
             <AuthError message={error} />
             <div className="auth-actions">
-              <Button className="auth-btn auth-btn-secondary" onClick={onBack}>
+              <Button variant="secondary" size="large" className="auth-btn" onClick={onBack}>
                 취소
               </Button>
-              <Button type="submit" className="auth-btn auth-btn-primary" disabled={busy} aria-busy={busy}>
+              <Button type="submit" variant="primary" size="large" className="auth-btn" disabled={busy} aria-busy={busy}>
                 {busy ? "만드는 중…" : "프로젝트 만들기"}
               </Button>
             </div>
@@ -177,7 +177,7 @@ export const CreateFlow = ({ bridge, backLabel, onBack, onEnter }: Props) => {
                 ["역할", roleLabel(created.session.role)],
               ]}
             />
-            <Button className="auth-btn auth-btn-primary" onClick={() => onEnter(created.session)}>
+            <Button variant="primary" size="large" className="auth-btn" onClick={() => onEnter(created.session)}>
               시작하기
             </Button>
           </div>

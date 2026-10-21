@@ -15,7 +15,7 @@
 
 ### 실행 간 세션 유지 (`keepSession`)
 
-실행 화면의 "세션 유지" 토글(`useRunOrchestration`의 `keepSession`)을 켜면, 묶음 실행이 끝나도 `qa:finish-worker`를 호출하지 않고 고정된 workerId(`session-<timestamp>`)를 재사용합니다. 따라서 이후 `beginRuns`/`rerunScenario` 호출(다시 실행, 시나리오 재선택 후 실행, 개별 재실행 등)이 같은 BrowserContext·Page 세션을 이어받아 로그인 쿠키가 유지되며, 2차 인증이 필요한 시나리오를 반복 실행할 때 매번 재인증하지 않아도 됩니다.
+실행 탭(대상 선택·실행 현황) 헤더의 "세션 유지" 스위치(`useRunOrchestration`의 `keepSession`)를 켜면, 묶음 실행이 끝나도 `qa:finish-worker`를 호출하지 않고 고정된 workerId(`session-<timestamp>`)를 재사용합니다. 따라서 이후 `beginRuns`/`rerunScenario` 호출(다시 실행, 시나리오 재선택 후 실행, 개별 재실행 등)이 같은 BrowserContext·Page 세션을 이어받아 로그인 쿠키가 유지되며, 2차 인증이 필요한 시나리오를 반복 실행할 때 매번 재인증하지 않아도 됩니다.
 
 - **실행 도중에도 켤 수 있습니다.** 토글은 `running` 여부와 무관하게 항상 활성화되어 있습니다. 시나리오가 실행되는 중에 켜면, 지금 사용 중인 브라우저의 workerId를 그대로 `sessionWorkerId`로 승격시켜 유지 세션으로 삼습니다 — 처음부터 다시 로그인할 필요 없이, 지금 막 로그인을 마친 바로 그 세션부터 이어집니다. 내부적으로 `keepSession` 상태와 별도로 `keepSessionRef`를 두어, 실행 시작 시점의 클로저가 아니라 종료 시점의 최신 토글 값을 기준으로 워커를 닫을지 결정합니다.
 - 실행 중에 토글을 끄면 지금 쓰고 있는 브라우저를 즉시 닫지 않고, 그 실행이 끝날 때 `qa:finish-worker`로 정리되도록 미룹니다(진행 중인 단계가 끊기지 않도록). 유휴 상태에서 끄면(또는 "세션 종료" 버튼) 즉시 `qa:finish-worker`로 컨텍스트·브라우저를 닫습니다.
@@ -35,7 +35,7 @@
 
 ### 개별 시나리오 재실행과 재실행 대기열 타임라인
 
-실행 화면의 EXECUTION 목록에서 각 그룹 헤더에 있는 재실행 아이콘 버튼(`replay`)으로 개별 시나리오를 다시 실행할 수 있습니다. 완료 여부와 무관하게 항상 노출되므로, 아직 실행 전이거나 진행 중인 시나리오도 대기열에 미리 추가할 수 있습니다. `useRunOrchestration`의 `rerunScenario`가 담당하며, `beginRuns`와 달리 `runQueue`나 다른 시나리오의 `liveResults`를 초기화하지 않고 대상 시나리오의 결과만 교체합니다. 같은 그룹 헤더에는 해당 시나리오의 녹화 영상이 있을 때만 다운로드 아이콘 버튼(`download`)이 함께 나타납니다(`runVideos`에서 scenario.id로 조회).
+실행 중인 시나리오가 없으면 EXECUTION 목록은 **대상 선택** 바로가기를 보여 줍니다. 실행 화면의 EXECUTION 목록에서 각 그룹 헤더(`PASS`·`FAIL`·`완료/전체` 표시)에 있는 재실행 아이콘 버튼(`replay`)으로 개별 시나리오를 다시 실행할 수 있습니다. 완료 여부와 무관하게 항상 노출되므로, 아직 실행 전이거나 진행 중인 시나리오도 대기열에 미리 추가할 수 있습니다. `useRunOrchestration`의 `rerunScenario`가 담당하며, `beginRuns`와 달리 `runQueue`나 다른 시나리오의 `liveResults`를 초기화하지 않고 대상 시나리오의 결과만 교체합니다. 같은 그룹 헤더에는 해당 시나리오의 녹화 영상이 있을 때만 다운로드 아이콘 버튼(`download`)이 함께 나타납니다(`runVideos`에서 scenario.id로 조회).
 
 `startRun`이 실행하는 모든 시나리오(최초 배치 포함)와 `rerunScenario`로 추가되는 모든 재실행 시도는 `runTimeline`(`RunTimelineEntry[]`) 한 곳에 순서대로 쌓입니다. 각 항목은 실행 전역에서 고유한 `seq`(1부터 증가, `timelineSeq` 카운터)와 상태(`queued`/`running`/`passed`/`failed`/`cancelled`)를 가지며, 배치 안의 원래 시나리오도 재실행과 동일하게 이 타임라인에 표시됩니다.
 

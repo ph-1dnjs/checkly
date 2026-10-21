@@ -6,12 +6,13 @@ import { DashboardPage } from "../pages/dashboard/DashboardPage";
 import { ScenarioEditorPage } from "../pages/editor/ScenarioEditorPage";
 import { RunPage } from "../pages/run/RunPage";
 import { SettingsPage } from "../pages/settings/SettingsPage";
-import { ScenarioPickerPage } from "../pages/picker/ScenarioPickerPage";
+import { ScenarioPickerPage, recordScenarios } from "../pages/picker/ScenarioPickerPage";
 import { FormAutomationPage } from "../pages/form-automation/FormAutomationPage";
 import { BottomNavigation } from "../widgets/BottomNavigation";
 import { ScenarioWorkspaceHeaderExtra } from "../widgets/ScenarioWorkspaceHeaderExtra";
 import { PageLayout } from "../shared/ui/PageLayout";
-import { useScenarioFolder } from "../entities/scenario-folder";
+import { ScenarioList } from "../widgets/ScenarioList";
+import { useScenarioEnvironment } from "./hooks/useScenarioEnvironment";
 import { isScenarioWorkspaceRoute } from "../shared/model/scenario";
 import { RunReportDrawer } from "../widgets/RunReportDrawer";
 import { RunReportViewer } from "../widgets/RunReportViewer";
@@ -19,12 +20,14 @@ import "../shared/model/electron-api";
 import { useNavigation } from "./hooks/useNavigation";
 import { useScenarioState } from "./hooks/useScenarioState";
 import { useRunOrchestration } from "./hooks/useRunOrchestration";
+import { EnvironmentMenu } from "../widgets/EnvironmentMenu";
 import { ApiTestingPage } from "../pages/api-testing/ApiTestingPage";
 import { AuthScreen } from "../pages/auth/AuthScreen";
 import { AuthUnavailable } from "../pages/auth/AuthUnavailable";
 import type { AuthAccount } from "../pages/auth/model";
 import { useAuth } from "./hooks/useAuth";
 
+import { Input } from "../shared/ui/Input";
 const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement => {
   const [apiRunAction, setApiRunAction] = useState<ApiRunAction | null>(null);
   const [keepSessionPromptChecked, setKeepSessionPromptChecked] =
@@ -38,9 +41,11 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
     toast,
     showToast,
   } = useNavigation();
-  const folder = useScenarioFolder();
-  const scenarioState = useScenarioState({ route, showToast });
-  const runOrchestration = useRunOrchestration({ showToast, setRoute });
+  const environment = useScenarioEnvironment(account?.session.projectId, showToast);
+  const scenarioState = useScenarioState({ projectId: account?.session.projectId, route, showToast, resolveBaseUrl: environment.baseUrlFor, defaultEndpointId: environment.defaultEndpointId });
+  const [pickedKeys, setPickedKeys] = useState<Set<string>>(new Set());
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const runOrchestration = useRunOrchestration({ showToast, setRoute, projectId: account?.session.projectId });
 
   // 폼 자동 완성에서는 현재 웹뷰만 새로고침하고, 다른 화면에서는 앱을 새로고침한다.
   useEffect(() => {
@@ -64,7 +69,7 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
     scenario,
     sourceMarkdown,
     isDirty,
-    scenarioFilePath,
+    records, activeRecord, loading, busy, refreshRecords, openRecord, newRecord, saveRecord, deleteRecord, duplicateRecord, importMarkdown,
     markerScenarioId,
     editorMode,
     setEditorMode,
@@ -80,10 +85,6 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
     pendingMarker,
     updateSteps,
     updateSource,
-    importScenario,
-    openScenarioFile,
-    saveScenarioFile,
-    saveScenarioFileAs,
     commitEditorRunSnapshot,
     placeMarker,
     updateMarker,
@@ -164,35 +165,31 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
     downloadFullRunVideo,
   } = runOrchestration;
 
-  const runEditorContent = () => beginRuns(commitEditorRunSnapshot());
+  const runScenarios = (items: typeof executableScenarios, trigger: "editor" | "picker" = "picker") => {
+    if (!account) { showToast("웹 시나리오를 사용하려면 로그인해 주세요."); return; }
+    const resolved = environment.resolve(items);
+    if (resolved) beginRuns(resolved, false, trigger);
+  };
+  const runEditorContent = () => runScenarios(commitEditorRunSnapshot(), "editor");
   const inWorkspace = isScenarioWorkspaceRoute(route);
   const awaitingManual = Boolean(manual || manualControl || manualResult);
-
-  // 저장한 파일 내용이 폴더 목록(시나리오 수 · 선택 대상)에도 반영되도록 다시 읽는다.
-  const saveAndRefresh = async (save: () => Promise<boolean>) => {
-    const saved = await save();
-    if (saved) void folder.refreshFolder();
-    return saved;
+  const pickedScenarios = records.flatMap(recordScenarios).filter(item => pickedKeys.has(item.id));
+  const openRequested = (id: string) => {
+    if (id === "new") newRecord();
+    else if (id === "refresh") { void refreshRecords(true); void environment.refresh(); }
+    else openRecord(id);
   };
-  const requestOpenFile = (filePath: string) => {
-    if (filePath === scenarioFilePath) return;
-    if (isDirty) return setPendingOpenPath(filePath);
-    void openScenarioFile(filePath);
+  const requestOpenRecord = (id: string) => {
+    if (busy || id === activeRecord?.id) return;
+    if (isDirty) return setPendingOpenPath(id);
+    openRequested(id);
   };
-
-  // ⇧⌘S: 편집(텍스트) 화면에서 새로 저장하기.
   useEffect(() => {
-    if (route !== "editor" || editorMode !== "text") return;
+    if (route !== "editor" || !account) return;
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (
-        !(event.metaKey || event.ctrlKey) ||
-        !event.shiftKey ||
-        event.altKey ||
-        event.code !== "KeyS"
-      )
-        return;
+      if (!(event.metaKey || event.ctrlKey) || event.altKey || event.code !== "KeyS") return;
       event.preventDefault();
-      if (!event.repeat) void saveAndRefresh(saveScenarioFileAs);
+      if (!event.repeat) void saveRecord();
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
@@ -212,7 +209,8 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
             onOpenReport={setOpenRunRecord}
           />
         )}
-        {inWorkspace && (
+        {inWorkspace && !account && <div className="picker-empty-state"><h2>로그인이 필요합니다</h2><p>웹 시나리오는 팀 프로젝트 DB에 저장됩니다. Supabase 연결을 설정하고 프로젝트에 로그인해 주세요.</p></div>}
+        {inWorkspace && account && (
           <PageLayout
             icon="fact_check"
             title="시나리오"
@@ -231,12 +229,32 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
                 awaiting={awaitingManual}
                 progressPercent={runProgressPercent}
                 progressSteps={`${runProgress.current}/${runProgress.total}`}
-                pickedCount={folder.pickedCount}
+                pickedCount={pickedScenarios.length}
                 isDirty={isDirty}
-                onSave={() => saveAndRefresh(saveScenarioFile)}
-                onSaveAs={() => saveAndRefresh(saveScenarioFileAs)}
-                onImport={() => void importScenario()}
-                onReloadFolder={() => void folder.refreshFolder()}
+                onSave={() => saveRecord()}
+                busy={busy || loading}
+                canDelete={Boolean(activeRecord)}
+                onDelete={() => setConfirmDelete(true)}
+                onDuplicate={duplicateRecord}
+                onImportMarkdown={importMarkdown}
+                keepSession={keepSession}
+                onKeepSessionChange={setKeepSession}
+                sessionActive={sessionActive}
+                onEndSession={endSession}
+                livePreview={livePreview}
+                onLivePreviewChange={setLivePreview}
+                environment={
+                  <div className="scenario-environment" title={environment.endpoints.length ? "실행 환경 · 설정 > 엔드포인트 × 환경" : "설정에서 웹 엔드포인트와 환경별 주소를 넣어 주세요."}>
+                    {!environment.endpoints.length && <span className="msi scenario-environment-warn" aria-label="웹 엔드포인트 없음">warning</span>}
+                    <EnvironmentMenu
+                      project={environment.menuProject}
+                      environmentId={environment.environmentId}
+                      label="시나리오 환경"
+                      disabled={busy || loading}
+                      onSelect={id => environment.select({ environmentId: id })}
+                    />
+                  </div>
+                }
               />
             }
           >
@@ -246,12 +264,13 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
             mode={editorMode}
             scenario={scenario}
             sourceMarkdown={sourceMarkdown}
-            scenarioFilePath={scenarioFilePath}
-            files={folder.files}
-            fileCache={folder.fileCache}
-            pickedCountByFile={folder.pickedCountByFile}
-            onOpenFile={requestOpenFile}
-            onChooseFolder={() => void folder.chooseFolder()}
+            baseUrl={environment.baseUrlFor(scenario.endpointId)}
+            resolveBaseUrl={environment.baseUrlFor}
+            webEndpoints={environment.endpoints}
+            defaultEndpointId={environment.defaultEndpointId}
+            sidebar={<ScenarioList records={records} activeId={activeRecord?.id ?? null} loading={loading} busy={busy}
+              draftTitle={activeRecord || !sourceMarkdown.trim() ? undefined : previews[0]?.title ?? ""} dirty={isDirty}
+              onSelect={requestOpenRecord} onNew={() => requestOpenRecord("new")} onRefresh={() => requestOpenRecord("refresh")} />}
             previews={previews}
             markerScenarioId={markerScenarioId || previews[0]?.id || ""}
             selectedId={selectedId}
@@ -264,6 +283,7 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
             onSourceChange={updateSource}
             onScenarioChange={setScenario}
             onBeginMarkerPlacement={() => setIsAddingMarker(true)}
+            onCancelMarkerPlacement={() => setIsAddingMarker(false)}
             onToggleMarkersVisible={() =>
               setMarkersVisible((visible) => !visible)
             }
@@ -284,9 +304,13 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
         )}
         {route === "picker" && (
           <ScenarioPickerPage
-            folder={folder}
+            records={records}
+            loading={loading}
+            pickedKeys={pickedKeys}
+            onPick={setPickedKeys}
             onOpenEditor={() => setRoute("editor")}
-            onRun={(items) => beginRuns(items)}
+            onRefresh={() => { void refreshRecords(); void environment.refresh(); }}
+            onRun={runScenarios}
           />
         )}
         {route === "run" && (
@@ -311,10 +335,6 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
             elapsedSeconds={elapsedSeconds}
             runStartedAt={runStartedAt}
             livePreview={livePreview}
-            keepSession={keepSession}
-            onKeepSessionChange={setKeepSession}
-            sessionActive={sessionActive}
-            onEndSession={endSession}
             onRerunScenario={queueRerun}
             runTimeline={runTimeline}
             stackPaused={stackPaused}
@@ -328,7 +348,7 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
               void window.electronAPI.controlManualBrowser(event)
             }
             onSetViewport={(width, height) =>
-              void window.electronAPI.setQaViewport({ width, height })
+              void runOrchestration.setViewport({ width, height })
             }
             onCompleteManualControl={completeManualControl}
             onFailManualControl={failManualControl}
@@ -341,6 +361,7 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
             onDownloadFullRunVideo={downloadFullRunVideo}
             reportAvailable={Boolean(lastRunRecord)}
             onOpenReport={() => setReportRecord(lastRunRecord)}
+            onGoPick={() => setRoute("picker")}
           />
         )}
             </div>
@@ -355,7 +376,12 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
         onOpenReport={setReportRecord}
         onRerun={(scenarios) => {
           setOpenRunRecord(null);
-          beginRuns(scenarios);
+          const record = openRunRecord;
+          void (async () => {
+            if (record?.viewport) await runOrchestration.setViewport(record.viewport);
+            if (record?.sessionKept !== undefined) runOrchestration.setKeepSession(record.sessionKept);
+            beginRuns(scenarios, false, "rerun");
+          })().catch(error => showToast(error instanceof Error ? error.message : "재실행 환경을 설정하지 못했습니다."));
         }}
       />
       <RunReportViewer
@@ -379,7 +405,7 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
           aria-live="polite"
           aria-label="시나리오 실행 알림"
         >
-          <Button
+          <Button variant="ghost" iconOnly
             className="run-notification-close"
             onClick={() => setRunNotification(null)}
             aria-label="실행 알림 닫기"
@@ -463,7 +489,7 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
         onRun={() => {
           if (route === "run") return beginRuns(runQueue);
           if (route === "editor") return runEditorContent();
-          return beginRuns(executableScenarios);
+          return runScenarios(pickedScenarios);
         }}
         onCancel={cancelRuns}
       />
@@ -494,7 +520,7 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
               />
             </label>
             <div className="modal-actions">
-              <Button
+              <Button variant="secondary"
                 onClick={() => {
                   resolveSessionPrompt(false, keepSessionPromptChecked);
                   setKeepSessionPromptChecked(false);
@@ -533,6 +559,15 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
           </div>
         </div>
       )}
+      {confirmDelete && (
+        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="delete-scenario-title">
+          <div className="manual-modal"><h2 id="delete-scenario-title">시나리오 삭제</h2>
+            <p>“{activeRecord?.title}”을 팀 DB에서 삭제하시겠습니까?</p>
+            <div className="modal-actions"><Button variant="secondary" disabled={busy} onClick={() => setConfirmDelete(false)}>취소</Button>
+              <Button variant="danger" disabled={busy} onClick={async () => { await deleteRecord(); setConfirmDelete(false); }}>삭제</Button></div>
+          </div>
+        </div>
+      )}
       {pendingOpenPath && (
         <div
           className="modal-backdrop"
@@ -542,13 +577,13 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
         >
           <div className="manual-modal">
             <h2 id="open-scenario-title">저장하지 않은 변경 사항이 있습니다</h2>
-            <p>다른 파일을 열면 지금 편집 중인 내용이 사라집니다.</p>
+            <p>계속하면 지금 편집 중인 변경 사항이 사라집니다.</p>
             <div className="modal-actions">
-              <Button onClick={() => setPendingOpenPath(null)}>취소</Button>
+              <Button variant="secondary" onClick={() => setPendingOpenPath(null)}>취소</Button>
               <Button
                 variant="primary"
                 onClick={() => {
-                  void openScenarioFile(pendingOpenPath);
+                  openRequested(pendingOpenPath);
                   setPendingOpenPath(null);
                 }}
               >
@@ -569,10 +604,10 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
             <h2 id="save-scenario-title">시나리오를 저장할까요?</h2>
             <p>화면에서 수정한 실행 단계를 Markdown 시나리오에 반영합니다.</p>
             <div className="modal-actions">
-              <Button onClick={() => setSaveBeforeReturning(false)}>
+              <Button variant="secondary" onClick={() => setSaveBeforeReturning(false)}>
                 취소
               </Button>
-              <Button
+              <Button variant="secondary"
                 onClick={() => {
                   setSaveBeforeReturning(false);
                   setEditorMode("text");
@@ -609,7 +644,7 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
             </p>
             <label>
               실패 사유
-              <input
+              <Input
                 autoFocus
                 value={manualFailureReason}
                 onChange={(event) => setManualFailureReason(event.target.value)}

@@ -6,7 +6,10 @@ import { requestValueFields, responseValueOptions } from "../model/value-link-mo
 import type { ApiCatalog, ApiOperation, ApiScenarioResult } from "../../../../../app/api-testing/shared/workspace";
 import { connectValue, type RequestArea } from "../model/scenario-builder-model";
 import { responseFields } from "../../../../entities/api-testing";
+import { Modal } from "../../../../shared/ui/Modal";
 
+import { Button } from "../../../../shared/ui/Button";
+import { Input } from "../../../../shared/ui/Input";
 // `expect` set: the picked value becomes that check's expected value instead of a request field.
 export type ScenarioValueTarget = { area: RequestArea; name: string; expect?: number };
 
@@ -56,7 +59,7 @@ function JsonValueTree({ options, selected, onSelect, area, rootLabel, onlyDynam
         const token = option.type === "array" ? "[" : option.type === "object" ? "{" : option.label !== undefined ? option.label : option.type === "string" ? '"string"' : option.type === "boolean" ? "false" : ["integer", "number"].includes(option.type) ? "0" : "null";
         return <div key={option.pointer}>
           <div style={{ paddingLeft: depth * 16 }} className="api-value-json-line">
-            <button type="button" className="api-json-token api-json-key-token" aria-label={`${option.pointer || "전체 값"} ${option.type} 값 선택`} aria-pressed={selected === option.pointer} disabled={onlyDynamic && !option.dynamic} title={onlyDynamic && !option.dynamic ? "고정값은 기대값에 직접 적으세요" : option.pointer || "전체 값"} onClick={() => onSelect(option.pointer)}>{!option.pointer || arrayItem ? token : jsonTreeKey(option.pointer, rootLabel ?? area)}</button>
+            <Button className="api-json-token api-json-key-token" aria-label={`${option.pointer || "전체 값"} ${option.type} 값 선택`} aria-pressed={selected === option.pointer} disabled={onlyDynamic && !option.dynamic} title={onlyDynamic && !option.dynamic ? "고정값은 기대값에 직접 적으세요" : option.pointer || "전체 값"} onClick={() => onSelect(option.pointer)}>{!option.pointer || arrayItem ? token : jsonTreeKey(option.pointer, rootLabel ?? area)}</Button>
             {option.pointer && !arrayItem && <code>: <span className={option.dynamic ? "api-json-reference-value" : `api-json-type-${option.type}`}>{token}</span></code>}
             {!container && !last && <code>,</code>}
           </div>
@@ -113,12 +116,6 @@ export function ScenarioValueLink({ scenario, targetIndex, target, catalogs, bin
   const resetSelection = () => { setPointer(null); setHeader(""); setError(""); };
 
   useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
-
-  useEffect(() => {
     if (from === initialSource || (from >= 0 && from < targetIndex)) return;
     setFrom(initialSource);
     resetSelection();
@@ -133,11 +130,10 @@ export function ScenarioValueLink({ scenario, targetIndex, target, catalogs, bin
     }
   };
 
-  return <div className="api-value-modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
-    <section className="api-value-modal api-scenario-value-modal" role="dialog" aria-modal="true" aria-label={`${target.name} 값 연결`} onMouseDown={event => event.stopPropagation()}>
+  return <Modal backdropClassName="api-value-modal-backdrop" className="api-value-modal api-scenario-value-modal" label={`${target.name} 값 연결`} onClose={onClose}>
       <header>
         <div><p className="api-value-modal-kicker">값 연결</p><h2>{target.name} 값 연결</h2><small>{targetIndex + 1}단계 · {target.expect !== undefined ? "검증 기대값" : `${target.area} · 요청값`}</small></div>
-        <button type="button" aria-label="값 연결 닫기" onClick={onClose}>×</button>
+        <Button variant="ghost" iconOnly aria-label="값 연결 닫기" onClick={onClose}>×</Button>
       </header>
 
       <div className="api-value-target"><span>사용할 곳</span><code>{targetIndex + 1}단계 · {target.expect !== undefined ? `검증 ${target.name} 기대값` : `${target.area}.${target.name}`}</code></div>
@@ -151,8 +147,8 @@ export function ScenarioValueLink({ scenario, targetIndex, target, catalogs, bin
       </> : <>
         <p className="api-value-modal-note">다른 단계의 요청값 또는 응답값을 선택해 {target.expect !== undefined ? "이 검증의 기대값으로 씁니다" : "이 입력값에 연결합니다"}. 실행 순서는 시나리오 검사에서 확인합니다.</p>
         <div className="api-value-source-tabs" role="tablist" aria-label="값 출처 선택">
-          <button type="button" role="tab" aria-selected={source === "response"} className={source === "response" ? "selected" : ""} onClick={() => { setSource("response"); resetSelection(); }}>응답값</button>
-          <button type="button" role="tab" aria-selected={source === "request"} className={source === "request" ? "selected" : ""} onClick={() => { setSource("request"); resetSelection(); }}>요청값</button>
+          <Button role="tab" aria-selected={source === "response"} className={source === "response" ? "selected" : ""} onClick={() => { setSource("response"); resetSelection(); }}>응답값</Button>
+          <Button role="tab" aria-selected={source === "request"} className={source === "request" ? "selected" : ""} onClick={() => { setSource("request"); resetSelection(); }}>요청값</Button>
         </div>
         <label>출처 단계<select aria-label="값 출처 단계" aria-describedby="api-value-order-help" value={from} onChange={event => { setFrom(Number(event.target.value)); resetSelection(); }} title="현재 단계보다 앞선 단계만 선택할 수 있습니다.">{sourceSteps.map(({ step, index }) => <option key={step.id} value={index} disabled={index >= targetIndex}>{sourceStepLabel(scenario, index, catalogs, bindings)}{index === targetIndex ? " · 현재 단계" : index > targetIndex ? " · 뒤 단계" : ""}</option>)}</select>{sourceSteps.some(item => item.index >= targetIndex) && <small id="api-value-order-help" className="api-value-order-help">현재 단계와 뒤 단계는 실행 순서상 고를 수 없습니다.</small>}</label>
 
@@ -165,19 +161,18 @@ export function ScenarioValueLink({ scenario, targetIndex, target, catalogs, bin
         {source === "response" && <section className="api-value-source-section" aria-label="응답값 출처 설정">
           <label>응답 영역<select aria-label="응답 출처 영역" value={responseArea} onChange={event => { setResponseArea(event.target.value as "body" | "header"); resetSelection(); }}><option value="body">본문 JSON</option><option value="header">응답 헤더</option></select></label>
           {responseArea === "body" && sourceRun?.httpStatus !== undefined && sourceRun.body !== undefined && <p className="api-field-help api-value-run-note">값은 최근 실행 결과입니다 (HTTP {sourceRun.httpStatus}).</p>}
-          {responseArea === "body" ? responseOptions.length ? <JsonValueTree options={responseOptions} selected={pointer} onSelect={setPointer} area="응답" /> : <p className="api-field-menu-help">선택 가능한 응답 구조가 없습니다. 고급 설정에서 JSON Pointer를 직접 입력할 수 있습니다.</p> : <label>응답 헤더 이름<input value={header} onChange={event => setHeader(event.target.value)} placeholder="X-Request-Id" /></label>}
+          {responseArea === "body" ? responseOptions.length ? <JsonValueTree options={responseOptions} selected={pointer} onSelect={setPointer} area="응답" /> : <p className="api-field-menu-help">선택 가능한 응답 구조가 없습니다. 고급 설정에서 JSON Pointer를 직접 입력할 수 있습니다.</p> : <label>응답 헤더 이름<Input value={header} onChange={event => setHeader(event.target.value)} placeholder="X-Request-Id" /></label>}
         </section>}
 
         <details className="api-value-advanced"><summary>고급 설정 · 연결 이름·JSON Pointer</summary>
-          <label>연결 이름 (선택)<input value={variable} onChange={event => setVariable(event.target.value)} placeholder="단계와 값 출처를 기준으로 자동 생성" /></label>
-          <label>문자열 접두사 · 선택<input value={prefix} onChange={event => setPrefix(event.target.value)} placeholder="Bearer  " /></label>
-          {source === "request" && <label>요청 JSON Pointer<input value={pointer ?? ""} onChange={event => setPointer(event.target.value)} placeholder="/id 또는 /data/id" /></label>}
-          {source === "response" && responseArea === "body" && <label>응답 JSON Pointer<input value={pointer ?? ""} onChange={event => setPointer(event.target.value)} placeholder="/data/id" /></label>}
+          <label>연결 이름 (선택)<Input value={variable} onChange={event => setVariable(event.target.value)} placeholder="단계와 값 출처를 기준으로 자동 생성" /></label>
+          <label>문자열 접두사 · 선택<Input value={prefix} onChange={event => setPrefix(event.target.value)} placeholder="Bearer  " /></label>
+          {source === "request" && <label>요청 JSON Pointer<Input value={pointer ?? ""} onChange={event => setPointer(event.target.value)} placeholder="/id 또는 /data/id" /></label>}
+          {source === "response" && responseArea === "body" && <label>응답 JSON Pointer<Input value={pointer ?? ""} onChange={event => setPointer(event.target.value)} placeholder="/data/id" /></label>}
         </details>
       </>}
       {error && <p role="alert" className="api-field-menu-error">{error}</p>}
       {/* Stays in view while the JSON above scrolls: what is picked, and the button to use it. */}
-      <footer className="api-value-link-footer">{ready && <span className="api-value-selection-summary"><span>선택</span><code>{sourceStepLabel(scenario, from, catalogs, bindings)} · {source === "response" ? responseArea === "header" ? `헤더 ${header}` : `응답 ${pointerLabel(pointer ?? "")}` : `요청 ${requestArea} ${pointerLabel(pointer ?? "")}`}</code></span>}<button type="button" onClick={onClose}>{previousSourceSteps.length > 0 ? "취소" : "닫기"}</button>{previousSourceSteps.length > 0 && <button type="button" className="api-primary" disabled={!ready || from < 0} onClick={apply}>이 값으로 연결</button>}</footer>
-    </section>
-  </div>;
+      <footer className="api-value-link-footer">{ready && <span className="api-value-selection-summary"><span>선택</span><code>{sourceStepLabel(scenario, from, catalogs, bindings)} · {source === "response" ? responseArea === "header" ? `헤더 ${header}` : `응답 ${pointerLabel(pointer ?? "")}` : `요청 ${requestArea} ${pointerLabel(pointer ?? "")}`}</code></span>}<Button variant="secondary" onClick={onClose}>{previousSourceSteps.length > 0 ? "취소" : "닫기"}</Button>{previousSourceSteps.length > 0 && <Button variant="primary" disabled={!ready || from < 0} onClick={apply}>이 값으로 연결</Button>}</footer>
+  </Modal>;
 }
