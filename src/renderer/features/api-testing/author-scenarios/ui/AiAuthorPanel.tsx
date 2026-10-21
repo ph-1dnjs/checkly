@@ -146,7 +146,7 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved, mcp, on
           <Button variant="ghost" iconOnly className="api-icon-button api-ai-refresh" aria-label="AI 다시 확인" title="AI 다시 확인" disabled={busy} onClick={() => setStatusRevision(value => value + 1)}><Icon name="refresh" size={16} /></Button>
         </div>;
   // Switches the chat between 바로 만들기 and the CLI's terminal; it sits in the chat's own title row.
-  const styleToggle = <Button className="api-ai-style-toggle" disabled={busy} onClick={() => chooseStyle(style === "quick" ? "terminal" : "quick")}>{style === "quick" ? "터미널로 보기" : "간단히 보기"}</Button>;
+  const styleToggle = <Button variant="ghost" className="api-ai-style-toggle" disabled={busy} onClick={() => chooseStyle(style === "quick" ? "terminal" : "quick")}>{style === "quick" ? "터미널로 보기" : "간단히 보기"}</Button>;
   const specNote = noSpec ? "가져온 명세가 없어 AI에게 줄 API가 없습니다. API 문서 탭에서 명세를 가져오세요." : specWarnings.join(" · ");
   const usable = operations.filter(operation => !operation.unavailable).length;
   const unavailable = operations.length - usable;

@@ -1038,8 +1038,8 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 @media (prefers-reduced-motion: reduce) { .api-mcp-live > i::after, .api-mcp-dot::after { animation:none; } }
 .api-ai-mcp-clients { display:flex; flex-wrap:wrap; gap:14px; }
 .api-ai-mcp-code { position:relative; }
-.api-ai-mcp-code pre { margin:0; padding:10px 40px 10px 12px; border:1px solid var(--api-border); border-radius:var(--ck-dim-radius-base); background:var(--ck-color-surface-sunken, #f6f7f9); font-family:var(--ck-font-mono, monospace); font-size:12px; line-height:1.5; white-space:pre-wrap; word-break:break-all; }
-.api-ai-mcp-code > .api-icon-button { position:absolute; top:6px; right:6px; width:28px; height:28px; min-height:28px; padding:0; }
+.api-ai-mcp-code pre { margin:0; padding:10px 44px 10px 12px; border:1px solid var(--api-border); border-radius:var(--ck-dim-radius-base); background:var(--ck-color-surface-sunken, #f6f7f9); font-family:var(--ck-font-mono, monospace); font-size:12px; line-height:1.5; white-space:pre-wrap; word-break:break-all; }
+.api-ai-mcp-code > .api-icon-button { position:absolute; top:3px; right:4px; }
 .api-ai-way-intro { margin:0 0 12px; }
 .api-testing-page fieldset.api-ai-backend-folders { margin:0; padding:0; border:0; min-width:0; }
 .api-ai-backend-folders-toggle { margin-top:12px; font-size:12.5px; }
@@ -1319,7 +1319,6 @@ body.panel-resizing { cursor:col-resize; user-select:none; }
 .api-ai-author-heading { display:flex; align-items:center; gap:12px; margin:0 0 12px; }
 /* How old the spec the AI works from is, with a refresh, at the right of the way tabs. */
 .api-ai-spec-freshness { display:inline-flex; align-items:center; gap:4px; margin-left:auto; color:var(--ck-color-text-secondary); font-size:12px; white-space:nowrap; }
-.api-ai-spec-freshness .api-icon-button { width:28px; height:28px; min-height:28px; padding:0; }
 .api-ai-spec-freshness .is-spinning { animation:ckSpin .8s linear infinite; }
 .api-ai-tool-row { display:flex; align-items:center; gap:4px; }
 .api-testing-page button.api-ai-refresh { padding:3px; border-color:transparent; background:transparent; color:var(--ck-color-text-mute); }
@@ -1420,8 +1419,7 @@ body.panel-resizing { cursor:col-resize; user-select:none; }
 .api-testing-page .api-ai-terminal-side-head button.api-icon-button { padding:2px 8px; border-color:transparent; background:transparent; font-size:18px; line-height:1; }
 
 /* 바로 만들기: one request in, progress, the AI's memo and the checked result out. */
-.api-testing-page .api-ai-author .api-ai-style-toggle { min-height:0; margin-left:auto; padding:4px 8px; border:0; background:transparent; color:var(--ck-color-text-secondary); font-size:12.5px; box-shadow:none; }
-.api-testing-page .api-ai-author .api-ai-style-toggle:hover:not(:disabled) { color:var(--api-ink); text-decoration:underline; }
+.api-testing-page .api-ai-author .api-ai-style-toggle { margin-left:auto; }
 .api-ai-quick { display:grid; gap:12px; }
 .api-ai-quick-progress { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:var(--ck-dim-radius-base); background:var(--ck-color-surface-subtle); color:var(--ck-color-text-body); }
 .api-ai-quick-progress > span:nth-child(2) { flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
