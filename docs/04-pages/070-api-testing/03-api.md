@@ -8,7 +8,7 @@
 
 | 채널 | 주요 입력 → 출력 |
 | --- | --- |
-| list-projects / save-project / delete-project | 프로젝트 목록·설정·ID → 목록/저장 결과/완료 |
+| list-projects / save-project | 프로젝트 목록 / 저장(테스트·개발용, 화면에서는 전체 설정에서 편집) |
 | catalog / delete-catalog | projectId, environmentId, serverId → 명세/완료 |
 | import | scope, 파일 또는 URL·Basic 인증 → 명세 또는 취소 시 null. 명세 본문은 이 PC에만 둠(팀 프로젝트에서는 URL만 팀의 명세 주소가 됨) |
 | spec-sync / delete-spec-account | scope → 동기화·계정 저장 여부/완료. 팀 프로젝트에서 비밀값 공유가 켜져 있으면 `shareAccount`(기억하면 팀에 저장), 팀 계정이면 `teamAccount` |
@@ -23,8 +23,6 @@
 | check-ai-scenarios | 프로젝트·환경, AI 결과 텍스트 → 검사된 초안·스위트(저장하지 않음) |
 | list-cookies / clear-cookies | 프로젝트 → 쿠키 이름·도메인·경로 목록(값 제외)/완료. 실행 중에는 비울 수 없음 |
 | execute | scope, operation key, request → 원문 ApiResponse (Swagger Try it out). 요청 입력값은 민감값을 빼고 기억(팀 프로젝트에서 비밀값 공유가 켜져 있으면 그대로 기억) |
-| export-project | 프로젝트 ID → 저장 대화상자로 공유 파일 저장(경로 또는 null). 원본 프로젝트 ID(`origin`)와 기준 해시(`base`) 포함. 전역변수 값·저장된 문서 계정·세션 쿠키는 제외하며, 시나리오와 명세 URL은 원문 포함 |
-| read-project-file / plan-project-import / import-project | 열기 대화상자 → 파일 텍스트(10MB 이하) / 텍스트 → 새 프로젝트 요약과 같은 프로젝트 사본별 3-way 비교 / 텍스트, 선택적 `{ projectId, scenarioIds, suiteIds }`(파일 쪽으로 할 충돌) → 새 프로젝트 또는 합친 결과. 원본 연결은 `share-origins.json`, 마지막으로 합친 버전은 `share-bases.json` |
 | get-doc-inputs / forget-doc-input | scope(서버 기준)/operation key → 기억한 Try it out 입력값 목록/삭제. 프로젝트 단위(환경 공통), 서버 삭제·프로젝트 삭제 시 함께 삭제 |
 | cancel | scope → 현재 환경 실행 취소 |
 | list-scenarios / read-scenario-file | 프로젝트 ID/파일 선택 → 목록/YAML 또는 null. 목록 항목에는 선택 필드 `createdAt`, `createdBy`·`updatedBy`(팀 모드에서만, 닉네임, 나간 멤버는 `(나간 멤버)`)가 붙음 |

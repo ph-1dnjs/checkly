@@ -200,7 +200,7 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
       className={`workspace${inWorkspace ? " scenario-workspace" : ""}${route === "form-automation" ? " form-automation-workspace" : ""}`}
     >
       <section className="content">
-        {route === "api-testing" && <ApiTestingPage onRunAction={setApiRunAction} />}
+        {route === "api-testing" && <ApiTestingPage onRunAction={setApiRunAction} onOpenSettings={() => setRoute("settings")} />}
         {route === "dashboard" && (
           <DashboardPage
             history={runHistory}

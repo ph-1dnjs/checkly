@@ -64,7 +64,7 @@ export function RequestAuthPanel({ scope, bridge }: { scope: ApiScope; bridge: A
       {/* Dialog footer like the app's other dialogs: note on the left, the action on the right. */}
       <div className="api-auth-footer">
         <p className="api-auth-note">API 문서에서 직접 호출할 때만 Bearer로 붙습니다 · 앱을 끄면 초기화</p>
-        <Button variant="primary" disabled={(!newToken && !choice) || unchanged}>{newToken ? "저장 후 연결" : "연결"}</Button>
+        <Button type="submit" variant="primary" disabled={(!newToken && !choice) || unchanged}>{newToken ? "저장 후 연결" : "연결"}</Button>
       </div>
     </fieldset></form>
   </section>;

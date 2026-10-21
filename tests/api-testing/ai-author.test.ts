@@ -135,9 +135,6 @@ test("the guide asks what to test, points at the schema and result files, and hi
     const loaded = await workspace.readAiResult(scope);
     assert.equal(loaded?.path, resultFile);
     assert.equal(loaded?.text, read);
-    // Deleting the project removes its exchange folder.
-    await workspace.deleteProject(project.id);
-    await assert.rejects(readFile(catalogFile));
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 

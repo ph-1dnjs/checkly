@@ -98,11 +98,10 @@ test("team project: servers·environments map to the common tables, scenarios·s
     const webBefore = await rows(db, "endpoint_urls");
 
     const workspace = new ApiWorkspace(dir, () => team);
-    assert.deepEqual(await workspace.getStorage(), { mode: "team", projectCode: team.projectCode, importable: [] });
+    assert.deepEqual(await workspace.getStorage(), { mode: "team", projectCode: team.projectCode });
     const [empty] = await workspace.listProjects();
     assert.deepEqual({ ...empty, revision: undefined }, { id: team.projectId, name: team.projectCode, revision: undefined, servers: [], environments: [{ id: dev.id, name: "dev", baseUrls: {} }] });
     await assert.rejects(workspace.saveProject({ ...empty, id: randomUUID(), servers: [{ id: randomUUID(), name: "API" }] }), /새로 만들 수 없습니다/);
-    await assert.rejects(workspace.deleteProject(team.projectId), /삭제할 수 없습니다/);
 
     // A server with a dev address; a new stg environment whose address is left unset ("미설정").
     const serverId = randomUUID(), stgId = randomUUID();
@@ -154,7 +153,6 @@ test("team project: servers·environments map to the common tables, scenarios·s
     await workspace.shareSpecUrl(devScope, "https://dev.api.test/v3/api-docs");
     assert.equal(await workspace.sharedSpecUrl(devScope), "https://dev.api.test/v3/api-docs");
     assert.equal(await workspace.sharedSpecUrl(stgScope), null);
-    assert.deepEqual(JSON.parse(await workspace.exportProject(team.projectId)).specUrls, [{ serverId, environmentId: dev.id, url: "https://dev.api.test/v3/api-docs" }]);
 
     // Another team sees none of it.
     const outsider = new ApiWorkspace(dir, () => other);
@@ -175,70 +173,6 @@ test("team project: servers·environments map to the common tables, scenarios·s
     assert.deepEqual(await workspace.listScenarios(team.projectId), []);
   } finally {
     http.closeAllConnections(); await new Promise<void>(resolve => http.close(() => resolve()));
-    for (const step of cleanup.reverse()) await Promise.resolve(step()).catch(() => undefined);
-    await rm(dir, { recursive: true, force: true });
-  }
-});
-
-test("team project: a local project is copied in once, matching servers and environments by name", async t => {
-  if (!await needSupabase(t)) return;
-  const cleanup: Array<() => Promise<unknown>> = [];
-  const dir = await mkdtemp(path.join(tmpdir(), "checkly-team-import-"));
-  try {
-    const team = await member(cleanup);
-    const db = team.client;
-    // The team already has an api "백엔드" with a dev address and a web endpoint.
-    const { data: backend } = await db.from("endpoints").insert({ project_id: team.projectId, name: "백엔드", kind: "api" }).select().single();
-    const { data: web } = await db.from("endpoints").insert({ project_id: team.projectId, name: "프론트", kind: "web", position: 1 }).select().single();
-    const { data: dev } = await db.from("environments").insert({ project_id: team.projectId, name: "dev" }).select().single();
-    await db.from("endpoint_urls").insert([
-      { project_id: team.projectId, endpoint_id: backend.id, environment_id: dev.id, base_url: "https://team-dev.api.test" },
-      { project_id: team.projectId, endpoint_id: web.id, environment_id: dev.id, base_url: "https://dev.app.test" },
-    ]);
-
-    // A local project from before sign-in: 백엔드 + 인증 servers, dev + prod environments.
-    const offline = new ApiWorkspace(dir);
-    const [backendLocal, authLocal, devLocal, prodLocal] = [randomUUID(), randomUUID(), randomUUID(), randomUUID()];
-    const local = { id: randomUUID(), name: "로컬 QA", servers: [{ id: backendLocal, name: "백엔드" }, { id: authLocal, name: "인증" }], environments: [
-      { id: devLocal, name: "dev", baseUrls: { [backendLocal]: "https://local-dev.api.test", [authLocal]: "https://local-dev.auth.test" } },
-      { id: prodLocal, name: "prod", baseUrls: { [backendLocal]: "https://api.test", [authLocal]: "https://auth.test" } },
-    ] };
-    await offline.saveProject(local);
-    const devScope = { projectId: local.id, serverId: backendLocal, environmentId: devLocal };
-    await offline.importSpec(devScope, spec);
-    await writeFile(path.join(dir, `spec-source-${local.id}-${devLocal}-${backendLocal}.json`), JSON.stringify({ url: "https://local-dev.api.test/v3/api-docs" }));
-    await offline.saveScenario(devScope, "id: login\nname: 로그인\nserver: 백엔드\nsteps:\n  - api: POST /login\n", {});
-    await offline.saveScenarioDraft(devScope, "id: draft\nname: 초안\nserver: 인증\nsteps:\n  - api: POST /login\n", {});
-    await offline.saveSuite(local.id, { id: randomUUID(), name: "로그인 묶음", scenarioIds: ["login"], onFailure: "stop" });
-    await writeFile(path.join(dir, `doc-inputs-${local.id}.json`), JSON.stringify({ [`${backendLocal} POST /login`]: { body: { loginId: "a" } } }));
-
-    const workspace = new ApiWorkspace(dir, () => team);
-    assert.deepEqual(await workspace.getStorage(), { mode: "team", projectCode: team.projectCode, importable: [{ id: local.id, name: "로컬 QA", scenarios: 2, suites: 1 }] });
-    const result = await workspace.importLocalProject(local.id);
-    assert.deepEqual([result.scenarios, result.suites, result.specUrls, result.merged], [2, 1, 1, { added: 3, updated: 0, kept: 0 }]);
-    const project = (await workspace.listProjects())[0];
-    const authId = project.servers.find(server => server.name === "인증")!.id, prod = project.environments.find(environment => environment.name === "prod")!;
-    // Same names → same ids; the team's address wins, the file's fill what was unset.
-    assert.deepEqual(project.servers.map(server => [server.name, server.id === backend.id]), [["백엔드", true], ["인증", false]]);
-    assert.deepEqual(project.environments.find(environment => environment.id === dev.id)!.baseUrls, { [backend.id]: "https://team-dev.api.test", [authId]: "https://local-dev.auth.test" });
-    assert.deepEqual(prod.baseUrls, { [backend.id]: "https://api.test", [authId]: "https://auth.test" });
-    assert.ok((await rows(db, "endpoints")).some(row => row.id === web.id && row.kind === "web"));
-    assert.deepEqual((await workspace.listScenarios(team.projectId)).map(item => [item.id, item.draft]), [["draft", true], ["login", false]].sort((a, b) => String(a[0]).localeCompare(String(b[0]))));
-    // Brought in from the local project: made by whoever imported it.
-    assert.deepEqual((await workspace.listScenarios(team.projectId)).map(item => item.createdBy), ["owner", "owner"]);
-    assert.deepEqual((await workspace.listSuites(team.projectId)).map(suite => suite.scenarioIds), [["login"]]);
-    const teamDev = { projectId: team.projectId, serverId: backend.id, environmentId: dev.id };
-    assert.deepEqual(await workspace.getDocInputs(teamDev), { "POST /login": { body: { loginId: "a" } } });
-    assert.equal(await workspace.sharedSpecUrl(teamDev), "https://local-dev.api.test/v3/api-docs");
-    // The spec already read locally comes along, so it need not be fetched again.
-    await access(path.join(dir, `catalog-${team.projectId}-${dev.id}-${backend.id}.json`));
-    assert.equal((await workspace.getCatalog(teamDev))?.operations.length, 2);
-    // Offered once: the team now has scenarios. The local project itself is untouched.
-    assert.deepEqual((await workspace.getStorage() as { importable: unknown[] }).importable, []);
-    assert.equal((await offline.listScenarios(local.id)).length, 2);
-    // Importing again adds nothing and replaces nothing.
-    assert.deepEqual((await workspace.importLocalProject(local.id)).merged, { added: 0, updated: 0, kept: 3 });
-  } finally {
     for (const step of cleanup.reverse()) await Promise.resolve(step()).catch(() => undefined);
     await rm(dir, { recursive: true, force: true });
   }
@@ -380,14 +314,6 @@ test("team project: who made·changed scenarios and suites is stamped by the dat
     assert.equal(claimed.created_by, b.userId);
     assert.notEqual(new Date(claimed.created_at as string).getFullYear(), 2000);
 
-    // 3. A share file brought in: made by whoever imported it.
-    const shared = JSON.parse(await workspaceA.exportProject(a.projectId)) as { scenarios: Array<{ id: string; source: string }>; suites: unknown[] };
-    shared.scenarios = shared.scenarios.filter(item => item.id === "by-hand").map(item => ({ ...item, id: "imported", source: item.source.replace("id: by-hand", "id: imported") }));
-    const imported = await workspaceB.importProject(JSON.stringify(shared));
-    assert.equal(imported.scenarios, 1);
-    const importedItem = await byId(workspaceA, "imported");
-    assert.deepEqual([importedItem.createdBy, importedItem.updatedBy], ["hyewon", "hyewon"]);
-
     // 4. Suites: same authorship; one read back (with its authorship) saves as is.
     const suite = await workspaceA.saveSuite(a.projectId, { id: randomUUID(), name: "묶음", scenarioIds: ["by-hand"], onFailure: "stop" });
     assert.deepEqual([suite.createdBy, suite.updatedBy], ["owner", "owner"]);
@@ -396,9 +322,6 @@ test("team project: who made·changed scenarios and suites is stamped by the dat
     const suiteEdited = await workspaceB.saveSuite(a.projectId, { ...withAuthorship, name: "고친 묶음" }, listedSuite.updatedAt);
     assert.deepEqual([suiteEdited.createdBy, suiteEdited.updatedBy, suiteEdited.createdAt], ["owner", "hyewon", suite.createdAt]);
     await assert.rejects(workspaceA.saveSuite(a.projectId, { id: suite.id, name: "x", scenarioIds: ["by-hand"], onFailure: "stop" }, suite.updatedAt), /묶음이 변경되었습니다/);
-    // The share file stays importable (no authorship in it).
-    const exported = JSON.parse(await workspaceA.exportProject(a.projectId)) as { suites: Array<Record<string, unknown>> };
-    assert.deepEqual(Object.keys(exported.suites[0]).sort(), ["id", "name", "onFailure", "scenarioIds"]);
 
     // 5. A member who left: their work stays, shown as "(나간 멤버)".
     const leaverWorkspace = new ApiWorkspace(path.join(dirB, "leaver"), () => leaver);
@@ -435,6 +358,18 @@ test("file mode: no authorship is kept or shown", async () => {
     assert.deepEqual([made.createdAt, made.createdBy, made.updatedBy], [undefined, undefined, undefined]);
     const suite = await workspace.saveSuite(project.id, { id: randomUUID(), name: "묶음", scenarioIds: ["by-hand"], onFailure: "stop" });
     assert.deepEqual([suite.createdAt, suite.createdBy, suite.updatedBy], [undefined, undefined, undefined]);
-    assert.doesNotMatch(await workspace.exportProject(project.id), /createdAt|createdBy|updatedBy/);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test("signed out with Supabase configured: no project storage until sign-in", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "checkly-signed-out-"));
+  try {
+    const workspace = new ApiWorkspace(dir, () => null, false);
+    assert.deepEqual(await workspace.getStorage(), { mode: "signed-out" });
+    await assert.rejects(workspace.listProjects(), /로그인/);
+    const serverId = randomUUID();
+    await assert.rejects(workspace.saveProject({ id: randomUUID(), name: "로컬", servers: [{ id: serverId, name: "API" }], environments: [{ id: randomUUID(), name: "dev", baseUrls: { [serverId]: "https://api.test" } }] }), /로그인/);
+    // Tests and development (no Supabase) keep projects on this computer.
+    assert.deepEqual(await new ApiWorkspace(dir).getStorage(), { mode: "file" });
   } finally { await rm(dir, { recursive: true, force: true }); }
 });

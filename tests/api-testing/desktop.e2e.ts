@@ -117,18 +117,17 @@ process.stdin.on("data", chunk => {
     };
     const shot = async (name: string) => { if (process.env.CHECKLY_E2E_SHOTS) await page.screenshot({ path: path.join(process.env.CHECKLY_E2E_SHOTS, `${name}.png`) }); };
     page.on("dialog", dialog => { void (dialog.type() === "beforeunload" ? dialog.accept() : dialog.dismiss()).catch(() => undefined); });
+    // One project per sign-in: servers and environments come from the shared settings (here, made directly).
+    await page.evaluate(async url => {
+      const serverId = crypto.randomUUID();
+      await (window as unknown as { electronAPI: { apiTesting: ApiTestingBridge } }).electronAPI.apiTesting
+        .saveProject({ id: crypto.randomUUID(), name: "쇼핑몰 QA", servers: [{ id: serverId, name: "기본 API" }], environments: [{ id: crypto.randomUUID(), name: "dev", baseUrls: { [serverId]: url } }] });
+    }, url);
     await page.getByRole("button", { name: "API 테스트", exact: true }).click();
-    // First run offers both making a project and importing a shared one.
-    await expect(page.getByRole("button", { name: "공유받은 파일 가져오기", exact: true })).toBeVisible();
-    // Both sit centered under the message, like the other empty states.
-    const centerOf = (name: string) => page.getByRole("button", { name, exact: true }).evaluate(element => { const box = element.getBoundingClientRect(); return box.left + box.width / 2; });
-    const pageCenter = await page.locator(".api-empty").first().evaluate(element => { const box = element.getBoundingClientRect(); return box.left + box.width / 2; });
-    if (Math.abs((await centerOf("프로젝트 만들기") + await centerOf("공유받은 파일 가져오기")) / 2 - pageCenter) > 40) throw new Error("First-run buttons are not centered");
-    await page.getByRole("button", { name: "프로젝트 만들기", exact: true }).click();
-    await page.getByLabel("프로젝트 이름").fill("쇼핑몰 QA");
-    await page.getByLabel("기본 API 기본 주소").fill(url);
-    await page.getByRole("button", { name: "프로젝트 저장", exact: true }).click();
-    // A new project opens on API 문서, where its spec is imported.
+    await expect(page.getByLabel("API 프로젝트", { exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "프로젝트 설정", exact: true })).toHaveCount(0);
+    await page.getByRole("tab", { name: /^API 문서/ }).click();
+    // API 문서 is where the spec is imported.
     await expect(page.getByRole("tab", { name: /^API 문서/ })).toHaveAttribute("aria-selected", "true");
     // With one server the header lists no servers (step tags only appear with two or more).
     await expect(page.getByLabel("프로젝트 서버", { exact: true })).toHaveCount(0);
@@ -219,29 +218,34 @@ process.stdin.on("data", chunk => {
     // AI authoring: copy the prompt for the user's own AI, check what it wrote, save scenarios and suite.
     await page.getByRole("tab", { name: "AI 작성 도우미", exact: true }).click();
     await expect(page.getByText("명세를 다시 가져오세요")).toHaveCount(0);
-    // Two ways as tabs; without a backend folder the guide opens and the chat tab lists what it needs.
+    // Three ways as tabs; without a backend folder MCP opens and the chat tab lists what it needs.
+    await expect(page.getByRole("tab", { name: "MCP로 연결", exact: true })).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByRole("switch", { name: "MCP 연결", exact: true })).toHaveAttribute("aria-checked", "false");
+    await expect(page.getByRole("button", { name: "AI 가이드 복사", exact: true })).toHaveCount(0);
+    await page.getByRole("tab", { name: "가이드 복사", exact: true }).click();
     await expect(page.getByRole("button", { name: "AI 가이드 복사", exact: true })).toBeVisible();
+    await expect(page.getByRole("switch", { name: "MCP 연결", exact: true })).toHaveCount(0);
     await page.getByRole("tab", { name: "앱에서 AI와 대화", exact: true }).click();
     const chatWay = page.getByRole("region", { name: "앱에서 AI와 대화 준비", exact: true });
     await expect(chatWay).toContainText("AIClaude");
     await expect(chatWay).toContainText("백엔드 코드 폴더없음");
     await shot("ai-invite");
-    await chatWay.getByRole("button", { name: "설정하기", exact: true }).click();
-    const settings = page.locator(".api-project-form");
-    await expect(settings.getByLabel(/폴더 경로$/).first()).toBeFocused();
-    await expect(settings.getByLabel(/폴더 경로$/).first()).toBeInViewport();
+    // Backend folders are set right here in the chat tab and saved as they are added.
     const backend = path.join(dir, "backend");
     await mkdir(backend, { recursive: true });
-    await settings.getByLabel(/폴더 경로$/).first().fill(backend);
+    await chatWay.getByLabel(/폴더 경로$/).first().fill(backend);
     await shot("ai-settings");
-    await settings.getByRole("button", { name: "프로젝트 저장", exact: true }).click();
-    await expect(settings).toHaveCount(0);
+    await chatWay.getByRole("button", { name: "추가", exact: true }).first().click();
+    await expect(chatWay).toHaveCount(0);
     // A second environment exercises the same project's one chat across environment changes.
-    await page.getByRole("button", { name: "프로젝트 설정", exact: true }).click();
-    await page.getByRole("button", { name: "+ 환경 추가", exact: true }).click();
-    await page.getByLabel("환경 이름", { exact: true }).last().fill("stage");
-    await page.getByLabel("stage 기본 API 기본 주소", { exact: true }).fill(url);
-    await page.getByRole("button", { name: "프로젝트 저장", exact: true }).click();
+    // (Environments are added in the shared settings; here directly, then the page is opened again.)
+    await page.evaluate(async url => {
+      const api = (window as unknown as { electronAPI: { apiTesting: ApiTestingBridge } }).electronAPI.apiTesting;
+      const project = (await api.listProjects())[0];
+      await api.saveProject({ ...project, environments: [...project.environments, { id: crypto.randomUUID(), name: "stage", baseUrls: { [project.servers[0].id]: url } }] });
+    }, url);
+    await page.getByRole("button", { name: "설정", exact: true }).click();
+    await page.getByRole("button", { name: "API 테스트", exact: true }).click();
     const aiProject = await page.evaluate(async ({ url }) => {
       const api = (window as unknown as { electronAPI: { apiTesting: ApiTestingBridge } }).electronAPI.apiTesting;
       const project = (await api.listProjects()).find(item => item.name === "쇼핑몰 QA")!;
@@ -363,7 +367,7 @@ process.stdin.on("data", chunk => {
       return (await api.listScenarios(projectId)).some(item => item.name === "대화 로그인");
     }, aiProject.id)).toBe(true);
     // The terminal keeps running across tabs and environments; checks and saves stay in the session's environment.
-    await page.getByRole("tab", { name: "내 AI 앱에서 쓰기", exact: true }).click();
+    await page.getByRole("tab", { name: "가이드 복사", exact: true }).click();
     await expect(page.getByRole("button", { name: "AI 가이드 복사", exact: true })).toBeVisible();
     await page.getByRole("tab", { name: "시나리오", exact: true }).click();
     await page.getByRole("tab", { name: "AI 작성 도우미", exact: true }).click();
@@ -388,12 +392,13 @@ process.stdin.on("data", chunk => {
     }, aiProject.id);
     expect(preserved.scenarios).toContain("대화 로그인");
     expect(preserved.settings.folders[aiProject.serverId]).toEqual([backend]);
-    await page.getByRole("button", { name: "프로젝트 설정", exact: true }).click();
+    // Folders can't change mid-conversation; after 대화 초기화 they are edited below the chat.
+    await terminalPane.getByRole("button", { name: "대화 초기화", exact: true }).click();
+    await page.getByText("백엔드 코드 폴더 · 1개", { exact: true }).click();
     await page.getByRole("button", { name: `기본 API 폴더 ${backend} 제거`, exact: true }).click();
-    await page.getByRole("button", { name: "프로젝트 저장", exact: true }).click();
     // Without a backend folder the chat tab lists what it needs; the guide is the other tab.
     await expect(page.getByRole("region", { name: "앱에서 AI와 대화 준비", exact: true })).toContainText("백엔드 코드 폴더없음");
-    await page.getByRole("tab", { name: "내 AI 앱에서 쓰기", exact: true }).click();
+    await page.getByRole("tab", { name: "가이드 복사", exact: true }).click();
     await page.getByRole("button", { name: "가이드 보기", exact: true }).click();
     await expect(page.getByLabel("AI 가이드 내용", { exact: true })).toContainText("먼저 사용자에게 무엇을 테스트할지 물어보세요");
     await page.getByRole("button", { name: "가이드 닫기", exact: true }).click();
@@ -706,7 +711,7 @@ process.stdin.on("data", chunk => {
     await expect(page.getByRole("combobox", { name: /시나리오 추가/ }).locator("option", { hasText: "AI 로그인" })).toHaveCount(1);
     await page.getByRole("combobox", { name: /시나리오 추가/ }).selectOption({ label: "AI 로그인" });
     await page.getByRole("combobox", { name: /시나리오 추가/ }).selectOption({ label: "AI 로그인" });
-    await expect(page.locator(".api-suite-order")).toHaveText(["1AI 로그인", "2AI 로그인"]);
+    await expect(page.locator(".api-suite-order")).toHaveText([/^1AI 로그인/, /^2AI 로그인/]);
     await page.getByRole("button", { name: "스위트 저장", exact: true }).click();
     await expect(page.getByRole("region", { name: "스위트 구성" })).toContainText("2개 시나리오");
     await page.getByRole("button", { name: "스위트 삭제", exact: true }).click();
@@ -759,17 +764,7 @@ process.stdin.on("data", chunk => {
     const restored = await app.firstWindow();
     restored.setDefaultTimeout(15_000);
     await restored.getByRole("button", { name: "API 테스트", exact: true }).click();
-    await expect(restored.getByLabel("API 프로젝트")).toContainText("쇼핑몰 QA");
-    // Leaving the project form with edits asks first.
-    await restored.getByRole("button", { name: "프로젝트 설정", exact: true }).click();
-    await restored.getByLabel("프로젝트 이름").fill("쇼핑몰 QA 수정");
-    await restored.getByRole("button", { name: "← 돌아가기", exact: true }).click();
-    await restored.getByRole("button", { name: "계속 수정", exact: true }).click();
-    await expect(restored.getByLabel("프로젝트 이름")).toHaveValue("쇼핑몰 QA 수정");
-    await restored.getByRole("button", { name: "← 돌아가기", exact: true }).click();
-    await restored.getByRole("button", { name: "변경사항 버리고 나가기", exact: true }).click();
-    await expect(restored.getByLabel("API 프로젝트")).toContainText("쇼핑몰 QA");
-    await expect(restored.getByLabel("프로젝트 이름")).toHaveCount(0);
+    await expect(restored.locator(".api-team-project")).toContainText("쇼핑몰 QA");
     await restored.getByRole("button", { name: "명세 설정", exact: true }).click();
     await expect(restored.getByLabel("OpenAPI URL", { exact: true })).toHaveValue(`${url}/openapi.json`);
     // Clicking the environment already chosen keeps the URL (nothing loads it again).
@@ -902,69 +897,6 @@ process.stdin.on("data", chunk => {
     await restored.getByRole("button", { name: "시나리오 목록으로", exact: true }).click();
     await restored.getByRole("button", { name: "변경사항 버리고 닫기", exact: true }).click();
     await expect(warnedEntry).toBeVisible();
-    // A project exports to one share file and imports back as a new project.
-    const shareFile = path.join(dir, "share.checkly-api.json");
-    await app.evaluate(({ dialog }, file) => {
-      dialog.showSaveDialog = (async () => ({ canceled: false, filePath: file })) as unknown as typeof dialog.showSaveDialog;
-      dialog.showOpenDialog = (async () => ({ canceled: false, filePaths: [file] })) as unknown as typeof dialog.showOpenDialog;
-    }, shareFile);
-    await restored.getByRole("button", { name: "프로젝트 설정", exact: true }).click();
-    await restored.getByRole("button", { name: "프로젝트 내보내기", exact: true }).click();
-    await expect(restored.getByRole("status").filter({ hasText: "저장했습니다" })).toContainText(shareFile);
-    const shared = await readFile(shareFile, "utf8");
-    if (shared.includes("desktop-api-token") || shared.includes("docs-test-password")) throw new Error("Share file carries secrets");
-    await restored.getByRole("button", { name: "← 돌아가기", exact: true }).click();
-    await restored.getByLabel("API 프로젝트").selectOption({ label: "+ 새 프로젝트" });
-    await restored.getByRole("button", { name: "파일에서 가져오기", exact: true }).click();
-    // The original is on this machine too, so it asks; a second copy is what this step wants.
-    const firstImport = restored.getByRole("dialog", { name: "프로젝트 가져오기" });
-    await expect(firstImport).toContainText("대상 · 쇼핑몰 QA");
-    await firstImport.getByLabel("새 프로젝트로 추가").check();
-    await firstImport.getByRole("button", { name: "새 프로젝트로 가져오기", exact: true }).click();
-    const importNotice = restored.getByRole("status").filter({ hasText: "프로젝트를 가져왔습니다" });
-    await expect(importNotice).toContainText("‘쇼핑몰 QA (2)’");
-    // The notice names the actual button, and stays on API 문서 (not over the scenario screens).
-    await expect(importNotice).toContainText("[이 URL로 가져오기]");
-    await expect(restored.getByLabel("API 프로젝트").locator("option:checked")).toHaveText("쇼핑몰 QA (2)");
-    await expect(restored.getByRole("tab", { name: /^API 문서/ })).toHaveAttribute("aria-selected", "true");
-    // The imported project works once its spec is refreshed from the carried URL: the scenario runs.
-    await expect(refreshedSource).toContainText("/openapi.json");
-    await restored.getByRole("tab", { name: "시나리오", exact: true }).click();
-    await expect(importNotice).toHaveCount(0);
-    await restored.getByRole("tab", { name: /^API 문서/ }).click();
-    await expect(importNotice).toBeVisible();
-    await refreshSpec();
-    await expect(refreshedSource).toContainText("최근 동기화 성공");
-    // Every server now has its spec: the notice has done its job.
-    await expect(importNotice).toHaveCount(0);
-    await restored.getByRole("tab", { name: "시나리오", exact: true }).click();
-    await expect(restored.locator(".api-sidebar-entry").filter({ hasText: "로그인 후 상품 조회" })).toBeVisible();
-    await restored.getByRole("button", { name: /로그인 후 상품 조회/ }).click();
-    await restored.getByRole("button", { name: "실행", exact: true }).click();
-    const importedInput = restored.getByRole("dialog", { name: "loginId 입력", exact: true });
-    await importedInput.getByRole("textbox").fill("tester");
-    await importedInput.getByRole("button", { name: "입력 완료 · 계속", exact: true }).click();
-    await expect(restored.getByRole("region", { name: "시나리오 단계" })).toContainText("통과");
-    // The copy's file (with one more scenario) goes back into the original through the update dialog.
-    await restored.getByRole("button", { name: "프로젝트 설정", exact: true }).click();
-    await restored.getByRole("button", { name: "프로젝트 내보내기", exact: true }).click();
-    await expect(restored.getByRole("status").filter({ hasText: "저장했습니다" })).toBeVisible();
-    await restored.getByRole("button", { name: "← 돌아가기", exact: true }).click();
-    const copyFile = JSON.parse(await readFile(shareFile, "utf8")) as { scenarios: Array<{ id: string; name: string; source: string }> };
-    const extra = copyFile.scenarios[0];
-    copyFile.scenarios.push({ ...extra, id: "shared/extra", name: "공유로 추가된 시나리오", source: extra.source.replace(/^id: .*$/m, "id: shared/extra").replace(/^name: .*$/m, "name: 공유로 추가된 시나리오") });
-    await writeFile(shareFile, JSON.stringify(copyFile));
-    await restored.getByRole("button", { name: "프로젝트 설정", exact: true }).click();
-    await restored.getByRole("button", { name: "가져오기", exact: true }).click();
-    const importDialog = restored.getByRole("dialog", { name: "프로젝트 가져오기" });
-    await importDialog.getByLabel("업데이트할 프로젝트").selectOption({ label: "쇼핑몰 QA" });
-    await expect(importDialog).toContainText("추가 1");
-    if (process.env.CHECKLY_E2E_SHOTS) await restored.screenshot({ path: path.join(process.env.CHECKLY_E2E_SHOTS, "project-import.png") });
-    await importDialog.getByRole("button", { name: "업데이트", exact: true }).click();
-    await expect(restored.getByRole("status").filter({ hasText: "에 합쳤습니다" })).toContainText("‘쇼핑몰 QA’에 합쳤습니다 · 추가 1");
-    await expect(restored.getByLabel("API 프로젝트").locator("option:checked")).toHaveText("쇼핑몰 QA");
-    // It keeps the copied scenario's group, which starts folded in the sidebar.
-    await expect(restored.locator(".api-sidebar-entry").filter({ hasText: "공유로 추가된 시나리오" })).toHaveCount(1);
   } finally {
     try {
       const electronProcess = app?.process();

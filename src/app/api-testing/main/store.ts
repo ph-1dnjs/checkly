@@ -33,7 +33,6 @@ export interface ApiStore {
   /** Keyed by "<serverId> <METHOD path>". */
   docInputs(projectId: string): Promise<Record<string, ApiDocInput>>;
   setDocInput(projectId: string, key: string, input: ApiDocInput | undefined): Promise<void>;
-  specUrls(project: ApiProject): Promise<SpecUrl[]>;
 }
 
 export const docInputsSchema = z.record(z.string(), z.object({
@@ -110,15 +109,6 @@ export class FileStore implements ApiStore {
     const inputs = await this.docInputs(projectId);
     if (input) inputs[key] = input; else delete inputs[key];
     await this.save(`doc-inputs-${projectId}.json`, inputs);
-  }
-
-  async specUrls(project: ApiProject): Promise<SpecUrl[]> {
-    const urls: SpecUrl[] = [];
-    for (const environment of project.environments) for (const server of project.servers) {
-      const stored = await this.read(`spec-source-${project.id}-${environment.id}-${server.id}.json`) as { url?: unknown } | null;
-      if (typeof stored?.url === "string") urls.push({ serverId: server.id, environmentId: environment.id, url: stored.url });
-    }
-    return urls;
   }
 
   /** Adds or replaces one item of a list file; false when the stored one is not the version read. */

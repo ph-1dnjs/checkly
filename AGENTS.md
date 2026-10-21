@@ -11,7 +11,7 @@
 - docs/02-architecture/supabase-common.md — 테이블·RLS·화면 흐름 설계
 
 지킬 것
-- 팀 모드(로그인)일 때만 DB를 쓰고, 아니면 기존 로컬 동작을 유지한다.
+- 팀 모드(로그인)일 때만 DB를 쓴다. Supabase가 설정된 앱에서 로그인하지 않았으면 웹 시나리오·API 테스트는 로그인 안내만 보여 준다. Supabase 설정이 없는 개발·테스트 실행만 로컬 파일을 쓴다.
 - DB 변경은 다시 실행해도 안전한 SQL로 `supabase/migrations/`에 증적을 남긴다.
 - service_role·secret 키, DB 비밀번호, 프로젝트 생성 코드를 코드·커밋에 넣지 않는다.
 - 공통 테이블(projects·members·endpoints·environments·endpoint_urls)은 바꾸지 않는다. 필요하면 운영자와 상의한다.

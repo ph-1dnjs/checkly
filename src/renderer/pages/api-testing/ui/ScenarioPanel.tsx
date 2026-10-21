@@ -12,7 +12,7 @@ import { LoadingSpinner } from "../../../shared/ui/LoadingSpinner";
 import { GlobalVariableSetupLink } from "../../../entities/api-testing";
 import { useGlobalVariableAccess } from "../../../features/api-testing/configure-globals";
 import { AiAskButton, AiAskRequest, type AiAskTarget } from "../../../features/api-testing/author-scenarios";
-import { readLastRun, writeLastRun, type ScenarioLastRun } from "../../../entities/api-testing";
+import { onLastRunWritten, readLastRun, writeLastRun, type ScenarioLastRun } from "../../../entities/api-testing";
 import { SuitePanel } from "./SuitePanel";
 import { RunInputModal } from "../../../features/api-testing/submit-run-input";
 import { globalProducerScenarios } from "../../../entities/api-testing";
@@ -228,6 +228,14 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
       if (editorMode) openComposer(item, data, item.bindings);
     } catch (e) { setError(errorText(e)); } finally { working(false); }
   };
+  // An external AI may run the open scenario over MCP; show that run like one started here.
+  useEffect(() => {
+    if (!current) return;
+    return onLastRunWritten(scope.projectId, scope.environmentId, current.id, () => {
+      const next = readLastRun(scope.projectId, scope.environmentId, current.id);
+      if (next?.source === "mcp" && !running && live.current) { setLastRun(next); setResult(next.result); setFocusRequest(null); }
+    });
+  }, [current?.id, scope.projectId, scope.environmentId, running]);
   const openedEditId = useRef<string | null>(null);
   useEffect(() => {
     // Wait for the first list load; an empty list still means "not found".
@@ -503,7 +511,7 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
             if (result) {
               // The steps changed since that run: its results may not line up with every step any more.
               const stale = lastRun?.preview && JSON.stringify(lastRun.preview.scenario.steps) !== JSON.stringify(preview.scenario.steps);
-              return <>{lastRun?.completedAt && <span title="이 결과는 앱을 새로고침하면 사라집니다">최근 실행 {completedLabel(lastRun.completedAt)}</span>}<span>{environment}</span><strong className={`api-scn-result-status is-${result.status.toLowerCase()}`}>{runStatusName(result.status)}</strong>{stale && <span>· 이후 수정됨</span>}{lastRun && <Button variant="ghost" className="api-scn-text-button api-scn-report-download" title="요청·응답 원문과 변수 값은 제외한 HTML 리포트를 저장합니다" onClick={() => void downloadReport()}><Icon name="download" size={14} />리포트 받기</Button>}</>;
+              return <>{lastRun?.completedAt && <span title="이 결과는 앱을 새로고침하면 사라집니다">최근 실행 {completedLabel(lastRun.completedAt)}{lastRun.source === "mcp" ? " · 외부 AI(MCP)" : ""}</span>}<span>{environment}</span><strong className={`api-scn-result-status is-${result.status.toLowerCase()}`}>{runStatusName(result.status)}</strong>{stale && <span>· 이후 수정됨</span>}{lastRun && <Button variant="ghost" className="api-scn-text-button api-scn-report-download" title="요청·응답 원문과 변수 값은 제외한 HTML 리포트를 저장합니다" onClick={() => void downloadReport()}><Icon name="download" size={14} />리포트 받기</Button>}</>;
             }
             return <><span>{environment} · 아직 실행하지 않았습니다</span><span className={`api-run-status${current?.draft ? " is-draft" : canUse ? " is-ready" : " is-review"}`}>{current?.draft ? "초안" : canUse ? "실행 가능" : "설정 필요"}</span></>;
           })()}

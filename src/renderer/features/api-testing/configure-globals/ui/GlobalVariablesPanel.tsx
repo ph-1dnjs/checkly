@@ -84,7 +84,7 @@ export function GlobalVariablesPanel({ scope, bridge, targetName = "", targetReq
           <label className="api-global-form-value">값<Input aria-label="전역변수 값" autoFocus={editing.focus === "value"} className={showValues ? undefined : "api-secret-input"} type="text" autoComplete="off" value={value} onChange={e => setValue(e.target.value)} /></label>
         </div></fieldset>
         {error && <p role="alert" className="api-warning">{error}</p>}
-        <footer className="api-actions"><Button variant="secondary" disabled={busy} onClick={closeEditor}>취소</Button><Button variant="primary" disabled={busy}>전역변수 저장</Button></footer>
+        <footer className="api-actions"><Button variant="secondary" disabled={busy} onClick={closeEditor}>취소</Button><Button type="submit" variant="primary" disabled={busy}>전역변수 저장</Button></footer>
       </form>
     </div>}
     <section className="api-cookie-list" aria-label="세션 쿠키">

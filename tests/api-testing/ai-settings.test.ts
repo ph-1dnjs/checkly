@@ -22,8 +22,9 @@ test("AI settings: several backend folders per server (absolute only) and the AI
     await assert.rejects(workspace.saveAiChatSettings(project.id, { folders: { [serverId]: ["relative/path"] } }), /절대 경로/);
     await assert.rejects(workspace.saveAiChatSettings(project.id, { folders: {}, tool: "gemini" }));
     assert.equal(JSON.stringify(await workspace.listProjects()).includes("member-api"), false);
-    await workspace.deleteProject(project.id);
-    assert.equal((await readFile(path.join(dir, "ai-chat-settings.json"), "utf8")).includes(project.id), false);
+    // Removing a server in the project settings drops its folders from what the AI chat counts.
+    await workspace.saveProject({ ...project, servers: [project.servers[1]], environments: [{ ...project.environments[0], baseUrls: { [adminId]: "https://admin.example.com" } }] });
+    assert.deepEqual(await workspace.getAiChatSettings(project.id), { folders: {}, tool: "codex" });
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
