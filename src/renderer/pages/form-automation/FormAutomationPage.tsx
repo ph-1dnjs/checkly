@@ -502,7 +502,7 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
         return;
       }
       if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
-      if (event.shiftKey && event.key.toLowerCase() === "s") {
+      if (event.shiftKey && event.code === "KeyS") {
         event.preventDefault();
         void startCapture();
         return;

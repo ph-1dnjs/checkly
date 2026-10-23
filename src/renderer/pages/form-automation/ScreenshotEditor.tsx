@@ -49,6 +49,7 @@ export const ScreenshotEditor = ({
   onCancel: () => void;
   onCopy: (dataUrl: string) => Promise<void>;
 }): ReactElement => {
+  const dialogRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const annotationCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const sourceImageRef = useRef<HTMLImageElement | null>(null);
@@ -203,16 +204,41 @@ export const ScreenshotEditor = ({
   }, [textDraft?.x, textDraft?.y]);
 
   useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null;
+    dialogRef.current?.focus();
+    return () => { if (previous?.isConnected) previous.focus(); };
+  }, []);
+
+  useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.target instanceof HTMLInputElement) return;
-      if (event.key === "Escape") onCancel();
+      // 아래에 열린 모달이 Tab·Escape를 함께 처리하지 않도록 먼저 받는다.
+      if (event.key === "Tab") {
+        event.stopPropagation();
+        const elements = [...(dialogRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled)') ?? [])];
+        const first = elements[0], last = elements.at(-1);
+        if (!dialogRef.current?.contains(document.activeElement) || document.activeElement === dialogRef.current) {
+          event.preventDefault();
+          (event.shiftKey ? last : first)?.focus();
+        } else if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault(); last?.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault(); first?.focus();
+        }
+        return;
+      }
+      if (event.target instanceof HTMLInputElement && event.target.type !== "range") return;
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        onCancel();
+      }
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
         event.preventDefault();
         setCommands((items) => items.slice(0, -1));
       }
     };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [onCancel]);
 
   const canvasPoint = (event: ReactPointerEvent<HTMLCanvasElement>) => {
@@ -413,7 +439,7 @@ export const ScreenshotEditor = ({
   };
 
   return (
-    <div className="fa-capture-editor" role="dialog" aria-modal="true" aria-label="화면 캡처 편집">
+    <div ref={dialogRef} tabIndex={-1} className="fa-capture-editor" role="dialog" aria-modal="true" aria-label="화면 캡처 편집">
       <canvas
         ref={canvasRef}
         aria-label="캡처 이미지 주석 영역"

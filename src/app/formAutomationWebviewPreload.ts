@@ -29,7 +29,7 @@ window.addEventListener("keydown", (event) => {
     (event.metaKey || event.ctrlKey)
     && event.shiftKey
     && !event.altKey
-    && event.key.toLowerCase() === "s"
+    && event.code === "KeyS"
   ) {
     event.preventDefault();
     event.stopPropagation();
@@ -116,6 +116,30 @@ const hookSource = `(() => {
     if (value instanceof FormData) return Object.fromEntries(value.entries());
     return '[binary body]';
   };
+  const requestBodyValue = async (request, options) => {
+    if (options.body !== undefined || !request?.body) return bodyValue(options.body);
+    // Read a clone so observing a Request never consumes the application's body.
+    let reader;
+    let timer;
+    try {
+      reader = request.clone().body.getReader();
+      const text = await Promise.race([(async () => {
+        const chunks = []; let size = 0;
+        while (true) {
+          const chunk = await reader.read();
+          if (chunk.done) break;
+          size += chunk.value.byteLength;
+          if (size > 12 * 1024) return '[body exceeds capture limit]';
+          chunks.push(chunk.value);
+        }
+        const bytes = new Uint8Array(size); let offset = 0;
+        for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+        return new TextDecoder().decode(bytes);
+      })(), new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('capture timeout')), 500); })]);
+      return bodyValue(text);
+    } catch { return undefined; }
+    finally { clearTimeout(timer); if (reader) void reader.cancel().catch(() => {}); }
+  };
   const endpointMatches = ${endpointMatches.toString()};
   const findOverride = (url, method) => config.overrides.find((rule) => (
     rule.enabled
@@ -132,6 +156,7 @@ const hookSource = `(() => {
     const options = args[1] || {};
     const url = String(request?.url || args[0]);
     const method = String(options.method || request?.method || 'GET').toUpperCase();
+    const capturedRequest = requestBodyValue(request, options);
     let nextInternal = false;
     try {
       const headers = new Headers(options.headers ?? request?.headers);
@@ -144,20 +169,22 @@ const hookSource = `(() => {
         status: override.status || 200,
         headers: { 'Content-Type': 'application/json', 'X-Checkly-Override': 'true' },
       });
-      emit({ type: 'fetch', url, method, nextInternal, requestBody: bodyValue(options.body), status: response.status, responseBody: override.body, elapsed: Math.round(performance.now() - started), overridden: true });
+      emit({ type: 'fetch', url, method, nextInternal, responseContentType: 'application/json', requestBody: await capturedRequest, status: response.status, responseBody: override.body, elapsed: Math.round(performance.now() - started), overridden: true });
       return response;
     }
     try {
       const response = await nativeFetch(...args);
       const responseContentType = response.headers.get('content-type') || '';
       if (isNextInternalNetworkEvent({ type: 'fetch', url, method, status: response.status, nextInternal, responseContentType })) return response;
-      const clone = response.clone();
-      let responseBody = await clone.text();
-      try { responseBody = responseBody ? JSON.parse(responseBody) : null; } catch {}
-      emit({ type: 'fetch', url, method, nextInternal, responseContentType, requestBody: bodyValue(options.body), status: response.status, responseBody, elapsed: Math.round(performance.now() - started), overridden: false });
+      let responseBody;
+      try {
+        responseBody = await response.clone().text();
+        try { responseBody = responseBody ? JSON.parse(responseBody) : null; } catch {}
+      } catch { /* Body capture failure must not turn an HTTP response into a fetch rejection. */ }
+      emit({ type: 'fetch', url, method, nextInternal, responseContentType, requestBody: await capturedRequest, status: response.status, responseBody, elapsed: Math.round(performance.now() - started), overridden: false });
       return response;
     } catch (error) {
-      emit({ type: 'fetch', url, method, requestBody: bodyValue(options.body), status: 0, error: error?.message || String(error), elapsed: Math.round(performance.now() - started), overridden: false });
+      emit({ type: 'fetch', url, method, requestBody: await capturedRequest, status: 0, error: error?.message || String(error), elapsed: Math.round(performance.now() - started), overridden: false });
       throw error;
     }
   };

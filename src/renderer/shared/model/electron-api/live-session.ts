@@ -1,1 +1,1 @@
-export type { LiveSessionBridge, LiveSession, LiveSessionSnapshot, SessionRecording, SessionDocument, ReplayEvent } from "../../../../app/ipc/live-session/types";
+export type { BrowserLog, RecordedBody, LiveSessionBridge, LiveSession, LiveSessionSnapshot, SessionRecording, SessionDocument, ReplayEvent, RecordingScope, RecordingUploadResult } from "../../../../app/ipc/live-session/types";

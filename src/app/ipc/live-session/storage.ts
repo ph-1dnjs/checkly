@@ -1,7 +1,7 @@
 import { appendFile, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import type { LiveSession, RecordingBatch, SessionDocument, SessionRecording } from "./types";
+import type { BrowserLog, LiveSession, RecordingBatch, SessionDocument, SessionRecording } from "./types";
 
 export const MAX_SESSION_BYTES = 50 * 1024 * 1024;
 export const safePageUrl = (value: string): string => {
@@ -41,6 +41,12 @@ export class LocalSessionStore {
   async save(session: LiveSession): Promise<void> {
     const target = path.join(this.directory(session.id), "session.json");
     await writeFile(`${target}.tmp`, JSON.stringify(session));
+    await rename(`${target}.tmp`, target);
+  }
+
+  async saveLogs(id: string, logs: BrowserLog[], logsWarning?: string): Promise<void> {
+    const target = path.join(this.directory(id), "logs.json");
+    await writeFile(`${target}.tmp`, JSON.stringify({ logs, logsWarning }));
     await rename(`${target}.tmp`, target);
   }
 
@@ -98,7 +104,12 @@ export class LocalSessionStore {
     session.eventCount = [...documents.values()].reduce((sum, document) => sum + document.events.length, 0);
     session.bytes = Buffer.byteLength(text);
     if (session.status === "recording") session.status = "interrupted";
-    return { session, documents: [...documents.values()] };
+    let details: Pick<SessionRecording, "logs" | "logsWarning"> = {};
+    try { details = JSON.parse(await readFile(path.join(directory, "logs.json"), "utf8")); }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") details.logsWarning = "API 로그 파일을 읽지 못했습니다.";
+    }
+    return { session, documents: [...documents.values()], ...details };
   }
 
   async remove(id: string): Promise<void> {

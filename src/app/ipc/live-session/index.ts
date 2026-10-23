@@ -1,31 +1,30 @@
 import { app, ipcMain } from "electron";
 import type { MainDomain } from "../domain";
-import { flushTeamLogs, flushTeamTelemetry, initializeTeamRecording, hasActiveRecordings, readRecording, receiveGuestBatch, receiveGuestError, removeRecording, snapshot, stopOwnerRecordings } from "./service";
-import { getCurrentSession } from "../auth/client";
-
-let syncTimer: ReturnType<typeof setInterval> | undefined;
+import { initializeTeamRecording, hasActiveRecordings, readRecording, receiveGuestBatch, receiveGuestError, removeRecording, snapshot, stopOwnerRecordings, uploadRecordings } from "./service";
+import type { RecordingScope } from "./types";
+import { downloadRecordingVideo } from "./download";
 
 export const liveSessionDomain: MainDomain = {
   register: () => {
     initializeTeamRecording();
-    ipcMain.handle("live-session:list", () => snapshot());
-    ipcMain.handle("live-session:read", (_event, id: string) => readRecording(id));
-    ipcMain.handle("live-session:remove", async (_event, id: string) => { await removeRecording(id); });
+    ipcMain.handle("live-session:list", (_event, scope?: RecordingScope) => snapshot(scope));
+    ipcMain.handle("live-session:read", (_event, id: string, scope?: RecordingScope) => readRecording(id, scope));
+    ipcMain.handle("live-session:download-video", (event, id: string, documentId: string, scope?: RecordingScope) => downloadRecordingVideo(event.sender, id, documentId, scope));
+    ipcMain.handle("live-session:remove", (_event, id: string, scope?: RecordingScope) => removeRecording(id, scope));
+    ipcMain.handle("live-session:upload", async (event, ids: string[]) => {
+      try { return await uploadRecordings(ids); }
+      finally { if (!event.sender.isDestroyed()) event.sender.send("live-session:changed"); }
+    });
     ipcMain.on("live-session:events", (event, key: string, batch: unknown) => receiveGuestBatch(event.sender, key, batch));
     ipcMain.on("live-session:failure", (event, payload: unknown) => receiveGuestError(event.sender, payload));
     let quitting = false;
     app.on("before-quit", event => {
-      if (quitting || (!hasActiveRecordings() && !getCurrentSession())) return;
+      if (quitting || !hasActiveRecordings()) return;
       event.preventDefault();
       quitting = true;
-      void stopOwnerRecordings().then(() => flushTeamLogs()).catch(error => console.error("라이브세션 종료 저장 실패", error)).finally(() => app.quit());
+      void stopOwnerRecordings().catch(error => console.error("라이브세션 종료 저장 실패", error)).finally(() => app.quit());
     });
   },
-  start: () => {
-    syncTimer = setInterval(() => void flushTeamTelemetry().catch(error => console.error("팀 브라우저 로그 동기화 실패", error)), 5000);
-    syncTimer.unref();
-  },
-  beforeQuit: () => { if (syncTimer) clearInterval(syncTimer); },
   attachWindow: window => {
     window.on("close", () => {
       void stopOwnerRecordings(window.webContents).catch(error => console.error("라이브세션 종료 저장 실패", error));

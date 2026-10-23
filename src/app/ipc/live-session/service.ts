@@ -7,11 +7,13 @@ import { recorderSource } from "./recorder";
 import { ReplayBuffer, BEFORE_ERROR_MS, AFTER_ERROR_MS } from "./buffer";
 import { failureTrigger } from "./failure";
 import { getCurrentSession, getSupabase, onSessionChanged } from "../auth/client";
-import { BrowserTelemetry, browserLog, sameTeam } from "./telemetry";
+import { browserLog, sameTeam } from "./telemetry";
+import { recordedBody } from "./payload";
 import { TeamSessionStore } from "./team-store";
-import type { LiveSession, RecordingBatch } from "./types";
+import { RecordingLibrary } from "./library";
+import type { BrowserLog, LiveSession, RecordingBatch, RecordingScope } from "./types";
 
-type Clip = { session?: LiveSession; trigger: NonNullable<LiveSession["trigger"]>; endAt: number; timer?: ReturnType<typeof setTimeout> };
+type Clip = { logs: BrowserLog[]; logsWarning?: string; session?: LiveSession; trigger: NonNullable<LiveSession["trigger"]>; endAt: number; timer?: ReturnType<typeof setTimeout> };
 type ActiveRecording = {
   id: string;
   owner: WebContents;
@@ -20,6 +22,7 @@ type ActiveRecording = {
   source: LiveSession["source"];
   targets: Set<WebContents>;
   buffer: ReplayBuffer;
+  logs: BrowserLog[];
   queue: Promise<void>;
   clip?: Clip;
   stopBrowser?: () => Promise<void>;
@@ -36,42 +39,9 @@ const targetSessions = new Map<number, string>();
 let localStore: LocalSessionStore | undefined;
 const store = () => localStore ??= new LocalSessionStore(path.join(app.getPath("userData"), "live-sessions"));
 const teamStore = new TeamSessionStore(getSupabase, getCurrentSession);
-const telemetry = new BrowserTelemetry(getSupabase, getCurrentSession);
-const uploads = new Map<string, Promise<void>>();
-const deletions = new Set<string>();
-let teamError: string | undefined;
+let recordingLibrary: RecordingLibrary | undefined;
+const library = () => recordingLibrary ??= new RecordingLibrary(store(), teamStore, getCurrentSession, () => [...clips.values()]);
 let identityGeneration = 0;
-const visible = (session: LiveSession) => session.team ? session.team.projectId === getCurrentSession()?.projectId : !getCurrentSession();
-const upload = (session: LiveSession): Promise<void> => {
-  if (deletions.has(session.id)) return Promise.resolve();
-  const existing = uploads.get(session.id);
-  if (existing) return existing;
-  if (!sameTeam(session.team, getCurrentSession()) || session.syncStatus === "uploaded") return Promise.resolve();
-  const task = (async () => {
-    try {
-      const recording = await store().read(session.id);
-      await teamStore.save(recording, session.browserSessionId ?? session.id);
-      session.syncStatus = "uploaded"; delete session.syncError;
-    } catch {
-      session.syncStatus = "error";
-      session.syncError = "팀 업로드 실패 · 로컬 기록은 보존되며 같은 계정으로 로그인하면 다시 시도합니다.";
-    }
-    await store().save(session);
-    for (const item of active.values()) changed(item.owner);
-  })().catch(error => console.error("팀 기록 동기화 상태 저장 실패", error)).finally(() => uploads.delete(session.id));
-  uploads.set(session.id, task);
-  return task;
-};
-
-export const flushTeamTelemetry = async () => {
-  if (!getCurrentSession()) return;
-  await telemetry.flush();
-  const pending = (await store().list(new Set(clips.keys()))).filter(session =>
-    session.status !== "recording" && session.status !== "error" && session.team && session.syncStatus !== "uploaded" && sameTeam(session.team, getCurrentSession()));
-  // Retry one clip per tick to bound memory and network use while offline.
-  if (pending[0]) await upload(pending[0]);
-};
-export const flushTeamLogs = () => telemetry.flush();
 
 export const initializeTeamRecording = () => {
   let identity = getCurrentSession();
@@ -79,10 +49,11 @@ export const initializeTeamRecording = () => {
     if (sameTeam(identity, session) || (!identity && !session)) return;
     identity = session;
     identityGeneration++;
-    telemetry.reset(); teamError = undefined;
+    recordingLibrary?.identityChanged();
     for (const item of active.values()) {
       if (item.clip) finishClip(item, item.clip);
       item.buffer = new ReplayBuffer();
+      item.logs = [];
       item.acceptEventsAfter = Date.now();
       changed(item.owner);
     }
@@ -104,29 +75,14 @@ const flushWithTimeout = async (operation: Promise<unknown>): Promise<void> => {
 const createTracking = (owner: WebContents, title: string, url: string, source: LiveSession["source"]): ActiveRecording => {
   const item: ActiveRecording = {
     id: randomUUID(), owner, title, url: safePageUrl(url), source,
-    targets: new Set(), buffer: new ReplayBuffer(), queue: Promise.resolve(), pendingSignals: new Set(),
+    targets: new Set(), buffer: new ReplayBuffer(), logs: [], queue: Promise.resolve(), pendingSignals: new Set(),
   };
   active.set(item.id, item);
   return item;
 };
 
-export const snapshot = async () => {
-  const auth = getCurrentSession();
-  const sessions = (await store().list(new Set(clips.keys()))).filter(visible).map(session => clips.get(session.id) ?? session);
-  let shared: LiveSession[] = [];
-  if (auth) {
-    try { shared = await teamStore.list(); teamError = undefined; }
-    catch { teamError = "팀 기록을 불러오지 못했습니다. 이 PC에 남아 있는 기록을 표시합니다."; }
-  }
-  if (auth ? !sameTeam(auth, getCurrentSession()) : !!getCurrentSession()) return { sessions: [], active: [] };
-  const merged = new Map(shared.map(session => [session.id, session]));
-  for (const session of sessions) {
-    // An uploaded local copy is only a cache; deletion by a teammate must remove it from the list too.
-    if (!auth || session.syncStatus !== "uploaded" || teamError) merged.set(session.id, session);
-  }
-  return { sessions: [...merged.values()].sort((a, b) => b.startedAt - a.startedAt), active: [...clips.values()].filter(visible),
-    mode: auth ? "team" as const : "local" as const, error: teamError ?? telemetry.error };
-};
+export const snapshot = (scope: RecordingScope = "local") => library().list(scope);
+export const uploadRecordings = (ids: string[]) => library().upload(ids);
 
 const enqueue = (item: ActiveRecording, operation: () => Promise<void>) => {
   item.queue = item.queue.then(operation).catch(async error => {
@@ -167,8 +123,8 @@ const finishClip = (item: ActiveRecording, clip: Clip) => {
       ] });
     }
     try {
+      await store().saveLogs(session.id, clip.logs, clip.logsWarning);
       await store().save(session);
-      if (session.status === "saved" && session.team) void upload(session);
     }
     finally { clips.delete(session.id); changed(item.owner); }
   });
@@ -179,18 +135,21 @@ const captureError = (id: string, trigger: NonNullable<LiveSession["trigger"]>) 
   if (!item || item.clip) return; // Coalesce errors in the same five-second aftermath.
   const before = item.buffer.snapshot(trigger.at);
   const auth = getCurrentSession();
-  const clip: Clip = { trigger, endAt: trigger.at + AFTER_ERROR_MS };
+  const clip: Clip = { trigger, endAt: trigger.at + AFTER_ERROR_MS,
+    logs: item.logs.filter(log => Date.parse(log.occurred_at) >= trigger.at - BEFORE_ERROR_MS && Date.parse(log.occurred_at) <= trigger.at + AFTER_ERROR_MS) };
   item.clip = clip;
   enqueue(item, async () => {
     const session = await store().create(item.title || "브라우저 오류", trigger.url || item.url, item.source);
     clip.session = session;
     session.browserSessionId = item.id;
-    if (auth) { session.team = { projectId: auth.projectId, userId: auth.userId }; session.syncStatus = "pending"; }
+    if (auth) session.team = { projectId: auth.projectId, userId: auth.userId };
+    session.syncStatus = "local";
     session.trigger = trigger;
     session.startedAt = trigger.at;
     session.captureStartAt = trigger.at - BEFORE_ERROR_MS;
     session.captureEndAt = clip.endAt;
     await store().save(session);
+    await store().saveLogs(session.id, clip.logs);
     clips.set(session.id, session);
     await appendBatches(session, before);
     changed(item.owner);
@@ -290,9 +249,16 @@ const receiveSignal = (item: ActiveRecording, payload: unknown, flush: () => Pro
   if (item.finalizing) return;
   const log = browserLog(payload, item.id, item.source);
   if (!log) return;
-  telemetry.add(log);
+  const now = Date.parse(log.occurred_at);
+  item.logs = item.logs.filter(entry => Date.parse(entry.occurred_at) >= now - BEFORE_ERROR_MS);
+  item.logs.push(log);
+  if (item.logs.length > 2000) item.logs.shift();
+  if (item.clip && now <= item.clip.endAt) {
+    if (item.clip.logs.length < 2000) item.clip.logs.push(log);
+    else item.clip.logsWarning = "로그가 많아 일부 항목이 생략되었습니다.";
+  }
   const trigger = failureTrigger(payload);
-  if (!trigger) return;
+  if (!trigger) return log;
   trigger.at = Date.parse(log.occurred_at); trigger.logId = log.id; trigger.url = log.url;
   const generation = identityGeneration;
   // Flush the sub-second events still pending in the guest before taking the pre-error buffer.
@@ -301,6 +267,7 @@ const receiveSignal = (item: ActiveRecording, payload: unknown, flush: () => Pro
     if (generation === identityGeneration) captureError(item.id, trigger);
   }).finally(() => item.pendingSignals.delete(pending));
   item.pendingSignals.add(pending);
+  return log;
 };
 
 export const stopRecording = async (id: string, owner: WebContents, collectAftermath = false): Promise<void> => {
@@ -328,29 +295,18 @@ export const stopRecording = async (id: string, owner: WebContents, collectAfter
   })();
   return item.stopping;
 };
-export const readRecording = async (id: string) => {
-  if (getCurrentSession()) {
-    const local = (await store().list(new Set(clips.keys()))).find(session => session.id === id && visible(session));
-    if (!local || local.syncStatus === "uploaded") return teamStore.read(id);
-  }
+export const readRecording = async (id: string, scope: RecordingScope = "local") => {
   for (const item of active.values()) if (item.clip?.session?.id === id) await item.queue;
-  const recording = await store().read(id);
-  if (!visible(recording.session)) throw new Error("현재 프로젝트의 기록만 열 수 있습니다.");
-  if (clips.has(id)) recording.session = { ...clips.get(id)! };
+  const recording = await library().read(id, scope);
+  if (scope === "local" && clips.has(id)) {
+    recording.session = { ...clips.get(id)! };
+    for (const item of active.values()) if (item.clip?.session?.id === id) {
+      recording.logs = [...item.clip.logs]; recording.logsWarning = item.clip.logsWarning;
+    }
+  }
   return recording;
 };
-export const removeRecording = async (id: string) => {
-  if (clips.has(id)) throw new Error("오류 후 상황을 수집 중입니다. 잠시 후 삭제해 주세요.");
-  deletions.add(id);
-  try {
-    await uploads.get(id);
-    const local = (await store().list()).find(session => session.id === id && visible(session));
-    if (getCurrentSession() && local?.team) await teamStore.removeLocal(local);
-    else if (getCurrentSession() && !local) await teamStore.remove(id);
-    else if (!local) throw new Error("현재 프로젝트의 기록만 삭제할 수 있습니다.");
-    await store().remove(id);
-  } finally { deletions.delete(id); }
-};
+export const removeRecording = (id: string, scope: RecordingScope = "local") => library().remove(id, scope);
 export const stopOwnerRecordings = async (owner?: WebContents) => {
   await Promise.all([...active.values()].filter(item => !owner || item.owner === owner).map(item => stopRecording(item.id, item.owner)));
 };
@@ -366,7 +322,7 @@ export const startScenarioRecording = async (context: BrowserContext, owner: Web
     const signal = (payload: unknown) => {
       const id = contextSessions.get(context);
       const item = id && active.get(id);
-      if (item) receiveSignal(item, payload, async () => {
+      if (item) return receiveSignal(item, payload, async () => {
         await Promise.all(context.pages().map(page => flushWithTimeout(page.evaluate(flushScript)).catch(() => undefined)));
       });
     };
@@ -377,11 +333,42 @@ export const startScenarioRecording = async (context: BrowserContext, owner: Web
     });
     context.on("response", response => {
       const request = response.request();
-      if (["fetch", "xhr"].includes(request.resourceType()) || response.status() >= 400) signal({
+      const api = ["fetch", "xhr"].includes(request.resourceType());
+      if (!api && response.status() < 400) return;
+      let pageUrl = "";
+      try { pageUrl = request.frame().url(); } catch { /* Service worker requests have no frame. */ }
+      const payload = {
         type: request.resourceType() === "xhr" ? "xhr" : "fetch", status: response.status(), url: response.url(), method: request.method(),
-      });
+        pageUrl,
+      };
+      if (!api || response.status() < 400) { signal(payload); return; }
+      const id = contextSessions.get(context);
+      const item = id && active.get(id);
+      if (!item) return;
+      const log = signal({ ...payload, requestBody: request.postData() });
+      const generation = identityGeneration;
+      const pending = (async () => {
+        let responseBody: string | undefined;
+        let responseContentType = "";
+        try {
+          responseContentType = response.headers()["content-type"] ?? "";
+          if (/json/i.test(responseContentType) && Number(response.headers()["content-length"] ?? 0) <= 12 * 1024) {
+            await flushWithTimeout(response.body().then(body => { if (body.length <= 12 * 1024) responseBody = body.toString("utf8"); }));
+          }
+        } catch { /* Keep the failed request even when its response body is unavailable. */ }
+        if (generation === identityGeneration && active.get(item.id) === item && log?.payload) {
+          log.payload.response = recordedBody(responseBody);
+          log.payload.responseContentType = responseContentType.slice(0, 120).replace(/[^\w\s/;=.+-]/g, "");
+        }
+      })().finally(() => item.pendingSignals.delete(pending));
+      item.pendingSignals.add(pending);
     });
-    context.on("requestfailed", request => signal({ type: "fetch", status: 0, error: true, url: request.url(), method: request.method() }));
+    context.on("requestfailed", request => {
+      let pageUrl = "";
+      try { pageUrl = request.frame().url(); } catch { /* Service worker requests have no frame. */ }
+      signal({ type: request.resourceType() === "xhr" ? "xhr" : "fetch", status: 0, error: true, url: request.url(), method: request.method(),
+        pageUrl, requestBody: request.postData() });
+    });
     const template = await recorderSource("playwright", "__CHECKLY_DYNAMIC_KEY__");
     const script = template.replace('"__CHECKLY_DYNAMIC_KEY__"', "key");
     await context.addInitScript({ content: `window.__checklyReplayOpen().then(key => { if (key) { ${script} } });` });

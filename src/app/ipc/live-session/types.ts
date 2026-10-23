@@ -1,3 +1,18 @@
+export type RecordedBody = { state: "captured" | "empty" | "unavailable" | "omitted"; text?: string; note?: string };
+export type BrowserLog = {
+  id: string;
+  browser_session_id: string;
+  source: "browser" | "scenario";
+  kind: string;
+  occurred_at: string;
+  url: string;
+  page_url: string;
+  method: string | null;
+  status: number | null;
+  duration_ms: number | null;
+  is_error: boolean;
+  payload?: { request: RecordedBody; response: RecordedBody; responseContentType?: string };
+};
 export type ReplayEvent = { type: number; timestamp: number; data: unknown };
 export type RecordingBatch = { documentId: string; url: string; title: string; events: ReplayEvent[] };
 export type LiveSession = {
@@ -15,16 +30,20 @@ export type LiveSession = {
   captureStartAt?: number;
   captureEndAt?: number;
   team?: { projectId: string; userId: string };
-  syncStatus?: "pending" | "uploaded" | "error";
+  syncStatus?: "local" | "pending" | "uploaded" | "error";
   syncError?: string;
   browserSessionId?: string;
 };
 export type SessionDocument = { id: string; url: string; title: string; events: ReplayEvent[] };
-export type SessionRecording = { session: LiveSession; documents: SessionDocument[] };
-export type LiveSessionSnapshot = { sessions: LiveSession[]; active: LiveSession[]; mode?: "local" | "team"; error?: string };
+export type SessionRecording = { session: LiveSession; documents: SessionDocument[]; logs?: BrowserLog[]; logsWarning?: string };
+export type RecordingScope = "local" | "team";
+export type RecordingUploadResult = { uploaded: string[]; failed: { id: string; message: string }[] };
+export type LiveSessionSnapshot = { sessions: LiveSession[]; active: LiveSession[]; mode?: "local" | "team"; uploadableIds?: string[]; error?: string };
 export type LiveSessionBridge = {
-  list: () => Promise<LiveSessionSnapshot>;
-  read: (id: string) => Promise<SessionRecording>;
-  remove: (id: string) => Promise<void>;
+  downloadVideo: (id: string, documentId: string, scope?: RecordingScope) => Promise<string | null>;
+  list: (scope?: RecordingScope) => Promise<LiveSessionSnapshot>;
+  read: (id: string, scope?: RecordingScope) => Promise<SessionRecording>;
+  remove: (id: string, scope?: RecordingScope) => Promise<void>;
+  upload: (ids: string[]) => Promise<RecordingUploadResult>;
   onChanged: (callback: () => void) => () => void;
 };

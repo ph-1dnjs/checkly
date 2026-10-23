@@ -26,7 +26,7 @@ export class TeamSessionStore {
     if (!sameTeam(recording.session.team, auth)) throw new Error("현재 로그인한 프로젝트의 기록만 업로드할 수 있습니다.");
     const { syncStatus: _sync, syncError: _error, ...session } = recording.session;
     validId(session.id);
-    const text = JSON.stringify({ session, documents: recording.documents });
+    const text = JSON.stringify({ session, documents: recording.documents, logs: recording.logs, logsWarning: recording.logsWarning });
     if (Buffer.byteLength(text) > MAX_SESSION_BYTES) throw new Error("기록 업로드 한도(50MB)를 초과했습니다.");
     const body = await compress(Buffer.from(text));
     this.assertSession(auth);
