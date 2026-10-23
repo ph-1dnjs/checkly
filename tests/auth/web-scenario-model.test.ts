@@ -116,3 +116,28 @@ test('selected environment overrides legacy absolute navigation addresses', asyn
   assert.equal(resolveScenarioUrl({ ...scenario, url: '' }, 'https://staging.example/app/').url, 'https://staging.example/app/');
   assert.throws(() => resolveScenarioUrl(scenario, 'file:///tmp/test'));
 });
+
+test('steps moved to another scenario or a renewed scenario receive new UUIDs', () => {
+  const first = normalizeDocument('# 시나리오: 가\nGiven `로그인` 클릭\nAnd `확인` 클릭\n\n# 시나리오: 나\nGiven `메뉴` 클릭', '{}');
+  const [a, b] = first.scenarios;
+  const owners = {
+    documentId: 'doc',
+    scenarios: new Map([[a.id, 'doc'], [b.id, 'doc']]),
+    steps: new Map([...a.steps, ...b.steps].map(step => [step.databaseId!, a.steps.includes(step) ? a.id : b.id])),
+  };
+  const lines = first.markdown.split('\n');
+  const moved = lines.splice(lines.findIndex(line => line.includes('`확인`')), 1)[0];
+  const edited = lines.concat(moved).join('\n');
+  const [nextA, nextB] = normalizeDocument(edited, first.positions, false, owners).scenarios;
+  assert.equal(nextA.steps[0].databaseId, a.steps[0].databaseId);
+  assert.equal(nextB.steps[0].databaseId, b.steps[0].databaseId);
+  assert.notEqual(nextB.steps[1].databaseId, a.steps[1].databaseId);
+
+  const renewed = normalizeDocument(first.markdown.replace(`id: ${a.id}\n`, ''), first.positions, false, owners).scenarios[0];
+  assert.notEqual(renewed.id, a.id);
+  assert.ok(renewed.steps.every(step => !a.steps.some(old => old.databaseId === step.databaseId)));
+
+  const pasted = normalizeDocument(first.markdown, first.positions, false, { ...owners, documentId: 'other' }).scenarios[0];
+  assert.notEqual(pasted.id, a.id);
+  assert.notEqual(pasted.steps[0].databaseId, a.steps[0].databaseId);
+});
