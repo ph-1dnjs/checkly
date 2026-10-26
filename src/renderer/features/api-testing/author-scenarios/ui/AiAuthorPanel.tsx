@@ -9,7 +9,7 @@ import { BackendFolderSettings } from "./BackendFolderSettings";
 import { McpConnect } from "./McpConnect";
 import { Icon } from "../../../../shared/ui/Icon";
 import { aiToolNames, backendFolderCount, chatTool } from "../../../../entities/api-testing";
-import type { ApiAiChatSettings, ApiAiChatStatus, ApiAiImportResult, ApiCatalog, ApiEnvironmentScope, ApiMcpStatus, ApiSpecSync, ApiProject, ApiTestingBridge, SavedApiScenario } from "../../../../../app/api-testing/shared/workspace";
+import type { ApiAiChatSettings, ApiAiChatStatus, ApiAiImportResult, ApiCatalog, ApiEnvironmentScope, ApiMcpStatus, ApiProject, ApiTestingBridge, SavedApiScenario } from "../../../../../app/api-testing/shared/workspace";
 
 import { Button } from "../../../../shared/ui/Button";
 const errorText = (error: unknown) => (error as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, "");
@@ -21,21 +21,18 @@ const errorText = (error: unknown) => (error as Error).message.replace(/^Error i
  * - MCP로 연결: the user's own AI app connects to Checkly and reads specs, saves and runs scenarios itself.
  * - 가이드 복사: the user pastes the guide into their AI, which writes a result file that Checkly checks and saves.
  */
-export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved, mcp, onOpenSpecs }: {
+export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved, mcp, onOpenSpecs, specRevision = 0 }: {
   project: ApiProject; scope: ApiEnvironmentScope; bridge: ApiTestingBridge; onBusy: (busy: boolean) => void; onSaved: (first?: SavedApiScenario) => void;
   /** MCP connection state, kept by the page so the header shows it and it follows the environment. */
   mcp: { status: ApiMcpStatus; onStatus: (status: ApiMcpStatus) => void };
   onOpenSpecs?: () => void;
+  specRevision?: number;
 }) {
   // Every operation the AI could use, and the ones picked for it (empty = all).
   const [operations, setOperations] = useState<PickableOperation[]>([]);
   const [picked, setPicked] = useState<string[]>([]);
   const [specWarnings, setSpecWarnings] = useState<string[]>([]);
   const [catalogsLoaded, setCatalogsLoaded] = useState(false);
-  // When each server's spec was last imported here, and from which URL (for 명세 새로고침 on this screen).
-  const [specs, setSpecs] = useState<Array<{ serverId: string; name: string; importedAt?: string; sync: ApiSpecSync | null }>>([]);
-  const [catalogRevision, setCatalogRevision] = useState(0);
-  const [refreshingSpecs, setRefreshingSpecs] = useState(false);
   const [guide, setGuide] = useState<string | null>(null);
   const [answer, setAnswer] = useState("");
   const [checking, setChecking] = useState(false);
@@ -61,11 +58,11 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved, mcp, on
   // Set on mount too: StrictMode (dev) runs the cleanup once before the real mount.
   useEffect(() => { live.current = true; return () => { live.current = false; }; }, []);
   useEffect(() => {
+    let active = true;
+    setGuide(null);
     void Promise.all(project.servers.map(server => bridge.getCatalog({ ...scope, serverId: server.id }).catch(() => null)))
       .then(async catalogs => {
-        const syncs = await Promise.all(project.servers.map(server => bridge.getSpecSync({ ...scope, serverId: server.id }).catch(() => null)));
-        if (!live.current) return;
-        setSpecs(project.servers.map((server, index) => ({ serverId: server.id, name: server.name, importedAt: catalogs[index]?.importedAt, sync: syncs[index] })));
+        if (!active || !live.current) return;
         setSpecWarnings(specWarningsFor(project, catalogs));
         setCatalogsLoaded(true);
         setOperations(project.servers.flatMap((server, index) => (catalogs[index]?.operations ?? []).map(operation => ({
@@ -74,8 +71,9 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved, mcp, on
           ...(operation.warnings.length ? { unavailable: operation.warnings.join(" · ") } : {}),
         }))));
       });
-  }, [catalogRevision]);
-  const busy = checking || chatBusy || settingsBusy || reviewBusy || checkingAi || refreshingSpecs;
+    return () => { active = false; };
+  }, [specRevision]);
+  const busy = checking || chatBusy || settingsBusy || reviewBusy || checkingAi;
   useEffect(() => { onBusy(busy); }, [busy, onBusy]);
   const chatActivity = useCallback((next: boolean) => { setChatBusy(next); if (next) onBusy(true); }, [onBusy]);
   useEffect(() => {
@@ -119,27 +117,6 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved, mcp, on
     return file.text;
   });
 
-  // Fetches every server's spec again from its URL (saved docs account when there is one), like 명세 새로고침.
-  const refreshSpecs = () => act(async () => {
-    const targets = specs.filter(spec => spec.sync?.url);
-    const needPassword = targets.filter(spec => spec.sync?.username && !spec.sync.hasSavedAccount);
-    if (needPassword.length) throw new Error(`${needPassword.map(spec => spec.name).join(", ")} 명세는 문서 비밀번호가 필요합니다. API 문서 탭에서 새로고침하세요.`);
-    setRefreshingSpecs(true);
-    try {
-      const failed: string[] = [];
-      for (const spec of targets) {
-        const url = spec.sync!.url!;
-        try { await bridge.importSpec({ ...scope, serverId: spec.serverId }, { kind: "url", url, ...(spec.sync!.username ? { useSavedAuth: true } : {}) }); }
-        catch { failed.push(spec.name); }
-      }
-      if (!live.current) return;
-      setCatalogRevision(value => value + 1);
-      if (failed.length) throw new Error(`${failed.join(", ")} 명세를 가져오지 못했습니다. 기존 명세를 그대로 씁니다. API 문서 탭에서 확인하세요.`);
-      setMessage("명세를 새로 가져왔습니다.");
-    } finally { if (live.current) setRefreshingSpecs(false); }
-  }, 0);
-  const oldestImport = specs.map(spec => spec.importedAt).filter((value): value is string => Boolean(value)).sort()[0];
-  const canRefresh = specs.some(spec => spec.sync?.url);
   const problems = result ? problemReport(result) : "";
   const toolChoice = chatStatus && chatSettings && tools.length > 1 && <div className="api-ai-tool-row">
           <AiToolSettings projectId={project.id} bridge={bridge} status={chatStatus} settings={chatSettings} disabled={busy} onBusy={setSettingsBusy} onSaved={setChatSettings} />
@@ -162,11 +139,7 @@ export function AiAuthorPanel({ project, scope, bridge, onBusy, onSaved, mcp, on
         <Button role="tab" aria-selected={view === "mcp"} disabled={busy} onClick={() => choose("mcp")}>MCP로 연결</Button>
         <Button role="tab" aria-selected={view === "copy"} disabled={busy} onClick={() => choose("copy")}>가이드 복사</Button>
       </div>
-      {/* AI works from the imported spec: show how old it is and refresh it here before writing. */}
-      {oldestImport && <div className="api-ai-spec-freshness" title={specs.map(spec => `${spec.name} · ${spec.importedAt ? new Date(spec.importedAt).toLocaleString() : "명세 없음"}`).join("\n")}>
-        <span>명세 갱신 · {relativeDay(oldestImport)}</span>
-        {canRefresh && <Button variant="ghost" iconOnly className="api-icon-button" aria-label="명세 새로고침" title="명세 새로고침" disabled={busy} onClick={() => void refreshSpecs()}><Icon name="refresh" size={16} className={refreshingSpecs ? "is-spinning" : undefined} /></Button>}
-      </div>}
+
     </div>}
     {!checkingAi && messageStep === 0 && <>{error && <p className="api-warning" role="alert">{error}</p>}{message && <p className="api-ai-step-status" role="status">{message}</p>}</>}
     {checkingAi ? null : view === "chat" ? <>
@@ -267,8 +240,3 @@ function specWarningsFor(project: ApiProject, catalogs: Array<ApiCatalog | null>
   });
 }
 
-/** "오늘", "어제", "N일 전" — how old the imported spec is. */
-function relativeDay(iso: string): string {
-  const days = Math.floor((Date.now() - Date.parse(iso)) / 86_400_000);
-  return days <= 0 ? "오늘" : days === 1 ? "어제" : `${days}일 전`;
-}

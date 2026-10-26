@@ -10,7 +10,7 @@ import { ScenarioPanel } from "./ui/ScenarioPanel";
 import { ScenarioEditorPanel } from "./ui/ScenarioEditorPanel";
 import { EnvironmentMenu } from "../../widgets/EnvironmentMenu";
 import { AiAuthorPanel, showAiChat } from "../../features/api-testing/author-scenarios";
-import { SpecSourcePanel } from "../../features/api-testing/configure-spec";
+import { SpecSourcePanel, SpecRefreshControl, isProductionEnvironment, specRefreshNeedsSettings } from "../../features/api-testing/configure-spec";
 import "./ui/api-testing.css";
 import type { OnRunAction } from "../../shared/model/run-action";
 import { readWorkspaceUrl, workspaceUrl, type ApiTab } from "./lib/workspace-url";
@@ -41,6 +41,9 @@ export function ApiTestingPage({ onRunAction, onOpenSettings, bridge = window.el
   const [environmentId, setEnvironmentId] = useState("");
   const [mcpStatus, setMcpStatus] = useState<ApiMcpStatus>({ enabled: false });
   const [catalog, setCatalog] = useState<ApiCatalog | null>(null);
+  const [specRevision, setSpecRevision] = useState(0);
+  const [specSettingsRequest, setSpecSettingsRequest] = useState(0);
+  const [refreshingSpec, setRefreshingSpec] = useState(false);
   const [sync, setSync] = useState<ApiSpecSync | null>(null);
   // Saved scenarios whose steps no longer find their API in the current environment's specs.
   const [specImpact, setSpecImpact] = useState<ApiSpecImpact>({ missing: [], renamed: [] });
@@ -49,7 +52,7 @@ export function ApiTestingPage({ onRunAction, onOpenSettings, bridge = window.el
   const [authKind, setAuthKind] = useState("none");
   const [docsUsername, setDocsUsername] = useState("");
   const [docsPassword, setDocsPassword] = useState("");
-  useEffect(() => { setAuthKind("none"); setDocsUsername(""); setDocsPassword(""); setSpecError(""); }, [projectId, serverId, environmentId]);
+  useEffect(() => { setAuthKind("none"); setDocsUsername(""); setDocsPassword(""); setSpecError(""); setSpecSettingsRequest(0); }, [projectId, serverId, environmentId]);
   // MCP may already be on (restored at app start, or a login change closed it): read it on open and after sign-in changes.
   useEffect(() => {
     if (!bridge?.getMcpStatus) return;
@@ -112,7 +115,7 @@ export function ApiTestingPage({ onRunAction, onOpenSettings, bridge = window.el
   }, []);
   const changeTab = (next: ApiTab, targetScenarioId = next === "scenario-editor" ? scenarioEditorScenarioId ?? "" : "", clearHash = false) => {
     if (next === tab) return;
-    if (busy || scenarioComposerOpen) {
+    if (busy || scenarioComposerOpen || refreshingSpec) {
       setError(scenarioComposerOpen ? "시나리오 작성 중에는 탭을 이동할 수 없습니다. 먼저 저장하거나 작성 화면을 닫으세요." : "작성 또는 실행 중에는 탭을 이동할 수 없습니다. 먼저 저장하거나 작업을 닫으세요.");
       return;
     }
@@ -137,7 +140,7 @@ export function ApiTestingPage({ onRunAction, onOpenSettings, bridge = window.el
   }, [tab, projectId, serverId, environmentId, scenarioEditorScenarioId]);
   useEffect(() => {
     const restore = () => {
-      if (busy || scenarioComposerOpen) {
+      if (busy || scenarioComposerOpen || refreshingSpec) {
         history.replaceState(history.state, "", workspaceUrl(window.location.href, { tab, projectId, serverId, environmentId, scenarioId: tab === "scenario-editor" ? scenarioEditorScenarioId ?? "" : "" }));
         setError(scenarioComposerOpen ? "시나리오 작성 중에는 탭을 이동할 수 없습니다. 먼저 저장하거나 작성 화면을 닫으세요." : "작성 또는 실행 중에는 탭을 이동할 수 없습니다. 먼저 저장하거나 작업을 닫으세요.");
         return;
@@ -204,7 +207,7 @@ export function ApiTestingPage({ onRunAction, onOpenSettings, bridge = window.el
     void Promise.all(project.servers.map(server => bridge.getCatalog({ projectId: project.id, environmentId, serverId: server.id }).catch(() => null)))
       .then(catalogs => { if (live) setAiHasSpec(catalogs.some(item => Boolean(item?.operations.length))); });
     return () => { live = false; };
-  }, [project, environmentId, catalog?.importedAt]);
+  }, [project, environmentId, catalog?.importedAt, specRevision]);
   // Checked only on the API tab, after a spec (re)load, or on request — never blocks the sync itself.
   const [missingCheck, setMissingCheck] = useState(0);
   const [checkingMissing, setCheckingMissing] = useState(false);
@@ -225,16 +228,32 @@ export function ApiTestingPage({ onRunAction, onOpenSettings, bridge = window.el
       const useSavedAuth = authKind === "basic" && remember && sync?.hasSavedAccount && sync.url === targetUrl && sync.username === docsUsername && !docsPassword;
       const next = await bridge.importSpec(scope, kind === "file" ? { kind } : { kind, url: targetUrl, ...(authKind === "basic" ? useSavedAuth ? { useSavedAuth: true } : { remember, auth: { kind: "basic" as const, username: docsUsername, password: docsPassword } } : {}) });
       if (next) {
-        setCatalog(next);
+        setCatalog(next); setSpecSettingsRequest(0); setSpecRevision(value => value + 1);
         return true;
       }
       return false;
     } catch (e) { setSpecError((e as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, "")); return false; }
     finally { try { setSync(await bridge.getSpecSync(scope)); } catch { /* Keep the original import error visible. */ } setLoading(false); setDocsPassword(""); }
   };
+  const refreshSpec = async () => {
+    if (!catalog || specRefreshNeedsSettings(sync, authKind)) {
+      changeTab("api");
+      setSpecSettingsRequest(value => value + 1);
+      return;
+    }
+    setLoading(true); setRefreshingSpec(true); setSpecError("");
+    try {
+      const next = await bridge.importSpec(scope, { kind: "url", url: sync!.url!, ...(sync!.username ? { useSavedAuth: true } : {}) });
+      if (next) { setCatalog(next); setSpecRevision(value => value + 1); }
+    } catch (cause) { setSpecError((cause as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, "")); }
+    finally {
+      try { setSync(await bridge.getSpecSync(scope)); } catch { /* Preserve the refresh failure. */ }
+      setLoading(false); setRefreshingSpec(false);
+    }
+  };
   if (!bridge) return <section className="api-testing-page api-swagger-shell api-layout"><PageHeader icon="data_object" title="API 테스트" /><p className="api-page-message">프로젝트 저장과 실제 API 호출은 Checkly 데스크톱 앱에서 사용할 수 있습니다.</p></section>;
-  const locked = busy || scenarioComposerOpen;
-  const environmentPicker = project && <EnvironmentMenu project={project} environmentId={environmentId} serverId={tab === "api" ? serverId : undefined} label={tab === "scenario-editor" ? "시나리오 전체 호출 환경" : "API 환경"} title={tab === "scenario-editor" ? "이 시나리오의 전체 API 호출 환경" : undefined} disabled={busy || loading} onSelect={id => { if (id !== environmentId) { setEnvironmentId(id); setUrl(""); } }} />;
+  const locked = busy || scenarioComposerOpen || refreshingSpec;
+  const environmentPicker = project && <EnvironmentMenu project={project} environmentId={environmentId} serverId={serverId} label={tab === "scenario-editor" ? "시나리오 전체 호출 환경" : "API 환경"} title={tab === "scenario-editor" ? "이 시나리오의 전체 API 호출 환경" : undefined} disabled={busy || loading} onSelect={id => { if (id !== environmentId) { setEnvironmentId(id); setUrl(""); } }} />;
   const valueActions = <div className="api-context-value-actions"><GlobalVariableMenu projectId={projectId} bridge={bridge} disabled={busy} /></div>;
   // One project: its name only ("팀" when it is the signed-in team project).
   const projectPicker = project && <div className="api-actions api-project-picker">
@@ -247,7 +266,7 @@ export function ApiTestingPage({ onRunAction, onOpenSettings, bridge = window.el
   // Tabs and the server/environment context, in the header once a project is ready.
   const workbar = project && ready ? {
     tabs: <div className="api-tabs" role="tablist" aria-label="API 작업 영역">
-      <Button role="tab" aria-selected={tab === "scenarios" || tab === "scenario-editor"} disabled={busy} onClick={() => {
+      <Button role="tab" aria-selected={tab === "scenarios" || tab === "scenario-editor"} disabled={busy || refreshingSpec} onClick={() => {
         if (tab !== "scenario-editor") { changeTab("scenarios"); return; }
         if (scenarioDirty) setError("저장하지 않은 변경사항이 있습니다. 저장하거나 ← 목록에서 변경사항을 버리고 닫으세요.");
         else backToScenarios();
@@ -255,9 +274,13 @@ export function ApiTestingPage({ onRunAction, onOpenSettings, bridge = window.el
       <Button role="tab" aria-selected={tab === "api"} disabled={locked} onClick={() => changeTab("api")}>API 문서{catalog ? <small className="api-tab-count" title={`API ${catalog.operations.length}개`}>{catalog.operations.length}</small> : null}</Button>
       <Button role="tab" aria-selected={tab === "ai"} disabled={locked || (!aiHasSpec && tab !== "ai")} title={aiHasSpec ? undefined : "이 환경에 가져온 API 명세가 없습니다. API 문서에서 명세를 먼저 가져오세요"} onClick={() => changeTab("ai")}>AI 작성 도우미</Button>
     </div>,
-    // The server picks which spec the API docs show. Scenarios choose a server per step (the composer has
-    // its own picker) and the AI guide covers every server, so the other tabs leave it out.
-    context: <div className="api-context" title={tab === "api" ? `기본 주소 · ${environment?.baseUrls[serverId] ?? "미설정"}` : undefined}>{tab === "api" && <span className="api-select-chip is-mono"><select aria-label="API 서버" value={serverId} disabled={locked || loading} onChange={e => { setServerId(e.target.value); setUrl(""); }}>{project.servers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select><Icon name="expand_more" size={16} /></span>}{environmentPicker}{valueActions}</div>,
+    // Server selects the spec only; environment also selects where all scenario steps run.
+    context: <div className="api-workspace-context" role="region" aria-label="API 서버·환경 및 문서">
+      <label className="api-workspace-selector"><span>서버</span><span className="api-select-chip" title="명세 조회·갱신 대상 서버입니다. 시나리오는 각 단계에 지정한 서버를 사용합니다."><select aria-label="API 서버" value={serverId} disabled={locked || loading} onChange={event => { setServerId(event.target.value); setUrl(""); }}>{project.servers.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select><Icon name="expand_more" size={16} /></span></label>
+      <div className={`api-workspace-selector${isProductionEnvironment(environment?.name ?? "") ? " is-production" : ""}`}><span>환경</span>{environmentPicker}</div>
+      <SpecRefreshControl catalog={catalog} sync={sync} loading={loading} refreshing={refreshingSpec} error={specError} disabled={locked} scopeLabel={`${server?.name ?? ""} / ${environment?.name ?? ""}`} onRefresh={() => void refreshSpec()} />
+      {valueActions}
+    </div>,
   } : null;
   return <ApiTestingProviders key={projectId} projectId={projectId} bridge={bridge}><section className="api-testing-page api-swagger-shell api-layout">
     {/* One header row, like the other workspaces: which project, what to do in it (tabs, or the composer's toolbar), and where to call. */}
@@ -281,12 +304,12 @@ export function ApiTestingPage({ onRunAction, onOpenSettings, bridge = window.el
       </div> : <>
         {/* Only this area scrolls; the header row above stays in place. */}
         <div className="api-page-body">
-        {tab === "ai" && <AiAuthorPanel key={`${projectId}:${environmentId}`} project={project} scope={{ projectId, environmentId }} bridge={bridge} onBusy={setBusy} mcp={{ status: mcpStatus, onStatus: setMcpStatus }} onOpenSpecs={() => changeTab("api")} onSaved={first => { setBusy(false); setOpenSaved(first ?? null); setTab("scenarios"); }} />}
-        {tab === "scenarios" && <ScenarioPanel key={`${projectId}:${environmentId}:${serverId}`} project={project} scope={scope} bridge={bridge} onBusy={setBusy} onRunAction={onRunAction} runSaved={runSaved} onRunSavedConsumed={() => setRunSaved(null)} openSaved={openSaved} onOpenSavedConsumed={() => setOpenSaved(null)} onOpenAi={() => changeTab("ai")} onAiAskSent={target => { showAiChat(projectId, target); changeTab("ai"); }} onCreateScenario={() => openScenarioEditor()} onEditScenario={item => openScenarioEditor(item.id)} />}
-        {tab === "scenario-editor" && <ScenarioEditorPanel key={`${projectId}:${serverId}`} project={project} scope={scope} bridge={bridge} onBusy={setBusy} onRunAction={onRunAction} onBackToScenarios={backToScenarios} onOpenSpecs={openSpecs} onExecuteSaved={executeSaved} startCreateRequest={scenarioCreateRequest} editScenarioId={scenarioEditorScenarioId} onCreateConsumed={() => setScenarioCreateRequest(0)} onComposerOpenChange={setScenarioComposerOpen} onUnsavedChange={setScenarioDirty} onCreateScenario={() => openScenarioEditor()} onEditScenario={item => openScenarioEditor(item.id)} composeContext={<div className="api-compose-context">{environmentPicker}{valueActions}</div>} composeToolbarSlot={composeToolbarSlot} />}
+        {tab === "ai" && <AiAuthorPanel key={`${projectId}:${environmentId}`} project={project} scope={{ projectId, environmentId }} specRevision={specRevision} bridge={bridge} onBusy={setBusy} mcp={{ status: mcpStatus, onStatus: setMcpStatus }} onOpenSpecs={() => changeTab("api")} onSaved={first => { setBusy(false); setOpenSaved(first ?? null); setTab("scenarios"); }} />}
+        {tab === "scenarios" && <ScenarioPanel key={`${projectId}:${environmentId}`} specRevision={specRevision} project={project} scope={scope} bridge={bridge} onBusy={setBusy} onRunAction={onRunAction} runSaved={runSaved} onRunSavedConsumed={() => setRunSaved(null)} openSaved={openSaved} onOpenSavedConsumed={() => setOpenSaved(null)} onOpenAi={() => changeTab("ai")} onAiAskSent={target => { showAiChat(projectId, target); changeTab("ai"); }} onCreateScenario={() => openScenarioEditor()} onEditScenario={item => openScenarioEditor(item.id)} />}
+        {tab === "scenario-editor" && <ScenarioEditorPanel key={`${projectId}:${serverId}`} project={project} scope={scope} bridge={bridge} onBusy={setBusy} onRunAction={onRunAction} onBackToScenarios={backToScenarios} onOpenSpecs={openSpecs} onExecuteSaved={executeSaved} startCreateRequest={scenarioCreateRequest} editScenarioId={scenarioEditorScenarioId} onCreateConsumed={() => setScenarioCreateRequest(0)} onComposerOpenChange={setScenarioComposerOpen} onUnsavedChange={setScenarioDirty} onCreateScenario={() => openScenarioEditor()} onEditScenario={item => openScenarioEditor(item.id)} composeContext={<div className="api-compose-context">{workbar?.context}</div>} composeToolbarSlot={composeToolbarSlot} />}
         {tab === "api" && <>
         {environment && server && !environment.baseUrls[serverId] && <p className="api-warning" role="status">{environment.name} 환경에 {server.name} 서버 주소가 설정되지 않았습니다(미설정). 명세는 볼 수 있지만, API를 호출하려면 전체 설정의 엔드포인트 × 환경에서 주소를 입력하세요.</p>}
-        {(catalog || sync || !loading) && <SpecSourcePanel key={`${projectId}:${serverId}:${environmentId}:${catalog ? "loaded" : "empty"}`} shared={team}
+        {(catalog || sync || !loading) && <SpecSourcePanel openRequest={specSettingsRequest} onOpenRequestConsumed={() => setSpecSettingsRequest(0)} key={`${projectId}:${serverId}:${environmentId}:${catalog ? "loaded" : "empty"}`} shared={team}
           scopeLabel={`${project.servers.find(s => s.id === serverId)?.name ?? ""} · ${project.environments.find(e => e.id === environmentId)?.name ?? ""}`}
           catalog={catalog} sync={sync} disabled={busy || loading} missingApis={specImpact.missing} renamedTitles={specImpact.renamed} checkingMissing={checkingMissing} onRecheckMissing={() => setMissingCheck(count => count + 1)} onOpenScenario={openScenarioEditor}
           onApplyRenames={async () => {
@@ -304,7 +327,7 @@ export function ApiTestingPage({ onRunAction, onOpenSettings, bridge = window.el
           error={specError}
           onDeleteCatalog={async () => {
             setLoading(true);
-            try { await bridge.deleteCatalog(scope); setCatalog(null); setSync(null); setUrl(""); setRemember(false); setDocsUsername(""); setDocsPassword(""); setAuthKind("none"); onRunAction(null); }
+            try { await bridge.deleteCatalog(scope); setCatalog(null); setSync(null); setSpecRevision(value => value + 1); setUrl(""); setRemember(false); setDocsUsername(""); setDocsPassword(""); setAuthKind("none"); onRunAction(null); }
             finally { setLoading(false); }
           }}
           onDeleteSavedAccount={async () => { setLoading(true); try { await bridge.deleteSpecAccount(scope); setSync(await bridge.getSpecSync(scope)); setRemember(false); setDocsPassword(""); setDocsUsername(""); } catch { setError("저장된 계정을 삭제하지 못했습니다."); } finally { setLoading(false); } }} />}

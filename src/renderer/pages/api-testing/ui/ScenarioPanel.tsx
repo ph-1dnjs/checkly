@@ -70,6 +70,7 @@ const reasonText = (reason: { description?: true; apis: string[] }) =>
 
 export type ScenarioPanelProps = {
   project: ApiProject;
+  specRevision?: number;
   scope: ApiScope;
   bridge: ApiTestingBridge;
   onBusy: (busy: boolean) => void;
@@ -100,7 +101,7 @@ export type ScenarioPanelProps = {
   composeToolbarSlot?: HTMLElement | null;
 };
 
-export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mode = "run", startCreateRequest = 0, editScenarioId, onCreateConsumed, onComposerOpenChange, onUnsavedChange, onCreateScenario, onOpenAi, onAiAskSent, onEditScenario, onExecuteSaved, runSaved, onRunSavedConsumed, openSaved, onOpenSavedConsumed, onBackToScenarios, onOpenSpecs, composeContext, composeToolbarSlot }: ScenarioPanelProps) {
+export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, specRevision = 0, mode = "run", startCreateRequest = 0, editScenarioId, onCreateConsumed, onComposerOpenChange, onUnsavedChange, onCreateScenario, onOpenAi, onAiAskSent, onEditScenario, onExecuteSaved, runSaved, onRunSavedConsumed, openSaved, onOpenSavedConsumed, onBackToScenarios, onOpenSpecs, composeContext, composeToolbarSlot }: ScenarioPanelProps) {
   const editorMode = mode === "editor";
   const globalAccess = useGlobalVariableAccess();
   const checkedGlobalRevision = useRef(globalAccess.revision);
@@ -159,7 +160,7 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
       if (active) setSpecWarnings(new Map(impact.missing.map(item => [item.scenarioId, `명세에 없는 API를 쓰는 단계: ${item.steps.join(", ")}`])));
     }).catch(() => {});
     return () => { active = false; };
-  }, [scope.projectId, scope.environmentId, saved]);
+  }, [scope.projectId, scope.environmentId, saved, specRevision]);
   useEffect(() => {
     if (editorMode) return;
     let active = true;
@@ -167,7 +168,7 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
       .then(entries => { if (active) setCatalogs(Object.fromEntries(entries)); })
       .catch(() => { if (active) setCatalogs({}); });
     return () => { active = false; };
-  }, [bridge, editorMode, project.servers, scope.environmentId, scope.projectId]);
+  }, [bridge, editorMode, project.servers, scope.environmentId, scope.projectId, specRevision]);
   useEffect(() => {
     if (!running) {
       setPendingInput(null);
@@ -218,6 +219,12 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, mod
     const steps = data.scenario.steps.map(step => ({ ...step, server: mapping[step.server] ?? step.server }));
     setComposer({ saved: item, scenario: { ...data.scenario, steps } });
   };
+  useEffect(() => {
+    if (!specRevision || editorMode || !current) return;
+    let active = true;
+    void bridge.previewScenario(scenarioScope, source, bindings).then(next => { if (active) setPreview(next); }).catch(cause => { if (active) setError(errorText(cause)); });
+    return () => { active = false; };
+  }, [specRevision]);
   const load = async (item: SavedApiScenario) => {
     setComposer(null); setCurrent(item); setSource(item.source); setScenarioGroupPath(item.groupPath ?? []); setDirty(false); setBindings(item.bindings); setInputs({}); setResult(null); setPreview(null); setError(""); setNotice(""); working(true);
     const previous = readLastRun(scope.projectId, scope.environmentId, item.id);

@@ -7,6 +7,8 @@ import { Button } from "../../../../shared/ui/Button";
 import { Input } from "../../../../shared/ui/Input";
 type Props = {
   scopeLabel: string;
+  openRequest?: number;
+  onOpenRequestConsumed?: () => void;
   catalog: ApiCatalog | null;
   /** Saved scenarios with steps whose API is gone from the current specs. */
   missingApis?: Array<{ scenarioId: string; scenario: string; steps: string[] }>;
@@ -60,27 +62,32 @@ export function SpecSourcePanel(props: Props) {
   useEffect(() => { if (askPassword) passwordInput.current?.focus(); }, [askPassword]);
   useEffect(() => { if (props.error) setOpen(true); }, [props.error]);
   const needsPassword = props.authKind === "basic" && !(sync?.hasSavedAccount && props.remember && sync.username === props.username) && !props.password;
+  useEffect(() => {
+    if (!props.openRequest) return;
+    setOpen(true);
+    if (needsPassword) setAskPassword(count => count + 1);
+    props.onOpenRequestConsumed?.();
+  }, [props.openRequest]);
   const importUrl = async () => { if (await props.onImport("url")) { setOpen(false); setAskPassword(0); } };
   const importFile = async () => { if (await props.onImport("file")) setOpen(false); };
   const syncedAt = sync?.lastAttemptAt ? new Date(sync.lastAttemptAt).toLocaleString() : catalog ? new Date(catalog.importedAt).toLocaleString() : "";
-  return <section className={`api-spec-source${open ? " is-open" : ""}`} aria-label="API 명세 가져오기">
+  return <section className={`api-spec-source${open ? " is-open" : ""}`} aria-label="API API 문서 가져오기">
     <div className="api-spec-summary">
-      <span className="api-spec-summary-label">명세</span>
-      <span className="api-spec-scope" title="명세는 서버·환경마다 따로 저장됩니다">{props.scopeLabel}</span>
+      <span className="api-spec-summary-label">API 문서</span>
+      <span className="api-spec-scope" title="API 문서는 서버·환경마다 따로 저장됩니다">{props.scopeLabel}</span>
       {catalog || sync?.url ? <span className="api-spec-summary-source">
-        <code title={sync?.url ?? "파일에서 가져온 명세"}>{sync?.url ?? "파일에서 가져옴"}</code>
+        <code title={sync?.url ?? "파일에서 가져온 API 문서"}>{sync?.url ?? "파일에서 가져옴"}</code>
         {sync?.username && <span>Basic · {sync.username}</span>}
         {props.checkingMissing && <span className="api-spec-checking">시나리오 확인 중…</span>}
         {syncedAt && <span role="status" className={failed ? "is-failed" : undefined}>{failed ? `최근 동기화 실패 · 기존 문서 유지 · ${syncedAt}` : `최근 동기화 성공 · ${syncedAt}`}</span>}
-      </span> : <span className="api-spec-summary-source">아직 가져온 명세가 없습니다.</span>}
+      </span> : <span className="api-spec-summary-source">아직 가져온 API 문서가 없습니다.</span>}
       <span className="api-spec-summary-actions">
-        {sync?.url && <Button variant={failed ? "primary" : "secondary"}  aria-label="명세 새로고침" disabled={disabled} onClick={() => { if (needsPassword) { props.onUrlChange(sync.url!); setOpen(true); setAskPassword(count => count + 1); } else void props.onImport("url", sync.url); }}>{failed ? "다시 시도" : "새로고침"}</Button>}
-        <Button variant="secondary" aria-label="명세 설정" aria-expanded={open} disabled={disabled && !open} onClick={() => setOpen(value => !value)}>설정<Icon name="expand_more" size={16} className="api-spec-settings-chevron" /></Button>
+        <Button variant="secondary" aria-label="API 문서 설정" aria-expanded={open} disabled={disabled && !open} onClick={() => setOpen(value => !value)}>설정<Icon name="expand_more" size={16} className="api-spec-settings-chevron" /></Button>
       </span>
     </div>
     {props.error && <p className="api-warning api-spec-error" role="alert">{props.error}</p>}
     {!!props.missingApis?.length && <details className="api-spec-missing" role="alert">
-      <summary>시나리오 {props.missingApis.length}개가 명세에 없는 API를 씁니다. 시나리오 이름을 눌러 해당 단계의 <strong>API 바꾸기</strong>로 새 API를 연결하세요.</summary>
+      <summary>시나리오 {props.missingApis.length}개가 API 문서에 없는 API를 씁니다. 시나리오 이름을 눌러 해당 단계의 <strong>API 바꾸기</strong>로 새 API를 연결하세요.</summary>
       <ul>{props.missingApis.map(item => <li key={item.scenarioId}>{scenarioLink(item)} · {item.steps.join(", ")}</li>)}</ul>
       {props.onRecheckMissing && <Button className="api-compose-link" disabled={props.checkingMissing} onClick={props.onRecheckMissing}>다시 확인</Button>}
     </details>}
@@ -98,7 +105,7 @@ export function SpecSourcePanel(props: Props) {
     {renameResult && <p role="status" className="api-spec-rename-result">{renameResult}</p>}
     {open && <div className="api-spec-form">
       <div className="api-spec-form-row">
-        <label className="api-spec-url">명세 URL<Input aria-label="OpenAPI URL" type="url" placeholder="https://…/v3/api-docs (OpenAPI JSON/YAML)" value={url} disabled={disabled} onChange={event => props.onUrlChange(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && url.trim() && !event.nativeEvent.isComposing) void importUrl(); }} /></label>
+        <label className="api-spec-url">API 문서 URL<Input aria-label="OpenAPI URL" type="url" placeholder="https://…/v3/api-docs (OpenAPI JSON/YAML)" value={url} disabled={disabled} onChange={event => props.onUrlChange(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && url.trim() && !event.nativeEvent.isComposing) void importUrl(); }} /></label>
         <Button variant="primary" disabled={disabled || !url.trim()} onClick={() => void importUrl()}>이 URL로 가져오기</Button>
         <span className="api-spec-or">또는</span>
         <Button variant="secondary" disabled={disabled} onClick={() => void importFile()}>파일 가져오기</Button>
@@ -112,13 +119,13 @@ export function SpecSourcePanel(props: Props) {
             ? <label className="api-remember" title="'비밀값도 팀에 공유'가 켜져 있어 계정을 팀 프로젝트에 저장하고 팀원과 같이 씁니다"><input type="checkbox" aria-label="팀원과 계정 공유" disabled={disabled} checked={props.remember} onChange={event => props.onRememberChange(event.target.checked)} />팀원과 계정 공유</label>
             : <label className="api-remember" title={sync?.secureStorageAvailable ? "비밀번호를 OS 보안 기능으로 암호화해 이 기기에 저장합니다" : "이 환경에서는 OS 보안 저장소를 쓸 수 없어 계정을 기억할 수 없습니다"}><input type="checkbox" aria-label="이 기기에 계정 기억" disabled={disabled || !sync?.secureStorageAvailable} checked={props.remember} onChange={event => props.onRememberChange(event.target.checked)} />이 기기에 계정 기억</label>}
         </>}
-        {catalog && <span className="api-spec-delete"><DeleteAction label="명세 삭제" disabled={disabled} description={`${props.scopeLabel}의 API ${catalog.operations.length}개와 ${props.shared ? "이 컴퓨터의 저장 계정·인증 연결을 삭제합니다(팀의 명세 주소와 팀이 같이 쓰는 계정은 남습니다)" : "명세 주소·저장 계정·인증 연결을 삭제합니다"}. 시나리오는 유지되지만 이 명세를 쓰는 단계는 명세를 다시 가져오기 전까지 실행할 수 없습니다.`} onDelete={async () => { await props.onDeleteCatalog(); setOpen(true); }} /></span>}
+        {catalog && <span className="api-spec-delete"><DeleteAction label="API 문서 삭제" disabled={disabled} description={`${props.scopeLabel}의 API ${catalog.operations.length}개와 ${props.shared ? "이 컴퓨터의 저장 계정·인증 연결을 삭제합니다(팀의 API 문서 주소와 팀이 같이 쓰는 계정은 남습니다)" : "API 문서 주소·저장 계정·인증 연결을 삭제합니다"}. 시나리오는 유지되지만 이 API 문서를 쓰는 단계는 API 문서를 다시 가져오기 전까지 실행할 수 없습니다.`} onDelete={async () => { await props.onDeleteCatalog(); setOpen(true); }} /></span>}
       </div>
-      {props.shared && <p className="api-field-help api-spec-shared">URL로 가져오면 그 주소가 팀 프로젝트에 저장되어 팀원도 같은 주소로 각자 받습니다. 파일로 가져온 명세는 이 컴퓨터에만 있습니다. {sync?.shareAccount ? "문서 계정은 '비밀값도 팀에 공유'가 켜져 있어 팀원과 같이 씁니다." : "문서 계정은 이 컴퓨터에만 저장합니다."}</p>}
+      {props.shared && <p className="api-field-help api-spec-shared">URL로 가져오면 그 주소가 팀 프로젝트에 저장되어 팀원도 같은 주소로 각자 받습니다. 파일로 가져온 API 문서는 이 컴퓨터에만 있습니다. {sync?.shareAccount ? "문서 계정은 '비밀값도 팀에 공유'가 켜져 있어 팀원과 같이 씁니다." : "문서 계정은 이 컴퓨터에만 저장합니다."}</p>}
       {askPassword > 0 && props.authKind === "basic" && !props.password && <p className="api-field-help api-spec-ask-password" role="status">계정을 기억하지 않아 비밀번호를 다시 입력해야 합니다. 입력 후 [이 URL로 가져오기]를 누르세요.</p>}
       {/* Only worth saying when a password would actually go over plain HTTP. */}
       {props.authKind === "basic" && /^http:\/\//i.test(url.trim()) && !/^http:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/i.test(url.trim()) && <p className="api-field-help api-spec-http-warning">HTTP 주소라 비밀번호가 암호화되지 않고 전송됩니다. 가능하면 HTTPS 주소를 쓰세요.</p>}
-      {sync?.hasSavedAccount && <p className="api-field-help api-spec-saved-account">{sameUrl ? sync.teamAccount ? "이 주소에 팀이 같이 쓰는 계정이 있습니다." : "이 주소에 저장된 계정이 있습니다." : "저장된 계정은 기존 명세 주소에만 쓰입니다."}<Button className="api-compose-link" disabled={disabled} onClick={props.onDeleteSavedAccount}>저장된 계정 삭제</Button></p>}
+      {sync?.hasSavedAccount && <p className="api-field-help api-spec-saved-account">{sameUrl ? sync.teamAccount ? "이 주소에 팀이 같이 쓰는 계정이 있습니다." : "이 주소에 저장된 계정이 있습니다." : "저장된 계정은 기존 API 문서 주소에만 쓰입니다."}<Button className="api-compose-link" disabled={disabled} onClick={props.onDeleteSavedAccount}>저장된 계정 삭제</Button></p>}
     </div>}
   </section>;
 }

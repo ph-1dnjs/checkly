@@ -115,11 +115,20 @@ export const multipartAuthorRules = [
   "- multipart의 Content-Type과 boundary는 Checkly가 자동으로 지정하므로 headers에 직접 넣지 않습니다. GET·HEAD에는 파일을 포함한 본문을 보내지 않습니다.",
 ];
 
+/** Scenario prose follows the same rules regardless of the AI entry point. */
+export const descriptionAuthorRules = [
+  "- description은 사용자가 어떤 업무 흐름을 확인하는지 알 수 있도록 목적을 한국어 1~2문장으로 씁니다. 단계별 동작이나 API 개수를 나열하지 않습니다.",
+  "- 실행 조건·주의사항은 필요한 경우에만 목적 다음에 별도 문단으로 씁니다. 인증·사전 데이터 등 준비 조건과 기존 데이터 변경·남는 데이터·실패 시 정리·동시 실행 제한 등 실제 영향은 빠뜨리지 않습니다. 해당하지 않는 항목은 만들지 않습니다.",
+  "- 파일 크기·해상도·변수명·제목 생성 방식 같은 구현 세부사항은 description에서 생략합니다. 단, 테스트 목적이나 실행 판단에 꼭 필요한 제약은 쉬운 말로 설명합니다. 목데이터 같은 개발 용어 대신 테스트 이미지처럼 사용자에게 익숙한 말을 씁니다.",
+  "- description이 여러 문단이면 YAML description: | 블록으로 쓰고 빈 줄로 문단을 구분합니다. 기존 시나리오를 고칠 때도 목적·실행 조건·주의사항 순서로 정리하고 실제 동작과 다른 설명은 쓰지 않습니다.",
+];
+
 // One syntax only; it is exactly what Checkly shows and saves, so there is nothing to translate.
 const authorRules = [
   "- 아래 문법만 사용합니다. 단계 id나 별도의 변수 선언은 쓰지 않습니다.",
   "- 시나리오: name·description(한국어, name은 기존 시나리오·이번 결과와 겹치지 않게), server(모든 단계가 같은 서버면 한 번), auth(선택), steps. id는 쓰지 않습니다(Checkly가 붙입니다).",
   "- 단계: name(한국어), api: 'POST /bos/login'(API 파일의 api 값 그대로, 따옴표로 감쌈), 서버가 다르면 server, 그리고 body·multipart·query·pathParams·headers·cookies를 단계 바로 아래에 씁니다.",
+  ...descriptionAuthorRules,
   ...multipartAuthorRules,
   "- 앞 단계 값: {{steps.1.response.body./data/challengeToken}} (1부터 시작하는 단계 번호 + JSON Pointer). 응답 헤더는 {{steps.1.response.header.X-Request-Id}}, 앞 단계 요청값은 {{steps.1.request.body./loginId}}. 항상 앞선 단계만 참조합니다.",
   "- 다른 시나리오와 공유할 값(토큰 등): 저장은 extract: [{pointer: /data/accessToken, target: globals.accessToken}], 사용은 {{globals.accessToken}}. 전역변수 목록에 이미 있는 값은 {{globals.이름}}으로 씁니다.",
