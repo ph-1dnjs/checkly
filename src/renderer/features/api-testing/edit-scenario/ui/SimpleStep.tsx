@@ -263,7 +263,7 @@ export function SimpleStep({ scenario, index, catalogs, bindings, scope, bridge,
       {valueModal}{inputSettings}{scenarioLink}
     </div>;
   };
-  const hasRequestBody = Boolean(requestOperation && (requestOperation.bodySchema !== undefined || requestOperation.bodyExample !== undefined || requestOperation.bodyRequired));
+  const hasRequestBody = Boolean(requestOperation && (requestOperation.bodySchema !== undefined || requestOperation.bodyExample !== undefined || requestOperation.bodyRequired || !["GET", "HEAD"].includes(requestOperation.method)));
   const spec = catalogs[bindings[step.server] ?? step.server]?.spec;
   return <div className="api-simple-step">
     <header className="api-simple-section-heading"><h3>요청</h3></header>

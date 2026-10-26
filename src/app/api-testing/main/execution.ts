@@ -1,3 +1,4 @@
+import { buildMultipart } from "./multipart";
 import { isDeepStrictEqual } from "node:util";
 import { isProvidedScenarioInput, matchesScenarioInputType, scenarioInputType, scenarioSchema, scenarioStepInputs, scenarioStepLabel, type Scenario, type Json, type ScenarioInputRequest, type ValueBinding } from "../shared/scenario";
 import type { ApiRequestTrace } from "../shared/workspace";
@@ -244,18 +245,20 @@ export class ApiRunner {
             headers.set("Authorization", `Bearer ${token}`);
           }
           addCookies(headers, req.cookies ?? {}, cookieJar.forUrl(url));
+          const multipart = req.multipart === undefined ? undefined : buildMultipart(req.multipart);
+          if (multipart) headers.delete("content-type");
           if (req.body !== undefined && !headers.has("content-type")) headers.set("content-type", "application/json");
           const requestTrace: ApiRequestTrace = {
             method: api.method,
             url: url.toString(),
             headers: Object.fromEntries(headers.entries()),
-            ...(req.body !== undefined ? { body: structuredClone(req.body) } : {}),
+            ...(multipart ? { body: multipart.trace as Json } : req.body !== undefined ? { body: structuredClone(req.body) } : {}),
           };
           options.onRequest?.(requestTrace, step.id);
-          if (req.body !== undefined && /^(GET|HEAD)$/i.test(api.method)) throw new RequestValueError(`${api.method.toUpperCase()} 요청에는 본문을 보낼 수 없습니다. 단계의 요청 본문을 제거하세요.`);
+          if ((req.body !== undefined || multipart) && /^(GET|HEAD)$/i.test(api.method)) throw new RequestValueError(`${api.method.toUpperCase()} 요청에는 본문을 보낼 수 없습니다. 단계의 요청 본문을 제거하세요.`);
           validateRequestBody(scenario, index, req.body, "bodySchema" in api ? api.bodySchema : undefined);
           const signal = AbortSignal.any([AbortSignal.timeout(options.timeoutMs ?? 30_000), ...(options.signal ? [options.signal] : [])]);
-          const response = await fetch(url, { method: api.method, headers, body: req.body === undefined ? undefined : JSON.stringify(req.body), signal, redirect: "manual" });
+          const response = await fetch(url, { method: api.method, headers, body: multipart?.body ?? (req.body === undefined ? undefined : JSON.stringify(req.body)), signal, redirect: "manual" });
           httpStatus = response.status;
           cookieJar.store(url, response.headers);
           const text = await response.text();

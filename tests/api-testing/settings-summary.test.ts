@@ -24,3 +24,8 @@ test("array values keep their positions as array segments", () => {
   assert.deepEqual(fields.map(field => field.field), ["body.tags[0]", "body.tags[1]"]);
   assert.ok(fields.every(field => isArrayIndexSegment(field.path[2])));
 });
+
+test("file bytes are excluded from JSON field summaries", () => {
+  const scenario = parseScenario(`name: upload\nserver: api\nsteps:\n  - api: POST /upload\n    multipart:\n      - kind: file\n        name: file\n        file:\n          name: hello.txt\n          type: text/plain\n          source: { kind: inline, base64: c2VjcmV0 }\n`);
+  assert.deepEqual(configuredFields(scenario, 0), []);
+});

@@ -965,7 +965,7 @@ export class ApiWorkspace {
             // so an empty cookie is resolved by the runner's session jar at runtime.
             if (p.location !== "cookie" && !(p.location === "header" && p.name.toLowerCase() === "authorization" && auth) && !Object.entries(values ?? {}).some(([k, v]) => (p.location === "header" ? k.toLowerCase() === p.name.toLowerCase() : k === p.name) && v !== "")) issues.push(`${stepName}: 필수 입력 '${p.name}'이 없습니다`);
           }
-          if (op.bodyRequired && step.request.body === undefined) issues.push(`${stepName}: 요청 본문이 필요합니다`);
+          if (op.bodyRequired && step.request.body === undefined && step.request.multipart === undefined) issues.push(`${stepName}: 요청 본문이 필요합니다`);
         }
       }
       scenarioStepInputs(step).forEach(input => variables.add(input.name));

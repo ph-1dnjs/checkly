@@ -226,3 +226,26 @@ steps:
       - { source: status, operator: equals, value: 200 }
       - { source: body, pointer: /answer/content, operator: equals, value: 테스트 답변입니다 }
 ```
+
+## 파일 업로드 요청
+
+시나리오 단계의 요청 본문에서 `multipart/form-data · 파일 업로드`를 선택한다. 필드명을 입력하고 내 파일을 선택하거나, 생성 파일명·TXT/CSV/JSON 형식·바이트 크기를 지정해 `테스트 파일 생성·추가`를 누른다. 텍스트 필드도 함께 추가할 수 있으며 같은 필드명으로 여러 파일을 보낼 수 있다.
+
+파일당 최대 5MB, 요청당 최대 20개 필드를 지원한다. 선택 파일은 내용(base64)까지 시나리오에 저장되어 팀과 공유되며, 생성 파일은 설정만 저장하고 실행할 때 같은 크기로 만든다. 생성 데이터는 크기 검증용 ASCII 데이터이며 JSON은 숫자 0과 뒤쪽 공백, CSV는 단일 열과 공백으로 구성된다. 본문 방식을 전환하면 이전 방식의 본문은 제거된다. multipart Content-Type과 boundary는 실행기가 자동으로 지정한다. 실행 기록에는 파일명·형식·크기를 남기며 파일 내용은 넣지 않는다.
+
+```yaml
+name: 파일 업로드
+server: api
+steps:
+  - api: POST /upload
+    multipart:
+      - { kind: text, name: title, value: 테스트 }
+      - kind: file
+        name: file
+        file:
+          name: sample.csv
+          type: text/csv
+          source: { kind: generated, format: csv, size: 1024 }
+```
+
+AI 가이드(복사·앱 대화·바로 만들기)와 MCP 초기 안내에는 위 multipart 문법, 텍스트·생성 파일 예시, 파일 크기·필드 수 한도와 실제 파일 선택 방법을 포함한다. AI용 API 정보(`api-catalog.json` 및 MCP `get_api_spec`)는 `bodyMediaType`과 요청 스키마의 `format: binary`를 전달하여 파일 업로드 API를 구분한다. 생성 데이터로 실제 이미지나 업무 파일 내용을 대체하지 않도록 안내한다.
