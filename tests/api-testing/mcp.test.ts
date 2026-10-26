@@ -39,6 +39,9 @@ test("MCP: authenticated scoped discovery, authoring, conflicts, runs, cancellat
     assert.equal((await fetch(connection.url, { method: "POST", headers, body: "invalid" })).status, 400);
     assert.equal((await fetch(connection.url, { method: "POST", headers, body: JSON.stringify({ huge: "x".repeat(260_000) }) })).status, 413);
     await client.connect(new StreamableHTTPClientTransport(new URL(connection.url), { requestInit: { headers } }));
+    assert.match(client.getInstructions() ?? "", /목적을 한국어 1~2문장/);
+    assert.match(client.getInstructions() ?? "", /실제 영향은 빠뜨리지 않습니다/);
+    assert.match(client.getInstructions() ?? "", /description: \| 블록/);
     assert.match(client.getInstructions() ?? "", /multipart/);
     assert.match(client.getInstructions() ?? "", /kind: generated/);
     assert.match(client.getInstructions() ?? "", /Content-Type과 boundary/);

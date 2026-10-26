@@ -97,3 +97,17 @@ test("all AI guide modes teach executable multipart examples and API catalogs id
     assert.equal(scenario.steps[0].request.multipart?.length, 2);
   }
 });
+
+
+test("every guide mode explains concise descriptions with conditional preparation and risk paragraphs", async () => {
+  const { createAuthorPrompt } = await import("../../src/app/api-testing/main/ai-context");
+  for (const mode of ["copy", "terminal", "quick"] as const) {
+    const guide = createAuthorPrompt({ mode, servers: [], catalogFile: "catalog.json", stateFile: "state.json", resultFile: "result.yaml" });
+    assert.match(guide, /목적을 한국어 1~2문장/);
+    assert.match(guide, /실행 조건·주의사항은 필요한 경우에만/);
+    assert.match(guide, /실제 영향은 빠뜨리지 않습니다/);
+    assert.match(guide, /구현 세부사항은 description에서 생략/);
+    assert.match(guide, /description: \| 블록/);
+    assert.match(guide, /실제 동작과 다른 설명은 쓰지 않습니다/);
+  }
+});

@@ -9,6 +9,7 @@ async function main() {
   const dir = await mkdtemp(path.join(tmpdir(), "checkly-desktop-"));
   const docsAuth = `Basic ${Buffer.from("docs-user:docs-test-password").toString("base64")}`;
   let leakedAuth = false;
+  let failSpecRefresh = false;
   let lastApiAuth: string | undefined;
   const loginInputs: string[] = [];
   const decimalInputs: unknown[] = [];
@@ -17,6 +18,7 @@ async function main() {
   let itemsTitle = "상품 상세 조회";
   const server = createServer(async (req, res) => {
     res.setHeader("content-type", "application/json");
+    if (req.url === "/openapi.json" && failSpecRefresh) { res.statusCode = 503; res.end("{}"); return; }
     if (req.url === "/openapi.json" && req.headers.authorization !== docsAuth) { res.statusCode = 401; res.end('{}'); return; }
     if (req.url !== "/openapi.json" && req.headers.authorization === docsAuth) leakedAuth = true;
     if (req.url !== "/openapi.json") lastApiAuth = req.headers.authorization;
@@ -131,13 +133,29 @@ process.stdin.on("data", chunk => {
     await expect(page.getByRole("tab", { name: /^API 문서/ })).toHaveAttribute("aria-selected", "true");
     // With one server the header lists no servers (step tags only appear with two or more).
     await expect(page.getByLabel("프로젝트 서버", { exact: true })).toHaveCount(0);
+    const workspaceContext = page.locator(".page-layout-header").getByRole("region", { name: "API 서버·환경 및 문서" });
+    await expect(workspaceContext).toBeVisible();
+    const headerBounds = await page.locator(".page-layout-header").boundingBox();
+    const contextBounds = await workspaceContext.boundingBox();
+    if (!headerBounds || !contextBounds || contextBounds.x + contextBounds.width > headerBounds.x + headerBounds.width + 1 || contextBounds.y < headerBounds.y || contextBounds.y + contextBounds.height > headerBounds.y + headerBounds.height + 1) throw new Error("Common API scope must fit within the existing header row");
+    await expect(workspaceContext.getByLabel("API 서버", { exact: true })).toHaveValue(await page.getByLabel("API 서버", { exact: true }).inputValue());
+    await expect(workspaceContext).toContainText("등록 필요");
+    await expect(workspaceContext.getByRole("button", { name: "API 문서 등록", exact: true })).toBeVisible();
+    await expect(workspaceContext.getByRole("button", { name: "API 문서 등록", exact: true }).getByRole("status")).toContainText("등록 필요");
+    const scopeControlHeights = await Promise.all([workspaceContext.getByLabel("API 서버", { exact: true }), workspaceContext.getByRole("button", { name: "API 환경", exact: true }), workspaceContext.getByRole("button", { name: "API 문서 등록", exact: true })].map(control => control.evaluate(element => element.getBoundingClientRect().height)));
+    if (Math.max(...scopeControlHeights) - Math.min(...scopeControlHeights) > 2) throw new Error("Scope selectors and spec refresh must have matching heights");
+    // Registration from the scenario tab opens the selected server/environment's API document form.
+    await page.getByRole("tab", { name: "시나리오", exact: true }).click();
+    await workspaceContext.getByRole("button", { name: "API 문서 등록", exact: true }).click();
+    await expect(page.getByRole("tab", { name: /^API 문서/ })).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByLabel("OpenAPI URL", { exact: true })).toBeVisible();
     // No spec yet: the import form is open by itself.
-    const specSource = page.getByRole("region", { name: "API 명세 가져오기" });
+    const specSource = page.getByRole("region", { name: "API 문서 가져오기" });
     const importButton = specSource.getByRole("button", { name: "이 URL로 가져오기", exact: true });
     await page.getByLabel("OpenAPI URL").fill(`${url}/openapi.json`);
     await importButton.click();
     // The failure shows inside the spec panel, next to the account fields.
-    await expect(page.getByRole("region", { name: "API 명세 가져오기" }).getByRole("alert")).toContainText("명세 인증 실패: HTTP 401");
+    await expect(page.getByRole("region", { name: "API 문서 가져오기" }).getByRole("alert")).toContainText("명세 인증 실패: HTTP 401");
     await page.getByLabel("Swagger 인증 방식").selectOption("basic");
     await page.getByLabel("Swagger 아이디", { exact: true }).fill("docs-user");
     await page.getByLabel("Swagger 비밀번호", { exact: true }).fill("docs-test-password");
@@ -217,6 +235,8 @@ process.stdin.on("data", chunk => {
 
     // AI authoring: copy the prompt for the user's own AI, check what it wrote, save scenarios and suite.
     await page.getByRole("tab", { name: "AI 작성 도우미", exact: true }).click();
+    await expect(page.locator(".page-layout-header").getByRole("button", { name: "API 문서 갱신", exact: true })).toBeVisible();
+    await expect(page.getByRole("region", { name: "AI 시나리오 작성" }).getByRole("button", { name: "API 문서 갱신", exact: true })).toHaveCount(0);
     await expect(page.getByText("명세를 다시 가져오세요")).toHaveCount(0);
     // Three ways as tabs; without a backend folder MCP opens and the chat tab lists what it needs.
     await expect(page.getByRole("tab", { name: "MCP로 연결", exact: true })).toHaveAttribute("aria-selected", "true");
@@ -506,6 +526,8 @@ process.stdin.on("data", chunk => {
     await page.getByRole("button", { name: "1번 multipart 필드 삭제", exact: true }).click();
     await expect(page.getByLabel("multipart 파일 및 텍스트")).not.toContainText("sample.csv");
     await bodyMode.selectOption("json");
+    const longDescription = "640x200 PNG 목데이터 이미지를 업로드하고 반환된 URL을 PC·모바일 배너에 공통 사용합니다. " + "전체 API를 테스트하며 중간 실패 시 수동 정리가 필요합니다. ".repeat(12) + "마지막 주의사항까지 표시합니다.";
+    await page.getByLabel("시나리오 설명", { exact: true }).fill(longDescription);
     // loginId is typed while the scenario runs (runtime input), not stored in the scenario.
     await page.getByRole("button", { name: "1단계 loginId 키 값 연결", exact: true }).click();
     await page.getByRole("button", { name: /^실행 중 입력으로 받기/ }).click();
@@ -666,8 +688,16 @@ process.stdin.on("data", chunk => {
     await flow.getByRole("button", { name: "모두 펼치기", exact: true }).click();
     await expect(flow).toContainText("HTTP 상태");
     await expect(flow).toContainText("존재하는지");
+    const description = page.locator(".api-scn-desc");
+    await expect(description).toHaveText(longDescription);
+    const descriptionLayout = await description.evaluate(element => ({ height: element.clientHeight, scrollHeight: element.scrollHeight, lineHeight: Number.parseFloat(getComputedStyle(element).lineHeight) }));
+    if (descriptionLayout.height < descriptionLayout.lineHeight * 3 || descriptionLayout.scrollHeight > descriptionLayout.height + 1) throw new Error("Long scenario description is truncated");
     // A copy opens in place and is deleted from its detail view.
     await page.getByRole("button", { name: "더 보기", exact: true }).click();
+    const scenarioMenu = page.getByRole("menu");
+    const copyBounds = await scenarioMenu.getByRole("menuitem", { name: "복제", exact: true }).boundingBox();
+    const deleteBounds = await scenarioMenu.getByRole("button", { name: "시나리오 삭제", exact: true }).boundingBox();
+    if (!copyBounds || !deleteBounds || Math.abs(copyBounds.x - deleteBounds.x) > 1 || Math.abs(copyBounds.width - deleteBounds.width) > 1) throw new Error("Scenario menu delete action is not aligned with other items");
     await page.getByRole("menuitem", { name: "복제", exact: true }).click();
     await expect(page.getByRole("heading", { name: "로그인 후 상품 조회 사본", exact: true })).toBeVisible();
     // Copying again (even a copy) numbers the name instead of repeating it.
@@ -781,7 +811,7 @@ process.stdin.on("data", chunk => {
     restored.setDefaultTimeout(15_000);
     await restored.getByRole("button", { name: "API 테스트", exact: true }).click();
     await expect(restored.locator(".api-team-project")).toContainText("쇼핑몰 QA");
-    await restored.getByRole("button", { name: "명세 설정", exact: true }).click();
+    await restored.getByRole("button", { name: "API 문서 설정", exact: true }).click();
     await expect(restored.getByLabel("OpenAPI URL", { exact: true })).toHaveValue(`${url}/openapi.json`);
     // Clicking the environment already chosen keeps the URL (nothing loads it again).
     await restored.getByRole("button", { name: "API 환경", exact: true }).click();
@@ -789,12 +819,26 @@ process.stdin.on("data", chunk => {
     await expect(restored.getByLabel("OpenAPI URL", { exact: true })).toHaveValue(`${url}/openapi.json`);
     if (canRemember) {
       await expect(restored.getByLabel("Swagger 비밀번호", { exact: true })).toHaveValue("");
-      await restored.getByRole("button", { name: "명세 새로고침", exact: true }).click();
+      await restored.getByRole("tab", { name: "시나리오", exact: true }).click();
+      const commonScope = restored.locator(".page-layout-header").getByRole("region", { name: "API 서버·환경 및 문서" });
+      await expect(commonScope).toBeVisible();
+      failSpecRefresh = true;
+      await commonScope.getByRole("button", { name: "API 문서 갱신", exact: true }).click();
+      await expect(commonScope).toContainText("갱신 실패");
+      await expect(commonScope).toContainText("이전 문서 사용 중");
+      await expect(restored.getByRole("tab", { name: "시나리오", exact: true })).toHaveAttribute("aria-selected", "true");
+      failSpecRefresh = false;
+      await commonScope.getByRole("button", { name: "API 문서 갱신", exact: true }).click();
+      await expect(commonScope).not.toContainText("갱신 실패");
+      await expect(commonScope).toContainText("동기화");
+      await restored.getByRole("tab", { name: /^API 문서/ }).click();
+      await restored.getByRole("button", { name: "API 문서 갱신", exact: true }).click();
       await expect(restored.getByText(/최근 동기화 성공/)).toBeVisible();
+      await restored.getByRole("button", { name: "API 문서 설정", exact: true }).click();
       await restored.getByRole("button", { name: "저장된 계정 삭제", exact: true }).click();
       await expect(restored.getByRole("button", { name: "저장된 계정 삭제", exact: true })).not.toBeVisible();
       // Without a remembered account, refreshing asks for the password instead of failing with 401.
-      await restored.getByRole("button", { name: "명세 새로고침", exact: true }).click();
+      await restored.getByRole("button", { name: "API 문서 갱신", exact: true }).click();
       await expect(restored.getByText("계정을 기억하지 않아 비밀번호를 다시 입력해야 합니다", { exact: false })).toBeVisible();
       await expect(restored.getByLabel("Swagger 비밀번호", { exact: true })).toBeFocused();
     }
@@ -819,9 +863,9 @@ process.stdin.on("data", chunk => {
     // Refreshing a spec whose title changed offers to rename steps still named after the old title.
     itemsTitle = "상품 정보 조회";
     await restored.getByRole("tab", { name: /^API 문서/ }).click();
-    const refreshedSource = restored.getByRole("region", { name: "API 명세 가져오기" });
+    const refreshedSource = restored.getByRole("region", { name: "API 문서 가져오기" });
     const refreshSpec = async () => {
-      if (!(await restored.getByLabel("OpenAPI URL").isVisible())) await restored.getByRole("button", { name: "명세 설정", exact: true }).click();
+      if (!(await restored.getByLabel("OpenAPI URL").isVisible())) await restored.getByRole("button", { name: "API 문서 설정", exact: true }).click();
       await restored.getByLabel("Swagger 인증 방식").selectOption("basic");
       await restored.getByLabel("Swagger 아이디", { exact: true }).fill("docs-user");
       await restored.getByLabel("Swagger 비밀번호", { exact: true }).fill("docs-test-password");
@@ -843,7 +887,7 @@ process.stdin.on("data", chunk => {
     // A refreshed spec that drops a path a saved scenario uses is flagged right away.
     itemsPath = "/products/{id}";
     await refreshSpec();
-    await expect(refreshedSource.getByRole("alert")).toContainText("시나리오 1개가 명세에 없는 API를 씁니다");
+    await expect(refreshedSource.getByRole("alert")).toContainText("시나리오 1개가 API 문서에 없는 API를 씁니다");
     await refreshedSource.getByRole("alert").locator("summary").click();
     await expect(refreshedSource.getByRole("alert")).toContainText("로그인 후 상품 조회 · 상품 상세 정보 조회 (GET /items/{id})");
     // The scenario name in the warning opens it in the editor.
