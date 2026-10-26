@@ -5,7 +5,7 @@ export const isArrayIndexSegment = (segment: string) => segment.startsWith("\u00
 
 export function configuredFields(scenario: Scenario, index: number) {
   const step = scenario.steps[index];
-  return Object.entries(step.request).flatMap(([area, values]) => {
+  return Object.entries(step.request).filter(([area]) => area !== "multipart").flatMap(([area, values]) => {
     const entries = values && typeof values === "object" && !Array.isArray(values) ? Object.entries(values) : [["", values]];
     const flatten = (key: string, value: unknown, path: string[]): Array<{ key: string; value: unknown; path: string[] }> => {
       if (value && typeof value === "object" && Object.keys(value).length) return Object.entries(value).flatMap(([child, v]) => flatten(key, v, [...path, Array.isArray(value) ? arrayIndexSegment(child) : child]));

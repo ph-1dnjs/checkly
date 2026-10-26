@@ -63,6 +63,7 @@ export type ApiParameter = { name: string; location: string; required: boolean; 
 export type ApiOperation = {
   tags?: string[];
   key: string; method: string; path: string; operationId?: string; summary: string; description: string; tag: string;
+  bodyMediaType?: "application/json" | "multipart/form-data";
   parameters: ApiParameter[]; bodyRequired: boolean; bodyExample?: Json;
   bodySchema?: Json; responses: Json; warnings: string[];
 };

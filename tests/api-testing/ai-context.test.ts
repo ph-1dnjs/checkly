@@ -71,3 +71,29 @@ test("AI schemas inline local $refs, cut cycles and resolve shared responses", a
   assert.deepEqual(server.apis[0].requestSchema, { type: "object", properties: { accessToken: { type: "string" } } });
   assert.deepEqual(server.apis[0].responses, { "200": { description: "성공", content: { "application/json": { schema: { type: "object", properties: { data: { type: "object", properties: { accessToken: { type: "string" } } } } } } } } });
 });
+
+test("all AI guide modes teach executable multipart examples and API catalogs identify binary fields", async () => {
+  const { aiCatalogDetails, createAuthorPrompt } = await import("../../src/app/api-testing/main/ai-context");
+  const { readOpenApi } = await import("../../src/app/api-testing/main/openapi");
+  const { parseScenario } = await import("../../src/app/api-testing/shared/scenario");
+  const catalog = readOpenApi(JSON.stringify({ openapi: "3.0.3", info: { title: "파일", version: "1" }, paths: {
+    "/upload": { post: { requestBody: { required: true, content: { "multipart/form-data": { schema: { type: "object", required: ["file"], properties: { file: { type: "string", format: "binary", example: "do-not-export" }, title: { type: "string" } } } } } }, responses: {} } },
+  } }));
+  const servers = [{ serverName: "API", operations: catalog.operations, spec: catalog.spec }];
+  const api = aiCatalogDetails(servers)[0].apis[0];
+  assert.equal(api.bodyMediaType, "multipart/form-data");
+  assert.deepEqual(api.requestSchema, { type: "object", required: ["file"], properties: { file: { type: "string", format: "binary" }, title: { type: "string" } } });
+  assert.equal(JSON.stringify(api).includes("do-not-export"), false);
+  for (const mode of ["copy", "terminal", "quick"] as const) {
+    const guide = createAuthorPrompt({ mode, servers, catalogFile: "catalog.json", stateFile: "state.json", resultFile: "result.yaml" });
+    assert.match(guide, /body와 multipart를 동시에 쓰지 않습니다/);
+    assert.match(guide, /1~5242880/);
+    assert.match(guide, /최대 20개/);
+    assert.match(guide, /Content-Type과 boundary/);
+    assert.match(guide, /실행 중 파일 선택 입력은 지원하지 않습니다/);
+    const text = guide.match(/텍스트 필드 예시: (\{[^\n]*?\})\./)![1];
+    const file = guide.match(/파일 필드 예시: (\{[^\n]*?\})\./)![1];
+    const scenario = parseScenario(`name: 첨부\nserver: API\nsteps:\n  - api: POST /upload\n    multipart:\n      - ${text}\n      - ${file}\n`);
+    assert.equal(scenario.steps[0].request.multipart?.length, 2);
+  }
+});

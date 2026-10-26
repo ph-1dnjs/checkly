@@ -1,6 +1,8 @@
 import { parseDocument, stringify } from "yaml";
 import { z } from "zod";
 
+import { multipartSchema } from "./multipart";
+
 const value = z.json();
 const pointer = z.string().regex(/^(?:\/(?:[^~]|~[01])*)*$/);
 // `sensitive:` once asked the screen to mask a value; nothing uses it now. Older files may still
@@ -101,6 +103,7 @@ export const scenarioSchema = z.object({
       pathParams: z.record(z.string(), value).optional(),
       query: z.record(z.string(), value).optional(),
       headers: z.record(z.string(), z.string()).optional(), body: value.optional(),
+      multipart: multipartSchema.optional(),
       cookies: z.record(z.string(), value).optional(),
     }).strict().default({}),
     expect: z.array(expectation).optional(), extract: z.array(extraction).default([]),
@@ -117,6 +120,7 @@ export const scenarioSchema = z.object({
     bindingNames.add(binding.name);
   });
   s.steps.forEach((step, index) => {
+    if (step.request.body !== undefined && step.request.multipart !== undefined) ctx.addIssue({ code: "custom", path: ["steps", index, "request"], message: "JSON과 multipart 본문을 동시에 사용할 수 없습니다" });
     if (ids.has(step.id)) ctx.addIssue({ code: "custom", path: ["steps", index, "id"], message: "중복 단계 ID" });
     ids.add(step.id);
     const targets = step.extract.map(e => e.target);
@@ -198,6 +202,7 @@ const authoringStep = z.object({
   headers: z.record(z.string(), z.string()).optional(),
   cookies: z.record(z.string(), value).optional(),
   body: value.optional(),
+  multipart: multipartSchema.optional(),
   expect: z.array(expectation).optional(),
   extract: z.array(authoringExtraction).optional(),
 }).strict();
@@ -266,7 +271,7 @@ export function parseScenario(source: string): Scenario {
       // Step input values live in the runner's vars.
       return text.replace(/\{\{inputs\.([A-Za-z][A-Za-z0-9_]*)\}\}/g, "{{vars.$1}}");
     };
-    const request = mapStrings({ pathParams: step.pathParams, query: step.query, headers: step.headers, cookies: step.cookies, body: step.body }, check);
+    const request = mapStrings({ pathParams: step.pathParams, query: step.query, headers: step.headers, cookies: step.cookies, body: step.body, multipart: step.multipart }, check);
     return {
       id, ...(step.name ? { name: step.name } : {}), server: server ?? "", api: { method, path },
       ...(step.auth ? { auth: step.auth } : {}), ...(step.inputs?.length ? { inputs: step.inputs } : {}),
@@ -369,7 +374,7 @@ export function stringifyScenario(scenario: Scenario, preserveIds = false, resol
         // Defaults (string, required) are omitted; the ignored `sensitive` is never written.
         ...(inputs.length ? { inputs: inputs.map(({ type, required, sensitive: _ignored, ...input }) => ({ ...input, ...(type !== "string" ? { type } : {}), ...(!required ? { required } : {}) })) } : {}),
         // Fixed order so saving is stable regardless of edit order.
-        ...Object.fromEntries((["pathParams", "query", "headers", "cookies", "body"] as const).filter(area => request[area] !== undefined).map(area => [area, request[area]])),
+        ...Object.fromEntries((["pathParams", "query", "headers", "cookies", "body", "multipart"] as const).filter(area => request[area] !== undefined).map(area => [area, request[area]])),
         ...(expect?.length ? { expect } : {}),
         ...(extract.length ? { extract: extractFor(extract) } : {}),
       };

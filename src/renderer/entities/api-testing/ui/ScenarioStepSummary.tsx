@@ -56,12 +56,13 @@ export function ScenarioStepSummary({ scenario, stepIndex, operation, catalog, g
   ];
   return <>
     {(auth || step.auth === "none") && <p className="api-field-help">인증: {auth ? `Bearer · ${auth.slice(8)}${step.auth ? " (개별 설정)" : " (기본값)"}` : "없음 (개별 설정)"}</p>}
-    {!auth && step.auth !== "none" && !fields.length && !step.extract.length && !step.expect?.length && <p>설정 없음</p>}
+    {!auth && step.auth !== "none" && !fields.length && step.request.multipart === undefined && !step.extract.length && !step.expect?.length && <p>설정 없음</p>}
     {!!fields.length && <><h4 data-summary-area="request" tabIndex={-1}>요청</h4>{requestAreas.filter(area => fields.some(field => field.path[0] === area)).map(area => <div key={area} className="api-summary-request-area">
       {/* Each request part is labelled by name, so `body`/`pathParams` never look like keys of the sent JSON. */}
       <span className="api-summary-area-label">{requestAreaLabels[area]}</span>
       <SummaryJson knownPaths={knownRequestPaths.filter(path => path[0] === area).map(path => path.slice(1))} entries={fields.filter(field => field.path[0] === area).map(field => ({ path: field.path.slice(1), content: fieldContent(field) }))} />
     </div>)}</>}
+    {step.request.multipart !== undefined && <div className="api-summary-request-area"><span className="api-summary-area-label">파일 업로드</span><ul>{step.request.multipart.map((part, index) => <li key={index}>{part.name}: {part.kind === "text" ? part.value : `${part.file.name} · ${part.file.source.kind === "generated" ? `${part.file.source.size} bytes · 생성` : "첨부"}`}</li>)}</ul></div>}
     {!!step.extract.length && <><h4 data-summary-area="response" tabIndex={-1}>응답에서 저장</h4><SummaryJson knownPaths={operation ? responseFields(operation.responses, catalog?.spec).filter(field => /^2/.test(field.status)).map(field => field.pointer.split("/").slice(1).map(part => part.replace(/~1/g, "/").replace(/~0/g, "~"))) : []} entries={step.extract.map(extract => {
       const isGlobal = extract.target.startsWith("globals.");
       const target = isGlobal ? extract.target.slice(8) : extract.target.replace(/^vars\./, "");

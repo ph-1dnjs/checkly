@@ -1,3 +1,4 @@
+import { MultipartEditor } from "./MultipartEditor";
 import { useEffect, useState, type ReactNode } from "react";
 import { type Scenario, type Json, type ScenarioInput } from "../../../../../app/api-testing/shared/scenario";
 import type { ApiOperation, ApiScope, ApiTestingBridge } from "../../../../../app/api-testing/shared/workspace";
@@ -47,7 +48,15 @@ export function RequestBodyEditor({ operation, step, update, bodyFields, renderF
       element.setCustomValidity(message);
     }
   };
-  return <section className="api-request-json" aria-label="요청 본문 JSON">
+  const multipartMode = step.request.multipart !== undefined;
+  const modeSelector = <label>본문 방식<select aria-label="요청 본문 방식" value={multipartMode ? "multipart" : "json"} onChange={event => {
+    const request = { ...step.request };
+    if (event.target.value === "multipart") { delete request.body; request.multipart = []; }
+    else { delete request.multipart; }
+    update({ request });
+  }}><option value="json">JSON</option><option value="multipart">multipart/form-data · 파일 업로드</option></select></label>;
+  if (multipartMode) return <section className="api-request-json" aria-label="요청 본문 multipart">{modeSelector}<MultipartEditor key={step.id} value={step.request.multipart!} onChange={multipart => update({ request: { ...step.request, multipart } })} /></section>;
+  return <section className="api-request-json" aria-label="요청 본문 JSON">{modeSelector}
     <header><strong>Request body</strong><small>{operation.bodyRequired ? "required · " : ""}application/json</small>{canUseFieldEditor && fillable.length > 0 && <Button className="api-compose-link api-json-fill-examples" onClick={() => update({ request: { ...step.request, body: { ...Object.fromEntries(fillable.map(field => [field.name, field.example as Json])), ...(step.request.body && typeof step.request.body === "object" && !Array.isArray(step.request.body) ? step.request.body : {}) } } })}>예시값으로 채우기 ({fillable.length})</Button>}</header>
     {canUseFieldEditor
       ? <div className="api-json-field-editor" aria-label="요청 본문 필드 편집">

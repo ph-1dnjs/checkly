@@ -67,8 +67,8 @@ export function readOpenApi(source: string): ApiCatalog {
       });
       const requestBody = deref(op.requestBody);
       const content = object(requestBody.content);
-      if (Object.keys(content).length && !content["application/json"]) warnings.push("현재 요청 본문은 application/json만 지원합니다");
-      const json = object(content["application/json"]);
+      if (Object.keys(content).length && !content["application/json"] && !content["multipart/form-data"]) warnings.push("현재 요청 본문은 JSON과 multipart/form-data만 지원합니다");
+      const json = object(content["application/json"] ?? content["multipart/form-data"]);
       const bodySchema = json.schema ? deref(json.schema) : undefined;
       operations.push({
         key: `${method.toUpperCase()} ${path}`, method: method.toUpperCase(), path, operationId: label(op.operationId) || undefined,
@@ -76,6 +76,7 @@ export function readOpenApi(source: string): ApiCatalog {
         tag: label(op.tags?.[0]) || "기타", parameters,
         tags: Array.isArray(op.tags) ? [...new Set(op.tags.filter((v: unknown): v is string => typeof v === "string" && Boolean(v.trim())))] as string[] : [],
         bodyRequired: Boolean(requestBody.required),
+        bodyMediaType: content["application/json"] ? "application/json" : content["multipart/form-data"] ? "multipart/form-data" : undefined,
         bodyExample: json.example ?? (bodySchema ? sample(bodySchema) : undefined),
         bodySchema: bodySchema as Json | undefined,
         responses: Object.fromEntries(Object.entries(object(op.responses)).map(([k, v]) => [k, deref(v)])) as Json,

@@ -5,7 +5,7 @@ import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { releaseStaleDiscovery } from "./discovery";
 import type { ApiWorkspace } from "../workspace";
-import { aiCatalogDetails, withGeneratedId } from "../ai-context";
+import { aiCatalogDetails, multipartAuthorRules, withGeneratedId } from "../ai-context";
 import type { ApiEnvironmentScope, ApiMcpRunEvent, ApiMcpStatus, ApiScenarioResult, SavedApiScenario } from "../../shared/workspace";
 import { describeCheck, parseScenario, type Scenario } from "../../shared/scenario";
 import { producedGlobalNames } from "../../shared/suite-report";
@@ -120,7 +120,7 @@ export class ApiMcpService {
   private async createMcp(scope: ApiEnvironmentScope, token: string) {
     const { McpServer } = await import("@modelcontextprotocol/sdk/server/mcp.js");
     const server = new McpServer({ name: "checkly-api-testing", version: "1.0.0" }, {
-      instructions: "Use get_context first. Only the user-enabled project/environment is accessible. Find APIs with list_apis (query/tag filters, up to 200 per call; serverId optional for a single server), then read only the needed ones with get_api_spec (apis: ['METHOD /path']). Reuse globals listed in get_context with their producer scenarios. Validate before saving. Run only when the user requests execution. Never invent credentials; use globals or supplied inputs. Stored scenarios use YAML: id, name, server, steps with name, api ('GET /path'), body/query/pathParams/headers, extract and expect. Step references: {{steps.1.response.body./id}}; globals: {{globals.token}}. No version or step id fields. Updates require the latest updatedAt. Before creating, check list_scenarios (query) for an existing scenario. delete_scenario asks the user in the app; never retry a declined delete. If a global a scenario needs has hasValue false, ask the user before running one of its producers first. run_scenario requires the projectId and environmentId from get_context. HTTP runs may change real data.",
+      instructions: "Use get_context first. Only the user-enabled project/environment is accessible. Find APIs with list_apis (query/tag filters, up to 200 per call; serverId optional for a single server), then read only the needed ones with get_api_spec (apis: ['METHOD /path']). Reuse globals listed in get_context with their producer scenarios. Validate before saving. Run only when the user requests execution. Never invent credentials; use globals or supplied inputs. Stored scenarios use YAML: id, name, server, steps with name, api ('GET /path'), body/multipart/query/pathParams/headers/cookies, extract and expect. Step references: {{steps.1.response.body./id}}; globals: {{globals.token}}. No version or step id fields. Updates require the latest updatedAt. Before creating, check list_scenarios (query) for an existing scenario. delete_scenario asks the user in the app; never retry a declined delete. If a global a scenario needs has hasValue false, ask the user before running one of its producers first. run_scenario requires the projectId and environmentId from get_context. HTTP runs may change real data." + "\n" + multipartAuthorRules.join("\n"),
     });
     const guard = () => { if (this.connection?.token !== token) throw new Error("MCP 연결이 종료되었습니다"); };
     const grant = this.connection?.token === token ? this.grant?.signal : undefined;

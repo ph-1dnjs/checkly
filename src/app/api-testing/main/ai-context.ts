@@ -99,17 +99,28 @@ export function aiCatalogDetails(servers: AiAuthorServer[]) {
       api: `${operation.method.toUpperCase()} ${operation.path}`,
       tag: operation.tag, summary: operation.summary, description: operation.description,
       parameters: operation.parameters.map(({ example: _example, ...parameter }) => parameter),
-      bodyRequired: operation.bodyRequired, requestSchema: schemaForAi(operation.bodySchema, 0, resolve),
+      bodyRequired: operation.bodyRequired, bodyMediaType: operation.bodyMediaType ?? (operation.bodySchema !== undefined ? "application/json" : undefined), requestSchema: schemaForAi(operation.bodySchema, 0, resolve),
       responses: responseForAi(operation.responses, resolve),
     })),
   }; });
 }
 
+/** Shared by copied guides, terminal/quick prompts and MCP initialization. */
+export const multipartAuthorRules = [
+  "- 파일 업로드 API는 API 정보의 bodyMediaType: multipart/form-data와 requestSchema를 확인하고, JSON body 대신 단계 바로 아래 multipart 배열을 씁니다. body와 multipart를 동시에 쓰지 않습니다.",
+  "- 텍스트 필드 예시: {kind: text, name: title, value: 테스트}. 파일 필드 예시: {kind: file, name: file, file: {name: sample.csv, type: text/csv, source: {kind: generated, format: csv, size: 1024}}}. name은 백엔드의 실제 필드명입니다. 같은 name을 반복하면 여러 파일을 보낼 수 있습니다.",
+  "- 생성 파일은 source.kind: generated, format: txt/csv/json, size: 바이트 정수(1~5242880)를 씁니다. 파일당 최대 5MB, multipart 필드는 텍스트·파일 합계 최대 20개입니다. 파일명과 MIME type은 형식에 맞춥니다(txt: text/plain, csv: text/csv, json: application/json).",
+  "- 생성 파일은 ASCII 크기 검증용입니다. TXT는 x 반복, CSV는 단일 열과 공백, JSON은 숫자 0과 뒤쪽 공백입니다. 실제 이미지·PDF·업무 CSV/JSON 내용 검증이 필요하면 생성 파일의 확장자만 바꾸지 말고 사용자가 앱에서 해당 파일을 선택하도록 안내합니다.",
+  "- 실제 파일은 앱의 내 파일 선택으로 첨부하는 것을 우선합니다. 파일 내용은 file.source: {kind: inline, base64: 실제 파일의 base64 문자열}로 시나리오에 저장되어 팀에 공유됩니다. 파일 경로로는 첨부할 수 없고, 파일 내용을 추측하거나 가짜 base64를 만들지 않습니다. 실행 중 파일 선택 입력은 지원하지 않습니다.",
+  "- multipart의 Content-Type과 boundary는 Checkly가 자동으로 지정하므로 headers에 직접 넣지 않습니다. GET·HEAD에는 파일을 포함한 본문을 보내지 않습니다.",
+];
+
 // One syntax only; it is exactly what Checkly shows and saves, so there is nothing to translate.
 const authorRules = [
   "- 아래 문법만 사용합니다. 단계 id나 별도의 변수 선언은 쓰지 않습니다.",
   "- 시나리오: name·description(한국어, name은 기존 시나리오·이번 결과와 겹치지 않게), server(모든 단계가 같은 서버면 한 번), auth(선택), steps. id는 쓰지 않습니다(Checkly가 붙입니다).",
-  "- 단계: name(한국어), api: 'POST /bos/login'(API 파일의 api 값 그대로, 따옴표로 감쌈), 서버가 다르면 server, 그리고 body·query·pathParams·headers·cookies를 단계 바로 아래에 씁니다.",
+  "- 단계: name(한국어), api: 'POST /bos/login'(API 파일의 api 값 그대로, 따옴표로 감쌈), 서버가 다르면 server, 그리고 body·multipart·query·pathParams·headers·cookies를 단계 바로 아래에 씁니다.",
+  ...multipartAuthorRules,
   "- 앞 단계 값: {{steps.1.response.body./data/challengeToken}} (1부터 시작하는 단계 번호 + JSON Pointer). 응답 헤더는 {{steps.1.response.header.X-Request-Id}}, 앞 단계 요청값은 {{steps.1.request.body./loginId}}. 항상 앞선 단계만 참조합니다.",
   "- 다른 시나리오와 공유할 값(토큰 등): 저장은 extract: [{pointer: /data/accessToken, target: globals.accessToken}], 사용은 {{globals.accessToken}}. 전역변수 목록에 이미 있는 값은 {{globals.이름}}으로 씁니다.",
   "- 실행 중 사람이 넣어야 하는 값(비밀번호·인증번호·계정): 그 단계에 inputs: [{name: code, label: 인증번호}]를 두고 {{inputs.code}}로 씁니다. 실제 값은 YAML에 쓰지 않습니다.",

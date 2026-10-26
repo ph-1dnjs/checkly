@@ -490,6 +490,22 @@ process.stdin.on("data", chunk => {
     // The description is prose: the same font as the name, not the monospace of JSON fields.
     const fontOf = (label: string) => page.getByLabel(label, { exact: true }).evaluate(element => getComputedStyle(element).fontFamily);
     if (await fontOf("시나리오 설명") !== await fontOf("시나리오 이름")) throw new Error("Description is not in the UI font");
+    // File editor creates fixtures, embeds selected bytes and removes fields before returning to JSON.
+    const bodyMode = page.getByLabel("요청 본문 방식", { exact: true }).first();
+    await bodyMode.selectOption("multipart");
+    await page.getByLabel("생성 파일 형식", { exact: true }).selectOption("csv");
+    await page.getByLabel("생성 파일 크기", { exact: true }).fill("100");
+    await page.getByRole("button", { name: "테스트 파일 생성·추가", exact: true }).click();
+    await expect(page.getByLabel("multipart 파일 및 텍스트")).toContainText("sample.csv (100 bytes · 생성)");
+    await page.getByLabel("업로드 파일 선택", { exact: true }).setInputFiles({ name: "hello.txt", mimeType: "text/plain", buffer: Buffer.from("desktop-upload") });
+    await expect(page.getByLabel("multipart 파일 및 텍스트")).toContainText("hello.txt (첨부)");
+    await page.getByLabel("multipart 필드명", { exact: true }).fill("title");
+    await page.getByLabel("multipart 텍스트 값", { exact: true }).fill("첨부 테스트");
+    await page.getByRole("button", { name: "텍스트 필드 추가", exact: true }).click();
+    await expect(page.getByLabel("multipart 파일 및 텍스트")).toContainText("title: 첨부 테스트");
+    await page.getByRole("button", { name: "1번 multipart 필드 삭제", exact: true }).click();
+    await expect(page.getByLabel("multipart 파일 및 텍스트")).not.toContainText("sample.csv");
+    await bodyMode.selectOption("json");
     // loginId is typed while the scenario runs (runtime input), not stored in the scenario.
     await page.getByRole("button", { name: "1단계 loginId 키 값 연결", exact: true }).click();
     await page.getByRole("button", { name: /^실행 중 입력으로 받기/ }).click();
