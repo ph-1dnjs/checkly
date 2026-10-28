@@ -65,7 +65,7 @@ const off = window.electronAPI.auth.onSessionChange(s => { /* 로그인·로그�
 
 1. 테이블 추가: [supabase-common.md](supabase-common.md)의 "기능 테이블 규칙" 템플릿(`project_id`, `created_by`·`updated_by`, `touch()` 트리거, RLS `project_id = my_project_id()`).
 2. 동시 수정: 읽은 `updated_at`을 조건으로 갱신하고 0행이면 충돌 안내.
-3. 로그인 안 했을 때는 기존 로컬 동작을 유지한다. 웹 시나리오는 사용자 결정(2026-10-13)에 따라 파일 기능을 제거하고 로그인 안내만 표시한다.
+3. Supabase가 설정된 앱에서 로그인하지 않았으면 웹 시나리오·API 테스트는 로그인 안내만 표시한다(파일 기능 제거: 웹 시나리오 2026-10-13, API 테스트 #33). Supabase 설정이 없는 개발·테스트 실행만 로컬 파일을 쓴다.
 4. 무엇을 공유할지는 기능 담당자가 정한다. 캐시·PC 경로·개인 설정은 올리지 않는다.
 
 ## 5. DB 변경 절차 (직접 적용 + 증적 기록)

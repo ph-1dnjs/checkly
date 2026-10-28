@@ -7,7 +7,6 @@ import type { ApiDocInput } from "../shared/doc-inputs";
 
 /** Scenarios rewritten because a server they name was renamed: the version read and the new one. */
 export type ScenarioRename = { before: SavedApiScenario; after: SavedApiScenario };
-export type SpecUrl = { serverId: string; environmentId: string; url: string };
 type KeptTitles = NonNullable<SavedApiScenario["keptTitles"]>;
 
 /**

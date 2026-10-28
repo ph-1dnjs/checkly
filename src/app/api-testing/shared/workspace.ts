@@ -224,8 +224,8 @@ export type ApiTestingBridge = {
   getTeamSettings(): Promise<ApiTeamSettings | null>;
   /** "비밀값도 팀에 공유". Turning it off also removes the secrets already shared (docs inputs, docs accounts). */
   setShareSecrets(on: boolean): Promise<ApiTeamSettings>;
-  /** Team mode: copies a local project's servers, environments, scenarios, suites and docs inputs into the team project. */
   listProjects(): Promise<ApiProject[]>;
+  /** Only without Supabase (tests, development): the app edits servers and environments in the settings screen. */
   saveProject(project: ApiProject): Promise<ApiProject>;
   deleteCatalog(scope: ApiScope): Promise<void>;
   deleteScenario(projectId: string, id: string, expectedUpdatedAt: string): Promise<void>;

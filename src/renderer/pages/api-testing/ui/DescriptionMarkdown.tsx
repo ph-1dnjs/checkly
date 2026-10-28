@@ -67,39 +67,6 @@ function decorateFlowBadges(root: Element | null) {
   });
 }
 
-export function InlineDiagram({ source, onSelect }: { source: string; onSelect: (index: number, area?: "request" | "response") => void }) {
-  const [markup, setMarkup] = useState("");
-  const [error, setError] = useState(false);
-  useEffect(() => {
-    let live = true;
-    setError(false);
-    void loadEngine().then(engine => engine.render(`api-flow-${crypto.randomUUID()}`, source)).then(({ svg }) => {
-      if (live) setMarkup(cleanDiagram(svg));
-    }).catch(() => { if (live) setError(true); });
-    return () => { live = false; };
-  }, [source]);
-  const root = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    decorateFlowBadges(root.current);
-    root.current?.querySelectorAll<SVGElement>("g.node").forEach(node => {
-      if (!/(?:^|-)flowchart-(?:s|req|res)\d+-\d+$/.test(node.id)) return;
-      node.setAttribute("role", "button"); node.setAttribute("tabindex", "0");
-      node.setAttribute("aria-label", `${node.textContent} 단계 편집`);
-    });
-    root.current?.querySelectorAll("tspan.text-inner-tspan").forEach(node => {
-      node.textContent = (node.textContent ?? "").replace(/&#(\d+);/g, (original, number) => Number(number) <= 0x10ffff ? String.fromCodePoint(Number(number)) : original);
-    });
-  }, [markup]);
-  const select = (target: EventTarget | null) => {
-    const node = target instanceof Element ? target.closest("g.node") : null;
-    const match = node?.id.match(/(?:^|-)flowchart-(s|req|res)(\d+)-\d+$/);
-    if (match) onSelect(Number(match[2]), match[1] === "req" ? "request" : match[1] === "res" ? "response" : undefined);
-  };
-  return <div ref={root} className="api-inline-flow" onClick={e => select(e.target)} onKeyDown={e => {
-    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); select(e.target); }
-  }}>{error ? <p role="alert">흐름을 표시하지 못했습니다.</p> : markup ? <div dangerouslySetInnerHTML={{ __html: markup }} /> : <p>흐름을 그리는 중…</p>}</div>;
-}
-
 function htmlText(markup: string, collapseWhitespace = true): string {
   const text = new DOMParser().parseFromString(markup, "text/html").body.textContent ?? "";
   return collapseWhitespace ? text.replace(/\s+/g, " ").trim() : text;

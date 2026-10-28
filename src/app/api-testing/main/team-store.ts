@@ -140,7 +140,11 @@ export class TeamStore implements ApiStore {
     };
     await must(this.db.rpc("save_project_settings", { p: { endpoints, environments, urls, deleted } }));
     this.snapshot = undefined;
-    // After the servers: a scenario edited meanwhile keeps the old name and shows it as a server to connect.
+    await this.renameScenarios(renames);
+  }
+  /** After the servers are saved: a scenario edited or deleted meanwhile is left as it is (it shows the old name as a server to connect). */
+  async renameScenarios(renames: ScenarioRename[]) {
+    this.snapshot = undefined;
     for (const { before, after } of renames) {
       await must(this.db.from("api_scenarios").update(scenarioRow(after)).eq("project_id", this.projectId).eq("id", before.id).eq("updated_at", before.updatedAt));
     }

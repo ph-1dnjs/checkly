@@ -3,7 +3,7 @@
 
 export type AuthRole = "owner" | "member";
 
-/** Supabase 연결 설정이 없으면 enabled=false — 로그인 없이 기존 로컬 모드로 동작한다. */
+/** Supabase 연결 설정이 없으면 enabled=false — 로그인 없는 로컬 모드(개발·테스트 실행 전용)로 동작한다. */
 export type AuthConfig = { enabled: boolean };
 
 export type AuthSession = {

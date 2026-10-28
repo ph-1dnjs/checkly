@@ -15,6 +15,7 @@ import { describeAiTools } from "./ai-cli";
 import { isProvidedScenarioInput, matchesScenarioInputType, type Json, type ScenarioInputRequest } from "../shared/scenario";
 import type { ApiScenarioInputRequest } from "../shared/workspace";
 import { getCurrentSession, getSupabase, isSupabaseEnabled, onSessionChanged } from "../../ipc/auth/client";
+import { guardProjectSettings } from "../../ipc/auth/service";
 
 export function registerApiTesting() {
   // Signed in to a team project: its data lives in Supabase; otherwise in this folder as before.
@@ -63,6 +64,11 @@ export function registerApiTesting() {
   });
   app.on("before-quit", () => { void mcp.stop(); });
   // Login changes revoke the grant; the opt-in reconnect then applies again to what this login can see.
+  // Servers and environments are edited in the settings screen: scenarios follow renames, and ones still in use cannot be removed.
+  guardProjectSettings((settings, save) => workspace.saveTeamSettings({
+    servers: settings.endpoints.filter(endpoint => endpoint.kind === "api").map(({ id, name }) => ({ id, name })),
+    environments: settings.environments.map(({ id, name }) => ({ id, name })),
+  }, save));
   if (isSupabaseEnabled()) onSessionChanged(() => { workspace.syncSession(); void mcp.stop().then(startSaved); });
   void app.whenReady().then(startSaved);
   const sync = new SpecSync(path.join(app.getPath("userData"), "api-testing"), workspace, {
@@ -151,7 +157,8 @@ export function registerApiTesting() {
   ipcMain.handle("api-testing:get-team-settings", () => workspace.getTeamSettings());
   ipcMain.handle("api-testing:set-share-secrets", (_event, on) => workspace.setShareSecrets(on));
   ipcMain.handle("api-testing:list-projects", () => workspace.listProjects());
-  ipcMain.handle("api-testing:save-project", (_event, project) => workspace.saveProject(project));
+  // Servers and environments are edited in the settings screen; this is only for seeding projects without Supabase (tests, development).
+  if (!isSupabaseEnabled()) ipcMain.handle("api-testing:save-project", (_event, project) => workspace.saveProject(project));
   ipcMain.handle("api-testing:delete-catalog", (_event, scope) => workspace.deleteCatalog(scope));
   ipcMain.handle("api-testing:delete-scenario", (_event, projectId, id, revision) => workspace.deleteScenario(projectId, id, revision));
   ipcMain.handle("api-testing:catalog", (_event, scope) => workspace.getCatalog(scope));
