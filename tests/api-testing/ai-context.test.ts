@@ -39,9 +39,10 @@ test("AI guide lists every API, writes schemas to a file, and leaks no values, U
     assert.ok(catalog.includes('"password"') && catalog.includes('"type": "string"'));
     for (const secret of ["session-secret", "example-secret", "default-secret", "body-secret", "response-secret"]) assert.equal(catalog.includes(secret), false, secret);
     assert.ok(text.includes("suite: {name") && text.includes("{{steps.1.response.body./data/challengeToken}}"));
-    // One syntax: step inputs as {{inputs.x}}, no vars/valueBindings/step ids taught.
+    // Inputs use {{inputs.x}}; extracted values can be reused via vars.
     assert.ok(text.includes("{{inputs.code}}") && text.includes("target: globals.accessToken"));
-    for (const legacy of ["valueBindings", "{{vars.", "operationId", "request:"]) assert.equal(text.includes(legacy), false, legacy);
+    assert.ok(text.includes("target: vars.product1") && text.includes("{{vars.product1}}"));
+    for (const legacy of ["valueBindings", "operationId", "request:"]) assert.equal(text.includes(legacy), false, legacy);
     const narrowed = await workspace.buildAiPrompt({ ...request, tags: ["missing-tag"] }).catch((error: Error) => error.message);
     assert.match(String(narrowed), /API 명세가 없습니다/);
     await assert.rejects(workspace.buildAiPrompt({ ...request, scope: { ...scope, environmentId: randomUUID() } }));

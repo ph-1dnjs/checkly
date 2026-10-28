@@ -114,6 +114,7 @@ test("the guide asks what to test, points at the schema and result files, and hi
   const { dir, workspace, project, scope } = await setup();
   try {
     const prompt = await workspace.buildAiPrompt({ scope, tags: ["item"] });
+    assert.ok(prompt.includes("응답 배열 선별") && prompt.includes("다른 페이지를 자동 조회하지 않습니다"));
     const aiDir = path.join(dir, "ai", project.id);
     const catalogFile = path.join(aiDir, "api-catalog.json"), resultFile = path.join(aiDir, "scenarios.yaml");
     assert.ok(prompt.includes("먼저 사용자에게 무엇을 테스트할지 물어보세요"));

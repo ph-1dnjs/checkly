@@ -34,7 +34,8 @@ test("opens the isolated form automation tab", async ({ page }) => {
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "선택 케이스 자동 입력" })).toBeVisible();
   await expect(page.getByRole("button", { name: "화면 캡처" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Swagger 연결" })).toBeVisible();
+  // Swagger settings now appear in a selected request's detail; the empty timeline has no connection button.
+  await expect(page.getByRole("complementary", { name: "검사 패널" }).getByText("아직 수집된 기록이 없습니다")).toBeVisible();
   await expect(page.getByRole("button", { name: /네트워크/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /저장소/ })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /오버라이드/ })).toBeVisible();

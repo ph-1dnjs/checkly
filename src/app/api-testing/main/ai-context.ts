@@ -123,6 +123,11 @@ export const descriptionAuthorRules = [
   "- description이 여러 문단이면 YAML description: | 블록으로 쓰고 빈 줄로 문단을 구분합니다. 기존 시나리오를 고칠 때도 목적·실행 조건·주의사항 순서로 정리하고 실제 동작과 다른 설명은 쓰지 않습니다.",
 ];
 
+/** Array selection has the same syntax in every AI authoring flow. */
+export const arraySelectionAuthorRules = [
+  "- 응답 배열 선별: extract: [{pointer: /data/content, select: {where: {pointer: /selectable, equals: true}, limit: 4, minItems: 4, map: /id, index: 0}, target: vars.product1}]. 조건 일치 → 앞 limit개 → 최소 minItems개 확인 → map 경로 추출 → index 항목 선택 순서입니다. index를 생략하면 배열입니다. 값은 {{vars.product1}}로 쓰며 실행 중에만 유지됩니다. expect의 본문 배열에도 같은 select를 사용할 수 있습니다. 현재 응답만 선별하며 다른 페이지를 자동 조회하지 않습니다.",
+];
+
 /** Shared planning rules for every AI authoring entry point. */
 export const scenarioPlanningRules = [
   "- 독립 실행하거나 재사용할 수 있는 준비·기능 검증·정리 흐름은 별도 시나리오로 나눕니다. 하나의 업무 흐름에 강하게 연결된 단계는 함께 두며 단계 수만으로 나누지 않습니다.",
@@ -141,6 +146,7 @@ const authorRules = [
   ...multipartAuthorRules,
   "- 앞 단계 값: {{steps.1.response.body./data/challengeToken}} (1부터 시작하는 단계 번호 + JSON Pointer). 응답 헤더는 {{steps.1.response.header.X-Request-Id}}, 앞 단계 요청값은 {{steps.1.request.body./loginId}}. 항상 앞선 단계만 참조합니다.",
   "- 다른 시나리오와 공유할 값(토큰 등): 저장은 extract: [{pointer: /data/accessToken, target: globals.accessToken}], 사용은 {{globals.accessToken}}. 전역변수 목록에 이미 있는 값은 {{globals.이름}}으로 씁니다.",
+  ...arraySelectionAuthorRules,
   "- 실행 중 사람이 넣어야 하는 값(비밀번호·인증번호·계정): 그 단계에 inputs: [{name: code, label: 인증번호}]를 두고 {{inputs.code}}로 씁니다. 실제 값은 YAML에 쓰지 않습니다.",
   "- Bearer 인증: 시나리오 또는 단계에 auth: globals.accessToken. auth를 쓰면 Authorization 헤더를 직접 넣지 않습니다. 시나리오 auth는 모든 단계에 적용되므로, 로그인·토큰 재발급처럼 인증 없이 부르는 단계(백엔드 보안 설정에서 확인)는 auth: none. 단계가 응답에서 저장하는 토큰을 그 단계 자신의 인증에 쓰지 않습니다.",
   "- 검증(expect)은 기본으로 넣지 않습니다. HTTP 2xx는 자동으로 확인되므로 그것만으로 충분합니다. 사용자가 특정 값이나 상태 코드를 확인하고 싶다고 말했을 때만 그 확인을 넣고, '/data가 있는지'나 'status 200' 같은 습관성 검증은 넣지 않습니다.",

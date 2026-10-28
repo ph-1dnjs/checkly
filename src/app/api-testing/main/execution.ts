@@ -1,4 +1,5 @@
 import { buildMultipart } from "./multipart";
+import { selectArray, SelectionError } from "./selection";
 import { isDeepStrictEqual } from "node:util";
 import { isProvidedScenarioInput, matchesScenarioInputType, scenarioInputType, scenarioSchema, scenarioStepInputs, scenarioStepLabel, type Scenario, type Json, type ScenarioInputRequest, type ValueBinding } from "../shared/scenario";
 import type { ApiRequestTrace } from "../shared/workspace";
@@ -277,7 +278,11 @@ export class ApiRunner {
             if (!passed) firstFailure ??= { kind: "http", source: "status" };
           }
           for (const [index, check] of (step.expect ?? []).entries()) {
-            const actual = read(check.source, check.pointer, check.header);
+            let actual = read(check.source, check.pointer, check.header);
+            if (check.select) {
+              try { actual = selectArray(actual, check.select); }
+              catch (error) { if (error instanceof SelectionError) throw new SafeCheckFailure({ kind: "assertion", source: check.source, operator: check.operator }, error.message); throw error; }
+            }
             const expected = check.value === undefined ? undefined : resolve(check.value, context);
             const passed = check.operator === "exists" ? actual !== undefined : check.operator === "equals" ? isDeepStrictEqual(actual, expected) : typeof actual === "string" && typeof expected === "string" ? actual.includes(expected) : Array.isArray(actual) && actual.some(v => isDeepStrictEqual(v, expected));
             checks.push({ expect: index, passed, ...(passed ? {} : { actual: shown(actual) }) });
@@ -286,7 +291,11 @@ export class ApiRunner {
           if (firstFailure) throw new SafeCheckFailure(firstFailure);
           const vars: Variables = {}, globals: Variables = {};
           for (const extraction of step.extract) {
-            const v = read(extraction.source, extraction.pointer, extraction.header);
+            let v = read(extraction.source, extraction.pointer, extraction.header);
+            if (extraction.select) {
+              try { v = selectArray(v, extraction.select); }
+              catch (error) { if (error instanceof SelectionError) throw new SafeCheckFailure({ kind: "extraction", source: extraction.source }, error.message); throw error; }
+            }
             // Names where the value was looked for, never the value itself.
             if (v === undefined) throw new SafeCheckFailure({ kind: "extraction", source: extraction.source }, `응답 저장 실패: ${extraction.source === "header" ? `응답 헤더 '${extraction.header}'` : `응답 본문 ${extraction.pointer || "전체"}`}에 값이 없어 ${extraction.target.startsWith("globals.") ? `전역변수 ${extraction.target.slice(8)}` : `값 변수 ${extraction.target.slice(5)}`}에 저장하지 못했습니다.`);
             const [scope, key] = extraction.target.split(".");
