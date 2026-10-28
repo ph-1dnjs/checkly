@@ -99,6 +99,64 @@ test("MCP: authenticated scoped discovery, authoring, conflicts, runs, cancellat
 });
 function scopeWithoutServer(scope: { projectId: string; environmentId: string }) { return { projectId: scope.projectId, environmentId: scope.environmentId }; }
 
+test("MCP groups and suites preserve revisions, order and failure policy", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "checkly-mcp-suite-"));
+  const requests: string[] = [];
+  const api = createServer((req, res) => { requests.push(req.url!); res.writeHead(req.url === "/bad" ? 500 : 200, { "Content-Type": "application/json" }); res.end('{"id":"fresh"}'); });
+  await new Promise<void>(resolve => api.listen(0, "127.0.0.1", resolve));
+  const workspace = new ApiWorkspace(directory), service = new ApiMcpService(workspace), client = new Client({ name: "suite-test", version: "1" });
+  const projectId = randomUUID(), environmentId = randomUUID(), serverId = randomUUID();
+  const scope = { projectId, environmentId, serverId };
+  try {
+    await workspace.saveProject({ id: projectId, name: "스위트", servers: [{ id: serverId, name: "API" }], environments: [{ id: environmentId, name: "dev", baseUrls: { [serverId]: `http://127.0.0.1:${(api.address() as { port: number }).port}` } }] });
+    await workspace.importSpec(scope, JSON.stringify({ openapi: "3.0.3", info: { title: "test", version: "1" }, paths: Object.fromEntries(["/good", "/bad", "/last"].map(path => [path, { get: { responses: { "200": { description: "OK" } } } }])) }));
+    const connection = await service.start({ projectId, environmentId }); assert.ok(connection.enabled);
+    await client.connect(new StreamableHTTPClientTransport(new URL(connection.url), { requestInit: { headers: { Authorization: `Bearer ${connection.token}` } } }));
+    const call = async (name: string, args = {}) => parse(await client.callTool({ name, arguments: args }));
+    for (const phrase of ["단계 수만으로", "자동 정리는 보장되지 않습니다", "list_groups"]) assert.ok(client.getInstructions()?.includes(phrase));
+    const source = (name: string, endpoint: string) => `name: ${name}\nserver: API\nsteps:\n  - name: 호출\n    api: GET ${endpoint}\n`;
+    const first = await call("save_scenario", { source: source("첫째", "/good"), groupPath: ["회원", "인증"] });
+    let saved = await call("get_scenario", { id: first.id });
+    await call("save_scenario", { source: saved.source, expectedUpdatedAt: saved.updatedAt });
+    saved = await call("get_scenario", { id: first.id }); assert.deepEqual(saved.groupPath, ["회원", "인증"]);
+    await call("save_scenario", { source: saved.source, expectedUpdatedAt: saved.updatedAt, groupPath: ["플랫폼"] });
+    saved = await call("get_scenario", { id: first.id }); assert.deepEqual(saved.groupPath, ["플랫폼"]);
+    assert.equal((await client.callTool({ name: "save_scenario", arguments: { source: saved.source, expectedUpdatedAt: first.updatedAt, groupPath: [] } })).isError, true);
+    const bad = await call("save_scenario", { source: source("실패", "/bad") });
+    const last = await call("save_scenario", { source: source("마지막", "/last") });
+    let suite = await call("save_suite", { name: "흐름", scenarioIds: [first.id, bad.id, last.id], onFailure: "stop", groupPath: ["회원", "인증"] });
+    assert.deepEqual((await call("list_groups")).groups, [["회원"], ["회원", "인증"], ["플랫폼"]].sort((a, b) => a.join("/").localeCompare(b.join("/"), "ko")));
+    assert.equal((await call("list_suites")).items[0].id, suite.id);
+    assert.deepEqual((await call("get_suite", { id: suite.id })).scenarioIds, [first.id, bad.id, last.id]);
+    const stale = suite.updatedAt;
+    suite = await call("save_suite", { id: suite.id, name: suite.name, scenarioIds: suite.scenarioIds, onFailure: "stop", expectedUpdatedAt: suite.updatedAt });
+    assert.deepEqual(suite.groupPath, ["회원", "인증"]);
+    assert.equal((await client.callTool({ name: "save_suite", arguments: { id: suite.id, name: suite.name, scenarioIds: suite.scenarioIds, onFailure: "continue", expectedUpdatedAt: stale } })).isError, true);
+    const execute = async () => {
+      const { runId } = await call("run_suite", { id: suite.id, projectId, environmentId });
+      for (let i = 0; i < 100; i++) { const run = await call("get_run", { runId }); if (run.state !== "running") return run; await new Promise(r => setTimeout(r, 10)); }
+      throw new Error("suite timed out");
+    };
+    let result = await execute();
+    assert.equal(result.state, "failed"); assert.deepEqual(result.result.scenarios.map((row: { status: string }) => row.status), ["passed", "failed", "skipped"]); assert.deepEqual(requests, ["/good", "/bad"]);
+    suite = await call("save_suite", { id: suite.id, name: suite.name, scenarioIds: suite.scenarioIds, onFailure: "continue", expectedUpdatedAt: suite.updatedAt, groupPath: ["플랫폼"] });
+    assert.deepEqual(suite.groupPath, ["플랫폼"]); requests.length = 0;
+    result = await execute(); assert.deepEqual(result.result.scenarios.map((row: { status: string }) => row.status), ["passed", "failed", "passed"]); assert.deepEqual(requests, ["/good", "/bad", "/last"]);
+    await workspace.setGlobal({ projectId }, "token", "old-token");
+    const producer = await call("save_scenario", { source: source("준비", "/bad") + "    extract:\n      - { pointer: /id, target: globals.token }\n" });
+    const consumer = await call("save_scenario", { source: "name: 토큰 사용\nserver: API\nauth: globals.token\nsteps:\n  - name: 호출\n    api: GET /last\n" });
+    suite = await call("save_suite", { id: suite.id, name: suite.name, scenarioIds: [producer.id, consumer.id, last.id], onFailure: "continue", expectedUpdatedAt: suite.updatedAt, groupPath: [] });
+    assert.equal(suite.groupPath, undefined); requests.length = 0;
+    result = await execute();
+    assert.deepEqual(result.result.scenarios.map((row: { status: string }) => row.status), ["failed", "blocked", "passed"]);
+    assert.deepEqual(requests, ["/bad", "/last"]);
+    assert.ok(!JSON.stringify(result).includes("old-token"));
+    await call("save_scenario", { source: saved.source, expectedUpdatedAt: saved.updatedAt, groupPath: [] });
+    assert.equal((await call("get_scenario", { id: first.id })).groupPath, undefined);
+    assert.equal((await client.callTool({ name: "run_suite", arguments: { id: suite.id, projectId, environmentId: randomUUID() } })).isError, true);
+  } finally { await client.close(); await service.stop(); api.closeAllConnections(); await new Promise<void>(resolve => api.close(() => resolve())); await rm(directory, { recursive: true, force: true }); }
+});
+
 test("local stdio setup survives HTTP rotation, reports offline state and keeps tokens out of install config", async () => {
   const { prepareMcpSetup } = await import("../../src/app/api-testing/main/mcp/setup");
   const { StdioClientTransport } = await import("@modelcontextprotocol/sdk/client/stdio.js");
