@@ -768,15 +768,17 @@ export class ApiWorkspace {
     return z.array(suiteSchema.extend({ updatedAt: z.string().datetime({ offset: true }), ...suiteAuthorshipShape })).parse((await this.store().listSuites(projectId)).map(migrateSidebarMetadata));
   }
 
-  async saveSuite(rawProjectId: string, rawSuite: Omit<SavedApiSuite, "updatedAt">, expectedUpdatedAt?: string): Promise<SavedApiSuite> {
+  async saveSuite(rawProjectId: string, rawSuite: Omit<SavedApiSuite, "updatedAt">, expectedUpdatedAt?: string, signal?: AbortSignal): Promise<SavedApiSuite> {
     const projectId = z.string().uuid().parse(rawProjectId);
     const suite = suiteSchema.parse(rawSuite && typeof rawSuite === "object" ? withoutAuthorship(rawSuite) : rawSuite);
     const action = this.queue.then(async () => {
+      signal?.throwIfAborted();
       const scenarios = await this.listScenarios(projectId);
       if (suite.scenarioIds.some(id => !scenarios.some(item => item.id === id && !item.draft))) throw new Error("저장된 실행 가능 시나리오만 묶음에 추가하세요");
       const previous = (await this.listSuites(projectId)).find(item => item.id === suite.id);
       // Authorship is the team database's to stamp; file mode keeps none.
       const item: SavedApiSuite = { ...suite, updatedAt: new Date(Math.max(Date.now(), previous ? Date.parse(previous.updatedAt) + 1 : 0)).toISOString() };
+      signal?.throwIfAborted();
       const stored = await this.store().putSuite(projectId, item, expectedUpdatedAt);
       if (!stored) throw new Error("묶음이 변경되었습니다. 최신 목록에서 다시 선택하세요");
       return stored;

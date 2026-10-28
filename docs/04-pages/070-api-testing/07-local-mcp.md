@@ -35,14 +35,20 @@ API 테스트 → **AI 작성 도우미** → **MCP로 연결** 탭에서 설정
 | `get_api_spec` | `apis: ['METHOD /path']`로 지정한 API(최대 20개)의 파라미터·요청/응답 스키마. 없는 API는 `notFound` |
 | `list_scenarios` | 목록과 요약(설명·단계 수·사용 API·만드는 전역변수). `query` 키워드로 비슷한 시나리오 찾기. 본문 제외 |
 | `get_scenario` | 개별 YAML·수정 버전 |
+| `list_groups` | 시나리오·스위트가 사용하는 그룹 경로 목록. 기존 그룹 우선 사용 |
 | `delete_scenario` | 삭제. 앱에 확인 창이 뜨고 사용자가 **삭제**를 눌러야 지운다. 45초 무응답·취소·연결 종료 시 지우지 않음. `expectedUpdatedAt` 필요 |
 | `validate_scenario` | 저장 없이 형식·명세·실행 준비 검사. YAML·참조 문법 오류도 도구 오류 대신 `valid: false`와 `issues`로 반환 |
-| `save_scenario` | 생성 또는 수정. 수정 시 기존 id·expectedUpdatedAt 필요. 저장 대기 중 연결이 끝나면 저장하지 않음 |
+| `save_scenario` | 생성 또는 수정. `groupPath`는 경로 배열, 생략 시 기존 그룹 유지, 빈 배열은 미분류. 수정 시 기존 id·expectedUpdatedAt 필요. 저장 대기 중 연결이 끝나면 저장하지 않음 |
+| `list_suites`, `get_suite` | 스위트 목록·상세, 시나리오 실행 순서·실패 정책·수정 버전 조회 |
+| `save_suite` | 시나리오 ID를 순서대로 묶고 `onFailure`를 `stop` 또는 `continue`로 지정. 수정은 id와 최신 expectedUpdatedAt 필요. `groupPath`는 시나리오와 동일 |
+| `run_suite` | 저장된 스위트 실행. 프로젝트·환경 ID와 시나리오 ID별 입력 `inputsByScenario`를 받으며 즉시 runId 반환 |
 | `run_scenario` | 저장된 시나리오 실행, 즉시 runId 반환. `get_context`의 projectId·environmentId가 현재 연결과 다르면 거부 |
 | `get_run` | 상태·HTTP 상태·시간·실패 종류·검증 성공 여부 |
 | `cancel_run` | 이 연결에서 시작한 실행만 취소 |
 
 외부 AI가 실행 중에 사용자에게 값을 물어보는 대화 기능은 없다. 필요한 입력은 `run_scenario.inputs`로 제공하며 빠진 필수값은 기존 실행기의 입력 실패로 처리한다. 실행 결과의 본문·헤더·변수·검증 실제 값·원문 오류는 반환하지 않는다. 단, `get_scenario`의 저장된 YAML과 명세 설명에는 사용자가 직접 넣은 값이 포함될 수 있으므로 자격 증명은 `globals` 또는 `inputs`로 참조한다.
+
+스위트는 각 시나리오를 순서대로 실행한다. `stop`은 실패·실행 불가 이후 나머지를 건너뛰고, `continue`는 다음 시나리오를 시도한다. 실패한 시나리오의 전역변수를 쓰는 후속 시나리오는 이전 실행 값을 쓰지 않고 차단한다. `get_run`으로 순서별 결과를 확인하며 `cancel_run`으로 취소할 수 있다. 스위트가 정리를 자동 보장하지 않으므로 정리 시나리오는 따로 실행할 수 있게 작성한다. `get_context`의 `hasValue`는 값이 있는지만 나타내며 최신성은 보장하지 않는다. 실행 전 생산자·조건을 확인하고 최신 ID가 필요하면 사용자의 승인 아래 생산자를 실행하거나 사용자에게 확인한다.
 
 시나리오 생성은 자동으로 현재 편집 중인 초안을 덮어쓰지 않는다. 앱의 시나리오 목록을 다시 열어 저장 결과를 확인한다. MCP 실행 결과는 현재 연결에서 최대 30개 요약을 보관한다. 같은 실행의 전체 결과(요청·응답 원문 포함)는 앱의 시나리오 화면 "최근 실행"에 **외부 AI(MCP)** 표시와 함께 남아, AI가 받지 못하는 실패 원인을 사람이 앱에서 확인한다. 앱 화면처럼 새로고침하면 사라진다.
 
