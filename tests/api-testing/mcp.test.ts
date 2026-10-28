@@ -45,6 +45,8 @@ test("MCP: authenticated scoped discovery, authoring, conflicts, runs, cancellat
     assert.match(client.getInstructions() ?? "", /multipart/);
     assert.match(client.getInstructions() ?? "", /kind: generated/);
     assert.match(client.getInstructions() ?? "", /Content-Type과 boundary/);
+    assert.match(client.getInstructions() ?? "", /응답 배열 선별/);
+    assert.match(client.getInstructions() ?? "", /다른 페이지를 자동 조회하지 않습니다/);
     assert.ok((await client.listTools()).tools.some(tool => tool.name === "save_scenario"));
     const call = async (name: string, args = {}) => parse(await client.callTool({ name, arguments: args }));
     const context = await call("get_context");
@@ -61,6 +63,12 @@ test("MCP: authenticated scoped discovery, authoring, conflicts, runs, cancellat
     const saved = await call("save_scenario", { source });
     const item = await call("get_scenario", { id: saved.id });
     assert.equal((await call("list_scenarios")).total, 1);
+    const selectedSource = "name: 배열 선택\nserver: API\nsteps:\n  - name: 선택\n    api: GET /test\n    extract: [{pointer: /items, select: {where: {pointer: /active, equals: true}, map: /id, index: 0}, target: vars.item}]\n  - name: 사용\n    api: GET /test\n    headers: {X-Item: '{{vars.item}}'}\n";
+    const selected = await call("save_scenario", { source: selectedSource });
+    const selectedSaved = await call("get_scenario", { id: selected.id });
+    assert.match(selectedSaved.source, /select:/);
+    assert.match(selectedSaved.source, /target: vars\.item/);
+    assert.match(selectedSaved.source, /\{\{vars\.item\}\}/);
     assert.equal((await client.callTool({ name: "save_scenario", arguments: { source: item.source } })).isError, true);
     await call("save_scenario", { source: item.source, expectedUpdatedAt: item.updatedAt });
     const pin = { projectId, environmentId };

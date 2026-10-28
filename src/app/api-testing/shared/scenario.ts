@@ -1,5 +1,6 @@
 import { parseDocument, stringify } from "yaml";
 import { z } from "zod";
+import { selectionSchema, type Selection } from "./selection";
 
 import { multipartSchema } from "./multipart";
 
@@ -39,9 +40,11 @@ const expectation = z.object({
   source: z.enum(["status", "body", "header"]),
   pointer: pointer.optional(),
   header: z.string().optional(),
+  select: selectionSchema.optional(),
   operator: z.enum(["equals", "exists", "contains"]),
   value: value.optional(),
 }).strict().superRefine((v, ctx) => {
+  if (v.select && v.source !== "body") ctx.addIssue({ code: "custom", message: "select는 본문 배열에서만 사용할 수 있습니다" });
   if (v.source === "body" && v.pointer === undefined)
     ctx.addIssue({ code: "custom", message: "body 검증에는 pointer가 필요합니다" });
   if (v.source === "header" && !v.header)
@@ -52,9 +55,11 @@ const expectation = z.object({
 const extraction = z.object({
   source: z.enum(["body", "header"]).default("body"),
   pointer: pointer.optional(), header: z.string().optional(),
+  select: selectionSchema.optional(),
   target: z.string().regex(/^(vars|globals)\.[A-Za-z][A-Za-z0-9_]*$/),
   sensitive: ignoredSensitive,
 }).strict().superRefine((v, ctx) => {
+  if (v.select && v.source !== "body") ctx.addIssue({ code: "custom", message: "select는 본문 배열에서만 사용할 수 있습니다" });
   if (v.source === "body" ? v.pointer === undefined : !v.header)
     ctx.addIssue({ code: "custom", message: "추출할 pointer 또는 header가 필요합니다" });
 });
@@ -185,9 +190,11 @@ const globalsRef = z.string().regex(/^globals\.[A-Za-z][A-Za-z0-9_]*$/, "globals
 const authoringExtraction = z.object({
   source: z.enum(["body", "header"]).default("body"),
   pointer: pointer.optional(), header: z.string().optional(),
-  target: globalsRef,
+  select: selectionSchema.optional(),
+  target: z.string().regex(/^(vars|globals)\.[A-Za-z][A-Za-z0-9_]*$/, "vars.이름 또는 globals.이름 형식으로 쓰세요"),
   sensitive: ignoredSensitive,
 }).strict().superRefine((v, ctx) => {
+  if (v.select && v.source !== "body") ctx.addIssue({ code: "custom", message: "select는 본문 배열에서만 사용할 수 있습니다" });
   if (v.source === "body" ? v.pointer === undefined : !v.header)
     ctx.addIssue({ code: "custom", message: "추출할 pointer 또는 header가 필요합니다" });
 });
@@ -254,6 +261,7 @@ export function parseScenario(source: string): Scenario {
   const authored = authoringScenario.parse(raw);
   const used = new Set<string>();
   const declared = new Set<string>();
+  const localValues = new Set<string>();
   const problems: string[] = [];
   const steps = authored.steps.map((step, index) => {
     const [, method, path] = methodPath.exec(step.api.trim())!;
@@ -265,18 +273,25 @@ export function parseScenario(source: string): Scenario {
     if (!server) problems.push(`${index + 1}단계: server를 시나리오 또는 단계에 쓰세요`);
     (step.inputs ?? []).forEach(input => declared.add(input.name));
     const check = (text: string) => {
-      for (const match of text.matchAll(/\{\{vars\.[^}]*\}\}/g)) problems.push(`${index + 1}단계: ${match[0]}는 쓰지 않습니다. 앞 단계 값은 {{steps.N.…}}, 실행 입력은 {{inputs.이름}}으로 쓰세요`);
+      for (const match of text.matchAll(/\{\{vars\.([^}]*)\}\}/g))
+        if (!localValues.has(match[1])) problems.push(`${index + 1}단계: ${match[0]}는 쓰지 않습니다. 앞 단계 값은 {{steps.N.…}}, 실행 입력은 {{inputs.이름}}으로 쓰세요. 선별한 값은 앞 단계 extract의 target: vars.이름으로 먼저 저장하세요`);
       for (const match of text.matchAll(/\{\{inputs\.([A-Za-z][A-Za-z0-9_]*)\}\}/g))
         if (!declared.has(match[1])) problems.push(`${index + 1}단계: {{inputs.${match[1]}}}를 쓰려면 이 단계나 앞 단계의 inputs에 ${match[1]}을 정의하세요`);
       // Step input values live in the runner's vars.
       return text.replace(/\{\{inputs\.([A-Za-z][A-Za-z0-9_]*)\}\}/g, "{{vars.$1}}");
     };
     const request = mapStrings({ pathParams: step.pathParams, query: step.query, headers: step.headers, cookies: step.cookies, body: step.body, multipart: step.multipart }, check);
+    const expect = step.expect ? mapStrings(step.expect, check) : undefined;
+    for (const extraction of step.extract ?? []) if (extraction.target.startsWith("vars.")) {
+      const name = extraction.target.slice(5);
+      if (declared.has(name)) problems.push(`${index + 1}단계: 값 저장 이름 ${name}이 실행 입력과 겹칩니다`);
+      localValues.add(name);
+    }
     return {
       id, ...(step.name ? { name: step.name } : {}), server: server ?? "", api: { method, path },
       ...(step.auth ? { auth: step.auth } : {}), ...(step.inputs?.length ? { inputs: step.inputs } : {}),
       request: Object.fromEntries(Object.entries(request).filter(([, v]) => v !== undefined)),
-      ...(step.expect ? { expect: mapStrings(step.expect, check) } : {}),
+      ...(expect ? { expect } : {}),
       extract: step.extract ?? [],
     };
   });
@@ -410,9 +425,9 @@ export function linkedValueLabel(scenario: Pick<Scenario, "steps" | "valueBindin
   return `${step + 1}단계 ${binding.source === "request" ? "요청" : "응답"} ${where}`;
 }
 
-export function describeCheck(expectation?: { source: "status" | "body" | "header"; pointer?: string; header?: string; operator: "exists" | "equals" | "contains"; value?: Json }, scenario?: Pick<Scenario, "steps" | "valueBindings">): { target: string; rule: string } {
+export function describeCheck(expectation?: { source: "status" | "body" | "header"; pointer?: string; header?: string; operator: "exists" | "equals" | "contains"; value?: Json; select?: Selection }, scenario?: Pick<Scenario, "steps" | "valueBindings">): { target: string; rule: string } {
   if (!expectation) return { target: "HTTP 상태", rule: "2xx (자동 확인)" };
   const target = expectation.source === "status" ? verificationSourceLabels.status : expectation.source === "header" ? expectation.header ?? "응답 헤더" : expectation.pointer || "전체 응답";
   const linked = linkedValueLabel(scenario, expectation.value);
-  return { target, rule: `${verificationOperatorLabels[expectation.operator]}${expectation.operator !== "exists" ? ` ${linked ? `[${linked}]` : expectedValueText(expectation.value)}` : ""}` };
+  return { target: expectation.select ? `${target} (배열 선별)` : target, rule: `${verificationOperatorLabels[expectation.operator]}${expectation.operator !== "exists" ? ` ${linked ? `[${linked}]` : expectedValueText(expectation.value)}` : ""}` };
 }
