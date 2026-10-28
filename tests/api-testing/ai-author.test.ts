@@ -91,6 +91,7 @@ test("groups from the AI become folders; the guide lists groups and who makes an
     await workspace.saveScenario(scope, read, {});
     await workspace.saveSuite(scope.projectId, { id: randomUUID(), name: "상점 흐름", scenarioIds: ["shop/login", "shop/read"], onFailure: "stop", groupPath: ["상점"] });
     const prompt = await workspace.buildAiPrompt({ scope });
+    for (const phrase of ["기존 그룹 중 맞는 것", "단계 수만으로", "자동 정리는 보장되지 않습니다", "최신 값이라고 판단하지 않습니다"]) assert.ok(prompt.includes(phrase));
     const stateFile = path.join(dir, "ai", scope.projectId, "project-state.json");
     assert.ok(prompt.includes(stateFile) && !prompt.includes("- 로그인 [상점/인증]"));
     const state = JSON.parse(await readFile(stateFile, "utf8"));

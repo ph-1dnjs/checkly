@@ -128,12 +128,21 @@ export const arraySelectionAuthorRules = [
   "- 응답 배열 선별: extract: [{pointer: /data/content, select: {where: {pointer: /selectable, equals: true}, limit: 4, minItems: 4, map: /id, index: 0}, target: vars.product1}]. 조건 일치 → 앞 limit개 → 최소 minItems개 확인 → map 경로 추출 → index 항목 선택 순서입니다. index를 생략하면 배열입니다. 값은 {{vars.product1}}로 쓰며 실행 중에만 유지됩니다. expect의 본문 배열에도 같은 select를 사용할 수 있습니다. 현재 응답만 선별하며 다른 페이지를 자동 조회하지 않습니다.",
 ];
 
+/** Shared planning rules for every AI authoring entry point. */
+export const scenarioPlanningRules = [
+  "- 독립 실행하거나 재사용할 수 있는 준비·기능 검증·정리 흐름은 별도 시나리오로 나눕니다. 하나의 업무 흐름에 강하게 연결된 단계는 함께 두며 단계 수만으로 나누지 않습니다.",
+  "- 같은 준비를 공유하는 검증은 준비 시나리오를 앞에 두고 스위트에 실행 순서대로 묶습니다. ID·토큰은 전역변수로 전달하고 변수 이름, 생성 시점, 사용 순서와 실행 조건을 명확히 합니다.",
+  "- 전역변수의 존재만으로 최신 값이라고 판단하지 않습니다. 실행 전 현재 프로젝트 상태와 만드는 시나리오를 다시 조회하고, 최신 ID가 필요하면 사용자 승인 후 생산자를 먼저 실행하거나 대상의 조회 API로 확인합니다. 자격 증명은 사용자가 앱의 전역변수 설정에서 확인·갱신하게 합니다. 이전 실행 값이나 오래된 버전을 추측하지 않습니다.",
+  "- 데이터를 생성·수정하면 description에 남는 데이터와 정리 방법을 적습니다. 중단 후에도 별도로 실행할 수 있는 정리 시나리오를 구성하고 필요한 최신 ID 확인 방법을 적습니다. 스위트의 자동 정리는 보장되지 않습니다.",
+];
+
 // One syntax only; it is exactly what Checkly shows and saves, so there is nothing to translate.
 const authorRules = [
   "- 아래 문법만 사용합니다. 단계 id나 별도의 변수 선언은 쓰지 않습니다.",
   "- 시나리오: name·description(한국어, name은 기존 시나리오·이번 결과와 겹치지 않게), server(모든 단계가 같은 서버면 한 번), auth(선택), steps. id는 쓰지 않습니다(Checkly가 붙입니다).",
   "- 단계: name(한국어), api: 'POST /bos/login'(API 파일의 api 값 그대로, 따옴표로 감쌈), 서버가 다르면 server, 그리고 body·multipart·query·pathParams·headers·cookies를 단계 바로 아래에 씁니다.",
   ...descriptionAuthorRules,
+  ...scenarioPlanningRules,
   ...multipartAuthorRules,
   "- 앞 단계 값: {{steps.1.response.body./data/challengeToken}} (1부터 시작하는 단계 번호 + JSON Pointer). 응답 헤더는 {{steps.1.response.header.X-Request-Id}}, 앞 단계 요청값은 {{steps.1.request.body./loginId}}. 항상 앞선 단계만 참조합니다.",
   "- 다른 시나리오와 공유할 값(토큰 등): 저장은 extract: [{pointer: /data/accessToken, target: globals.accessToken}], 사용은 {{globals.accessToken}}. 전역변수 목록에 이미 있는 값은 {{globals.이름}}으로 씁니다.",

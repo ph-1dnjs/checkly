@@ -44,10 +44,8 @@ async function main() {
     await expect(page.getByRole("button", { name: "프로젝트 설정", exact: true })).toHaveCount(0);
     await page.getByRole("tab", { name: "AI 작성 도우미", exact: true }).click();
     await page.getByRole("tab", { name: "MCP로 연결", exact: true }).click();
-    // How old the spec is, and a refresh, sit next to the way tabs.
-    await expect(page.locator(".api-ai-spec-freshness")).toContainText("명세 갱신 · 오늘");
-    await page.getByRole("button", { name: "명세 새로고침", exact: true }).click();
-    await expect(page.getByRole("status").filter({ hasText: "명세를 새로 가져왔습니다." })).toBeVisible();
+    // The current page header shows the imported spec's sync state.
+    await expect(page.getByRole("button", { name: "API 문서 갱신" }).getByRole("status")).toContainText("방금 동기화");
     // The connection follows the environment picked on the page; the header shows it.
     await pickEnvironment("dev");
     await expect.poll(mcpStatus).toMatchObject({ enabled: true, projectId, environmentId });
@@ -132,9 +130,19 @@ async function main() {
       await bridge.startMcp({ projectId, environmentId });
       return bridge.saveScenario({ projectId, environmentId }, "name: MCP 핑\nserver: API\nsteps:\n  - name: 핑\n    api: GET /ping\n    auth: none\n", {});
     }, { projectId, serverId, environmentId, apiUrl });
+    const scenario = JSON.parse(((await client.callTool({ name: "get_scenario", arguments: { id: ping.id } })).content as { text: string }[])[0].text);
+    const grouped = await client.callTool({ name: "save_scenario", arguments: { source: scenario.source, expectedUpdatedAt: scenario.updatedAt, groupPath: ["데스크톱", "MCP"] } });
+    expect(grouped.isError).toBeUndefined();
+    expect(JSON.stringify(await client.callTool({ name: "list_groups", arguments: {} }))).toContain("데스크톱");
+    const suiteResult = await client.callTool({ name: "save_suite", arguments: { name: "MCP 묶음", scenarioIds: [ping.id], onFailure: "stop", groupPath: ["데스크톱", "MCP"] } });
+    expect(suiteResult.isError).toBeUndefined();
+    const suite = JSON.parse((suiteResult.content as { text: string }[])[0].text);
+    const suiteRun = JSON.parse(((await client.callTool({ name: "run_suite", arguments: { id: suite.id, projectId, environmentId } })).content as { text: string }[])[0].text);
+    await expect.poll(async () => JSON.parse(((await client.callTool({ name: "get_run", arguments: { runId: suiteRun.runId } })).content as { text: string }[])[0].text).state).toBe("passed");
     const mcpRun = JSON.parse(((await client.callTool({ name: "run_scenario", arguments: { id: ping.id, projectId, environmentId } })).content as { text: string }[])[0].text);
     await expect.poll(async () => JSON.parse(((await client.callTool({ name: "get_run", arguments: { runId: mcpRun.runId } })).content as { text: string }[])[0].text).state).toBe("passed");
     await page.getByRole("tab", { name: "시나리오", exact: true }).click();
+    await page.getByLabel("시나리오·스위트 검색").fill("MCP 핑");
     await page.getByRole("button", { name: "MCP 핑", exact: true }).first().click();
     await expect(page.getByText(/최근 실행 .* · 외부 AI\(MCP\)/)).toBeVisible();
 

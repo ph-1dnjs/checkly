@@ -5,13 +5,14 @@ import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { releaseStaleDiscovery } from "./discovery";
 import type { ApiWorkspace } from "../workspace";
-import { aiCatalogDetails, arraySelectionAuthorRules, descriptionAuthorRules, multipartAuthorRules, withGeneratedId } from "../ai-context";
+import { aiCatalogDetails, arraySelectionAuthorRules, descriptionAuthorRules, multipartAuthorRules, scenarioPlanningRules, withGeneratedId } from "../ai-context";
 import type { ApiEnvironmentScope, ApiMcpRunEvent, ApiMcpStatus, ApiScenarioResult, SavedApiScenario } from "../../shared/workspace";
 import { describeCheck, parseScenario, type Scenario } from "../../shared/scenario";
-import { producedGlobalNames } from "../../shared/suite-report";
+import { producedGlobalNames, usesInvalidatedGlobal } from "../../shared/suite-report";
 
 const connectionSchema = z.object({ projectId: z.string().uuid(), environmentId: z.string().uuid() }).strict();
 const sourceSchema = { source: z.string().min(1).max(200_000), bindings: z.record(z.string(), z.string().uuid()).default({}) };
+const groupPathArg = z.array(z.string().trim().min(1).max(80).refine(value => !value.includes("/"))).max(10).refine(value => value.join("/").length <= 200).optional().describe("그룹 경로 배열. 생략하면 기존 그룹 유지, 빈 배열은 미분류");
 type Run = { controller: AbortController; state: string; result?: unknown };
 /** Asks the person at the app, never the AI client. Resolves false when declined, timed out or aborted. */
 export type ApiMcpConfirm = (request: { title: string; detail: string; signal: AbortSignal }) => Promise<boolean>;
@@ -120,7 +121,7 @@ export class ApiMcpService {
   private async createMcp(scope: ApiEnvironmentScope, token: string) {
     const { McpServer } = await import("@modelcontextprotocol/sdk/server/mcp.js");
     const server = new McpServer({ name: "checkly-api-testing", version: "1.0.0" }, {
-      instructions: "Use get_context first. Only the user-enabled project/environment is accessible. Find APIs with list_apis (query/tag filters, up to 200 per call; serverId optional for a single server), then read only the needed ones with get_api_spec (apis: ['METHOD /path']). Reuse globals listed in get_context with their producer scenarios. Validate before saving. Run only when the user requests execution. Never invent credentials; use globals or supplied inputs. Stored scenarios use YAML: id, name, server, steps with name, api ('GET /path'), body/multipart/query/pathParams/headers/cookies, extract and expect. Step references: {{steps.1.response.body./id}}; globals: {{globals.token}}. No version or step id fields. Updates require the latest updatedAt. Before creating, check list_scenarios (query) for an existing scenario. delete_scenario asks the user in the app; never retry a declined delete. If a global a scenario needs has hasValue false, ask the user before running one of its producers first. run_scenario requires the projectId and environmentId from get_context. HTTP runs may change real data." + "\n" + [...descriptionAuthorRules, ...multipartAuthorRules, ...arraySelectionAuthorRules].join("\n"),
+      instructions: "Use get_context first. Only the user-enabled project/environment is accessible. Find APIs with list_apis (query/tag filters, up to 200 per call; serverId optional for a single server), then read only the needed ones with get_api_spec (apis: ['METHOD /path']). Reuse globals listed in get_context with their producer scenarios. Validate before saving. Run only when the user requests execution. Never invent credentials; use globals or supplied inputs. Stored scenarios use YAML: id, name, server, steps with name, api ('GET /path'), body/multipart/query/pathParams/headers/cookies, extract and expect. Step references: {{steps.1.response.body./id}}; globals: {{globals.token}}. No version or step id fields. Updates require the latest updatedAt. Before creating, check list_scenarios (query) for an existing scenario. delete_scenario asks the user in the app; never retry a declined delete. If a global a scenario needs has hasValue false, ask the user before running one of its producers first. run_scenario and run_suite require the projectId and environmentId from get_context. HTTP runs may change real data. list_groups로 그룹을 조회하고 기존 그룹을 우선 사용하세요. 적합한 그룹이 없으면 새 그룹 경로를 사용하세요. list_suites와 get_suite로 기존 스위트를 확인하고 save_suite로 순서와 실패 정책을 명시하세요. get_context의 hasValue는 값의 최신성을 보장하지 않습니다." + "\n" + [...descriptionAuthorRules, ...scenarioPlanningRules, ...multipartAuthorRules, ...arraySelectionAuthorRules].join("\n"),
     });
     const guard = () => { if (this.connection?.token !== token) throw new Error("MCP 연결이 종료되었습니다"); };
     const grant = this.connection?.token === token ? this.grant?.signal : undefined;
@@ -198,9 +199,29 @@ export class ApiMcpService {
       }
       return { valid: !preview.issues.length, issues: preview.issues, executionIssues: preview.executionIssues ?? [] };
     });
-    tool("save_scenario", "시나리오 생성/수정. 새 YAML에는 id 생략 가능. 수정은 id와 expectedUpdatedAt 필요. 실제 값 대신 globals/inputs를 사용하세요.", { ...sourceSchema, expectedUpdatedAt: z.string().optional() }, false, async ({ source, bindings, expectedUpdatedAt }) => {
-      const item = await this.workspace.saveScenario(scope, withGeneratedId(source), bindings, expectedUpdatedAt, undefined, grant);
-      return { id: item.id, name: item.name, updatedAt: item.updatedAt };
+    tool("list_groups", "시나리오와 스위트가 사용하는 현재 프로젝트 그룹과 상위 그룹 경로 조회. 기존 그룹을 우선 사용하세요.", {}, true, async () => {
+      const [scenarios, suites] = await Promise.all([this.workspace.listScenarios(scope.projectId), this.workspace.listSuites(scope.projectId)]);
+      const groups = new Map<string, string[]>();
+      for (const item of [...scenarios, ...suites]) for (let depth = 1; depth <= (item.groupPath?.length ?? 0); depth++) {
+        const path = item.groupPath!.slice(0, depth); groups.set(JSON.stringify(path), path);
+      }
+      return { groups: [...groups.values()].sort((a, b) => a.join("/").localeCompare(b.join("/"), "ko")) };
+    });
+    tool("save_scenario", "시나리오 생성/수정. groupPath 배열로 분류·이동, 생략하면 기존 그룹 유지, 빈 배열은 미분류. 새 YAML에는 id 생략 가능. 수정은 id와 expectedUpdatedAt 필요. 실제 값 대신 globals/inputs를 사용하세요.", { ...sourceSchema, expectedUpdatedAt: z.string().optional(), groupPath: groupPathArg }, false, async ({ source, bindings, expectedUpdatedAt, groupPath }) => {
+      const item = await this.workspace.saveScenario(scope, withGeneratedId(source), bindings, expectedUpdatedAt, groupPath === undefined ? undefined : { groupPath }, grant);
+      return { id: item.id, name: item.name, updatedAt: item.updatedAt, groupPath: item.groupPath ?? [] };
+    });
+    tool("list_suites", "저장된 스위트 목록과 시나리오 실행 순서·실패 정책·수정 버전 조회", {}, true, async () => ({ items: await this.workspace.listSuites(scope.projectId) }));
+    const findSuite = async (id: string) => {
+      const item = (await this.workspace.listSuites(scope.projectId)).find(s => s.id === id);
+      if (!item) throw new Error("스위트를 찾을 수 없습니다");
+      return item;
+    };
+    tool("get_suite", "스위트의 시나리오 순서·실패 정책·그룹·수정 버전 조회", { id: z.string().uuid() }, true, async ({ id }) => findSuite(id));
+    tool("save_suite", "스위트 생성/수정. scenarioIds 순서대로 실행하며 onFailure는 stop 또는 continue. 수정은 id와 최신 expectedUpdatedAt 필요. groupPath 생략 시 기존 그룹 유지, 빈 배열은 미분류.", { id: z.string().uuid().optional(), name: z.string().trim().min(1).max(100), scenarioIds: z.array(z.string().min(1).max(1000)).min(1).max(100), onFailure: z.enum(["stop", "continue"]), groupPath: groupPathArg, expectedUpdatedAt: z.string().optional() }, false, async ({ id, name, scenarioIds, onFailure, groupPath, expectedUpdatedAt }) => {
+      const previous = id ? (await this.workspace.listSuites(scope.projectId)).find(item => item.id === id) : undefined;
+      guard();
+      return this.workspace.saveSuite(scope.projectId, { id: id ?? randomUUID(), name, scenarioIds, onFailure, ...(groupPath !== undefined ? { groupPath } : previous?.groupPath ? { groupPath: previous.groupPath } : {}), ...(previous?.tags ? { tags: previous.tags } : {}) }, expectedUpdatedAt, grant);
     });
     tool("delete_scenario", "시나리오 삭제. Checkly 앱에 사용자 확인 창이 뜨고, 사용자가 삭제를 누른 경우에만 지웁니다. 45초 안에 응답이 없거나 취소하면 지우지 않습니다. expectedUpdatedAt은 get_scenario·list_scenarios의 updatedAt입니다.", { id: z.string(), expectedUpdatedAt: z.string() }, false, async ({ id, expectedUpdatedAt }) => {
       if (!this.hooks.confirm) throw new Error("이 앱에서는 삭제 확인을 받을 수 없어 MCP로 삭제할 수 없습니다. 사용자에게 앱에서 직접 삭제하도록 안내하세요");
@@ -243,7 +264,50 @@ export class ApiMcpService {
         .catch(() => { run.state = run.controller.signal.aborted ? "cancelled" : "failed"; run.result = { message: "실행하지 못했습니다. validate_scenario로 명세·변수·입력을 확인하고, 앱에서 다른 실행이 진행 중인지 확인하세요." }; });
       return { runId, state: run.state };
     });
-    tool("get_run", "실행 상태·단계별 상태·검증 요약 조회. checks[].label은 검증 내용(대상과 규칙)입니다. 요청/응답 본문, 헤더, 변수값은 외부로 보내지 않습니다.", { runId: z.string().uuid() }, true, async ({ runId }) => {
+    tool("run_suite", "저장된 스위트를 순서대로 실행하고 runId 반환. projectId·environmentId는 get_context의 값. inputsByScenario는 시나리오 ID별 입력. 실패 시 저장된 stop/continue 정책을 따르며 자동 정리는 보장하지 않습니다.", { id: z.string().uuid(), projectId: z.string().uuid(), environmentId: z.string().uuid(), inputsByScenario: z.record(z.string(), z.record(z.string(), z.json())).default({}) }, false, async ({ id, projectId, environmentId, inputsByScenario }) => {
+      if (projectId !== scope.projectId || environmentId !== scope.environmentId) throw new Error("MCP 연결의 프로젝트·환경이 바뀌었습니다. get_context로 현재 환경을 확인하고 사용자에게 실행 여부를 다시 확인하세요");
+      if ([...this.runs.values()].some(r => r.state === "running")) throw new Error("MCP 테스트가 이미 실행 중입니다");
+      const suite = await findSuite(id);
+      const scenarios = await this.workspace.listScenarios(scope.projectId); guard();
+      if ([...this.runs.values()].some(r => r.state === "running")) throw new Error("MCP 테스트가 이미 실행 중입니다");
+      while (this.runs.size >= 30) this.runs.delete(this.runs.keys().next().value!);
+      const runId = randomUUID();
+      const run: Run = { controller: new AbortController(), state: "running" };
+      this.runs.set(runId, run);
+      void (async () => {
+        const rows: Array<{ id: string; name: string; status: string; result?: unknown; reason?: string }> = [];
+        const invalidated = new Set<string>();
+        for (const scenarioId of suite.scenarioIds) {
+          const item = scenarios.find(s => s.id === scenarioId);
+          const name = item?.name ?? "삭제된 시나리오";
+          if (run.controller.signal.aborted || (suite.onFailure === "stop" && rows.some(row => row.status !== "passed"))) {
+            rows.push({ id: scenarioId, name, status: "skipped" }); continue;
+          }
+          if (!item || item.draft) { rows.push({ id: scenarioId, name, status: "blocked", reason: "시나리오가 삭제되었거나 초안입니다." }); continue; }
+          const parsed = parsedOrUndefined(item.source);
+          const produced = parsed ? producedGlobalNames(parsed) : [];
+          try {
+            if (parsed && usesInvalidatedGlobal(parsed, invalidated)) throw new Error("dependency");
+            const preview = await this.workspace.previewScenario(scope, item.source, item.bindings);
+            run.controller.signal.throwIfAborted();
+            const startedAt = new Date().toISOString();
+            const result = await this.workspace.runScenario(scope, item.source, item.bindings, inputsByScenario[scenarioId] ?? {}, { runId, signal: run.controller.signal });
+            rows.push({ id: scenarioId, name, status: result.status, result: summarize(result, preview.scenario) });
+            if (result.status !== "passed") produced.forEach(value => invalidated.add(value));
+            else produced.forEach(value => invalidated.delete(value));
+            this.hooks.onRun?.({ ...scope, scenarioId, result, preview, bindings: item.bindings, startedAt, completedAt: new Date().toISOString() });
+          } catch (error) {
+            produced.forEach(value => invalidated.add(value));
+            rows.push({ id: scenarioId, name, status: run.controller.signal.aborted ? "cancelled" : "blocked", reason: error instanceof Error && error.message === "dependency" ? "앞 시나리오의 전역변수 생성 실패로 이전 값을 사용하지 않았습니다." : "실행 전 설정 또는 입력을 확인하세요." });
+          }
+          run.result = { suiteId: suite.id, onFailure: suite.onFailure, scenarios: [...rows] };
+        }
+        run.result = { suiteId: suite.id, onFailure: suite.onFailure, scenarios: rows };
+        run.state = run.controller.signal.aborted ? "cancelled" : rows.some(row => row.status === "failed") ? "failed" : rows.some(row => row.status === "blocked") ? "blocked" : "passed";
+      })().catch(() => { run.state = run.controller.signal.aborted ? "cancelled" : "failed"; });
+      return { runId, state: run.state };
+    });
+    tool("get_run", "시나리오 또는 스위트 실행 상태·순서별 결과·검증 요약 조회. 요청/응답 본문, 헤더, 변수값은 외부로 보내지 않습니다.", { runId: z.string().uuid() }, true, async ({ runId }) => {
       const run = this.runs.get(runId); if (!run) throw new Error("실행 기록이 없거나 연결이 종료되었습니다");
       return { runId, state: run.state, result: run.result };
     });
