@@ -104,7 +104,7 @@ export const ResetFlow = ({ bridge, backLabel, onBack, onDone }: Props) => {
               />
             </Field>
             <Field label="닉네임" className="auth-field-gap">
-              <AuthInput mono value={nickname} onValue={edit(setNickname)} placeholder="hyewon" aria-label="닉네임" autoFocus={Boolean(code)} />
+              <AuthInput mono value={nickname} onValue={edit(setNickname)} placeholder="닉네임 입력" aria-label="닉네임" autoFocus={Boolean(code)} />
             </Field>
             <AuthError message={error} />
             <div className="auth-actions">
