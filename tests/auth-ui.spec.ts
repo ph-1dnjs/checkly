@@ -265,6 +265,21 @@ test('새 프로젝트 2단계와 초대코드 복사', async ({ page, context }
   await expect(dock(page)).toBeVisible()
 })
 
+test('설정에서 저장한 웹 주소가 시나리오 화면에 반영된다', async ({ page }) => {
+  await installAuthStub(page, { enabled: true, session: owner })
+  await page.goto('/')
+  await page.getByRole('button', { name: '시나리오 · 편집과 실행' }).click()
+  await dock(page).getByRole('button', { name: '설정' }).click()
+  await openSection(page, '엔드포인트')
+  await page.getByRole('button', { name: '프론트 편집' }).click()
+  await page.getByLabel('dev 주소').fill('https://updated.example.com')
+  await page.getByRole('button', { name: '저장', exact: true }).click()
+  await expect(page.locator('.setting-saved')).toBeVisible()
+  await dock(page).getByRole('button', { name: '시나리오 · 편집과 실행' }).click()
+  await page.getByRole('button', { name: '시나리오 환경' }).click()
+  await expect(page.getByRole('menu', { name: '환경 선택' })).toContainText('updated.example.com')
+})
+
 test.describe('설정 · 계정과 프로젝트', () => {
   test('팀 프로젝트의 비밀값도 팀에 공유: 기본 켬, 끌 때는 행 아래에서 확인 후 끄고 바꾼 사람이 보인다', async ({ page }) => {
     await installAuthStub(page, { enabled: true, session: owner, teamSettings: true })

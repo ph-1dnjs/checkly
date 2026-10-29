@@ -42,6 +42,9 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
     showToast,
   } = useNavigation();
   const environment = useScenarioEnvironment(account?.session.projectId, showToast);
+  useEffect(() => {
+    if (route === "picker" || route === "editor") void environment.refresh();
+  }, [route, account?.session.projectId]);
   const scenarioState = useScenarioState({ projectId: account?.session.projectId, route, showToast, resolveBaseUrl: environment.baseUrlFor, defaultEndpointId: environment.defaultEndpointId });
   const [pickedKeys, setPickedKeys] = useState<Set<string>>(new Set());
   const [confirmDelete, setConfirmDelete] = useState(false);
