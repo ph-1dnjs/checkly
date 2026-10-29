@@ -6,7 +6,7 @@ import { DashboardPage } from "../pages/dashboard/DashboardPage";
 import { ScenarioEditorPage } from "../pages/editor/ScenarioEditorPage";
 import { RunPage } from "../pages/run/RunPage";
 import { SettingsPage } from "../pages/settings/SettingsPage";
-import { ScenarioPickerPage, recordScenarios } from "../pages/picker/ScenarioPickerPage";
+import { ScenarioPickerPage, pickedScenarioGroups, recordScenarios } from "../pages/picker/ScenarioPickerPage";
 import { FormAutomationPage } from "../pages/form-automation/FormAutomationPage";
 import { BottomNavigation } from "../widgets/BottomNavigation";
 import { ScenarioWorkspaceHeaderExtra } from "../widgets/ScenarioWorkspaceHeaderExtra";
@@ -173,7 +173,7 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
   const runEditorContent = () => runScenarios(commitEditorRunSnapshot(), "editor");
   const inWorkspace = isScenarioWorkspaceRoute(route);
   const awaitingManual = Boolean(manual || manualControl || manualResult);
-  const pickedScenarios = records.flatMap(recordScenarios).filter(item => pickedKeys.has(item.id));
+  const pickedScenarios = pickedScenarioGroups(records.map(record => ({ record, scenarios: recordScenarios(record) })), pickedKeys).flatMap(group => group.scenarios);
   const openRequested = (id: string) => {
     if (id === "new") newRecord();
     else if (id === "refresh") { void refreshRecords(true); void environment.refresh(); }

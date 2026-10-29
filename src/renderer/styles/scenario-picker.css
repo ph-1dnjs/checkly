@@ -54,6 +54,13 @@
 .picker-cart-group{position:sticky;top:0;z-index:1;display:flex;align-items:center;gap:9px;height:28px;padding:0 18px;background:#f5f7f8;border-bottom:1px solid #edf0f2}
 .picker-cart-group span{font-family:D2Coding,ui-monospace,monospace;font-size:11px;color:#3d4650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .picker-cart-group b{margin-left:auto;font-family:D2Coding,ui-monospace,monospace;font-size:10px;color:#8a939c;font-weight:400}
+.picker-cart-files{margin:0}
+.picker-cart-file{display:grid;grid-template-columns:minmax(0,1fr);background:#fff}
+.picker-cart .picker-cart-file>.picker-cart-group{grid-area:1/1;padding-left:30px}
+.picker-cart-file>.api-sort-handle{grid-area:1/1;position:sticky;top:0;z-index:2;align-self:start;justify-self:start;display:flex;align-items:center;justify-content:center;width:26px;height:26px;padding:0;border:0;background:transparent;color:#a6aeb5;cursor:grab}
+.picker-cart-file>.api-sort-handle:hover:not(:disabled){color:#14181c}
+.picker-cart-files.is-sorting>.picker-cart-file{transition:transform .18s cubic-bezier(.2,.8,.2,1)}
+@media(prefers-reduced-motion:reduce){.picker-cart-files.is-sorting>.picker-cart-file{transition:none}}
 .picker-cart-item{display:flex;align-items:center;gap:10px;min-height:36px;padding:0 18px;border-bottom:1px solid #f3f5f7}
 .picker-cart-item b{font-family:D2Coding,ui-monospace,monospace;font-size:10.5px;color:#bfc6cc;width:16px;flex:none;font-weight:400;font-variant-numeric:tabular-nums}
 .picker-cart-item>span{font-size:12.5px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#14181c}
