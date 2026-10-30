@@ -103,7 +103,7 @@ create policy "같은 프로젝트" on public.<테이블> for all to authenticat
   - 세션 토큰이 렌더러(webview 포함)에 노출되지 않는다.
 - 세션은 `auth.storage` 어댑터로 `userData`에 저장하고 `safeStorage`로 암호화한다.
 - URL과 anon 키는 빌드 시 주입한다. **service_role 키는 앱에 절대 넣지 않는다**(Edge Function 환경 변수에만).
-- 설정: `.env`의 `CHECKLY_SUPABASE_URL`, `CHECKLY_SUPABASE_ANON_KEY`, `CHECKLY_AUTH_EMAIL_DOMAIN`(기본 `checkly.test`). URL이나 키가 없으면 로그인 없이 기존 로컬 모드로 동작한다.
+- 설정: `.env`의 `CHECKLY_SUPABASE_URL`, `CHECKLY_SUPABASE_ANON_KEY`, `CHECKLY_AUTH_EMAIL_DOMAIN`(기본 `checkly.test`). URL이나 키가 없으면 로그인 없는 로컬 모드로 동작한다(개발·테스트 실행 전용).
 
 | 위치 | 역할 |
 | --- | --- |

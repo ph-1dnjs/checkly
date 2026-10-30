@@ -5,7 +5,7 @@ import type { AuthSession } from "./types";
 
 // main의 다른 기능(API 테스트 저장소 등)이 팀 프로젝트 DB를 쓸 때의 진입점. 렌더러는 bridge.ts를 쓴다.
 
-/** Supabase URL·anon 키가 설정됐는지. false면 기존 로컬 모드로 동작한다. */
+/** Supabase URL·anon 키가 설정됐는지. false면 로그인 없는 로컬 모드(개발·테스트 실행 전용)로 동작한다. */
 export const isSupabaseEnabled = (): boolean => appAuthEnv() !== null;
 
 /** 현재 멤버로 로그인된 클라이언트 하나(로그아웃 상태면 anon). 설정이 없으면 던진다. */

@@ -27,8 +27,18 @@ import type {
 export type AuthEnv = { url: string; anonKey: string; emailDomain: string };
 
 /**
+ * 프로젝트 설정 저장을 감싸는 다른 기능(API 테스트: 시나리오가 쓰는 서버·환경 삭제를 막고, 저장 후 바뀐 이름을 시나리오에 반영).
+ * save 전에 던진 오류는 그 메시지 그대로 화면에 보인다.
+ */
+export type ProjectSettingsGuard = (settings: ProjectSettings, save: () => Promise<void>) => Promise<void>;
+let settingsGuard: ProjectSettingsGuard | undefined;
+export const guardProjectSettings = (guard: ProjectSettingsGuard): void => {
+  settingsGuard = guard;
+};
+
+/**
  * 환경 변수에 CHECKLY_SUPABASE_URL이 있으면(빈 값 포함) 그것을, 없으면 fallback(배포용 앱의 기본 서버)을 쓴다.
- * URL이나 anon 키가 비면 null — 로그인 없이 기존 로컬 모드로 동작한다.
+ * URL이나 anon 키가 비면 null — 로그인 없는 로컬 모드(개발·테스트 실행 전용)로 동작한다.
  */
 export const readAuthEnv = (env: NodeJS.ProcessEnv = process.env, fallback: AuthEnv | null = null): AuthEnv | null => {
   if (env.CHECKLY_SUPABASE_URL === undefined) return fallback;
@@ -423,7 +433,19 @@ export class AuthService implements Omit<AuthBridge, "getConfig" | "onSessionCha
   async saveProjectSettings(settings: ProjectSettings): Promise<ProjectSettings> {
     await this.requireSession();
     const clean = normalizeSettings(settings);
-    await must(this.client.rpc("save_project_settings", { p: toSavePayload(clean, this.known) }));
+    let started = false;
+    const save = async () => {
+      started = true;
+      await must(this.client.rpc("save_project_settings", { p: toSavePayload(clean, this.known) }));
+    };
+    if (!settingsGuard) await save();
+    else {
+      try {
+        await settingsGuard(clean, save);
+      } catch (error) {
+        throw started || !(error instanceof Error) ? error : new AuthFailure(error.message);
+      }
+    }
     return this.getProjectSettings();
   }
 }

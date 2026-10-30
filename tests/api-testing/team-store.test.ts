@@ -2,7 +2,7 @@ import { test, type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createServer } from "node:http";
-import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
@@ -10,6 +10,8 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { ApiWorkspace } from "../../src/app/api-testing/main/workspace";
 import { SpecSync } from "../../src/app/api-testing/main/spec-sync";
 import type { ApiTeamContext } from "../../src/app/api-testing/main/team-store";
+import { fromRows, toSavePayload, type EndpointRow, type EndpointUrlRow, type EnvironmentRow } from "../../src/app/ipc/auth/settings";
+import type { ProjectSettings } from "../../src/app/ipc/auth/types";
 
 const spec = JSON.stringify({ openapi: "3.0.3", info: { title: "팀 명세", version: "1" }, paths: {
   "/items/{id}": { get: { summary: "상품 조회", parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }], responses: { "200": { description: "성공" } } } },
@@ -343,6 +345,57 @@ test("team project: who made·changed scenarios and suites is stamped by the dat
   } finally {
     for (const step of cleanup.reverse()) await Promise.resolve(step()).catch(() => undefined);
     await rm(dirA, { recursive: true, force: true }); await rm(dirB, { recursive: true, force: true });
+  }
+});
+
+test("team project: the settings screen's save renames servers in scenarios and refuses removing one in use", async t => {
+  if (!await needSupabase(t)) return;
+  const cleanup: Array<() => Promise<unknown>> = [];
+  const dir = await mkdtemp(path.join(tmpdir(), "checkly-team-settings-"));
+  try {
+    const team = await member(cleanup);
+    const db = team.client;
+    const workspace = new ApiWorkspace(dir, () => team);
+    const [empty] = await workspace.listProjects();
+    const serverId = randomUUID(), devId = randomUUID();
+    await workspace.saveProject({ ...empty, servers: [{ id: serverId, name: "백엔드" }], environments: [{ id: devId, name: "dev", baseUrls: { [serverId]: "https://dev.api.test" } }] });
+    const scope = { projectId: team.projectId, serverId, environmentId: devId };
+    await workspace.importSpec(scope, spec);
+    await workspace.saveScenario(scope, "id: read\nname: 조회\nserver: 백엔드\nenvironments: [dev]\nsteps:\n  - api: 'GET /items/{id}'\n    pathParams: { id: 1 }\n", {});
+
+    // What the settings screen does: read the rows, change them, save through save_project_settings.
+    const read = async (): Promise<ProjectSettings> => fromRows(
+      (await rows(db, "endpoints")) as EndpointRow[], (await rows(db, "environments")) as EnvironmentRow[], (await rows(db, "endpoint_urls")) as EndpointUrlRow[]);
+    const saveFromScreen = async (change: (settings: ProjectSettings) => ProjectSettings) => {
+      const known = await read();
+      const next = change(structuredClone(known));
+      await workspace.saveTeamSettings({
+        servers: next.endpoints.filter(endpoint => endpoint.kind === "api").map(({ id, name }) => ({ id, name })),
+        environments: next.environments.map(({ id, name }) => ({ id, name })),
+      }, async () => {
+        const { error } = await db.rpc("save_project_settings", { p: toSavePayload(next, known) });
+        if (error) throw error;
+      });
+    };
+
+    await saveFromScreen(settings => ({ ...settings, endpoints: settings.endpoints.map(e => e.id === serverId ? { ...e, name: "메인" } : e), environments: settings.environments.map(e => ({ ...e, name: "develop" })) }));
+    const [renamed] = await workspace.listScenarios(team.projectId);
+    assert.match(renamed.source, /server: 메인/);
+    assert.match(renamed.source, /environments:\s*\n?\s*- develop|environments: \[develop\]/);
+    assert.deepEqual((await workspace.previewScenario({ ...scope }, renamed.source, {})).issues, []);
+
+    await assert.rejects(saveFromScreen(settings => ({ ...settings, endpoints: [], urls: [] })), /시나리오 참조를 먼저 정리하세요: 조회/);
+    assert.deepEqual((await rows(db, "endpoints")).map(row => row.name), ["메인"], "a refused change is not saved");
+    await assert.rejects(saveFromScreen(settings => ({ ...settings, environments: [], urls: [] })), /조회/);
+
+    await workspace.deleteScenario(team.projectId, "read", renamed.updatedAt);
+    await saveFromScreen(settings => ({ ...settings, endpoints: [], urls: [] }));
+    assert.deepEqual(await rows(db, "endpoints"), []);
+    // The removed server's spec on this computer is gone too.
+    assert.deepEqual((await readdir(dir, { recursive: true })).filter(file => file.includes(serverId)), []);
+  } finally {
+    for (const step of cleanup.reverse()) await Promise.resolve(step()).catch(() => undefined);
+    await rm(dir, { recursive: true, force: true });
   }
 });
 

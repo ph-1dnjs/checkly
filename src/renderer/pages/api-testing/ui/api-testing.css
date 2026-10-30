@@ -587,9 +587,6 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 .api-testing-page:has(.api-compose-layout) .api-compose-layout > :is(.api-swagger-renderer,.api-selection-basket,.api-compose-editor) { min-height:0; max-height:none; overflow-y:auto; overscroll-behavior:contain; scrollbar-gutter:stable; }
 .api-testing-page:has(.api-compose-layout) .api-selection-basket { position:static; }
 .api-compose-editor { padding-bottom:0; }
-.api-inline-flow svg { display:block; width:100%; height:auto; margin:8px auto; }
-.api-inline-flow g.node[role=button] { cursor:pointer; }
-.api-inline-flow g.node[role=button]:focus { outline:2px solid var(--ck-color-blue-action); }
 .api-step-description { padding:12px; line-height:1.65; overflow-wrap:anywhere; background:var(--ck-color-surface-hover); }
 .api-step-description table { width:100%; border-collapse:collapse; }
 .api-step-description :is(td,th) { border:1px solid var(--ck-color-line-strong); padding:6px; }

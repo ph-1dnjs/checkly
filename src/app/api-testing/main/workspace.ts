@@ -608,42 +608,84 @@ export class ApiWorkspace {
     return this.mutate(project.id, async () => {
       const store = this.store();
       const previous = (await store.listProjects()).find(p => p.id === project.id);
-      const renames: ScenarioRename[] = [];
-      if (previous) {
-        if (previous.servers.some(old => project.servers.some(next => next.id === old.id && next.name !== old.name))) {
-          for (const item of await this.listScenarios(project.id)) {
-            const scenario = this.parseSource(item.source);
-            let changed = false;
-            const steps = scenario.steps.map(step => {
-              const key = item.bindings[step.server] ?? step.server;
-              const old = previous.servers.find(server => server.id === key || server.name === key);
-              const next = old && project.servers.find(server => server.id === old.id);
-              if (!next) return step;
-              if (step.server !== next.name) changed = true;
-              return { ...step, server: next.name };
-            });
-            if (changed) renames.push({ before: item, after: { ...item, source: stringifyScenario({ ...scenario, steps }, true), bindings: {}, updatedAt: new Date(Math.max(Date.now(), Date.parse(item.updatedAt) + 1)).toISOString() } });
-          }
-        }
-        const removedServers = previous.servers.filter(s => !project.servers.some(n => n.id === s.id));
-        const removedEnvironments = previous.environments.filter(e => !project.environments.some(n => n.id === e.id));
-        if (removedServers.length || removedEnvironments.length) {
-          const scenarios = await this.listScenarios(project.id);
-          const affected = scenarios.filter(item => {
-            if (removedEnvironments.length) return true; // Scenarios are project-wide and can run in every environment.
-            const scenario = this.parseSource(item.source);
-            return scenario.steps.some(step => removedServers.some(s => s.id === (item.bindings[step.server] ?? step.server) || s.name === step.server));
-          });
-          if (affected.length) throw new Error(`시나리오 참조를 먼저 정리하세요: ${affected.map(s => s.name).join(", ")}`);
-          for (const env of previous.environments) {
-            for (const server of previous.servers) if (removedEnvironments.some(e => e.id === env.id) || removedServers.some(s => s.id === server.id)) await this.clearScope({ projectId: project.id, environmentId: env.id, serverId: server.id });
-          }
-        }
-      }
+      const { renames, removed } = previous ? await this.projectChange(previous, project) : { renames: [], removed: [] };
+      for (const scope of removed) await this.clearScope(scope);
       await store.saveProject(project, previous, renames);
       // The team project comes back with its new revision.
       return team ? (await store.listProjects())[0] : project;
     });
+  }
+  /**
+   * Saves the team project's settings from the settings screen (`save`). A server or environment a scenario
+   * still uses cannot be removed; afterwards scenarios follow renamed servers and environments, and removed
+   * ones' local files go. Without sign-in this only runs `save`.
+   */
+  async saveTeamSettings<T>(next: Pick<ApiProject, "servers"> & { environments: Array<{ id: string; name: string }> }, save: () => Promise<T>): Promise<T> {
+    const team = this.teamStore();
+    if (!team) return save();
+    const read = async () => {
+      const [previous] = await team.listProjects();
+      return { previous, project: { ...previous, servers: next.servers, environments: next.environments.map(environment => ({ ...environment, baseUrls: {} })) } };
+    };
+    const same = <R extends { id: string; name: string }>(a: R[], b: R[]) => a.every(old => b.some(item => item.id === old.id && item.name === old.name));
+    const first = await read();
+    // Only addresses or web endpoints changed: nothing in API testing to check or rewrite.
+    if (same(first.previous.servers, first.project.servers) && same(first.previous.environments, first.project.environments)) return save();
+    return this.mutate(team.context.projectId, async () => {
+      const { previous, project } = await read();
+      const { renames, removed } = await this.projectChange(previous, project);
+      const result = await save();
+      await team.renameScenarios(renames);
+      for (const scope of removed) await this.clearScope(scope);
+      return result;
+    });
+  }
+  /**
+   * Scenario rewrites for renamed servers and environments, and the local scopes of removed ones.
+   * Throws while a removed server is used by a step or a removed environment is listed in `environments`.
+   */
+  private async projectChange(previous: ApiProject, project: ApiProject): Promise<{ renames: ScenarioRename[]; removed: ApiScope[] }> {
+    const removedServers = previous.servers.filter(server => !project.servers.some(next => next.id === server.id));
+    const removedEnvironments = previous.environments.filter(environment => !project.environments.some(next => next.id === environment.id));
+    const renamed = <R extends { id: string; name: string }>(before: R[], after: R[]) => before.some(old => after.some(next => next.id === old.id && next.name !== old.name));
+    const renames: ScenarioRename[] = [];
+    const affected: string[] = [];
+    if (removedServers.length || removedEnvironments.length || renamed(previous.servers, project.servers) || renamed(previous.environments, project.environments)) {
+      for (const item of await this.listScenarios(project.id)) {
+        let scenario: Scenario;
+        try { scenario = this.parseSource(item.source); } catch { continue; }
+        const serverOf = (step: Scenario["steps"][number]) => {
+          const key = item.bindings[step.server] ?? step.server;
+          return previous.servers.find(server => server.id === key) ?? previous.servers.find(server => server.name === key);
+        };
+        if (scenario.steps.some(step => removedServers.some(server => server.id === serverOf(step)?.id))
+          || scenario.environments?.some(name => removedEnvironments.some(environment => environment.name === name))) {
+          affected.push(item.name);
+          continue;
+        }
+        let changed = false;
+        const steps = scenario.steps.map(step => {
+          const old = serverOf(step);
+          const next = old && project.servers.find(server => server.id === old.id);
+          if (!next || step.server === next.name) return step;
+          changed = true;
+          return { ...step, server: next.name };
+        });
+        const environments = scenario.environments?.map(name => {
+          const old = previous.environments.find(environment => environment.name === name);
+          const next = old && project.environments.find(environment => environment.id === old.id);
+          if (!next || next.name === name) return name;
+          changed = true;
+          return next.name;
+        });
+        if (changed) renames.push({ before: item, after: { ...item, source: stringifyScenario({ ...scenario, steps, ...(environments ? { environments } : {}) }, true), bindings: {}, updatedAt: new Date(Math.max(Date.now(), Date.parse(item.updatedAt) + 1)).toISOString() } });
+      }
+    }
+    if (affected.length) throw new Error(`시나리오 참조를 먼저 정리하세요: ${affected.join(", ")}`);
+    const removed = previous.environments.flatMap(environment => previous.servers
+      .filter(server => removedEnvironments.some(e => e.id === environment.id) || removedServers.some(s => s.id === server.id))
+      .map(server => ({ projectId: project.id, environmentId: environment.id, serverId: server.id })));
+    return { renames, removed };
   }
   private async scope(input: ApiScope) {
     const s = scopeSchema.parse(input);
