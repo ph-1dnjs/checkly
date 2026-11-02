@@ -4,6 +4,8 @@ import type { NativeInspectorSnapshot, NativeOverride, SimulatorApp, SimulatorDe
 import { subscribe } from '../subscribe'
 
 export const formAutomationBridge = {
+  openFormAutomationDevTools: (webContentsId: number): Promise<void> =>
+    ipcRenderer.invoke('form-automation:open-devtools', webContentsId),
   saveReactNativeModule: (): Promise<string | null> => ipcRenderer.invoke('form-automation:native-save-module'),
   simulatorDevices: (): Promise<SimulatorDevice[]> => ipcRenderer.invoke('form-automation:simulator-devices'),
   simulatorApps: (udid: string): Promise<SimulatorApp[]> => ipcRenderer.invoke('form-automation:simulator-apps', udid),
@@ -33,6 +35,8 @@ export const formAutomationBridge = {
   }): Promise<void> => ipcRenderer.invoke('form-automation:attach-fixture', input),
   captureFormAutomationPage: (): Promise<{ dataUrl: string; size: { width: number; height: number } }> =>
     ipcRenderer.invoke('form-automation:capture-page'),
+  onFormAutomationCaptureShortcut: (callback: () => void): (() => void) =>
+    subscribe('form-automation:devtools-capture-shortcut', callback),
   copyFormAutomationImage: (dataUrl: string): Promise<boolean> =>
     ipcRenderer.invoke('form-automation:copy-image', dataUrl),
   copyFormAutomationText: (text: string): Promise<boolean> =>

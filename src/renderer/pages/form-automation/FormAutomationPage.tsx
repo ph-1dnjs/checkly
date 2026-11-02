@@ -327,6 +327,19 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
 
   const activeWebview = () => webviewRefs.current.get(activeTabIdRef.current) ?? null;
 
+  const openBrowserDevTools = async () => {
+    const webview = activeWebview();
+    if (!webview?.getWebContentsId || !window.electronAPI?.openFormAutomationDevTools) {
+      showToast("개발자 도구는 Electron 앱에서 사용할 수 있습니다.");
+      return;
+    }
+    try {
+      await window.electronAPI.openFormAutomationDevTools(webview.getWebContentsId());
+    } catch (error) {
+      showToast(`개발자 도구 열기 실패: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
+
   const sendGuestConfig = useCallback(() => {
     const detail = { overrides };
     for (const webview of webviewRefs.current.values()) {
@@ -493,6 +506,10 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
     catch (error) { showToast(`화면 캡처 실패: ${error instanceof Error ? error.message : String(error)}`); }
     finally { setCaptureBusy(false); }
   }, [capture, captureBusy, showToast]);
+
+  useEffect(() => window.electronAPI?.onFormAutomationCaptureShortcut?.(() => {
+    void startCapture();
+  }), [startCapture]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -1154,7 +1171,7 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
             onClick={() => void startCapture()}
             aria-label="화면 캡처"
             aria-keyshortcuts="Control+Shift+S Meta+Shift+S"
-            title="화면을 캡처해 주석을 달고 클립보드에 복사 (⌘/Ctrl + Shift + S)"
+            title="개발자 도구가 열려 있으면 모니터 화면 그대로 캡처해 영역 선택 (⌘/Ctrl + Shift + S)"
           >
             <MaterialIcon name="photo_camera" /> {captureBusy ? "캡처 중…" : "화면 캡처"}
             {!captureBusy && <span className="fa-shortcut-hint" aria-hidden="true">⌘/Ctrl ⇧ S</span>}
@@ -1278,6 +1295,9 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
               </select>
             </label>
             <span className="fa-browser-engine-note">Chromium 웹뷰</span>
+            <Button variant="ghost" onClick={openBrowserDevTools} title="현재 탭의 개발자 도구 열기 (HTML·CSS 검사)">
+              <MaterialIcon name="code" /> 개발자 도구
+            </Button>
             <div className="fa-zoom" aria-label="브라우저 화면 배율" title="화면 배율 50–125%">
               <Button variant="ghost" iconOnly aria-label="화면 축소" disabled={zoomPercent <= 50} onClick={() => setZoomPercent((value) => Math.max(50, value - 5))}><MaterialIcon name="remove" /></Button>
               <Button className="fa-zoom-value" title="100%로 초기화" onClick={() => setZoomPercent(100)}>{zoomPercent}%</Button>

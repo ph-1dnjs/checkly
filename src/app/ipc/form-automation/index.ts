@@ -17,7 +17,7 @@ import {
   type FormAutomationFixtureInput,
   type FormAutomationTextInput,
 } from "./formAutomation";
-import { attachFormAutomationWebviews } from "./webview";
+import { attachFormAutomationWebviews, openFormAutomationDevTools } from "./webview";
 import { FormAutomationStorage } from "./storage";
 import type { FormAutomationStorageKey } from "./storageTypes";
 import { NativeInspector } from "./nativeInspector";
@@ -29,6 +29,7 @@ const simulator = new SimulatorService();
 
 export const formAutomationDomain: MainDomain = {
   register: () => {
+    ipcMain.handle("form-automation:open-devtools", (event, id: number) => openFormAutomationDevTools(event.sender, id));
     ipcMain.handle("form-automation:native-save-module", () => saveReactNativeModule());
     ipcMain.handle("form-automation:simulator-devices", () => simulator.devices());
     ipcMain.handle("form-automation:simulator-apps", (_event, udid: string) => simulator.apps(udid));

@@ -1,4 +1,4 @@
-import { session, type BrowserWindow, type WebContents } from "electron";
+import { session, BrowserWindow, webContents, type WebContents } from "electron";
 import { electronOutPath } from "../../paths";
 import { attachReplayGuest } from "../live-session/service";
 
@@ -14,6 +14,61 @@ const safeWebUrl = (value: string, allowBlank = false): boolean => {
   } catch {
     return false;
   }
+};
+
+const devToolsWindows = new Map<number, BrowserWindow>();
+
+export const formAutomationDevToolsFor = (sender: WebContents): BrowserWindow[] =>
+  [...devToolsWindows.entries()]
+    .filter(([id, window]) => !window.isDestroyed() && !window.isMinimized() && window.isVisible()
+      && webContents.fromId(id)?.hostWebContents === sender)
+    .map(([, window]) => window);
+
+export const openFormAutomationDevTools = (sender: WebContents, id: number): void => {
+  const ownerWindow = BrowserWindow.fromWebContents(sender);
+  const guest = Number.isInteger(id) ? webContents.fromId(id) : undefined;
+  if (!ownerWindow || !guest || guest.isDestroyed() || guest.getType() !== "webview"
+    || guest.hostWebContents !== sender || !formAutomationSessions.has(guest.session)) {
+    throw new Error("개발자 도구를 열 브라우저 탭을 찾지 못했습니다.");
+  }
+  const existing = devToolsWindows.get(id);
+  if (existing && !existing.isDestroyed()) {
+    if (existing.isMinimized()) existing.restore();
+    existing.show();
+    existing.focus();
+    return;
+  }
+  // Electron's internal DevTools window does not dispatch before-input-event.
+  // Host the same native DevTools in a BrowserWindow so shortcuts reach us.
+  const devTools = new BrowserWindow({
+    width: 1000,
+    height: 750,
+    show: false,
+    title: "개발자 도구",
+    autoHideMenuBar: true,
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
+  });
+  devToolsWindows.set(id, devTools);
+  devTools.webContents.on("before-input-event", (event, input) => {
+    if (input.type !== "keyDown" || !(input.meta || input.control) || !input.shift || input.alt
+      || (input.code !== "KeyS" && input.key.toLowerCase() !== "s")) return;
+    event.preventDefault();
+    if (input.isAutoRepeat || ownerWindow.isDestroyed() || ownerWindow.webContents.isDestroyed()) return;
+    ownerWindow.webContents.send("form-automation:devtools-capture-shortcut");
+  });
+  const close = () => { if (!devTools.isDestroyed()) devTools.close(); };
+  guest.once("destroyed", close);
+  guest.on("devtools-closed", close);
+  devTools.on("closed", () => {
+    devToolsWindows.delete(id);
+    guest.removeListener("destroyed", close);
+    guest.removeListener("devtools-closed", close);
+    if (!guest.isDestroyed()) guest.closeDevTools();
+  });
+  guest.setDevToolsWebContents(devTools.webContents);
+  guest.openDevTools({ mode: "detach" });
+  devTools.show();
+  devTools.focus();
 };
 
 const configureFormAutomationPopups = (

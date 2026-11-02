@@ -2,8 +2,11 @@ import {
   app,
   BrowserWindow,
   clipboard,
+  desktopCapturer,
   dialog,
   nativeImage,
+  screen,
+  systemPreferences,
   type WebContents,
   webContents,
 } from "electron";
@@ -12,6 +15,7 @@ import path from "node:path";
 import { createFormAutomationWorkbook } from "./formAutomationReport";
 import { isNextInternalNetworkEvent } from "./networkFilter";
 import { failureTrigger } from "../live-session/failure";
+import { formAutomationDevToolsFor } from "./webview";
 
 export type FormAutomationTextInput = {
   webContentsId: number;
@@ -101,6 +105,39 @@ export const exportFormAutomationSessionEvents = async () => {
 export const captureFormAutomationPage = async (sender: WebContents) => {
   const window = BrowserWindow.fromWebContents(sender);
   if (!window || window.isDestroyed()) throw new Error("캡처할 Checkly 창을 찾지 못했습니다.");
+  const devTools = formAutomationDevToolsFor(sender);
+  if (devTools.length) {
+    // Preserve the current window stacking until the monitor has been captured.
+    const focusedTools = devTools.find((tools) => tools.isFocused());
+    const display = screen.getDisplayMatching((focusedTools || window).getBounds());
+    try {
+      if (process.platform === "darwin") {
+        const permission = systemPreferences.getMediaAccessStatus("screen");
+        if (permission === "denied" || permission === "restricted") {
+          throw new Error("시스템 설정 → 개인정보 보호 및 보안 → 화면 및 시스템 오디오 녹음에서 Checkly의 화면 녹화 권한을 허용한 뒤 앱을 다시 실행해 주세요.");
+        }
+      }
+      const sources = await desktopCapturer.getSources({
+        types: ["screen"],
+        thumbnailSize: {
+          width: Math.round(display.size.width * display.scaleFactor),
+          height: Math.round(display.size.height * display.scaleFactor),
+        },
+      });
+      const source = sources.find((item) => item.display_id === String(display.id));
+      if (!source || source.thumbnail.isEmpty()) {
+        throw new Error("모니터 화면을 캡처하지 못했습니다. 화면 녹화 권한과 디스플레이 연결을 확인해 주세요.");
+      }
+      return { dataUrl: source.thumbnail.toDataURL(), size: source.thumbnail.getSize() };
+    } finally {
+      // Only bring the editor forward after freezing the screen, including DevTools.
+      if (!window.isDestroyed()) {
+        if (window.isMinimized()) window.restore();
+        window.show();
+        window.focus();
+      }
+    }
+  }
   const image = await window.webContents.capturePage();
   if (image.isEmpty()) throw new Error("화면 캡처 결과가 비어 있습니다.");
   return { dataUrl: image.toDataURL(), size: image.getSize() };

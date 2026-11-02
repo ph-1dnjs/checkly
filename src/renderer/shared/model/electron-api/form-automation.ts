@@ -3,6 +3,7 @@ import type { FormAutomationStorageKey, FormAutomationStoredState, FormAutomatio
 import type { NativeInspectorSnapshot, NativeOverride, SimulatorApp, SimulatorDevice, SimulatorFrame, SimulatorInput, SimulatorStatus } from "../../../../app/ipc/form-automation/nativeInspectorTypes";
 
 export type FormAutomationApi = {
+  openFormAutomationDevTools: (webContentsId: number) => Promise<void>;
   saveReactNativeModule: () => Promise<string | null>;
   simulatorDevices: () => Promise<SimulatorDevice[]>;
   simulatorApps: (udid: string) => Promise<SimulatorApp[]>;
@@ -34,6 +35,7 @@ export type FormAutomationApi = {
     dataUrl: string;
     size: { width: number; height: number };
   }>;
+  onFormAutomationCaptureShortcut: (callback: () => void) => () => void;
   copyFormAutomationImage: (dataUrl: string) => Promise<boolean>;
   copyFormAutomationText: (text: string) => Promise<boolean>;
   saveFormAutomationSessionEvent: (payload: unknown) => Promise<boolean>;
