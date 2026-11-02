@@ -42,6 +42,7 @@ import {
 import { PageHeader } from "../../shared/ui/PageLayout";
 import { NetworkPanel, OverridePanel } from "./InspectorPanels";
 import { useSharedOpenApi } from "./useSharedOpenApi";
+import { useSplitPaneResize } from "./useSplitPaneResize";
 import { contractForSharedEvent, matchSharedOpenApi } from "./sharedOpenApi";
 import { specForNetworkEvent } from "./networkSpec";
 import { ScreenshotEditor, type ScreenshotCapture } from "./ScreenshotEditor";
@@ -267,6 +268,8 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
   const [draggedTabId, setDraggedTabId] = useState<string | null>(null);
   const [dragOverTab, setDragOverTab] = useState<{ id: string; placeAfter: boolean } | null>(null);
   const [focusMode, setFocusMode] = useState(false);
+  const [splitTabIds, setSplitTabIds] = useState<[string, string] | null>(null);
+  const splitResize = useSplitPaneResize(Boolean(splitTabIds));
   const [inspectorWidth, setInspectorWidth] = useStoredState("checkly-form-inspector-width", 420);
   const [networkListHeight, setNetworkListHeight] = useStoredState("checkly-form-network-list-height", 305);
   const [caseListHeight, setCaseListHeight] = useStoredState<number | null>("checkly-form-case-list-height", null);
@@ -416,16 +419,45 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
     }
   }, [showToast]);
 
+  const showTabInSplit = useCallback((tabId: string) => {
+    const previousId = activeTabIdRef.current;
+    setSplitTabIds((current) => {
+      if (!current || current.includes(tabId)) return current;
+      return current[1] === previousId ? [current[0], tabId] : [tabId, current[1]];
+    });
+  }, []);
+
   const switchBrowserTab = useCallback((tabId: string) => {
     const tab = browserTabsRef.current.find((item) => item.id === tabId);
     if (!tab) return;
+    showTabInSplit(tabId);
+    activeTabIdRef.current = tabId;
     setActiveTabId(tabId);
     setSelectedEvent(null);
     const url = currentWebviewUrl(webviewRefs.current.get(tabId) ?? null, tab.currentPageUrl || tab.url);
     setDraftUrl(url);
     setTargetUrl(url);
     setDiscoveredFields([]);
-  }, [setActiveTabId, setTargetUrl]);
+  }, [setActiveTabId, setTargetUrl, showTabInSplit]);
+
+  const toggleBrowserSplit = () => {
+    if (splitTabIds) {
+      setSplitTabIds(null);
+      return;
+    }
+    const otherTab = browserTabs.find((tab) => tab.id !== activeTab.id);
+    if (otherTab) setSplitTabIds([activeTab.id, otherTab.id]);
+  };
+
+  const selectSplitSession = (paneIndex: number, tabId: string) => {
+    setSplitTabIds((current) => {
+      if (!current) return current;
+      // Choosing the other visible session swaps sides without recreating either guest.
+      if (current[1 - paneIndex] === tabId) return [current[1], current[0]];
+      return paneIndex === 0 ? [tabId, current[1]] : [current[0], tabId];
+    });
+    switchBrowserTab(tabId);
+  };
 
   const addBrowserTab = useCallback((browserIdentity: BrowserIdentity = "chrome") => {
     const items = browserTabsRef.current;
@@ -445,13 +477,15 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
       history: { back: false, forward: false },
     };
     setBrowserTabs((current) => [...current, next]);
+    showTabInSplit(id);
+    activeTabIdRef.current = id;
     setActiveTabId(id);
     setDraftUrl(url);
     setTargetUrl(url);
     setEditingTabId(id);
     setEditingTabName(next.name);
     setDiscoveredFields([]);
-  }, [activeTab?.url, setActiveTabId, setBrowserTabs, setTargetUrl, showToast, targetUrl]);
+  }, [activeTab?.url, setActiveTabId, setBrowserTabs, setTargetUrl, showTabInSplit, showToast, targetUrl]);
 
   const changeBrowserIdentity = (browserIdentity: BrowserIdentity) => {
     updateBrowserTab(activeTab.id, { browserIdentity });
@@ -470,10 +504,12 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
     if (items.length <= 1) return;
     const index = items.findIndex((item) => item.id === tabId);
     const next = items.filter((item) => item.id !== tabId);
+    const remainingPaneId = splitTabIds?.find((id) => id !== tabId);
+    if (splitTabIds?.includes(tabId)) setSplitTabIds(null);
     setBrowserTabs(next);
     webviewRefs.current.delete(tabId);
     if (activeTabIdRef.current === tabId)
-      switchBrowserTab(next[Math.min(index, next.length - 1)].id);
+      switchBrowserTab(remainingPaneId ?? next[Math.min(index, next.length - 1)].id);
   };
 
   const finishRenameBrowserTab = () => {
@@ -557,6 +593,9 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
       const sessionForTab = () => browserTabsRef.current.find((item) => item.id === tabId)
         ?? defaultBrowserSession(browserTabsRef.current[0]?.url || DEFAULT_URL);
       const isActive = () => activeTabIdRef.current === tabId;
+      const focused = () => {
+        if (!isActive() && webview.classList.contains("visible")) switchBrowserTab(tabId);
+      };
       const updateHistory = () => {
         try {
           updateBrowserTab(tabId, {
@@ -637,6 +676,10 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
         void window.electronAPI?.saveFormAutomationSessionEvent?.(payload).catch(() => undefined);
       };
       const message = (event: Event & { channel?: string; args?: unknown[] }) => {
+        if (event.channel === "form-automation:focus") {
+          focused();
+          return;
+        }
         if (event.channel === "form-automation:reload-shortcut") {
           if (isActive()) webview.reload();
           return;
@@ -649,6 +692,7 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
           recordGuestNetworkEvent(event.args?.[0] as Omit<NetworkEvent, "id">, sessionForTab());
       };
       webview.addEventListener("dom-ready", documentReady);
+      webview.addEventListener("focus", focused);
       webview.addEventListener("did-stop-loading", ready);
       webview.addEventListener("did-start-loading", loading);
       webview.addEventListener("did-fail-load", failed);
@@ -658,6 +702,7 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
       cleanups.push(() => {
         window.clearTimeout(discoveryTimer);
         webview.removeEventListener("dom-ready", documentReady);
+        webview.removeEventListener("focus", focused);
         webview.removeEventListener("did-stop-loading", ready);
         webview.removeEventListener("did-start-loading", loading);
         webview.removeEventListener("did-fail-load", failed);
@@ -667,7 +712,7 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
       });
     }
     return () => cleanups.forEach((cleanup) => cleanup());
-  }, [discoverFields, recordGuestNetworkEvent, sendGuestConfig, setTargetUrl, startCapture, tabIds, updateBrowserTab, viewport.width, zoomFactor]);
+  }, [discoverFields, recordGuestNetworkEvent, sendGuestConfig, setTargetUrl, startCapture, switchBrowserTab, tabIds, updateBrowserTab, viewport.width, zoomFactor]);
 
   const currentPageUrl = activeTab?.currentPageUrl || activeTab?.url || targetUrl;
   const currentPageScope = pageScopeFromUrl(currentPageUrl);
@@ -1257,6 +1302,15 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
               })}
             </div>
             <div className="fa-session-create">
+              <Button
+                variant="secondary"
+                aria-pressed={Boolean(splitTabIds)}
+                disabled={browserTabs.length < 2}
+                title={browserTabs.length < 2 ? "세션을 두 개 이상 열면 화면을 분할할 수 있습니다." : "두 세션을 좌우로 나란히 보기"}
+                onClick={toggleBrowserSplit}
+              >
+                <MaterialIcon name="vertical_split" /> {splitTabIds ? "분할 해제" : "화면 분할"}
+              </Button>
               <select
                 aria-label="새 세션 브라우저 식별"
                 title="브라우저 식별 정보만 변경합니다. 모든 웹뷰는 Chromium 엔진으로 동작합니다."
@@ -1322,35 +1376,77 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
               </button>
               <span className="fa-viewport-size">{viewportWidth} × {viewportHeight}</span>
             </>}
-            <span className="fa-viewport-note">{viewport.width ? "반응형 화면 확인" : "브라우저 영역에 맞춰 표시"}</span>
+            <span className="fa-viewport-note">{splitTabIds
+              ? `선택: ${splitTabIds[0] === activeTab.id ? "왼쪽" : "오른쪽"} · 주소창과 검사 패널은 선택한 화면에 적용`
+              : viewport.width ? "반응형 화면 확인" : "브라우저 영역에 맞춰 표시"}</span>
           </div>
 
-          <div className={`fa-browser-surface${viewport.width ? " responsive" : ""}`}>
-            {/* Scale the preview outside the guest to preserve its exact CSS viewport. */}
-            <div className="fa-viewport-frame" style={viewport.width ? { width: viewportWidth * zoomFactor, height: viewportHeight * zoomFactor } : undefined}>
-              {browserTabs.map((tab) => (
-                <webview
-                  className={`fa-webview${tab.id === activeTab.id ? " active" : ""}`}
-                  style={viewport.width ? { width: viewportWidth, height: viewportHeight, transform: `scale(${zoomFactor})`, transformOrigin: "top left" } : undefined}
+          <div
+            className={`fa-browser-panes${splitTabIds ? " split" : ""}${splitResize.resizing ? " resizing" : ""}`}
+            style={splitTabIds ? { gridTemplateColumns: `minmax(0, ${splitResize.ratio}fr) 6px minmax(0, ${1 - splitResize.ratio}fr)` } : undefined}
+          >
+            {browserTabs.map((tab) => {
+              const paneIndex = splitTabIds?.indexOf(tab.id) ?? -1;
+              const visible = splitTabIds ? paneIndex >= 0 : tab.id === activeTab.id;
+              const side = paneIndex < 0 ? tab.name : paneIndex === 0 ? "왼쪽" : "오른쪽";
+              return (
+                <section
                   key={tab.id}
-                  ref={webviewRefFor(tab.id)}
-                  src={tab.url}
-                  partition={browserSessionPartition(tab.id)}
-                  useragent={browserUserAgent(tab.browserIdentity || "electron", navigator.userAgent)}
-                  // React types declare a boolean, but React omits true for this DOM attribute.
-                  // Electron requires the attribute to be present, so emit an empty string.
-                  allowpopups={"" as unknown as boolean}
-                />
-              ))}
-            </div>
-            {activeTab.state === "error" && (
-              <div className="fa-browser-overlay" role="alert">
-                <MaterialIcon name="wifi_off" />
-                <strong>페이지를 불러오지 못했습니다</strong>
-                <span>{urlHost(activeTab.currentPageUrl || activeTab.url)}</span>
-                <Button variant="secondary" onClick={() => activeWebview()?.reload()}><MaterialIcon name="refresh" /> 다시 시도</Button>
-              </div>
-            )}
+                  className={`fa-browser-pane${visible ? " visible" : ""}${tab.id === activeTab.id ? " selected" : ""}${paneIndex === 1 ? " right" : ""}`}
+                  style={{ order: paneIndex * 2 }}
+                  aria-label={splitTabIds && visible ? `${side} 브라우저` : tab.name}
+                >
+                  <div className="fa-pane-toolbar" hidden={!splitTabIds}>
+                    <Button
+                      variant="ghost"
+                      aria-label={`${side} 화면 선택`}
+                      aria-pressed={tab.id === activeTab.id}
+                      onClick={() => switchBrowserTab(tab.id)}
+                    >
+                      <MaterialIcon name={tab.id === activeTab.id ? "radio_button_checked" : "radio_button_unchecked"} />
+                      {side}
+                    </Button>
+                    <select aria-label={`${side} 화면 세션`} value={tab.id} onChange={(event) => selectSplitSession(paneIndex, event.target.value)}>
+                      {browserTabs.map((session) => <option key={session.id} value={session.id}>{session.name}</option>)}
+                    </select>
+                    <span className="fa-pane-url" title={tab.currentPageUrl || tab.url}>{tab.currentPageUrl || tab.url}</span>
+                  </div>
+                  <div className={`fa-browser-surface${viewport.width ? " responsive" : ""}`}>
+                    {/* Keep each guest in the same keyed parent so splitting never reloads its session. */}
+                    <div className="fa-viewport-frame" style={viewport.width ? { width: viewportWidth * zoomFactor, height: viewportHeight * zoomFactor } : undefined}>
+                      <webview
+                        className={`fa-webview${visible ? " visible" : ""}${tab.id === activeTab.id ? " active" : ""}`}
+                        style={viewport.width ? { width: viewportWidth, height: viewportHeight, transform: `scale(${zoomFactor})`, transformOrigin: "top left" } : undefined}
+                        ref={webviewRefFor(tab.id)}
+                        src={tab.url}
+                        partition={browserSessionPartition(tab.id)}
+                        useragent={browserUserAgent(tab.browserIdentity || "electron", navigator.userAgent)}
+                        // React types declare a boolean, but React omits true for this DOM attribute.
+                        // Electron requires the attribute to be present, so emit an empty string.
+                        allowpopups={"" as unknown as boolean}
+                      />
+                    </div>
+                    {tab.state === "error" && (
+                      <div className="fa-browser-overlay" role="alert">
+                        <MaterialIcon name="wifi_off" />
+                        <strong>페이지를 불러오지 못했습니다</strong>
+                        <span>{urlHost(tab.currentPageUrl || tab.url)}</span>
+                        <Button variant="secondary" onClick={() => webviewRefs.current.get(tab.id)?.reload()}><MaterialIcon name="refresh" /> 다시 시도</Button>
+                      </div>
+                    )}
+                  </div>
+                </section>
+              );
+            })}
+            {splitTabIds && <div
+              className="fa-split-resizer"
+              role="separator"
+              tabIndex={0}
+              aria-orientation="vertical"
+              aria-label="분할 화면 너비 조절"
+              title="드래그해 너비 조절 · 더블클릭 반반 · 방향키로 조절"
+              {...splitResize.separatorProps}
+            ><span /></div>}
             {!window.electronAPI && (
               <div className="fa-electron-only" role="note">
                 <b>ELECTRON ONLY</b>

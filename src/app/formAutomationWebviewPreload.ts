@@ -13,6 +13,13 @@ contextBridge.exposeInMainWorld("__CHECKLY_FORM_AUTOMATION__", {
   },
 });
 
+// Guest focus does not bubble through the webview element into the host DOM.
+const notifyInteraction = (event: Event) => {
+  if (event.isTrusted) ipcRenderer.sendToHost("form-automation:focus");
+};
+window.addEventListener("pointerdown", notifyInteraction, true);
+window.addEventListener("focus", notifyInteraction);
+
 window.addEventListener("keydown", (event) => {
   if (
     (event.metaKey || event.ctrlKey)

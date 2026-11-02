@@ -115,7 +115,23 @@
 .fa-zoom { display:flex; flex:none; align-items:center; gap:2px; }
 .fa-zoom .msi { font-size:14px; }
 .fa-zoom .fa-zoom-value { width:42px; color:#17607f; font:10px D2Coding,ui-monospace,monospace; }
-.fa-browser-surface { position:relative; flex:1; min-height:0; background:#f0f3f5; }
+.fa-browser-panes { position:relative; display:grid; grid-template-columns:minmax(0,1fr); flex:1; min-height:0; }
+.fa-browser-panes.split { grid-template-columns:minmax(0,1fr) 6px minmax(0,1fr); }
+.fa-split-resizer { position:relative; order:1; z-index:6; cursor:col-resize; touch-action:none; background:#f0f3f5; border-inline:1px solid #d8dde2; }
+.fa-split-resizer span { position:absolute; top:50%; left:50%; width:2px; height:28px; transform:translate(-50%,-50%); border-radius:4px; background:#8a939c; }
+.fa-split-resizer:hover,.fa-split-resizer:focus-visible,.fa-browser-panes.resizing .fa-split-resizer { background:#edf4fc; outline:1px solid #3d8ce0; }
+.fa-browser-panes.resizing { user-select:none; }
+.fa-browser-panes.resizing webview { pointer-events:none; }
+.fa-browser-panes.resizing::after { position:absolute; inset:0; z-index:5; cursor:col-resize; content:""; }
+.fa-browser-pane { display:none; min-width:0; min-height:0; overflow:hidden; }
+.fa-browser-pane.visible { display:flex; flex-direction:column; }
+.fa-pane-toolbar { display:flex; flex:none; align-items:center; gap:6px; padding:4px 8px; border-bottom:2px solid #e4e7ea; background:#fafbfc; }
+.fa-pane-toolbar[hidden] { display:none; }
+.fa-browser-pane.selected .fa-pane-toolbar { border-bottom-color:#3d8ce0; background:#f5f9fe; }
+.fa-pane-toolbar button { flex:none; }
+.fa-pane-toolbar select { min-width:0; width:140px; max-width:45%; height:28px; padding:0 6px; border:1px solid #d8dde2; border-radius:4px; background:#fff; color:#3d4650; font-size:11px; }
+.fa-pane-url { overflow:hidden; color:#8a939c; font:10px D2Coding,ui-monospace,monospace; text-overflow:ellipsis; white-space:nowrap; }
+.fa-browser-surface { position:relative; flex:1; min-width:0; min-height:0; background:#f0f3f5; }
 /* 로드 실패 · Electron 전용 안내 (Checkly v30 "폼 자동 완성") */
 .fa-browser-overlay { position:absolute; inset:0; z-index:3; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; background:#fafbfc; color:#3d4650; font-size:13px; text-align:center; }
 .fa-browser-overlay > .msi { color:#8a939c; font-size:32px; }
@@ -137,7 +153,7 @@
 .fa-browser-surface.responsive .fa-viewport-frame { position:relative; inset:auto; margin:0 auto; outline:1px solid #d8dde2; background:#fff; }
 @media(max-width:600px) { .fa-viewport-note { display:none; } }
 .fa-webview { position:absolute; inset:0; display:none; width:100%; height:100%; border:0; background:#fff; }
-.fa-webview.active { display:flex; }
+.fa-webview.visible { display:flex; }
 
 .fa-inspector-resizer { position:relative; z-index:2; cursor:col-resize; background:#f5f7f8; border-right:1px solid #e4e7ea; }
 .fa-inspector-resizer:hover { background:#dceaf6; }
