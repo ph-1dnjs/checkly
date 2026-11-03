@@ -98,6 +98,15 @@ test("datetime inputs accept ISO timestamps and resolve now-relative expressions
   assert.throws(() => resolveScenarioDateTimeInputs(scenario, { startAt: 3 }, now), /문자열로 전달/);
 });
 
+test("datetime input defaults persist now-relative expressions and reject defaults on other types", () => {
+  const scenario = parseScenario(`name: 기간 조회\nserver: api\nsteps:\n  - api: GET /events\n    inputs: [{ name: startAt, type: datetime, default: now+3d }]\n    query: { startAt: "{{inputs.startAt}}" }\n`);
+  assert.equal(scenario.steps[0].inputs?.[0].default, "now+3d");
+  assert.match(stringifyScenario(scenario), /default: now\+3d/);
+  assert.deepEqual(parseScenario(stringifyScenario(scenario)), scenario);
+  assert.throws(() => parseScenario(`name: 잘못된 입력\nserver: api\nsteps:\n  - api: GET /events\n    inputs: [{ name: label, type: string, default: now }]\n`), /날짜·시간 입력에서만/);
+  assert.throws(() => parseScenario(`name: 잘못된 시각\nserver: api\nsteps:\n  - api: GET /events\n    inputs: [{ name: startAt, type: datetime, default: tomorrow }]\n`), /ISO 8601 또는 now/);
+});
+
 test("retired syntaxes are rejected with the way to write them now", () => {
   const cases: Array<[string, RegExp]> = [
     [`version: 1\n${source}`, /version은 쓰지 않습니다/],

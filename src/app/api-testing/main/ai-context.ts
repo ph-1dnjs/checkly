@@ -147,7 +147,7 @@ const authorRules = [
   "- 앞 단계 값: {{steps.1.response.body./data/challengeToken}} (1부터 시작하는 단계 번호 + JSON Pointer). 응답 헤더는 {{steps.1.response.header.X-Request-Id}}, 앞 단계 요청값은 {{steps.1.request.body./loginId}}. 항상 앞선 단계만 참조합니다.",
   "- 다른 시나리오와 공유할 값(토큰 등): 저장은 extract: [{pointer: /data/accessToken, target: globals.accessToken}], 사용은 {{globals.accessToken}}. 전역변수 목록에 이미 있는 값은 {{globals.이름}}으로 씁니다.",
   ...arraySelectionAuthorRules,
-  "- 실행 중 사람이 넣어야 하는 값(비밀번호·인증번호·계정): 그 단계에 inputs: [{name: code, label: 인증번호}]를 두고 {{inputs.code}}로 씁니다. 실제 값은 YAML에 쓰지 않습니다. 날짜·시간은 type: datetime으로 선언하고 {{inputs.startAt}}으로 연결합니다.",
+  "- 실행 중 사람이 넣어야 하는 값(비밀번호·인증번호·계정): 그 단계에 inputs: [{name: code, label: 인증번호}]를 두고 {{inputs.code}}로 씁니다. 실제 값은 YAML에 쓰지 않습니다. 날짜·시간은 type: datetime으로 선언하고 {{inputs.startAt}}으로 연결합니다. 매 실행마다 자동 계산할 날짜·시간은 default: now, default: now+3d처럼 저장할 수 있습니다.",
   "- Bearer 인증: 시나리오 또는 단계에 auth: globals.accessToken. auth를 쓰면 Authorization 헤더를 직접 넣지 않습니다. 시나리오 auth는 모든 단계에 적용되므로, 로그인·토큰 재발급처럼 인증 없이 부르는 단계(백엔드 보안 설정에서 확인)는 auth: none. 단계가 응답에서 저장하는 토큰을 그 단계 자신의 인증에 쓰지 않습니다.",
   "- 검증(expect)은 기본으로 넣지 않습니다. HTTP 2xx는 자동으로 확인되므로 그것만으로 충분합니다. 사용자가 특정 값이나 상태 코드를 확인하고 싶다고 말했을 때만 그 확인을 넣고, '/data가 있는지'나 'status 200' 같은 습관성 검증은 넣지 않습니다.",
   "- 검증을 넣을 때: 본문 값은 expect: [{source: body, pointer: /data/status, operator: equals, value: ACTIVE}], 특정 상태 코드는 {source: status, operator: equals, value: 201}(실패 케이스는 404 등). 연산자는 equals·exists·contains. 실행 중 입력처럼 매번 달라지는 값은 기대값에 앞 단계 값을 씁니다: {source: body, pointer: /data/name, operator: equals, value: \"{{steps.1.request.body./name}}\"}. status 검증을 넣으면 그 단계의 2xx 자동 확인은 꺼집니다.",

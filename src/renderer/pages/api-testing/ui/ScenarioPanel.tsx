@@ -15,7 +15,7 @@ import { AiAskButton, AiAskRequest, type AiAskTarget } from "../../../features/a
 import { onLastRunWritten, readLastRun, writeLastRun, type ScenarioLastRun } from "../../../entities/api-testing";
 import { SuitePanel } from "./SuitePanel";
 import { RunInputModal } from "../../../features/api-testing/submit-run-input";
-import { globalProducerScenarios } from "../../../entities/api-testing";
+import { globalProducerScenarioItems } from "../../../entities/api-testing";
 import { AuthorshipLine, ScenarioSidebarTree } from "../../../entities/api-testing";
 import { Icon } from "../../../shared/ui/Icon";
 import { renderSuiteReport, reportFilename, scenarioRunReport } from "../../../../app/api-testing/shared/suite-report";
@@ -479,9 +479,9 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, spe
             const { globals, others } = groupMissingGlobals(preview.executionIssues);
             return <>
               {globals.map(({ name, steps }) => {
-                const producers = globalProducerScenarios(name, saved, preview.scenario.id, scope.environmentId);
+                const producers = globalProducerScenarioItems(name, saved, preview.scenario.id, scope.environmentId);
                 const shown = steps.filter(step => step <= preview.scenario.steps.length);
-                return <li key={name}><code>{name}</code> 값 없음{shown.length > 0 && <> · {shown.map((step, index) => <span key={step}>{index > 0 && "·"}<Button className="api-issue-step-link" aria-label={`${step}단계로 이동`} onClick={() => focusStep(preview.scenario.steps[step - 1].id)}>{step}</Button></span>)}단계</>} <GlobalVariableSetupLink onConfigure={globalAccess.open} name={name} />{producers.length > 0 && <span className="api-scn-notice-hint"> · 이 값을 추출하는 시나리오: {producers.join(", ")}. 먼저 실행한 뒤 다시 확인하세요.</span>}</li>;
+                return <li key={name}><code>{name}</code> 값 없음{shown.length > 0 && <> · {shown.map((step, index) => <span key={step}>{index > 0 && "·"}<Button className="api-issue-step-link" aria-label={`${step}단계로 이동`} onClick={() => focusStep(preview.scenario.steps[step - 1].id)}>{step}</Button></span>)}단계</>} <GlobalVariableSetupLink onConfigure={globalAccess.open} name={name} />{producers.length > 0 && <span className="api-scn-notice-hint"> · 이 값을 추출하는 시나리오: {producers.map((producer, index) => <span key={producer.id}>{index > 0 && ", "}<Button className="api-compose-link" disabled={busy} onClick={() => { if (busy) return; const item = saved.find(scenario => scenario.id === producer.id); if (item) void load(item); }}>{producer.name} 열기</Button></span>)}. 먼저 실행한 뒤 다시 확인하세요.</span>}</li>;
               })}
               {others.map(issue => { const name = issueGlobal(issue); return <li key={issue}>{issue}{name && <> <GlobalVariableSetupLink onConfigure={globalAccess.open} name={name} /></>}</li>; })}
             </>;

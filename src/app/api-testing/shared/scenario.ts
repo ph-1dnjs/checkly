@@ -14,8 +14,16 @@ export const scenarioInputSchema = z.object({
   label: z.string().min(1).max(200).optional(),
   type: z.enum(["string", "number", "boolean", "object", "array", "datetime"]).default("string"),
   required: z.boolean().default(true),
+  /** Re-evaluated at the start of each scenario run; currently only datetime expressions are supported. */
+  default: z.string().optional(),
   sensitive: ignoredSensitive,
-}).strict();
+}).strict().superRefine((input, ctx) => {
+  if (input.default !== undefined && input.type !== "datetime") ctx.addIssue({ code: "custom", path: ["default"], message: "기본값은 날짜·시간 입력에서만 사용할 수 있습니다" });
+  if (input.default !== undefined) {
+    try { resolveDateTimeInput(input.default); }
+    catch { ctx.addIssue({ code: "custom", path: ["default"], message: "기본값은 ISO 8601 또는 now, now+3d, now-2h 형식이어야 합니다" }); }
+  }
+});
 export type ScenarioInput = z.infer<typeof scenarioInputSchema>;
 export type ScenarioInputRequest = ScenarioInput & {
   runId: string;
