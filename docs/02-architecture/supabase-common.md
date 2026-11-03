@@ -194,7 +194,7 @@ API 테스트 테이블 (`20261007000200_api_testing.sql`, `20261009000000_api_s
 
 | 테이블 | 키 | 내용 |
 | --- | --- | --- |
-| `api_scenarios`, `api_suites` | (project_id, id) | 시나리오 YAML·묶음 순서. 작성 정보: `created_at`·`created_by`(트리거가 추가 때 `now()`·`auth.uid()`로 채우고 수정 때 원래 값으로 되돌림 → 다른 사람을 작성자로 꾸밀 수 없음), `updated_at`·`updated_by`(`touch()`). |
+| `api_scenarios`, `api_suites` | (project_id, id) | 시나리오 YAML·묶음 순서·스위트 설명(`description`, 최대 5,000자). 작성 정보: `created_at`·`created_by`(트리거가 추가 때 `now()`·`auth.uid()`로 채우고 수정 때 원래 값으로 되돌림 → 다른 사람을 작성자로 꾸밀 수 없음), `updated_at`·`updated_by`(`touch()`). |
 | `api_settings` | project_id | `share_secrets`(기본 true). 멤버 누구나 바꾸고 `updated_by`가 남음 |
 | `api_spec_accounts` | (endpoint_id, environment_id), 복합 FK·cascade | 명세 주소의 Basic 계정(`spec_url`, `username`, `password` 평문). 추가·수정 RLS는 `api_shares_secrets()`가 참일 때만 |
 

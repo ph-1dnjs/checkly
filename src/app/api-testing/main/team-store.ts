@@ -17,11 +17,11 @@ type AuthorshipRow = { created_at: string; created_by: string | null; updated_by
 type ScenarioRow = AuthorshipRow & { id: string; name: string; source: string; draft: boolean; group_path: string[] | null; tags: string[] | null; kept_titles: SavedApiScenario["keptTitles"] | null; updated_at: string };
 /** A spec doc's Basic-auth account shared with the team (only while secrets are shared). */
 export type TeamSpecAccount = { url: string; username: string; password: string };
-type SuiteRow = AuthorshipRow & { id: string; name: string; scenario_ids: string[]; on_failure: "stop" | "continue"; group_path: string[] | null; tags: string[] | null; updated_at: string };
+type SuiteRow = AuthorshipRow & { id: string; name: string; description: string | null; scenario_ids: string[]; on_failure: "stop" | "continue"; group_path: string[] | null; tags: string[] | null; updated_at: string };
 
 const authorshipColumns = "created_at, created_by, updated_by";
 const scenarioColumns = `id, name, source, draft, group_path, tags, kept_titles, updated_at, ${authorshipColumns}`;
-const suiteColumns = `id, name, scenario_ids, on_failure, group_path, tags, updated_at, ${authorshipColumns}`;
+const suiteColumns = `id, name, description, scenario_ids, on_failure, group_path, tags, updated_at, ${authorshipColumns}`;
 /** Shown for a creator or editor who is no longer a member of the project. */
 export const LEFT_MEMBER = "(나간 멤버)";
 /** null: the member list could not be read, so names are left out rather than shown as left. */
@@ -48,10 +48,10 @@ const fromScenarioRow = (row: ScenarioRow, names: Names): SavedApiScenario => ({
 // created_* are never sent: the database stamps them.
 const scenarioRow = (item: SavedApiScenario) => ({ id: item.id, name: item.name, source: item.source, draft: item.draft ?? false, group_path: item.groupPath ?? null, tags: item.tags ?? null, kept_titles: item.keptTitles ?? null });
 const fromSuiteRow = (row: SuiteRow, names: Names): SavedApiSuite => ({
-  id: row.id, name: row.name, scenarioIds: row.scenario_ids, onFailure: row.on_failure, updatedAt: row.updated_at,
+  id: row.id, name: row.name, ...(row.description ? { description: row.description } : {}), scenarioIds: row.scenario_ids, onFailure: row.on_failure, updatedAt: row.updated_at,
   ...(row.group_path ? { groupPath: row.group_path } : {}), ...(row.tags ? { tags: row.tags } : {}), ...fromAuthorshipRow(row, names),
 });
-const suiteRow = (suite: SavedApiSuite) => ({ id: suite.id, name: suite.name, scenario_ids: suite.scenarioIds, on_failure: suite.onFailure, group_path: suite.groupPath ?? null, tags: suite.tags ?? null });
+const suiteRow = (suite: SavedApiSuite) => ({ id: suite.id, name: suite.name, description: suite.description ?? null, scenario_ids: suite.scenarioIds, on_failure: suite.onFailure, group_path: suite.groupPath ?? null, tags: suite.tags ?? null });
 /** "<serverId> <METHOD path>" ⇄ (endpoint_id, operation). */
 const splitDocKey = (key: string) => { const space = key.indexOf(" "); return { endpoint_id: key.slice(0, space), operation: key.slice(space + 1) }; };
 

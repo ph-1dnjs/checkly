@@ -91,7 +91,7 @@ export type SavedApiScenario = ApiAuthorship & { id: string; name: string; sourc
  * "file": this computer only, when no Supabase is configured (tests and development).
  */
 export type ApiStorageInfo = { mode: "team"; projectCode: string } | { mode: "signed-out" } | { mode: "file" };
-export type SavedApiSuite = ApiAuthorship & { id: string; name: string; scenarioIds: string[]; onFailure: "stop" | "continue"; updatedAt: string; groupPath?: string[]; tags?: string[] };
+export type SavedApiSuite = ApiAuthorship & { id: string; name: string; description?: string; scenarioIds: string[]; onFailure: "stop" | "continue"; updatedAt: string; groupPath?: string[]; tags?: string[] };
 export type ApiSidebarMetadata = { groupPath?: string[]; tags?: string[] };
 export type ApiScenarioPreview = { scenario: Scenario; issues: string[]; executionIssues?: string[] };
 /** A saved scenario with steps whose API is gone from the current specs; steps read "label (METHOD path)". */

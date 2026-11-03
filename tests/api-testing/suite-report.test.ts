@@ -80,7 +80,8 @@ test("suite persistence validates order, revision and referenced scenarios", asy
     await workspace.importSpec({ projectId, serverId, environmentId }, JSON.stringify({ openapi: "3.0.3", info: { title: "API", version: "1" }, paths: { "/health": { get: { responses: { "200": { description: "ok" } } } } } }));
     const source = `id: health\nname: 상태 조회\nserver: main\nsteps:\n  - api: GET /health\n`;
     await workspace.saveScenario({ projectId, environmentId }, source, {});
-    const suite = await workspace.saveSuite(projectId, { id: randomUUID(), name: "기본 점검", scenarioIds: ["health"], onFailure: "stop" });
+    const suite = await workspace.saveSuite(projectId, { id: randomUUID(), name: "기본 점검", description: "로그인 시나리오를 먼저 실행하세요.", scenarioIds: ["health"], onFailure: "stop" });
+    assert.equal((await new ApiWorkspace(directory).listSuites(projectId))[0].description, "로그인 시나리오를 먼저 실행하세요.");
     assert.deepEqual(await new ApiWorkspace(directory).listSuites(projectId), [suite]);
     const repeated = await workspace.saveSuite(projectId, { id: suite.id, name: suite.name, scenarioIds: ["health", "health"], onFailure: "stop" }, suite.updatedAt);
     assert.deepEqual((await new ApiWorkspace(directory).listSuites(projectId))[0].scenarioIds, ["health", "health"]);

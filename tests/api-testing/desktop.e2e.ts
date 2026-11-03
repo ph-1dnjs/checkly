@@ -736,6 +736,8 @@ process.stdin.on("data", chunk => {
     await page.getByRole("button", { name: "실행", exact: true }).click();
     const suiteResult = page.getByRole("region", { name: "스위트 실행 결과" });
     await expect(suiteResult).toContainText("실행 결과 · 통과");
+    await expect(page.getByRole("region", { name: "스위트 구성" }).getByRole("region", { name: "스위트 실행 결과" })).toBeVisible();
+    await expect(suiteResult.locator(".api-suite-view-list > li")).toHaveCount(2);
     await suiteResult.locator("summary").first().click();
     await expect(suiteResult).toContainText("✓ HTTP 상태 2xx (자동 확인)");
     // Save through the actual native report IPC and check the file, not just the render helper.
@@ -745,6 +747,10 @@ process.stdin.on("data", chunk => {
     }, suiteReportFile);
     await suiteResult.getByRole("button", { name: "HTML 리포트 받기", exact: true }).click();
     await expect.poll(() => readFile(suiteReportFile, "utf8").catch(() => "")).toContain("<!doctype html>");
+    await page.getByRole("button", { name: /AI 재사용 흐름/ }).click();
+    await expect(page.getByRole("region", { name: "스위트 실행 결과" })).toHaveCount(0);
+    await page.getByRole("button", { name: /AI 상점 흐름/ }).click();
+    await expect(page.getByRole("region", { name: "스위트 실행 결과" })).toContainText("실행 결과 · 통과");
     const suiteReportHtml = await readFile(suiteReportFile, "utf8");
     expect(suiteReportHtml).toContain("AI 상점 흐름");
     expect(suiteReportHtml).toContain("POST /login");

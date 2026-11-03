@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { bindingUseLocations, pruneUnusedBrokenBindings, parseScenario, stringifyScenario, ScenarioFormatError } from "../../src/app/api-testing/shared/scenario";
+import { bindingUseLocations, matchesScenarioInputType, pruneUnusedBrokenBindings, parseScenario, resolveDateTimeInput, resolveScenarioDateTimeInputs, stringifyScenario, ScenarioFormatError } from "../../src/app/api-testing/shared/scenario";
 
 const source = `name: 로그인
 server: backend
@@ -77,6 +77,25 @@ test("step inputs are written and read as {{inputs.name}} and must be declared f
   assert.doesNotMatch(exported, /vars\./);
   assert.deepEqual(parseScenario(exported), scenario);
   assert.throws(() => parseScenario(yaml.replace("{{inputs.code}}", "{{inputs.pin}}")), /inputs에 pin을 정의하세요/);
+});
+
+test("datetime inputs accept ISO timestamps and resolve now-relative expressions to UTC", () => {
+  const now = new Date("2026-11-03T00:00:00.000Z");
+  assert.equal(resolveDateTimeInput("now", now), "2026-11-03T00:00:00.000Z");
+  assert.equal(resolveDateTimeInput("now + 3d", now), "2026-11-06T00:00:00.000Z");
+  assert.equal(resolveDateTimeInput("now-2h", now), "2026-11-02T22:00:00.000Z");
+  assert.equal(resolveDateTimeInput("2026-11-03T09:00:00+09:00", now), "2026-11-03T00:00:00.000Z");
+  assert.equal(matchesScenarioInputType("2026-11-03T00:00:00.000Z", "datetime"), true);
+  assert.equal(matchesScenarioInputType("now+3d", "datetime"), false);
+  assert.throws(() => resolveDateTimeInput("tomorrow", now), /ISO 8601|now/);
+  assert.throws(() => resolveDateTimeInput("now+2w", now), /ISO 8601|now/);
+  const scenario = parseScenario(`name: 기간 조회\nserver: api\nsteps:\n  - name: 검색\n    api: GET /events\n    inputs: [{ name: startAt, label: 시작 시각, type: datetime }]\n    query: { startAt: "{{inputs.startAt}}" }\n`);
+  assert.equal(scenario.steps[0].inputs?.[0].type, "datetime");
+  assert.match(stringifyScenario(scenario), /type: datetime/);
+  assert.deepEqual(resolveScenarioDateTimeInputs(scenario, { startAt: "now+3d", ordinary: "now+3d" }, now), {
+    startAt: "2026-11-06T00:00:00.000Z", ordinary: "now+3d",
+  });
+  assert.throws(() => resolveScenarioDateTimeInputs(scenario, { startAt: 3 }, now), /문자열로 전달/);
 });
 
 test("retired syntaxes are rejected with the way to write them now", () => {
