@@ -81,21 +81,38 @@ test("step inputs are written and read as {{inputs.name}} and must be declared f
 
 test("datetime inputs accept ISO timestamps and resolve now-relative expressions to UTC", () => {
   const now = new Date("2026-11-03T00:00:00.000Z");
-  assert.equal(resolveDateTimeInput("now", now), "2026-11-03T00:00:00.000Z");
-  assert.equal(resolveDateTimeInput("now + 3d", now), "2026-11-06T00:00:00.000Z");
-  assert.equal(resolveDateTimeInput("now-2h", now), "2026-11-02T22:00:00.000Z");
-  assert.equal(resolveDateTimeInput("2026-11-03T09:00:00+09:00", now), "2026-11-03T00:00:00.000Z");
-  assert.equal(matchesScenarioInputType("2026-11-03T00:00:00.000Z", "datetime"), true);
+  assert.equal(resolveDateTimeInput("now", now, "iso"), "2026-11-03T00:00:00.000Z");
+  assert.equal(resolveDateTimeInput("now + 3d", now, "iso"), "2026-11-06T00:00:00.000Z");
+  assert.equal(resolveDateTimeInput("now-2h", now, "iso"), "2026-11-02T22:00:00.000Z");
+  assert.equal(resolveDateTimeInput("2026-11-03T09:00:00+09:00", now, "iso"), "2026-11-03T00:00:00.000Z");
+  assert.equal(matchesScenarioInputType("2026-11-03T00:00:00.000Z", "datetime", "iso"), true);
   assert.equal(matchesScenarioInputType("now+3d", "datetime"), false);
   assert.throws(() => resolveDateTimeInput("tomorrow", now), /ISO 8601|now/);
   assert.throws(() => resolveDateTimeInput("now+2w", now), /ISO 8601|now/);
-  const scenario = parseScenario(`name: 기간 조회\nserver: api\nsteps:\n  - name: 검색\n    api: GET /events\n    inputs: [{ name: startAt, label: 시작 시각, type: datetime }]\n    query: { startAt: "{{inputs.startAt}}" }\n`);
+  const scenario = parseScenario(`name: 기간 조회\nserver: api\nsteps:\n  - name: 검색\n    api: GET /events\n    inputs: [{ name: startAt, label: 시작 시각, type: datetime, datetimeFormat: iso }]\n    query: { startAt: "{{inputs.startAt}}" }\n`);
   assert.equal(scenario.steps[0].inputs?.[0].type, "datetime");
   assert.match(stringifyScenario(scenario), /type: datetime/);
   assert.deepEqual(resolveScenarioDateTimeInputs(scenario, { startAt: "now+3d", ordinary: "now+3d" }, now), {
     startAt: "2026-11-06T00:00:00.000Z", ordinary: "now+3d",
   });
   assert.throws(() => resolveScenarioDateTimeInputs(scenario, { startAt: 3 }, now), /문자열로 전달/);
+});
+
+test("datetime inputs can resolve to zone-less local timestamps for LocalDateTime APIs", () => {
+  const now = new Date("2026-11-03T06:48:42.694Z");
+  const localNow = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}T${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}.${String(now.getMilliseconds()).padStart(3, "0")}`;
+  assert.equal(resolveDateTimeInput("now", now), localNow);
+  assert.equal(resolveDateTimeInput("now+3d", now, "local").endsWith("Z"), false);
+  assert.equal(matchesScenarioInputType("2026-11-03T15:48:42.694", "datetime", "local"), true);
+  assert.equal(matchesScenarioInputType("2026-11-03T15:48:42.694", "datetime"), true);
+  assert.equal(matchesScenarioInputType("2026-11-03T06:48:42.694Z", "datetime", "local"), false);
+  assert.equal(resolveDateTimeInput("now+3d", now).endsWith("Z"), false);
+  const scenario = parseScenario(`name: 기간 조회\nserver: api\nsteps:\n  - api: GET /events\n    inputs: [{ name: startAt, type: datetime, datetimeFormat: local, default: now }]\n    query: { startAt: "{{inputs.startAt}}" }\n`);
+  assert.equal(scenario.steps[0].inputs?.[0].datetimeFormat, "local");
+  assert.match(stringifyScenario(scenario), /datetimeFormat: local/);
+  const resolved = resolveScenarioDateTimeInputs(scenario, { startAt: "now" }, now).startAt;
+  assert.equal(typeof resolved, "string");
+  assert.equal((resolved as string).endsWith("Z"), false);
 });
 
 test("datetime input defaults persist now-relative expressions and reject defaults on other types", () => {

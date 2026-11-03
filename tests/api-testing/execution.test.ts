@@ -147,7 +147,7 @@ test("datetime input defaults are evaluated at scenario start without prompting"
   try {
     const scenario = scenarioSchema.parse({ version: 1, id: "date-default", name: "기간 조회", steps: [{
       id: "read", name: "조회", server: "api", api: { method: "GET", path: "/events" },
-      inputs: [{ name: "startAt", type: "datetime", default: "now+3d" }],
+      inputs: [{ name: "startAt", type: "datetime", datetimeFormat: "local", default: "now+3d" }],
       request: { query: { at: "{{vars.startAt}}" } },
     }] });
     let prompts = 0;
@@ -164,6 +164,7 @@ test("datetime input defaults are evaluated at scenario start without prompting"
     assert.equal(prompts, 0);
     assert.equal(seen.length, 2);
     for (const [index, value] of seen.entries()) {
+      assert.doesNotMatch(value, /Z$/);
       const timestamp = Date.parse(value);
       const lower = index === 0 ? before : afterFirst;
       const upper = index === 0 ? afterFirst : afterSecond;

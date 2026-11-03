@@ -209,7 +209,7 @@ export class ApiRunner {
             else if (Object.hasOwn(context.inputs, input.name)) value = context.inputs[input.name];
             else if (Object.hasOwn(context.globals, input.name)) value = context.globals[input.name];
             if (!isProvidedScenarioInput(value) && input.type === "datetime" && input.default !== undefined)
-              value = resolveDateTimeInput(input.default, scenarioStartedAt);
+              value = resolveDateTimeInput(input.default, scenarioStartedAt, input.datetimeFormat);
             if (!isProvidedScenarioInput(value)) {
               const waitStarted = Date.now();
               value = await waitForScenarioInput(options, {
@@ -226,7 +226,7 @@ export class ApiRunner {
             inputResults.push({ name: input.name, provided });
             if (!provided) {
               if (input.required) throw new MissingValue(`필수 실행 입력 누락: ${input.name}`);
-            } else if (!matchesScenarioInputType(value, input.type)) {
+            } else if (!matchesScenarioInputType(value, input.type, input.datetimeFormat)) {
               throw new MissingValue(`실행 입력 타입 오류: ${input.name} (${scenarioInputType(value)})`);
             } else {
               context.vars[input.name] = structuredClone(value!);

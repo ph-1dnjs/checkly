@@ -212,7 +212,7 @@ export function registerApiTesting() {
     const pending = pendingInputs.get(submission.requestId);
     if (!pending || pending.sender !== event.sender || !sameInputScope(pending.scope, scope) || pending.request.runId !== submission.runId || pending.request.stepId !== submission.stepId || pending.request.name !== submission.name) throw new Error("실행 중인 입력 요청이 아닙니다");
     if (pending.request.required && !isProvidedScenarioInput(submission.value)) throw new Error("필수 입력값을 입력하세요");
-    if (isProvidedScenarioInput(submission.value) && !matchesScenarioInputType(submission.value, pending.request.type)) throw new Error("입력 형식이 설정된 타입과 다릅니다");
+    if (isProvidedScenarioInput(submission.value) && !matchesScenarioInputType(submission.value, pending.request.type, pending.request.datetimeFormat)) throw new Error("입력 형식이 설정된 타입과 다릅니다");
     clearTimeout(pending.timeout); event.sender.removeListener("destroyed", pending.onDestroyed);
     pendingInputs.delete(submission.requestId); pending.resolve(submission.value);
   });
