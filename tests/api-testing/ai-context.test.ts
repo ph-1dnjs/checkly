@@ -41,6 +41,7 @@ test("AI guide lists every API, writes schemas to a file, and leaks no values, U
     assert.ok(text.includes("suite: {name") && text.includes("{{steps.1.response.body./data/challengeToken}}"));
     // Inputs use {{inputs.x}}; extracted values can be reused via vars.
     assert.ok(text.includes("{{inputs.code}}") && text.includes("target: globals.accessToken"));
+    assert.ok(text.includes("default: now") && text.includes("default: now+3d") && text.includes("시나리오 시작 때 계산"));
     assert.ok(text.includes("target: vars.product1") && text.includes("{{vars.product1}}"));
     for (const legacy of ["valueBindings", "operationId", "request:"]) assert.equal(text.includes(legacy), false, legacy);
     const narrowed = await workspace.buildAiPrompt({ ...request, tags: ["missing-tag"] }).catch((error: Error) => error.message);

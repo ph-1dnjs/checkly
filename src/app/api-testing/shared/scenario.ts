@@ -20,7 +20,10 @@ export const scenarioInputSchema = z.object({
 }).strict().superRefine((input, ctx) => {
   if (input.default !== undefined && input.type !== "datetime") ctx.addIssue({ code: "custom", path: ["default"], message: "기본값은 날짜·시간 입력에서만 사용할 수 있습니다" });
   if (input.default !== undefined) {
-    try { resolveDateTimeInput(input.default); }
+    try {
+      if (!/^now(?:\s*([+-])\s*(\d+)\s*([smhd]))?$/i.test(input.default.trim())) throw new Error("relative expression required");
+      resolveDateTimeInput(input.default);
+    }
     catch { ctx.addIssue({ code: "custom", path: ["default"], message: "기본값은 ISO 8601 또는 now, now+3d, now-2h 형식이어야 합니다" }); }
   }
 });

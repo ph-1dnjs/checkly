@@ -264,7 +264,7 @@ export class ApiMcpService {
       await this.workspace.deleteScenario(scope.projectId, id, expectedUpdatedAt);
       return { id, deleted: true };
     });
-    tool("run_scenario", "저장된 시나리오를 현재 허용 환경에서 실행. projectId·environmentId는 get_context에서 확인한 값이며 현재 연결과 다르면 실행하지 않습니다. 실행 ID를 즉시 반환. 실제 API 데이터가 변경될 수 있습니다. 필요한 입력은 inputs로 제공하세요. datetime 입력은 ISO 8601 또는 now, now+3d, now-2h 형식을 지원합니다.", { id: z.string(), projectId: z.string().uuid(), environmentId: z.string().uuid(), inputs: z.record(z.string(), z.json()).default({}) }, false, async ({ id, projectId, environmentId, inputs }) => {
+    tool("run_scenario", "저장된 시나리오를 현재 허용 환경에서 실행. projectId·environmentId는 get_context에서 확인한 값이며 현재 연결과 다르면 실행하지 않습니다. 실행 ID를 즉시 반환. 실제 API 데이터가 변경될 수 있습니다. 필요한 입력은 inputs로 제공하세요. datetime 입력은 ISO 8601 또는 now, now+3d, now-2h 형식을 지원하며, 시나리오에 저장한 datetime 기본값도 실행 때 자동 계산합니다. 실행 요청에서 전달한 입력값은 저장 기본값보다 우선합니다.", { id: z.string(), projectId: z.string().uuid(), environmentId: z.string().uuid(), inputs: z.record(z.string(), z.json()).default({}) }, false, async ({ id, projectId, environmentId, inputs }) => {
       // The stdio adapter follows the latest grant, so pin the run to the environment the AI was working against.
       if (projectId !== scope.projectId || environmentId !== scope.environmentId) throw new Error("MCP 연결의 프로젝트·환경이 바뀌었습니다. get_context로 현재 환경을 확인하고 사용자에게 실행 여부를 다시 확인하세요");
       if ([...this.runs.values()].some(r => r.state === "running")) throw new Error("MCP 테스트가 이미 실행 중입니다");
@@ -287,7 +287,7 @@ export class ApiMcpService {
         .catch(() => { run.state = run.controller.signal.aborted ? "cancelled" : "failed"; run.result = { message: "실행하지 못했습니다. validate_scenario로 명세·변수·입력을 확인하고, 앱에서 다른 실행이 진행 중인지 확인하세요." }; });
       return { runId, state: run.state };
     });
-    tool("run_suite", "저장된 스위트를 순서대로 실행하고 runId 반환. projectId·environmentId는 get_context의 값. inputsByScenario는 시나리오 ID별 입력이며 datetime 입력은 ISO 8601 또는 now, now+3d, now-2h 형식을 지원합니다. 실패 시 저장된 stop/continue 정책을 따르며 자동 정리는 보장하지 않습니다.", { id: z.string().uuid(), projectId: z.string().uuid(), environmentId: z.string().uuid(), inputsByScenario: z.record(z.string(), z.record(z.string(), z.json())).default({}) }, false, async ({ id, projectId, environmentId, inputsByScenario }) => {
+    tool("run_suite", "저장된 스위트를 순서대로 실행하고 runId 반환. projectId·environmentId는 get_context의 값. inputsByScenario는 시나리오 ID별 입력이며 datetime 입력은 ISO 8601 또는 now, now+3d, now-2h 형식을 지원하며, 시나리오에 저장한 datetime 기본값도 실행 때 자동 계산합니다. 실행 요청에서 전달한 입력값은 저장 기본값보다 우선합니다. 실패 시 저장된 stop/continue 정책을 따르며 자동 정리는 보장하지 않습니다.", { id: z.string().uuid(), projectId: z.string().uuid(), environmentId: z.string().uuid(), inputsByScenario: z.record(z.string(), z.record(z.string(), z.json())).default({}) }, false, async ({ id, projectId, environmentId, inputsByScenario }) => {
       if (projectId !== scope.projectId || environmentId !== scope.environmentId) throw new Error("MCP 연결의 프로젝트·환경이 바뀌었습니다. get_context로 현재 환경을 확인하고 사용자에게 실행 여부를 다시 확인하세요");
       if ([...this.runs.values()].some(r => r.state === "running")) throw new Error("MCP 테스트가 이미 실행 중입니다");
       const suite = await findSuite(id);

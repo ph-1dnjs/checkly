@@ -562,13 +562,15 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 .api-input-settings-grid { display:grid; grid-template-columns:minmax(0,1fr) auto auto; align-items:end; gap:10px 16px; }
 .api-input-settings-grid > label:first-child { min-width:0; margin:0; }
 .api-input-settings-grid .api-check-row { align-self:end; margin:0 0 6px; white-space:nowrap; }
+.api-datetime-function-settings { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; }
+.api-datetime-function-settings > label { min-width:0; margin:0; }
 .api-value-preview { display:flex; align-items:center; flex-wrap:wrap; gap:8px; padding:10px 12px; background:var(--ck-color-surface-subtle); }
 .api-value-preview > small { color:var(--api-muted); font-size:10px; line-height:1.5; }
 .api-value-preview code { color:var(--api-primary); }
 .api-value-advanced { border-top:1px solid var(--api-border); }
 .api-value-advanced > summary { padding-top:10px; color:var(--api-primary); font-size:11px; font-weight:600; }
 .api-value-advanced > label { margin-top:10px; }
-@media(max-width:700px) { .api-value-modal-backdrop { align-items:end; padding:0; } .api-value-modal { width:100%; max-height:88dvh; border-bottom:0; border-radius:var(--ck-dim-radius-base) var(--ck-dim-radius-base) 0 0; padding:16px; } .api-input-settings-grid { grid-template-columns:1fr; align-items:start; } .api-input-settings-grid .api-check-row { align-self:start; margin:0; } }
+@media(max-width:700px) { .api-value-modal-backdrop { align-items:end; padding:0; } .api-value-modal { width:100%; max-height:88dvh; border-bottom:0; border-radius:var(--ck-dim-radius-base) var(--ck-dim-radius-base) 0 0; padding:16px; } .api-input-settings-grid { grid-template-columns:1fr; align-items:start; } .api-input-settings-grid .api-check-row { align-self:start; margin:0; } .api-datetime-function-settings { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 
 /* Keep the host surface white, while Swagger UI owns the documentation styling. */
 .content:has(.api-testing-page) { width:min(1800px,100%); max-width:1800px; }

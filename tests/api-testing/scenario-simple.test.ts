@@ -105,6 +105,7 @@ test("datetime input defaults persist now-relative expressions and reject defaul
   assert.deepEqual(parseScenario(stringifyScenario(scenario)), scenario);
   assert.throws(() => parseScenario(`name: 잘못된 입력\nserver: api\nsteps:\n  - api: GET /events\n    inputs: [{ name: label, type: string, default: now }]\n`), /날짜·시간 입력에서만/);
   assert.throws(() => parseScenario(`name: 잘못된 시각\nserver: api\nsteps:\n  - api: GET /events\n    inputs: [{ name: startAt, type: datetime, default: tomorrow }]\n`), /ISO 8601 또는 now/);
+  assert.throws(() => parseScenario(`name: 고정 기본값\nserver: api\nsteps:\n  - api: GET /events\n    inputs: [{ name: startAt, type: datetime, default: "2026-11-03T00:00:00.000Z" }]\n`), /ISO 8601 또는 now/);
 });
 
 test("retired syntaxes are rejected with the way to write them now", () => {
