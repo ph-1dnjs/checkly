@@ -150,6 +150,7 @@ const off = window.electronAPI.auth.onSessionChange(s => { /* 로그인·로그�
 - [ ] 엔드포인트 `web` 주소·`api` 스웨거(`spec_url`) 연결, 기능 안의 주소·스웨거 저장 정리
 
 ### 공통 · API 테스트 (담당: 공통 통합)
+- [x] 스위트 설명을 `api_suites.description`에 저장. `20261103000100_api_suite_description.sql` 추가 및 팀 클라우드 적용 확인(2026-11-03).
 - [x] 관리자가 팀원 비밀번호 초기화(가상 이메일이라 메일 대신 관리자가 설정 > 멤버에서 재설정 코드 발급 → 로그인 화면 "비밀번호 찾기"). `20261020000000_auth_password_resets.sql`, `issue-reset-code`·`reset-password` 함수 추가(클라우드 적용·배포는 별도 확인 필요)
 - [ ] 관리자 본인의 비밀번호 찾기(대신 발급할 사람이 없어 지금은 운영자 문의 안내만 한다)
 - [ ] 관리자 위임, 프로젝트 나가기·삭제(프로젝트 삭제 시 auth 사용자도 정리)

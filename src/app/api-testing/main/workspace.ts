@@ -23,7 +23,7 @@ const sidebarMetadataSchema = z.object({
   groupPath: z.array(z.string().trim().min(1).max(80).refine(segment => !segment.includes("/"), "폴더 이름에는 /를 사용할 수 없습니다")).max(10).optional().refine(value => !value || value.join("/").length <= 200, "그룹 경로는 200자 이하로 입력하세요").transform(value => value?.length ? value : undefined),
   tags: z.array(z.string().trim().min(1).max(32)).max(20).optional().transform(values => values?.length ? [...new Map(values.map(value => [value.toLocaleLowerCase(), value])).values()] : undefined),
 }).strict();
-const suiteSchema = z.object({ id: z.string().uuid(), name: z.string().trim().min(1).max(100), scenarioIds: z.array(z.string().min(1).max(1000)).min(1).max(100), onFailure: z.enum(["stop", "continue"]) }).extend(sidebarMetadataSchema.shape).strict();
+const suiteSchema = z.object({ id: z.string().uuid(), name: z.string().trim().min(1).max(100), description: z.string().max(5000).optional(), scenarioIds: z.array(z.string().min(1).max(1000)).min(1).max(100), onFailure: z.enum(["stop", "continue"]) }).extend(sidebarMetadataSchema.shape).strict();
 /** Who made / changed a suite as the team database stamped it (nicknames). Never taken from the renderer. */
 const suiteAuthorshipShape = { createdAt: z.string().datetime({ offset: true }).optional(), createdBy: z.string().optional(), updatedBy: z.string().optional() };
 /** Drops the stored-only authorship fields (a suite read back and saved again carries them). */
