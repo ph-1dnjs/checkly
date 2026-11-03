@@ -1,4 +1,5 @@
 import { contextBridge } from 'electron'
+import { aiTcBridge } from './ipc/ai-tc/bridge'
 import { apiTestingBridge } from './api-testing/bridge'
 import { authBridge } from './ipc/auth/bridge'
 import { formAutomationBridge } from './ipc/form-automation/bridge'
@@ -12,6 +13,7 @@ import { windowSettingsBridge } from './ipc/window-settings/bridge'
 // 새 도메인은 펼치지 말고 apiTesting·windowSettings처럼 이름 공간으로 노출한다.
 // bridge.ts는 preload에서 실행되므로 main 전용 모듈(index.ts 등)을 값으로 import하지 않는다.
 contextBridge.exposeInMainWorld('electronAPI', {
+  aiTc: aiTcBridge,
   apiTesting: apiTestingBridge,
   auth: authBridge,
   windowSettings: windowSettingsBridge,

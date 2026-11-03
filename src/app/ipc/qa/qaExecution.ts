@@ -34,6 +34,8 @@ let scenarioWorker: {
   id: string;
   browser: Browser;
   context: BrowserContext;
+  /** 이 워커에서 마지막으로 끝난 시나리오의 화면 주소. 이어서 실행하는 시나리오의 시작 주소가 된다. */
+  lastUrl?: string;
 } | null = null;
 let selectedViewport = { width: 2560, height: 1440 };
 
@@ -147,7 +149,7 @@ export const cancelActiveRun = async (
 };
 
 const readableStep = (step: QaStep): string =>
-  `단계 ${step.id}: ${step.target} ${step.action === "manualFill" ? "수동 입력" : step.action === "manualControl" ? "브라우저 직접 제어" : step.action === "manualResult" ? "수동 결과 확인" : step.action === "fileUpload" ? "파일 업로드" : step.action}`;
+  `단계 ${step.id}: ${step.target} ${step.action === "manualFill" ? "수동 입력" : step.action === "manualControl" ? "브라우저 직접 제어" : step.action === "manualResult" ? "수동 결과 확인" : step.action === "fileUpload" ? "파일 업로드" : step.action === "expectNoText" ? "미노출 확인" : step.action}`;
 const escapeRegex = (value: string): string =>
   value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const inputFor = (page: Page, target: string) => {
@@ -195,6 +197,32 @@ const isNativeSelect = async (locator: Locator): Promise<boolean> => {
 };
 const actionTargetFor = (target: string): string =>
   target.replace(/\s+(버튼을?|버튼)?\s*클릭$/, "").trim();
+// 행·카드에 마우스를 올려야 나타나는 버튼처럼 숨겨진 대상은 가장 가까운 보이는
+// 조상 요소에 hover해 드러낸다. 다단 메뉴처럼 hover로 한 단계씩 열리면 새로 보이는
+// 더 깊은 조상으로 이어서 hover한다. 이후 클릭은 조상 영역 안이라 hover가 유지된다.
+const revealByHover = async (target: Locator): Promise<boolean> => {
+  const ancestors = target.locator("xpath=ancestor::*");
+  let hoveredDepth = -1;
+  while (true) {
+    let depth = (await ancestors.count()) - 1;
+    while (depth > hoveredDepth && !(await ancestors.nth(depth).isVisible()))
+      depth -= 1;
+    if (depth <= hoveredDepth) return false;
+    try {
+      await ancestors.nth(depth).hover({ timeout: 2_000 });
+    } catch {
+      return false;
+    }
+    hoveredDepth = depth;
+    if (
+      await target.waitFor({ state: "visible", timeout: 500 }).then(
+        () => true,
+        () => false,
+      )
+    )
+      return true;
+  }
+};
 const clickTargetFor = async (
   page: Page,
   target: string,
@@ -221,6 +249,14 @@ const clickTargetFor = async (
       }
       if (visibleTargets.length >= occurrence)
         return visibleTargets[occurrence - 1];
+      // hover로 드러나는 요소는 한 번에 하나만 보이므로 숨겨진 요소까지 DOM 순서로 센다.
+      const hoverTarget = cssTargets.nth(occurrence - 1);
+      if (
+        (await hoverTarget.count()) &&
+        !(await hoverTarget.isVisible()) &&
+        (await revealByHover(hoverTarget))
+      )
+        return hoverTarget;
       if (Date.now() >= deadline)
         throw new Error(
           `CSS 클릭 대상 '${selector}'의 ${occurrence}번째 보이는 요소를 찾지 못했습니다.`,
@@ -231,7 +267,7 @@ const clickTargetFor = async (
 
     // "n번째"는 역할(버튼·라벨·일반 텍스트)별 순번이 아니라 화면에 나타난 순서다.
     // 상품 검색 결과처럼 제목은 텍스트이고 상품 카드는 버튼인 경우도 하나의 순서로 센다.
-    const visibleTargets = new Map<
+    const targets = new Map<
       string,
       {
         locator: Locator;
@@ -239,12 +275,24 @@ const clickTargetFor = async (
         order: number;
         isClickContainer: boolean;
         isHeading: boolean;
+        isVisible: boolean;
       }
     >();
     for (const [frameIndex, frame] of page.frames().entries()) {
       const candidates = [
         {
-          locator: frame.getByRole("button", { name: matcher! }),
+          locator: frame.getByRole("button", {
+            name: matcher!,
+            includeHidden: true,
+          }),
+          normalizeText: false,
+        },
+        // 글자 없이 aria-label·title·이미지 alt만 있는 아이콘 링크도 이름으로 찾는다.
+        {
+          locator: frame.getByRole("link", {
+            name: matcher!,
+            includeHidden: true,
+          }),
           normalizeText: false,
         },
         { locator: frame.locator("label"), normalizeText: true },
@@ -257,12 +305,12 @@ const clickTargetFor = async (
           index += 1
         ) {
           const candidate = candidatesByRole.locator.nth(index);
-          if (!(await candidate.isVisible())) continue;
           if (candidatesByRole.normalizeText) {
             const text = await candidate.textContent();
             if (!text?.replace(/[\s\u200b]+/g, "").includes(normalizedName))
               continue;
           }
+          const isVisible = await candidate.isVisible();
           const metadata = await candidate.evaluate((element) => {
             const pathFor = (node: Element) => {
               const parts: number[] = [];
@@ -291,17 +339,21 @@ const clickTargetFor = async (
             };
           });
           const key = `${frameIndex}:${metadata.key}`;
-          const existing = visibleTargets.get(key);
+          const existing = targets.get(key);
           if (
             !existing ||
-            (!existing.isClickContainer && metadata.isClickContainer)
+            (!existing.isVisible && isVisible) ||
+            (existing.isVisible === isVisible &&
+              !existing.isClickContainer &&
+              metadata.isClickContainer)
           ) {
-            visibleTargets.set(key, {
+            targets.set(key, {
               locator: candidate,
               frameIndex,
               order: metadata.order,
               isClickContainer: metadata.isClickContainer,
               isHeading: metadata.isHeading,
+              isVisible,
             });
           }
         }
@@ -310,14 +362,23 @@ const clickTargetFor = async (
     // 페이지 제목 같은 heading 요소는 클릭 대상 문구를 우연히 포함하더라도 실제
     // 클릭 대상으로 의도된 경우가 거의 없다. 같은 이름의 버튼·링크가 화면에 있다면
     // DOM 순서와 무관하게 그것을 우선 선택하고, heading은 최후 후보로만 남긴다.
-    const orderedTargets = [...visibleTargets.values()].sort(
+    const orderedTargets = [...targets.values()].sort(
       (left, right) =>
         Number(left.isHeading) - Number(right.isHeading) ||
         left.frameIndex - right.frameIndex ||
         left.order - right.order,
     );
-    if (orderedTargets.length >= occurrence)
-      return orderedTargets[occurrence - 1].locator;
+    const visibleTargets = orderedTargets.filter((item) => item.isVisible);
+    if (visibleTargets.length >= occurrence)
+      return visibleTargets[occurrence - 1].locator;
+    // hover로 드러나는 요소는 한 번에 하나만 보이므로 숨겨진 후보까지 순서에 넣어 센다.
+    const hoverTarget = orderedTargets[occurrence - 1];
+    if (
+      hoverTarget &&
+      !hoverTarget.isVisible &&
+      (await revealByHover(hoverTarget.locator))
+    )
+      return hoverTarget.locator;
     if (Date.now() >= deadline)
       throw new Error(
         `클릭 대상 '${name}'의 ${occurrence}번째 보이는 요소를 찾지 못했습니다.`,
@@ -361,6 +422,22 @@ const waitForVisibleText = async (
     `결과 텍스트 '${target}'가 ${Math.ceil(timeout / 1000)}초 안에 화면에 표시되지 않았습니다.`,
   );
 };
+const waitForHiddenText = async (
+  page: Page,
+  target: string,
+  timeout = 10_000,
+): Promise<void> => {
+  // 화면 전환 직후 잠깐 남아 있는 텍스트는 대기 시간 안에 사라지면 통과로 본다.
+  if (!(await hasVisibleText(page, target))) return;
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    await page.waitForTimeout(100);
+    if (!(await hasVisibleText(page, target))) return;
+  }
+  throw new Error(
+    `텍스트 '${target}'가 ${Math.ceil(timeout / 1000)}초가 지나도 화면에 남아 있습니다.`,
+  );
+};
 const hasVisibleText = async (
   page: Page,
   target: string,
@@ -400,7 +477,8 @@ export const inspectScenario = async (
         if (
           step.action === "goto" ||
           step.action === "manualControl" ||
-          step.action === "manualResult"
+          step.action === "manualResult" ||
+          step.action === "expectNoText"
         )
           return { id: step.id, connected: true };
         const target = new RegExp(escapeRegex(step.target), "i");
@@ -412,7 +490,7 @@ export const inspectScenario = async (
             ? page.getByLabel(target).or(inputFor(page, step.target))
             : step.action === "click" && resultTarget !== step.target
               ? page.getByText(resultTarget).first()
-              : step.action === "click"
+              : step.action === "click" || step.action === "hover"
                 ? await clickTargetFor(page, step.target, step.occurrence)
                 : page
                     .getByRole("heading", { name: target })
@@ -519,12 +597,15 @@ export const executeScenario = async (
     video = page.video();
     page.setDefaultTimeout(10_000);
     page.setDefaultNavigationTimeout(15_000);
+    const continuedUrl = scenario.continuePrevious ? scenarioWorker?.lastUrl : undefined;
     owner.webContents.send("qa:progress", {
       current: 0,
       total: scenario.steps.length,
-      step: "기본 URL 접속 중",
+      step: continuedUrl ? "이전 시나리오 화면 접속 중" : "기본 URL 접속 중",
     });
-    await page.goto(scenario.url, { waitUntil: "domcontentloaded" });
+    if (continuedUrl) log.push(`이전 시나리오의 마지막 화면에서 이어서 실행합니다: ${continuedUrl}`);
+    else if (scenario.continuePrevious) log.push("이어서 실행할 이전 시나리오가 없어 기본 URL에서 시작합니다.");
+    await page.goto(continuedUrl ?? scenario.url, { waitUntil: "domcontentloaded" });
     const captureStep = async (step: QaStep): Promise<void> => {
       const previewPage = run.page ?? page;
       if (
@@ -767,6 +848,19 @@ export const executeScenario = async (
           }
         }
       }
+      if (step.action === "hover") {
+        // 마우스를 대상 위에 둔 채로 다음 단계로 넘어가 드롭다운이 열린 상태를 유지한다.
+        // 마우스가 이미 대상 위에 있으면 mouseenter가 다시 발생하지 않으므로 먼저 비켜 둔다.
+        const timeout = (step.waitSeconds ?? 10) * 1000;
+        const target = await clickTargetFor(
+          page,
+          step.target,
+          step.occurrence,
+          timeout,
+        );
+        await page.mouse.move(0, 0);
+        await target.hover({ timeout });
+      }
       if (step.action === "select") {
         const select = selectFor(page, step.target);
         if (await isNativeSelect(select)) {
@@ -789,6 +883,12 @@ export const executeScenario = async (
         await waitForVisibleText(
           page,
           resultTargetFor(step.target),
+          (step.waitSeconds ?? 10) * 1000,
+        );
+      if (step.action === "expectNoText")
+        await waitForHiddenText(
+          page,
+          step.target,
           (step.waitSeconds ?? 10) * 1000,
         );
       if (
@@ -843,6 +943,11 @@ export const executeScenario = async (
   } finally {
     activeRun = null;
     if (previewInterval) clearInterval(previewInterval);
+    const lastPage = run.page && !run.page.isClosed() ? run.page : page;
+    if (scenarioWorker && scenarioWorker.context === context && lastPage && !lastPage.isClosed()) {
+      const lastUrl = lastPage.url();
+      if (/^https?:/i.test(lastUrl)) scenarioWorker.lastUrl = lastUrl;
+    }
     if (replaySessionId) {
       try { await stopRecording(replaySessionId, owner.webContents, !run.cancelled); }
       catch (error) { log.push(`라이브세션 저장 실패: ${error instanceof Error ? error.message : String(error)}`); }

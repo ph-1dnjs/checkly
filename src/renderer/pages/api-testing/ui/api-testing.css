@@ -1714,9 +1714,6 @@ body.panel-resizing { cursor:col-resize; user-select:none; }
 .api-env-name { font:12px var(--ck-font-mono); }
 .api-env-item[aria-checked="true"] .api-env-name { font-weight:700; }
 .api-env-host { min-width:0; margin-left:auto; overflow:hidden; color:var(--ck-color-text-disabled); font:10.5px var(--ck-font-mono); text-overflow:ellipsis; white-space:nowrap; }
-.api-env-servers { display:flex; flex-direction:column; gap:4px; margin:4px 0 0; padding:6px 8px 4px; border-top:1px solid var(--ck-color-line-soft); }
-.api-env-server { display:flex; align-items:center; gap:8px; min-width:0; }
-.api-env-server .api-run-server { flex:none; margin:0; }
 .api-env-add { display:flex; gap:6px; padding:4px; }
 .api-env-menu .api-env-add input:not(.swagger-ui *) { flex:1; min-width:0; height:28px; min-height:28px; padding:0 8px; font:12px var(--ck-font-mono); }
 .api-env-menu .api-env-add button:not(.swagger-ui *) { flex:none; height:28px; min-height:28px; padding:0 10px; font-size:12px; }

@@ -19,6 +19,7 @@
 @import "./form-recording.css" layer(legacy);
 @import "./page-layout.css" layer(legacy);
 @import "./scenario-workspace.css" layer(legacy);
+@import "./ai-tc.css" layer(legacy);
 @import "./controls.css";
 
 @layer legacy {
@@ -101,13 +102,18 @@ textarea {
   background: #fdf7e9;
   color: #96690c;
 }
-.action-tag[data-action="click"] {
+.action-tag[data-action="click"],
+.action-tag[data-action="hover"] {
   background: #f0f3f5;
   color: #3d4650;
 }
 .action-tag[data-action="expectText"] {
   background: #e7f0ea;
   color: #1e7a4a;
+}
+.action-tag[data-action="expectNoText"] {
+  background: #f3edf7;
+  color: #6b3f8a;
 }
 .preview-scenario li .action-tag {
   flex: 0 0 86px;

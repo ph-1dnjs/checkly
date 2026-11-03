@@ -1,4 +1,4 @@
-import { resolveScenarioUrl } from "../../shared/model/scenario";
+import { resolveScenarioUrl, routePath } from "../../shared/model/scenario";
 import { Fragment, useEffect, useRef, useState, type ReactNode, type MouseEvent } from "react";
 import {
   actionText,
@@ -8,6 +8,7 @@ import {
 } from "../../shared/model/scenario";
 import { ActionTag } from "../../shared/ui/ActionTag";
 import { Button } from "../../shared/ui/Button";
+import { Input } from "../../shared/ui/Input";
 import { DuplicateScenarioModal } from "./DuplicateScenarioModal";
 import { MarkerEditForm } from "./MarkerEditForm";
 
@@ -22,8 +23,10 @@ const DEVICES: Array<{ id: Device; label: string; icon: string; frame: string }>
 /** 빈 문서의 PREVIEW에 보여 주는 작성 문법: [이름, 키워드, 나머지] */
 const GRAMMAR: Array<[string, string, string]> = [
   ["제목", "#", " 시나리오: 제목"],
-  ["엔드포인트", "endpoint:", " <엔드포인트 ID>"],
+  ["서버", "endpoint:", " <헤더에서 고른 서버 ID>"],
+  ["환경", "environment:", " <헤더에서 고른 환경 ID>"],
   ["태그", "tag:", " regression"],
+  ["이어서", "start:", " continue (이전 시나리오가 끝난 화면에서 시작)"],
   ["이동", "Given", " `/login` 페이지로 이동한다"],
   ["입력", "And", " `아이디`에 `값` 입력"],
   ["클릭", "When", " `로그인` 클릭 [대기 10초]"],
@@ -48,6 +51,16 @@ const pad2 = (value: number) => String(value).padStart(2, "0");
 const hostOf = (url: string) => {
   try { return new URL(url).host; } catch { return url; }
 };
+const pathOf = (url: string) => {
+  try { const parsed = new URL(url); return /^https?:$/.test(parsed.protocol) ? `${parsed.pathname}${parsed.search}${parsed.hash}` : "/"; } catch { return "/"; }
+};
+/** 시나리오가 이동 단계로 시작하면 그 경로, 아니면 기준 주소에서 연다. */
+const startUrlOf = (scenario: Scenario, baseUrl: string) => {
+  try {
+    const first = scenario.steps[0];
+    return first?.action === "goto" ? new URL(routePath(first.target), baseUrl).href : resolveScenarioUrl(scenario, baseUrl).url;
+  } catch { return ""; }
+};
 
 type Props = {
   mode: "text" | "marker";
@@ -68,6 +81,7 @@ type Props = {
   markerDialog: Step | null;
   pendingMarker: Step | null;
   onSelectMarkerScenario: (id: string) => void;
+  onAddNextScenario: (start: { continuePrevious: true } | { continuePrevious: false; path: string }) => void;
   onSelectUploadFile: () => Promise<string | null>;
   onSourceChange: (markdown: string) => void;
   onScenarioChange: (scenario: Scenario) => void;
@@ -108,6 +122,7 @@ export const ScenarioEditorPage = ({
   markerDialog,
   pendingMarker,
   onSelectMarkerScenario,
+  onAddNextScenario,
   onSelectUploadFile,
   onSourceChange,
   onScenarioChange,
@@ -148,6 +163,22 @@ export const ScenarioEditorPage = ({
     moved: boolean;
   } | null>(null);
   const targetFrameRef = useRef<Electron.WebviewTag | null>(null);
+  const [nextScenario, setNextScenario] = useState<{ continuePrevious: boolean; path: string } | null>(null);
+  const navigateFrame = (url: string) => {
+    if (!url) return;
+    try { void targetFrameRef.current?.loadURL(url).catch(() => undefined); }
+    catch { /* 웹뷰가 아직 붙지 않았으면 src로 처음 연 주소를 유지한다. */ }
+  };
+  const openedScenarioId = useRef(markerScenarioId);
+  const frameSrc = useRef({ key: "", url: "about:blank" });
+  // 편집 대상을 바꾸면 새로 시작하는 시나리오는 시작 경로로 열고, 이어서 작성하는 시나리오는 지금 화면을 그대로 둔다.
+  useEffect(() => {
+    if (mode !== "marker" || openedScenarioId.current === markerScenarioId) return;
+    openedScenarioId.current = markerScenarioId;
+    setNextScenario(null);
+    if (!scenario.continuePrevious) navigateFrame(startUrlOf(scenario, baseUrl));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, markerScenarioId]);
 
   useEffect(() => {
     if (!isAddingMarker) return;
@@ -230,6 +261,7 @@ export const ScenarioEditorPage = ({
   const endpointName = (id?: string) =>
     webEndpoints.find((item) => item.id === (id ?? defaultEndpointId))?.name ?? "웹 엔드포인트 없음";
   const previewAddress = (item: Scenario) => {
+    if (item.continuePrevious) return [endpointName(item.endpointId), "이전 시나리오에 이어서"].join(" · ");
     const base = resolveBaseUrl(item.endpointId);
     const path = item.steps.find((step) => step.action === "goto")?.target ?? "";
     return [endpointName(item.endpointId), base ? `${hostOf(base)}${path.startsWith("/") ? path : ""}` : ""].filter(Boolean).join(" · ");
@@ -239,7 +271,14 @@ export const ScenarioEditorPage = ({
   const deviceFrame = DEVICES.find((d) => d.id === device) ?? DEVICES[2];
   const unlinkedCount = scenario.steps.filter((step) => !step.connected).length;
   const pinColor = (step: Step) => (step.connected ? LINKED : UNLINKED);
-  const markerTargetUrl = (() => { try { return baseUrl ? resolveScenarioUrl(scenario, baseUrl).url : ""; } catch { return ""; } })();
+  const markerTargetUrl = baseUrl ? startUrlOf(scenario, baseUrl) : "";
+  // 화면 추출에 들어오거나 기준 주소가 바뀔 때 연 주소만 src로 넘긴다.
+  // 이후 이동은 loadURL로 하므로 이동 단계를 고쳐도 웹뷰가 다시 열리지 않는다.
+  const frameKey = `${mode}|${baseUrl}`;
+  if (frameSrc.current.key !== frameKey) {
+    frameSrc.current = { key: frameKey, url: markerTargetUrl || "about:blank" };
+    openedScenarioId.current = markerScenarioId;
+  }
   const toggleMarker = (step: Step) => {
     onSelectStep(step.id);
     if (editingId === step.id) onCloseMarkerDialog();
@@ -252,7 +291,14 @@ export const ScenarioEditorPage = ({
       onChange={onUpdateMarkerDialog}
       onSelectUploadFile={onSelectUploadFile}
       onCancel={onCloseMarkerDialog}
-      onComplete={onCompleteMarkerDialog}
+      onComplete={() => {
+        onCompleteMarkerDialog();
+        // 페이지 이동 단계는 화면도 그 경로로 새로 연다.
+        if (marker.action === "goto" && marker.target.trim() && baseUrl) {
+          try { navigateFrame(new URL(routePath(marker.target), baseUrl).href); }
+          catch { /* 잘못된 경로는 실행 때 오류로 안내한다. */ }
+        }
+      }}
     />
   );
   const visiblePins = [...scenario.steps, ...(pendingMarker ? [pendingMarker] : [])];
@@ -418,23 +464,6 @@ export const ScenarioEditorPage = ({
           </div>
           <div className="extract-url" title={markerTargetUrl || undefined}>
             <span className="msi extract-url-lock" aria-hidden="true">lock</span>
-            <span className="extract-url-endpoint">
-              <select
-                value={scenario.endpointId ?? defaultEndpointId}
-                onChange={(event) =>
-                  onScenarioChange({ ...scenario, endpointId: event.target.value })
-                }
-                aria-label="웹 엔드포인트"
-              >
-                {scenario.endpointId && !webEndpoints.some((item) => item.id === scenario.endpointId) && (
-                  <option value={scenario.endpointId}>(설정에 없는 엔드포인트)</option>
-                )}
-                {webEndpoints.map((item) => (
-                  <option key={item.id} value={item.id}>{item.name}</option>
-                ))}
-              </select>
-              <span className="msi" aria-hidden="true">expand_more</span>
-            </span>
             <span className="extract-url-base" title={baseUrl || undefined}>
               {baseUrl || "설정에서 이 엔드포인트의 환경별 주소를 넣어 주세요."}
             </span>
@@ -457,24 +486,86 @@ export const ScenarioEditorPage = ({
 
         <div className="extract-body">
           <aside className="extract-markers">
-            <label className="extract-target-picker">
-              <span>편집 대상</span>
+            <div className="extract-target-picker">
+              <div className="extract-target-head">
+                <span id="extract-target-label">편집 대상</span>
+                <Button
+                  variant="ghost"
+                  className="extract-next-scenario"
+                  aria-expanded={Boolean(nextScenario)}
+                  disabled={!previews.length}
+                  title="이 문서에 다음 시나리오 추가"
+                  onClick={() => setNextScenario((current) => current ? null : {
+                    continuePrevious: true,
+                    path: pathOf(targetFrameRef.current?.getURL?.() ?? ""),
+                  })}
+                >
+                  <span className="msi" aria-hidden="true">playlist_add</span>
+                  다음 시나리오
+                </Button>
+              </div>
               <span className="extract-target-select">
                 <select
+                  aria-labelledby="extract-target-label"
                   value={markerScenarioId}
                   disabled={previews.length < 2}
                   onChange={(event) => onSelectMarkerScenario(event.target.value)}
                 >
                   {previews.map((item, index) => (
                     <option key={item.id} value={item.id}>
-                      {pad2(index + 1)}  {item.title}
+                      {pad2(index + 1)}  {item.continuePrevious ? "↳ " : ""}{item.title}
                     </option>
                   ))}
                   {!previews.length && <option value="">시나리오 없음</option>}
                 </select>
                 <span className="msi" aria-hidden="true">unfold_more</span>
               </span>
-            </label>
+              {scenario.continuePrevious && (
+                <p className="extract-target-note">이전 시나리오의 마지막 화면에서 이어서 실행합니다.</p>
+              )}
+              {nextScenario && (
+                <div className="marker-form extract-next-form">
+                  <div className="marker-form-field">
+                    <span id="extract-next-start">시작 위치</span>
+                    <div className="marker-form-yn extract-next-start" role="radiogroup" aria-labelledby="extract-next-start">
+                      <Button role="radio" aria-checked={nextScenario.continuePrevious} className={nextScenario.continuePrevious ? "on" : ""} onClick={() => setNextScenario({ ...nextScenario, continuePrevious: true })}>이전 단계에 이어서</Button>
+                      <Button role="radio" aria-checked={!nextScenario.continuePrevious} className={nextScenario.continuePrevious ? "" : "on"} onClick={() => setNextScenario({ ...nextScenario, continuePrevious: false })}>새 URL 경로로 시작</Button>
+                    </div>
+                  </div>
+                  {nextScenario.continuePrevious ? (
+                    <div className="marker-form-note">지금 화면에서 이어서 마커를 찍습니다. 실행할 때는 앞 시나리오가 끝난 화면에서 시작합니다.</div>
+                  ) : (
+                    <label className="marker-form-field">
+                      <span>이동 경로</span>
+                      <Input
+                        mono
+                        autoFocus
+                        spellCheck={false}
+                        value={nextScenario.path}
+                        onChange={(event) => setNextScenario({ ...nextScenario, path: event.target.value })}
+                        placeholder="이동 경로 (예: /login)"
+                      />
+                    </label>
+                  )}
+                  <div className="marker-form-actions">
+                    <Button variant="secondary" onClick={() => setNextScenario(null)}>취소</Button>
+                    <Button
+                      variant="primary"
+                      onClick={() => {
+                        if (nextScenario.continuePrevious) {
+                          onAddNextScenario({ continuePrevious: true });
+                        } else {
+                          onAddNextScenario({ continuePrevious: false, path: nextScenario.path });
+                        }
+                        setNextScenario(null);
+                      }}
+                    >
+                      추가
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
             <div className="extract-col-label">
               <span>MARKERS</span>
               <span className="extract-col-meta">{scenario.steps.length}개</span>
@@ -619,7 +710,7 @@ export const ScenarioEditorPage = ({
                 <webview
                   ref={targetFrameRef}
                   className="extract-target"
-                  src={markerTargetUrl || "about:blank"}
+                  src={frameSrc.current.url}
                   aria-label="시나리오 대상 페이지"
                 />
                 {!baseUrl && (

@@ -35,8 +35,9 @@ test('screen extraction restores each document and repeated step position withou
       await expect(pins.nth(index)).toHaveAttribute('style', new RegExp(`left: ${x}%; top: ${y}%;`))
     }
     await expect(page.getByText('저장 안 됨', { exact: true })).toHaveCount(0)
+    // 바꾼 것이 없으면 저장 여부를 묻지 않고 돌아간다.
     await page.getByRole('button', { name: '텍스트', exact: true }).click()
-    await page.getByRole('button', { name: '저장하지 않고 돌아가기' }).click()
+    await expect(page.getByRole('dialog', { name: '시나리오를 저장할까요?' })).toHaveCount(0)
   }
 })
 
@@ -70,4 +71,23 @@ test('new marker survives saving and reopening when inspection cannot find its t
   await expect(page.locator('.extract-marker-link.unlinked')).toHaveCount(1)
   await expect(pin).toHaveCount(1)
   await expect(pin).toHaveAttribute('style', style!)
+})
+
+test('saving in screen extraction does not ask again when returning to text', async ({ page }) => {
+  await installAuthStub(page, { enabled: true, session: owner })
+  await page.goto('/')
+  await page.getByRole('button', { name: '시나리오 · 편집과 실행' }).click()
+  await page.getByRole('tab', { name: '편집', exact: true }).click()
+  await page.getByRole('button', { name: '새 시나리오', exact: true }).click()
+  await page.getByRole('button', { name: '화면 추출', exact: true }).click()
+  await page.getByRole('button', { name: '마커 추가', exact: true }).click()
+  await page.getByLabel('마커를 추가할 위치').click({ position: { x: 100, y: 150 } })
+  await page.getByRole('textbox', { name: '라벨', exact: true }).fill('로그인')
+  await page.getByRole('button', { name: '완료', exact: true }).click()
+  await expect(page.getByText('저장 안 됨', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '저장', exact: true }).click()
+  await expect(page.getByText('저장 안 됨', { exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: '텍스트', exact: true }).click()
+  await expect(page.getByRole('dialog', { name: '시나리오를 저장할까요?' })).toHaveCount(0)
+  await expect(page.getByRole('textbox', { name: '시나리오 Markdown 원본' })).toHaveValue(/`로그인` 클릭/)
 })

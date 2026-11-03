@@ -140,14 +140,14 @@ export class WebScenarioStore {
 }
 
 const stepSchema = z.object({
-  id: z.string(), databaseId: z.uuid().optional(), action: z.enum(['goto','fill','fileUpload','click','select','expectText','manualFill','manualControl','manualResult']),
+  id: z.string(), databaseId: z.uuid().optional(), action: z.enum(['goto','fill','fileUpload','click','hover','select','expectText','expectNoText','manualFill','manualControl','manualResult']),
   required: z.boolean().optional(), connected: z.boolean().optional(),
   target: z.string(), value: z.string().optional(), prompt: z.string().optional(), condition: z.string().optional(),
   waitSeconds: z.number().nonnegative().optional(), occurrence: z.number().int().positive().optional(),
   x: z.number().min(0).max(100).optional(), y: z.number().min(0).max(100).optional(), color: z.string().optional(),
   markerViewport: z.enum(['mobile','tablet','desktop']).optional(), markerPageUrl: z.string().optional(),
 }).transform(step => step.action === 'fileUpload' ? { ...step, value: '' } : step);
-const scenarioSchema = z.object({ id: z.uuid(), title: z.string(), endpointId: z.string().optional(), url: z.string(), tag: z.string().optional(), code: z.string().optional(), sortOrder: z.number().optional(), steps: z.array(stepSchema) });
+const scenarioSchema = z.object({ id: z.uuid(), title: z.string(), endpointId: z.string().optional(), environmentId: z.string().optional(), url: z.string(), continuePrevious: z.boolean().optional(), tag: z.string().optional(), code: z.string().optional(), sortOrder: z.number().optional(), steps: z.array(stepSchema) });
 const runSchema = z.object({
   id: z.uuid(), trigger: z.enum(['editor','picker','rerun','single']), status: z.enum(['passed','failed','cancelled']),
   passed: z.number().int().nonnegative(), failed: z.number().int().nonnegative(), startedAt: z.iso.datetime(), ranAt: z.iso.datetime(),

@@ -9,6 +9,7 @@ import { is } from "@electron-toolkit/utils";
 import path from "node:path";
 import type { MainDomain } from "./ipc/domain";
 import { apiTestingDomain } from "./api-testing";
+import { aiTcDomain } from "./ipc/ai-tc";
 import { authDomain } from "./ipc/auth";
 import { formAutomationDomain } from "./ipc/form-automation";
 import { liveSessionDomain } from "./ipc/live-session";
@@ -25,6 +26,7 @@ app.setPath("userData", userDataPath);
 
 // 새 기능은 해당 도메인의 index.ts에 추가한다. 이 목록은 도메인을 새로 만들 때만 수정한다.
 const domains: MainDomain[] = [
+  aiTcDomain,
   apiTestingDomain,
   authDomain,
   formAutomationDomain,

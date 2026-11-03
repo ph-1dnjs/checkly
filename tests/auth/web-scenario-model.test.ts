@@ -141,3 +141,45 @@ test('steps moved to another scenario or a renewed scenario receive new UUIDs', 
   assert.notEqual(pasted.id, a.id);
   assert.notEqual(pasted.steps[0].databaseId, a.steps[0].databaseId);
 });
+
+test('absent text steps parse as expectNoText and keep visible text checks unchanged', () => {
+  const [scenario] = parseMarkdown([
+    '# 시나리오: 삭제',
+    'Given `/items` 페이지로 이동한다',
+    'Then `삭제할 항목` 텍스트가 보이지 않는다 [대기 5초]',
+    'Then `오류` 표시되지 않는다',
+    'Then `로딩 중` 텍스트가 사라진다',
+    'Then `삭제 완료` 텍스트가 보인다',
+  ].join('\n'));
+  assert.deepEqual(scenario.steps.slice(1).map(step => [step.action, step.target, step.waitSeconds]), [
+    ['expectNoText', '삭제할 항목', 5],
+    ['expectNoText', '오류', undefined],
+    ['expectNoText', '로딩 중', undefined],
+    ['expectText', '삭제 완료', undefined],
+  ]);
+});
+
+test('hover steps parse with occurrence and wait and stay apart from clicks', () => {
+  const [scenario] = parseMarkdown([
+    '# 시나리오: 로그아웃',
+    'Given `/` 페이지로 이동한다',
+    'And `css=a[href*="mypage"]` 호버',
+    'And `메뉴` [2번째] 호버 [대기 5초]',
+    'And `마이페이지`에 마우스 올리기',
+    'And `로그아웃` 클릭',
+  ].join('\n'));
+  assert.deepEqual(scenario.steps.slice(1).map(step => [step.action, step.target, step.occurrence, step.waitSeconds]), [
+    ['hover', 'css=a[href*="mypage"]', undefined, undefined],
+    ['hover', '메뉴', 2, 5],
+    ['hover', '마이페이지', undefined, undefined],
+    ['click', '로그아웃', undefined, undefined],
+  ]);
+});
+test('next scenario continuing from the previous one keeps start: continue through normalization', () => {
+  const source = '# 시나리오: 로그인\nGiven `/login` 페이지로 이동한다\n\n# 시나리오: 주문\nstart: continue\nGiven `주문` 클릭\n\n# 시나리오: 설정\nGiven `/settings` 페이지로 이동한다';
+  assert.deepEqual(parseMarkdown(source).map(item => item.continuePrevious), [undefined, true, undefined]);
+  const normalized = normalizeDocument(source, '{}');
+  assert.match(normalized.markdown, /^start: continue$/m);
+  assert.deepEqual(normalized.scenarios.map(item => item.continuePrevious), [undefined, true, undefined]);
+  assert.deepEqual(parseMarkdown(normalized.markdown).map(item => item.continuePrevious), [undefined, true, undefined]);
+});

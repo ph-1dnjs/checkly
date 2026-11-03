@@ -16,11 +16,14 @@ type Props = {
   onRun: () => void;
   onCancel: () => void;
   apiRunAction?: { run: () => void; disabled: boolean } | null;
+  /** AI TC 실행 화면의 큰 버튼(준비 · 실행 · 취소 · 결과 · 다시 실행) */
+  aiTcAction?: { icon: string; label: string; run: () => void; disabled: boolean; danger: boolean } | null;
 };
 
 const NAVS: Array<{ route: Route | "workspace"; label: string; icon: string }> =
   [
     { route: "workspace", label: "시나리오 · 편집과 실행", icon: "fact_check" },
+    { route: "ai-tc", label: "AI TC 실행", icon: "smart_toy" },
     { route: "form-automation", label: "폼 자동 완성", icon: "auto_fix_high" },
     { route: "api-testing", label: "API 테스트", icon: "data_object" },
     { route: "settings", label: "설정", icon: "settings" },
@@ -71,6 +74,7 @@ export const BottomNavigation = ({
   onRun,
   onCancel,
   apiRunAction,
+  aiTcAction,
 }: Props) => {
   const navRef = useRef<HTMLElement>(null);
   const dark = useBackdropTone(navRef);
@@ -118,7 +122,19 @@ export const BottomNavigation = ({
           );
         })}
       </div>
-      {route === "api-testing" ? (
+      {route === "ai-tc" && aiTcAction ? (
+        <Button
+          className={`bottom-nav-run${aiTcAction.danger ? " danger" : ""}`}
+          disabled={aiTcAction.disabled}
+          onClick={aiTcAction.run}
+          aria-label={`AI TC ${aiTcAction.label}`}
+        >
+          <span className="msi" aria-hidden="true">
+            {aiTcAction.icon}
+          </span>
+          {aiTcAction.label}
+        </Button>
+      ) : route === "api-testing" ? (
         <Button
           className="bottom-nav-run"
           disabled={!apiRunAction || apiRunAction.disabled}

@@ -309,10 +309,7 @@
 .extract-navbtn .msi { font-size:17px; }
 .scenario-workspace .extract-url { height:32px; gap:8px; margin-left:6px; padding:0 12px; border:1px solid #d8dde2; border-radius:6px; background:#fff; }
 .extract-url-lock { flex:none; font-size:15px; color:#5a646e; }
-.extract-url-endpoint { position:relative; flex:none; display:flex; align-items:center; }
-.scenario-workspace .extract-url select { max-width:160px; height:22px; padding:0 18px 0 0; border:0; background:transparent; color:#14181c; font-size:12px; font-weight:600; appearance:none; -webkit-appearance:none; cursor:pointer; }
-.extract-url-endpoint .msi { position:absolute; right:0; font-size:15px; color:#8a939c; pointer-events:none; }
-.scenario-workspace .extract-url-base { padding-left:8px; border-left:1px solid #edf0f2; color:#14181c; font-size:12.5px; }
+.scenario-workspace .extract-url-base { color:#14181c; font-size:12.5px; }
 .scenario-workspace .extract-devices { border:1px solid #d8dde2; border-radius:4px; overflow:hidden; }
 .scenario-workspace .extract-devices button { width:30px; height:24px; border:0; border-left:1px solid #e4e7ea; background:#fff; color:#5a646e; }
 .scenario-workspace .extract-devices button:first-child { border-left:0; }
@@ -322,7 +319,14 @@
 .scenario-workspace .extract-body { grid-template-columns:320px minmax(0,1fr); }
 .scenario-workspace .extract-markers { border-right:1px solid #e4e7ea; }
 .extract-target-picker { flex:none; display:flex; flex-direction:column; gap:6px; padding:10px 12px; border-bottom:1px solid #e4e7ea; }
-.extract-target-picker>span:first-child { color:#8a939c; font-size:11px; }
+.extract-target-head { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.extract-target-head>span { color:#8a939c; font-size:11px; }
+.extract-target-head .extract-next-scenario { gap:4px; padding:0 6px; color:#1f63ae; }
+.extract-target-head .extract-next-scenario .msi { font-size:15px; }
+.extract-target-note { margin:0; color:#5a646e; font-size:11px; line-height:1.5; }
+.extract-next-form { padding:4px 0 0; }
+.extract-next-start { width:100%; }
+.extract-next-start button { flex:1; width:auto; }
 .extract-target-select { position:relative; display:flex; }
 .extract-target-select select { width:100%; height:32px; padding:0 28px 0 10px; border:1px solid #d8dde2; border-radius:4px; background:#fff; color:#14181c; font-size:12.5px; font-weight:600; appearance:none; -webkit-appearance:none; cursor:pointer; }
 .extract-target-select select:disabled { opacity:1; cursor:default; }

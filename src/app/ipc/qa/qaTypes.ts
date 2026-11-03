@@ -8,8 +8,10 @@ export type QaStep = {
     | "manualControl"
     | "manualResult"
     | "click"
+    | "hover"
     | "select"
-    | "expectText";
+    | "expectText"
+    | "expectNoText";
   target: string;
   value?: string;
   required?: boolean;
@@ -22,6 +24,8 @@ export type QaScenario = {
   id: string;
   title: string;
   url: string;
+  /** 같은 실행 묶음에서 앞 시나리오가 끝난 화면 주소로 시작한다. */
+  continuePrevious?: boolean;
   steps: QaStep[];
 };
 export type QaRunOptions = { preview?: boolean; workerId?: string };

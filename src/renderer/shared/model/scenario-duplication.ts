@@ -8,6 +8,7 @@ export const EDITABLE_VALUE_KIND: Partial<Record<Action, EditableValueKind>> = {
   fileUpload: "in",
   manualFill: "in",
   expectText: "out",
+  expectNoText: "out",
   manualResult: "out",
 };
 

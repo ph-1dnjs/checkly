@@ -1,4 +1,4 @@
-export type Action = "goto" | "fill" | "fileUpload" | "click" | "select" | "expectText" | "manualFill" | "manualControl" | "manualResult";
+export type Action = "goto" | "fill" | "fileUpload" | "click" | "hover" | "select" | "expectText" | "expectNoText" | "manualFill" | "manualControl" | "manualResult";
 
 export type Step = {
   id: string;
@@ -26,8 +26,12 @@ export type Scenario = {
   title: string;
   /** 설정(엔드포인트 × 환경)의 웹 엔드포인트 ID. 본문에는 `endpoint:`로 저장한다. */
   endpointId?: string;
+  /** 작성할 때 고른 설정의 환경 ID. 본문에는 `environment:`로 저장한다. */
+  environmentId?: string;
   /** 실행 시 해석한 시작 주소. 본문에는 저장하지 않는다(이전 문서의 `url:`만 읽는다). */
   url: string;
+  /** 이전 시나리오의 마지막 화면에서 이어서 실행한다. 본문에는 `start: continue`로 저장한다. */
+  continuePrevious?: boolean;
   steps: Step[];
   tag?: string;
 };
@@ -107,6 +111,13 @@ export const parseMarkdown = (markdown: string, source?: string): Scenario[] =>
           .find((line) => line.startsWith("endpoint:"))
           ?.slice(9)
           .trim() || undefined;
+      const environmentId =
+        lines
+          .find((line) => line.startsWith("environment:"))
+          ?.slice(12)
+          .trim() || undefined;
+      const continuePrevious =
+        lines.find((line) => line.startsWith("start:"))?.slice(6).trim() === "continue" || undefined;
       const tag =
         lines
           .find((line) => line.startsWith("tag:"))
@@ -125,7 +136,7 @@ export const parseMarkdown = (markdown: string, source?: string): Scenario[] =>
           const waitMatch = conditionalText.match(/\[대기\s*(\d+)초\]\s*$/);
           const waitSeconds = waitMatch ? Number(waitMatch[1]) : undefined;
           const text = conditionalText.replace(/\s*\[대기\s*\d+초\]\s*$/, "");
-          const occurrenceMatch = text.match(/\[(\d+)번째\]\s*(?:버튼을?|버튼)?\s*클릭/);
+          const occurrenceMatch = text.match(/\[(\d+)번째\]\s*(?:(?:버튼을?|버튼)?\s*클릭|(?:에\s*)?(?:호버|마우스\s*(?:를\s*)?올리기|마우스\s*오버))/);
           const occurrence = occurrenceMatch ? Number(occurrenceMatch[1]) : undefined;
           const result = text
             .replace(
@@ -171,6 +182,19 @@ export const parseMarkdown = (markdown: string, source?: string): Scenario[] =>
               prompt: manualControl[2],
               waitSeconds,
               condition,
+              connected: true,
+            };
+          const absent = text.match(
+            /^(.+?)\s*(?:텍스트가\s*)?(?:보이지\s*않는다|표시되지\s*않는다|사라진다)\s*$/,
+          );
+          if (absent)
+            return {
+              id: String(stepIndex + 1),
+              databaseId,
+              action: "expectNoText",
+              target: unquoteMarkdownValue(absent[1].trim()),
+              condition,
+              waitSeconds,
               connected: true,
             };
           if (/보인다|포함된다|확인된다|표시된다|결과\s*확인/.test(text))
@@ -234,6 +258,21 @@ export const parseMarkdown = (markdown: string, source?: string): Scenario[] =>
               waitSeconds,
               connected: true,
             };
+          // 마우스를 올려야 열리는 드롭다운·메뉴를 위해 대상에 hover만 하고 클릭하지 않는다.
+          const hover = text.match(
+            /^(.+?)(?:\s*\[\d+번째\])?(?:에)?\s*(?:호버|마우스\s*(?:를\s*)?올리기|마우스\s*오버)(?:한다)?\s*$/,
+          );
+          if (hover)
+            return {
+              id: String(stepIndex + 1),
+              databaseId,
+              action: "hover",
+              target: unquoteMarkdownValue(hover[1].replace(/에$/, "").trim()),
+              occurrence: occurrence && occurrence > 1 ? occurrence : undefined,
+              condition,
+              waitSeconds,
+              connected: true,
+            };
           if (/(페이지로?\s*이동|접속|열기)/.test(text))
             return {
               id: String(stepIndex + 1),
@@ -266,7 +305,7 @@ export const parseMarkdown = (markdown: string, source?: string): Scenario[] =>
       const databaseId = lines.find(line => line.startsWith("id:"))?.slice(3).trim();
       const code = lines.find(line => line.startsWith("code:"))?.slice(5).trim();
       const id = databaseId || (source ? `${source}::scenario-${index}` : `scenario-${index}`);
-      return { id, code, sortOrder: index, title, endpointId, url, tag, steps };
+      return { id, code, sortOrder: index, title, endpointId, environmentId, url, continuePrevious, tag, steps };
     });
 
 export type ScenarioRunResult = {

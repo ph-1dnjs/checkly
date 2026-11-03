@@ -6,11 +6,13 @@ import type { QaApi } from "./qa";
 import type { WebScenarioBridge } from "../../../../app/ipc/web-scenario/types";
 import type { UpdateApi } from "./update";
 import type { LiveSessionBridge } from "./live-session";
+import type { AiTcBridge } from "../../../../app/ipc/ai-tc/bridge";
 
 export {};
 
 // 기능 타입은 도메인 파일에 추가한다. 이 파일은 도메인을 새로 만들 때만 수정한다.
 export type ElectronAPI = {
+  aiTc: AiTcBridge;
   apiTesting: ApiTestingBridge;
   auth: AuthBridge;
   windowSettings: WindowSettingsBridge;

@@ -5,6 +5,7 @@ import {
   markerColor,
   resolveScenarioUrl,
   migrateLegacyUrl,
+  routePath,
   parseMarkdown,
   splitScenarioBlocks,
   emptyScenario,
@@ -21,6 +22,7 @@ import {
   uniqueScenarioTitle,
   EDITABLE_VALUE_KIND,
 } from "../../shared/model/scenario-duplication";
+import type { ScenarioTarget } from "./useScenarioEnvironment";
 
 const initialMarkdown = "";
 const isUuid = (id: string) => /^[a-f0-9-]{36}$/i.test(id);
@@ -47,6 +49,18 @@ const identifyMarkdown = (source: string, previous: Scenario[] = []): string => 
     }).join("\n");
   }).join("\n\n");
 };
+/** 모든 시나리오 블록의 `endpoint:`·`environment:`를 헤더에서 고른 서버·환경으로 맞춘다. */
+const withTarget = (markdown: string, target: ScenarioTarget): string =>
+  splitScenarioBlocks(markdown).map(block => {
+    if (!/^\s*(#{1,3}\s*시나리오:|Scenario:)/i.test(block)) return block.trim();
+    const lines = block.trim().split("\n").filter(line => !/^\s*(endpoint|environment):/.test(line));
+    let at = 1;
+    while (at < lines.length && /^\s*(id|code):/.test(lines[at])) at += 1;
+    lines.splice(at, 0,
+      ...(target.endpointId ? [`endpoint: ${target.endpointId}`] : []),
+      ...(target.environmentId ? [`environment: ${target.environmentId}`] : []));
+    return lines.join("\n");
+  }).join("\n\n");
 const positionKey = (scenario: Scenario) =>
   scenario.id;
 const applyPositions = (
@@ -96,13 +110,19 @@ const scenarioToMarkdown = (scenario: Scenario): string =>
     ...(isUuid(scenario.id) ? [`id: ${scenario.id}`] : []),
     ...(scenario.code ? [`code: ${scenario.code}`] : []),
     ...(scenario.endpointId ? [`endpoint: ${scenario.endpointId}`] : []),
+    ...(scenario.environmentId ? [`environment: ${scenario.environmentId}`] : []),
     // 이전 문서의 경로는 저장 시 이동 단계로 바뀌므로 그때까지만 유지한다.
     ...(scenario.url ? [`url: ${scenario.url}`] : []),
+    ...(scenario.continuePrevious ? ["start: continue"] : []),
     ...(scenario.tag ? [`tag: ${scenario.tag}`] : []),
     "",
     ...scenario.steps.map((step, index) => {
       const prefix =
-        index === 0 ? "Given" : step.action === "expectText" ? "Then" : "And";
+        index === 0
+          ? "Given"
+          : step.action === "expectText" || step.action === "expectNoText"
+            ? "Then"
+            : "And";
       const action =
         step.action === "goto"
           ? `\`${step.target}\` 페이지로 이동한다`
@@ -120,8 +140,12 @@ const scenarioToMarkdown = (scenario: Scenario): string =>
                       ? `\`${step.target}\`에서 \`${step.value ?? ""}\` 선택`
                       : step.action === "expectText"
                         ? `\`${step.target}\` 텍스트가 보인다${step.waitSeconds ? ` [대기 ${step.waitSeconds}초]` : ""}`
+                        : step.action === "hover"
+                          ? `\`${step.target}\`${step.occurrence && step.occurrence > 1 ? ` [${step.occurrence}번째]` : ""} 호버${step.waitSeconds ? ` [대기 ${step.waitSeconds}초]` : ""}`
+                        : step.action === "expectNoText"
+                          ? `\`${step.target}\` 텍스트가 보이지 않는다${step.waitSeconds ? ` [대기 ${step.waitSeconds}초]` : ""}`
                         : `\`${step.target}\`${step.occurrence && step.occurrence > 1 ? ` [${step.occurrence}번째]` : ""} 클릭${step.waitSeconds ? ` [대기 ${step.waitSeconds}초]` : ""}`;
-      return `${prefix} ${step.condition ? `화면에 \`${step.condition}\`가 있는 경우 ` : ""}${action}${step.waitSeconds && step.action !== "click" && step.action !== "expectText" ? ` [대기 ${step.waitSeconds}초]` : ""}${step.databaseId ? ` <!-- step:${step.databaseId} -->` : ""}`;
+      return `${prefix} ${step.condition ? `화면에 \`${step.condition}\`가 있는 경우 ` : ""}${action}${step.waitSeconds && step.action !== "click" && step.action !== "hover" && step.action !== "expectText" && step.action !== "expectNoText" ? ` [대기 ${step.waitSeconds}초]` : ""}${step.databaseId ? ` <!-- step:${step.databaseId} -->` : ""}`;
     }),
   ].join("\n");
 const replaceScenarioMarkdown = (
@@ -141,9 +165,12 @@ const replaceScenarioMarkdown = (
 
 type UseScenarioStateOptions = {
   projectId?: string;
-  /** 시나리오의 `endpoint:` ID를 선택한 환경의 기준 주소로 바꾼다. */
-  resolveBaseUrl: (endpointId?: string) => string;
-  defaultEndpointId: string;
+  /** 헤더에서 고른 서버·환경의 기준 주소 */
+  resolveBaseUrl: () => string;
+  /** 헤더에서 고른 서버·환경. 저장할 때 모든 시나리오에 적는다. */
+  target: ScenarioTarget;
+  /** 문서를 열면 첫 시나리오에 저장된 서버·환경으로 헤더를 바꾼다. */
+  onOpenTarget: (target: Partial<ScenarioTarget>) => void;
   route: Route;
   showToast: (message: string) => void;
 };
@@ -151,7 +178,8 @@ type UseScenarioStateOptions = {
 export const useScenarioState = ({
   projectId,
   resolveBaseUrl,
-  defaultEndpointId,
+  target,
+  onOpenTarget,
   route,
   showToast,
 }: UseScenarioStateOptions) => {
@@ -174,7 +202,7 @@ export const useScenarioState = ({
   const [markersVisible, setMarkersVisible] = useState(true);
   const [saveBeforeReturning, setSaveBeforeReturning] = useState(false);
   const [positionStore, setPositionStore] = useState<MarkerPositionStore>({});
-  const baseUrl = resolveBaseUrl(scenario.endpointId);
+  const baseUrl = resolveBaseUrl();
 
 
   const updateSteps = (steps: Step[]) =>
@@ -273,10 +301,10 @@ export const useScenarioState = ({
     }
   };
 
-  const selectEndpoint = (endpointId: string) => {
-    const next = { ...scenario, endpointId };
-    setScenario(next);
-    if (editorMode === "text") setSourceMarkdown(replaceScenarioMarkdown(sourceMarkdown, next));
+  // 편집 중 헤더의 서버·환경을 바꾸면 열린 문서의 모든 시나리오에 바로 반영한다(저장 전까지는 변경 상태).
+  const retarget = (next: ScenarioTarget) => {
+    setScenario(current => current.title ? { ...current, endpointId: next.endpointId, environmentId: next.environmentId } : current);
+    if (sourceMarkdown.trim()) setSourceMarkdown(withTarget(sourceMarkdown, next));
   };
 
   const openRecord = (id: string) => {
@@ -293,6 +321,7 @@ export const useScenarioState = ({
     ]));
     const first = parsed[0] ?? emptyScenario;
     setActiveRecord(record);
+    onOpenTarget({ endpointId: first.endpointId, environmentId: first.environmentId });
     setSourceMarkdown(record.markdown);
     setSavedMarkdown(record.markdown);
     setPositionStore(store);
@@ -310,7 +339,7 @@ export const useScenarioState = ({
     setPositionStore({});
     setSavedPositions("{}");
     setSavedMarkdown("");
-    const markdown = identifyMarkdown(`# 시나리오: 새 시나리오${defaultEndpointId ? `\nendpoint: ${defaultEndpointId}` : ""}\n\n`);
+    const markdown = identifyMarkdown(withTarget("# 시나리오: 새 시나리오\n\n", target));
     setSourceMarkdown(markdown);
     const first = parseMarkdown(markdown)[0];
     setScenario(first);
@@ -359,6 +388,7 @@ export const useScenarioState = ({
   };
   const saveRecord = async (markdown =editorMode === "marker" ? replaceScenarioMarkdown(sourceMarkdown, scenario) : sourceMarkdown) => {
     if (!enabled || saving.current || loading) return false;
+    markdown = withTarget(markdown, target);
     const parsed = parseMarkdown(markdown);
     if (!parsed.length) { showToast("저장할 시나리오를 작성하세요."); return false; }
     markdown = identifyMarkdown(markdown, previews);
@@ -516,6 +546,39 @@ export const useScenarioState = ({
     setSelectedId(positioned.steps[0]?.id ?? "");
   };
 
+  // 화면 추출에서 같은 문서 끝에 다음 시나리오를 만들고 편집 대상으로 고른다.
+  // 새로 시작하면 경로 이동을 첫 단계로 두고, 이어서 작성하면 이전 시나리오의 마지막 화면에서 실행한다.
+  const addNextScenario = (start: { continuePrevious: true } | { continuePrevious: false; path: string }) => {
+    const markdown = replaceScenarioMarkdown(sourceMarkdown, scenario);
+    const title = uniqueScenarioTitle(`시나리오 ${previews.length + 1}`, previews.map((item) => item.title));
+    const next: Scenario = {
+      id: crypto.randomUUID(),
+      code: `TC_${previews.length + 1}`,
+      title,
+      endpointId: target.endpointId || undefined,
+      environmentId: target.environmentId || undefined,
+      url: "",
+      continuePrevious: start.continuePrevious || undefined,
+      steps: start.continuePrevious ? [] : [{
+        id: "1",
+        databaseId: crypto.randomUUID(),
+        action: "goto",
+        target: routePath(start.path),
+        connected: true,
+      }],
+    };
+    const nextMarkdown = [markdown.trim(), scenarioToMarkdown(next)].filter(Boolean).join("\n\n");
+    const parsed = parseMarkdown(nextMarkdown).find((item) => item.id === next.id);
+    if (!parsed) return;
+    setPositionStore(currentPositions);
+    setSourceMarkdown(nextMarkdown);
+    setScenario(parsed);
+    setMarkerScenarioId(parsed.id);
+    setSelectedId(parsed.steps[0]?.id ?? "");
+    closeMarkerDialog();
+    setIsAddingMarker(false);
+  };
+
   const reorderSteps = (draggedId: string, targetId: string) => {
     const fromIndex = scenario.steps.findIndex((step) => step.id === draggedId);
     const targetIndex = scenario.steps.findIndex(
@@ -570,12 +633,19 @@ export const useScenarioState = ({
     showToast(`시나리오 ${blocks.length}개를 템플릿으로 복제했습니다.`);
   };
 
+  // 화면 추출 중인 시나리오는 저장된 시나리오와 같은 방식으로 직렬화해 비교한다. 본문 서식 차이는 변경으로 보지 않는다.
+  const markerDirty = useMemo(() => {
+    if (editorMode !== "marker" || !scenario.title) return false;
+    const saved = parseMarkdown(savedMarkdown).find(item => item.id === scenario.id);
+    return !saved || scenarioToMarkdown(scenario) !== scenarioToMarkdown(applyPositions(saved, JSON.parse(savedPositions)));
+  }, [editorMode, scenario, savedMarkdown, savedPositions]);
+
   return {
     scenario,
     setScenario,
-    selectEndpoint,
+    retarget,
     sourceMarkdown,
-    isDirty: sourceMarkdown !== savedMarkdown || (editorMode === "marker" && replaceScenarioMarkdown(sourceMarkdown, scenario) !== savedMarkdown) || serializePositions(Object.fromEntries(parseMarkdown(sourceMarkdown).map(item => [positionKey(item), currentPositions[positionKey(item)] ?? []]))) !== savedPositions,
+    isDirty: sourceMarkdown !== savedMarkdown || markerDirty || serializePositions(Object.fromEntries(parseMarkdown(sourceMarkdown).map(item => [positionKey(item), currentPositions[positionKey(item)] ?? []]))) !== savedPositions,
     records, activeRecord, loading, busy, refreshRecords, openRecord, newRecord, saveRecord, deleteRecord, duplicateRecord, importMarkdown,
     markerScenarioId,
     editorMode,
@@ -604,6 +674,7 @@ export const useScenarioState = ({
     completeMarker,
     saveMarkerEditsAndReturn,
     selectMarkerScenario,
+    addNextScenario,
     reorderSteps,
     duplicateScenario,
   };

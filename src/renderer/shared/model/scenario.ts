@@ -21,6 +21,7 @@ export type Route =
   | "run"
   | "form-automation"
   | "api-testing"
+  | "ai-tc"
   | "settings";
 /** 시나리오 작업공간 하나로 묶인 화면: 편집 탭(editor)과 실행 탭(picker · run). */
 export type ScenarioWorkspaceRoute = Extract<Route, "editor" | "picker" | "run">;
@@ -54,6 +55,10 @@ export const actionText = (step: Step): string =>
           ? `${step.target}에서 '${step.value || ""}' 선택`
           : step.action === "click"
             ? `${step.target}${step.occurrence && step.occurrence > 1 ? ` [${step.occurrence}번째]` : ""} 클릭${step.waitSeconds ? ` [대기 ${step.waitSeconds}초]` : ""}`
+            : step.action === "hover"
+              ? `${step.target}${step.occurrence && step.occurrence > 1 ? ` [${step.occurrence}번째]` : ""} 호버${step.waitSeconds ? ` [대기 ${step.waitSeconds}초]` : ""}`
+            : step.action === "expectNoText"
+              ? `${step.target} 텍스트 미노출 확인${step.waitSeconds ? ` [대기 ${step.waitSeconds}초]` : ""}`
             : `${step.target} ${actionLabel[step.action]}`;
 
 export const estimateDurationSeconds = (scenario: Scenario): number =>
@@ -70,6 +75,8 @@ export const estimateDurationSeconds = (scenario: Scenario): number =>
             ? 300
           : step.action === "expectText"
             ? step.waitSeconds ?? 1
+          : step.action === "expectNoText"
+            ? 1
             : 1),
     0,
   );
