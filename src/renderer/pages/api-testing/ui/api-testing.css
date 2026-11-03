@@ -1601,6 +1601,7 @@ body.panel-resizing { cursor:col-resize; user-select:none; }
 .api-scn-step-fail > span { width:6px; height:6px; border-radius:50%; background:currentColor; }
 .api-scn-step.is-blocked .api-scn-step-fail { color:var(--ck-color-wait-ink); }
 .api-scn-step-meta { flex:none; color:var(--ck-color-text-disabled); font:11px var(--ck-font-mono); white-space:nowrap; }
+.api-scn-step-meta.is-passed { color:var(--ck-color-pass); }
 @media (max-width:1100px) { .api-scn-step-meta { display:none; } }
 .api-scn-step-caret { flex:none; color:var(--api-muted); transition:transform .12s ease; }
 .api-scn-step.is-open .api-scn-step-caret { transform:rotate(180deg); }

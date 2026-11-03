@@ -180,7 +180,7 @@ export function ScenarioSteps({ preview, result, resultPreview, catalogs, bindin
               {open && <small>{name}</small>}
             </span>
             {failed && <span className="api-scn-step-fail" title={runStep?.error}><span aria-hidden="true" />{status === "blocked" ? runStatusName(status) : "실패"}</span>}
-            <span className="api-scn-step-meta">{metaText}</span>
+            <span className={`api-scn-step-meta${status === "passed" ? " is-passed" : ""}`}>{metaText}</span>
             <Icon name="expand_more" size={18} className="api-scn-step-caret" />
           </Button>
           <div id={bodyId} className="api-scn-step-body" hidden={!open}>
