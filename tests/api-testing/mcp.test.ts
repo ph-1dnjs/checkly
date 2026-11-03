@@ -121,7 +121,7 @@ test("MCP groups and suites preserve revisions, order and failure policy", async
     const connection = await service.start({ projectId, environmentId }); assert.ok(connection.enabled);
     await client.connect(new StreamableHTTPClientTransport(new URL(connection.url), { requestInit: { headers: { Authorization: `Bearer ${connection.token}` } } }));
     const call = async (name: string, args = {}) => parse(await client.callTool({ name, arguments: args }));
-    for (const phrase of ["단계 수만으로", "자동 정리는 보장되지 않습니다", "list_groups"]) assert.ok(client.getInstructions()?.includes(phrase));
+    for (const phrase of ["단계 수만으로", "자동 정리는 보장되지 않습니다", "list_groups", "delete_suite"]) assert.ok(client.getInstructions()?.includes(phrase));
     const source = (name: string, endpoint: string) => `name: ${name}\nserver: API\nsteps:\n  - name: 호출\n    api: GET ${endpoint}\n`;
     const first = await call("save_scenario", { source: source("첫째", "/good"), groupPath: ["회원", "인증"] });
     let saved = await call("get_scenario", { id: first.id });
@@ -287,8 +287,9 @@ test("list_scenarios summarizes without bodies; delete_scenario needs the app us
   try {
     await workspace.saveProject({ id: projectId, name: "삭제", servers: [{ id: serverId, name: "API" }], environments: [{ id: environmentId, name: "dev", baseUrls: { [serverId]: "http://127.0.0.1:1" } }] });
     await workspace.importSpec({ projectId, environmentId, serverId }, JSON.stringify({ openapi: "3.0.3", info: { title: "삭제", version: "1" }, paths: { "/login": { post: { responses: { "200": { description: "성공" } } } }, "/orders": { get: { responses: { "200": { description: "성공" } } } } } }));
-    await workspace.saveScenario({ projectId, environmentId }, "name: 로그인\ndescription: 토큰 저장\nserver: API\nsteps:\n  - name: 로그인\n    api: POST /login\n    auth: none\n    extract: [{ pointer: /token, target: globals.token }]\n", {});
-    await workspace.saveScenario({ projectId, environmentId }, "name: 주문 조회\nserver: API\nsteps:\n  - name: 목록\n    api: GET /orders\n  - name: 다시\n    api: GET /orders\n", {});
+    const loginScenario = await workspace.saveScenario({ projectId, environmentId }, "name: 로그인\ndescription: 토큰 저장\nserver: API\nsteps:\n  - name: 로그인\n    api: POST /login\n    auth: none\n    extract: [{ pointer: /token, target: globals.token }]\n", {});
+    const ordersScenario = await workspace.saveScenario({ projectId, environmentId }, "name: 주문 조회\nserver: API\nsteps:\n  - name: 목록\n    api: GET /orders\n  - name: 다시\n    api: GET /orders\n", {});
+    const suite = await workspace.saveSuite(projectId, { id: randomUUID(), name: "주문 흐름", scenarioIds: [loginScenario.id, ordersScenario.id], onFailure: "stop" });
     const connection = await service.start({ projectId, environmentId });
     assert.ok(connection.enabled);
     await client.connect(new StreamableHTTPClientTransport(new URL(connection.url), { requestInit: { headers: { Authorization: `Bearer ${connection.token}` } } }));
@@ -303,6 +304,19 @@ test("list_scenarios summarizes without bodies; delete_scenario needs the app us
     assert.deepEqual({ description: login.description, stepCount: login.stepCount, apis: login.apis, producesGlobals: login.producesGlobals }, { description: "토큰 저장", stepCount: 1, apis: ["POST /login"], producesGlobals: ["token"] });
     const orders = await call("list_scenarios", { query: "get /orders" });
     assert.deepEqual(orders.items.map((item: { name: string; apis: string[] }) => [item.name, item.apis]), [["주문 조회", ["GET /orders"]]]);
+
+    const suiteInfo = await call("get_suite", { id: suite.id });
+    assert.equal(suiteInfo.name, "주문 흐름");
+    const staleSuite = await client.callTool({ name: "delete_suite", arguments: { id: suite.id, expectedUpdatedAt: "2000-01-01T00:00:00.000Z" } });
+    assert.equal(staleSuite.isError, true);
+    assert.equal(asked.length, 0);
+    answers.push(false);
+    assert.equal((await call("delete_suite", { id: suite.id, expectedUpdatedAt: suite.updatedAt })).deleted, false);
+    assert.match(asked[0], /주문 흐름/);
+    assert.equal((await call("list_suites")).items.length, 1);
+    answers.push(true);
+    assert.deepEqual(await call("delete_suite", { id: suite.id, expectedUpdatedAt: suite.updatedAt }), { id: suite.id, deleted: true });
+    assert.equal((await call("list_suites")).items.length, 0);
 
     const stale = await client.callTool({ name: "delete_scenario", arguments: { id: login.id, expectedUpdatedAt: "2000-01-01T00:00:00.000Z" } });
     assert.equal(stale.isError, true);

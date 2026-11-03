@@ -12,7 +12,7 @@ const ignoredSensitive = z.boolean().optional();
 export const scenarioInputSchema = z.object({
   name: z.string().regex(/^[A-Za-z][A-Za-z0-9_]*$/),
   label: z.string().min(1).max(200).optional(),
-  type: z.enum(["string", "number", "boolean", "object", "array"]).default("string"),
+  type: z.enum(["string", "number", "boolean", "object", "array", "datetime"]).default("string"),
   required: z.boolean().default(true),
   sensitive: ignoredSensitive,
 }).strict();
@@ -33,7 +33,25 @@ export function scenarioInputType(value: Json | undefined): string {
 }
 
 export function matchesScenarioInputType(value: Json | undefined, type: ScenarioInput["type"]): boolean {
+  if (type === "datetime") return typeof value === "string" && isIsoDateTime(value);
   return scenarioInputType(value) === type;
+}
+
+const isoDateTime = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
+function isIsoDateTime(value: string): boolean { return isoDateTime.test(value) && Number.isFinite(Date.parse(value)); }
+
+/** Resolve `now`, `now+3d`, or an ISO timestamp to a canonical UTC timestamp. */
+export function resolveDateTimeInput(value: string, now = new Date()): string {
+  const relative = /^now(?:\s*([+-])\s*(\d+)\s*([smhd]))?$/i.exec(value.trim());
+  if (relative) {
+    const amount = relative[2] ? Number(relative[2]) : 0;
+    const unitMs = relative[3] ? ({ s: 1_000, m: 60_000, h: 3_600_000, d: 86_400_000 } as const)[relative[3].toLowerCase() as "s" | "m" | "h" | "d"] : 0;
+    const offset = (relative[1] === "-" ? -1 : 1) * amount * unitMs;
+    const resolved = new Date(now.getTime() + offset);
+    if (Number.isFinite(resolved.getTime())) return resolved.toISOString();
+  }
+  if (isIsoDateTime(value.trim())) return new Date(value.trim()).toISOString();
+  throw new Error("날짜·시간은 ISO 8601 형식 또는 now, now+3d, now-2h 형식으로 입력하세요");
 }
 
 const expectation = z.object({
@@ -143,6 +161,17 @@ export type Json = z.infer<typeof value>;
 /** Supports the legacy single input while allowing multiple inputs per step. */
 export function scenarioStepInputs(step: Scenario["steps"][number]): ScenarioInput[] {
   return [...(step.input ? [step.input] : []), ...(step.inputs ?? [])];
+}
+
+/** Resolves only declared datetime inputs so ordinary string inputs keep their literal value. */
+export function resolveScenarioDateTimeInputs(scenario: Scenario, values: Record<string, Json>, now = new Date()): Record<string, Json> {
+  const datetimeNames = new Set(scenario.steps.flatMap(step => scenarioStepInputs(step)).filter(input => input.type === "datetime").map(input => input.name));
+  const resolved = { ...values };
+  for (const name of datetimeNames) if (Object.hasOwn(resolved, name)) {
+    if (typeof resolved[name] !== "string") throw new Error(`날짜·시간 입력 '${name}'은 문자열로 전달하세요 (예: now+3d)`);
+    resolved[name] = resolveDateTimeInput(resolved[name] as string, now);
+  }
+  return resolved;
 }
 
 export function scenarioStepLabel(step: { id: string; name?: string }): string {

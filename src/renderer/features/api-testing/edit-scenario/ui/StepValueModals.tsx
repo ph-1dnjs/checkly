@@ -201,9 +201,10 @@ export function ScenarioInputSettingsModal({ index, field, userInput, onChange, 
       <p className="api-value-modal-note">이 단계의 API를 호출하기 직전에 값을 입력받아 <code>{field.name}</code>에 넣습니다. 입력한 값은 시나리오에 저장하지 않습니다.</p>
       <label>입력 안내 문구<Input aria-label={`${index + 1}단계 ${field.name} 실행 중 입력 안내`} value={userInput.label ?? ""} placeholder={`${field.name} 입력`} onChange={event => onChange({ label: event.target.value || undefined })} /></label>
       <div className="api-input-settings-grid">
-        <label>값 형식<select aria-label={`${index + 1}단계 ${field.name} 실행 중 입력 형식`} value={userInput.type} onChange={event => onChange({ type: event.target.value as ScenarioInput["type"] })}><option value="string">문자열</option><option value="number">숫자</option><option value="boolean">불리언</option><option value="object">JSON 객체</option><option value="array">JSON 배열</option></select></label>
+        <label>값 형식<select aria-label={`${index + 1}단계 ${field.name} 실행 중 입력 형식`} value={userInput.type} onChange={event => onChange({ type: event.target.value as ScenarioInput["type"] })}><option value="string">문자열</option><option value="number">숫자</option><option value="boolean">불리언</option><option value="object">JSON 객체</option><option value="array">JSON 배열</option><option value="datetime">날짜·시간</option></select></label>
         <label className="api-check-row api-input-required"><input type="checkbox" checked={userInput.required} onChange={event => onChange({ required: event.target.checked })} />필수 입력 (비우면 실행 중단)</label>
       </div>
+      {userInput.type === "datetime" && <p className="api-value-modal-note">실행할 때 날짜·시간을 직접 고르거나 현재 시각 기준으로 입력합니다. 예: now+3d, now-2h</p>}
             <footer><Button variant="danger" onClick={onRemove}>실행 중 입력 해제</Button><Button variant="primary" onClick={onClose}>완료</Button></footer>
   </Modal>;
 }

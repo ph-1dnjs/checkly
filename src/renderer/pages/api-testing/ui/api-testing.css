@@ -1231,6 +1231,8 @@ body.panel-resizing { cursor:col-resize; user-select:none; }
 .api-input-settings-grid { grid-template-columns:minmax(0,1fr) auto; }
 .api-input-settings-grid .api-input-required { display:flex; flex-direction:row; align-items:center; gap:6px; margin:0 0 8px; font-weight:400; }
 .api-input-settings-grid .api-input-required input { flex:none; width:16px; height:16px; margin:0; }
+.api-input-datetime-mode { display:flex; gap:14px; margin:0; padding:0; border:0; }
+.api-input-datetime-mode label { display:flex; align-items:center; gap:6px; }
 .api-testing-page button.api-json-input-token { min-height:0; padding:0 6px; border:1px solid #f0d9a8; border-radius:var(--ck-dim-radius-pill); background:var(--ck-color-wait-tint); color:var(--ck-color-wait-ink); font-family:var(--ck-font-ui); font-size:11px; font-weight:600; cursor:pointer; }
 .api-expect-value-row { display:flex; gap:6px; align-items:center; }
 .api-expect-value-row > input { flex:1; min-width:0; }

@@ -7,12 +7,15 @@ import { releaseStaleDiscovery } from "./discovery";
 import type { ApiWorkspace } from "../workspace";
 import { aiCatalogDetails, arraySelectionAuthorRules, descriptionAuthorRules, multipartAuthorRules, scenarioPlanningRules, withGeneratedId } from "../ai-context";
 import type { ApiEnvironmentScope, ApiMcpRunEvent, ApiMcpStatus, ApiScenarioResult, SavedApiScenario } from "../../shared/workspace";
-import { describeCheck, parseScenario, type Scenario } from "../../shared/scenario";
+import { describeCheck, parseScenario, resolveScenarioDateTimeInputs, type Json, type Scenario } from "../../shared/scenario";
 import { producedGlobalNames, usesInvalidatedGlobal } from "../../shared/suite-report";
 
 const connectionSchema = z.object({ projectId: z.string().uuid(), environmentId: z.string().uuid() }).strict();
 const sourceSchema = { source: z.string().min(1).max(200_000), bindings: z.record(z.string(), z.string().uuid()).default({}) };
 const groupPathArg = z.array(z.string().trim().min(1).max(80).refine(value => !value.includes("/"))).max(10).refine(value => value.join("/").length <= 200).optional().describe("그룹 경로 배열. 생략하면 기존 그룹 유지, 빈 배열은 미분류");
+function resolveMcpInputs(source: string, values: Record<string, Json>): Record<string, Json> {
+  return resolveScenarioDateTimeInputs(parseScenario(source), values);
+}
 type Run = { controller: AbortController; state: string; result?: unknown };
 /** Asks the person at the app, never the AI client. Resolves false when declined, timed out or aborted. */
 export type ApiMcpConfirm = (request: { title: string; detail: string; signal: AbortSignal }) => Promise<boolean>;
@@ -121,7 +124,7 @@ export class ApiMcpService {
   private async createMcp(scope: ApiEnvironmentScope, token: string) {
     const { McpServer } = await import("@modelcontextprotocol/sdk/server/mcp.js");
     const server = new McpServer({ name: "checkly-api-testing", version: "1.0.0" }, {
-      instructions: "Use get_context first. Only the user-enabled project/environment is accessible. Find APIs with list_apis (query/tag filters, up to 200 per call; serverId optional for a single server), then read only the needed ones with get_api_spec (apis: ['METHOD /path']). Reuse globals listed in get_context with their producer scenarios. Validate before saving. Run only when the user requests execution. Never invent credentials; use globals or supplied inputs. Stored scenarios use YAML: id, name, server, steps with name, api ('GET /path'), body/multipart/query/pathParams/headers/cookies, extract and expect. Step references: {{steps.1.response.body./id}}; globals: {{globals.token}}. No version or step id fields. Updates require the latest updatedAt. Before creating, check list_scenarios (query) for an existing scenario. delete_scenario asks the user in the app; never retry a declined delete. If a global a scenario needs has hasValue false, ask the user before running one of its producers first. run_scenario and run_suite require the projectId and environmentId from get_context. HTTP runs may change real data. list_groups로 그룹을 조회하고 기존 그룹을 우선 사용하세요. 적합한 그룹이 없으면 새 그룹 경로를 사용하세요. list_suites와 get_suite로 기존 스위트를 확인하고 save_suite로 순서와 실패 정책을 명시하세요. get_context의 hasValue는 값의 최신성을 보장하지 않습니다." + "\n" + [...descriptionAuthorRules, ...scenarioPlanningRules, ...multipartAuthorRules, ...arraySelectionAuthorRules].join("\n"),
+      instructions: "Use get_context first. Only the user-enabled project/environment is accessible. Find APIs with list_apis (query/tag filters, up to 200 per call; serverId optional for a single server), then read only the needed ones with get_api_spec (apis: ['METHOD /path']). Reuse globals listed in get_context with their producer scenarios. Validate before saving. Run only when the user requests execution. Never invent credentials; use globals or supplied inputs. Stored scenarios use YAML: id, name, server, steps with name, api ('GET /path'), body/multipart/query/pathParams/headers/cookies, extract and expect. Step references: {{steps.1.response.body./id}}; globals: {{globals.token}}. For runtime date/time values, declare the input type as datetime and pass an ISO 8601 timestamp or now, now+3d, now-2h in run_scenario.inputs or run_suite.inputsByScenario; relative values are calculated when the scenario starts and sent as UTC ISO 8601. No version or step id fields. Updates require the latest updatedAt. Before creating, check list_scenarios (query) for an existing scenario. delete_scenario and delete_suite ask the user in the app; never retry a declined delete. Deletion requires the latest expectedUpdatedAt from get_scenario/list_scenarios or get_suite/list_suites. If a global a scenario needs has hasValue false, ask the user before running one of its producers first. run_scenario and run_suite require the projectId and environmentId from get_context. HTTP runs may change real data. list_groups로 그룹을 조회하고 기존 그룹을 우선 사용하세요. 적합한 그룹이 없으면 새 그룹 경로를 사용하세요. list_suites와 get_suite로 기존 스위트를 확인하고 save_suite로 순서와 실패 정책을 명시하세요. get_context의 hasValue는 값의 최신성을 보장하지 않습니다." + "\n" + [...descriptionAuthorRules, ...scenarioPlanningRules, ...multipartAuthorRules, ...arraySelectionAuthorRules].join("\n"),
     });
     const guard = () => { if (this.connection?.token !== token) throw new Error("MCP 연결이 종료되었습니다"); };
     const grant = this.connection?.token === token ? this.grant?.signal : undefined;
@@ -223,6 +226,25 @@ export class ApiMcpService {
       guard();
       return this.workspace.saveSuite(scope.projectId, { id: id ?? randomUUID(), name, scenarioIds, onFailure, ...(groupPath !== undefined ? { groupPath } : previous?.groupPath ? { groupPath: previous.groupPath } : {}), ...(previous?.tags ? { tags: previous.tags } : {}) }, expectedUpdatedAt, grant);
     });
+    tool("delete_suite", "스위트 삭제. Checkly 앱에서 사용자 확인 후 삭제하며, get_suite·list_suites의 최신 updatedAt을 expectedUpdatedAt으로 전달하세요. 취소되면 다시 요청하지 마세요.", { id: z.string().uuid(), expectedUpdatedAt: z.string() }, false, async ({ id, expectedUpdatedAt }) => {
+      if (!this.hooks.confirm) throw new Error("이 앱에서는 삭제 확인을 받을 수 없어 MCP로 삭제할 수 없습니다. 사용자에게 앱에서 직접 삭제하도록 안내하세요");
+      if (this.confirming) throw new Error("다른 삭제 확인이 진행 중입니다. 사용자의 응답 후 다시 요청하세요");
+      const item = await findSuite(id);
+      if (item.updatedAt !== expectedUpdatedAt) throw new Error("그 사이 스위트가 바뀌었습니다. get_suite로 최신 내용을 확인한 뒤 다시 요청하세요");
+      this.confirming = true;
+      let approved: boolean;
+      try {
+        approved = await this.hooks.confirm({
+          title: `스위트 '${item.name}'을(를) 삭제할까요?`,
+          detail: `외부 AI가 MCP로 삭제를 요청했습니다. 삭제하면 되돌릴 수 없습니다.${item.groupPath?.length ? `\n그룹: ${item.groupPath.join(" / ")}` : ""}`,
+          signal: AbortSignal.any([grant, AbortSignal.timeout(CONFIRM_TIMEOUT_MS)]),
+        });
+      } finally { this.confirming = false; }
+      guard();
+      if (!approved) return { id, deleted: false, message: "사용자가 삭제하지 않았습니다(취소 또는 응답 시간 초과). 다시 요청하지 말고 사용자에게 확인하세요" };
+      await this.workspace.deleteSuite(scope.projectId, id, expectedUpdatedAt);
+      return { id, deleted: true };
+    });
     tool("delete_scenario", "시나리오 삭제. Checkly 앱에 사용자 확인 창이 뜨고, 사용자가 삭제를 누른 경우에만 지웁니다. 45초 안에 응답이 없거나 취소하면 지우지 않습니다. expectedUpdatedAt은 get_scenario·list_scenarios의 updatedAt입니다.", { id: z.string(), expectedUpdatedAt: z.string() }, false, async ({ id, expectedUpdatedAt }) => {
       if (!this.hooks.confirm) throw new Error("이 앱에서는 삭제 확인을 받을 수 없어 MCP로 삭제할 수 없습니다. 사용자에게 앱에서 직접 삭제하도록 안내하세요");
       if (this.confirming) throw new Error("다른 삭제 확인이 진행 중입니다. 사용자의 응답 후 다시 요청하세요");
@@ -242,7 +264,7 @@ export class ApiMcpService {
       await this.workspace.deleteScenario(scope.projectId, id, expectedUpdatedAt);
       return { id, deleted: true };
     });
-    tool("run_scenario", "저장된 시나리오를 현재 허용 환경에서 실행. projectId·environmentId는 get_context에서 확인한 값이며 현재 연결과 다르면 실행하지 않습니다. 실행 ID를 즉시 반환. 실제 API 데이터가 변경될 수 있습니다. 필요한 입력은 inputs로 제공하세요.", { id: z.string(), projectId: z.string().uuid(), environmentId: z.string().uuid(), inputs: z.record(z.string(), z.json()).default({}) }, false, async ({ id, projectId, environmentId, inputs }) => {
+    tool("run_scenario", "저장된 시나리오를 현재 허용 환경에서 실행. projectId·environmentId는 get_context에서 확인한 값이며 현재 연결과 다르면 실행하지 않습니다. 실행 ID를 즉시 반환. 실제 API 데이터가 변경될 수 있습니다. 필요한 입력은 inputs로 제공하세요. datetime 입력은 ISO 8601 또는 now, now+3d, now-2h 형식을 지원합니다.", { id: z.string(), projectId: z.string().uuid(), environmentId: z.string().uuid(), inputs: z.record(z.string(), z.json()).default({}) }, false, async ({ id, projectId, environmentId, inputs }) => {
       // The stdio adapter follows the latest grant, so pin the run to the environment the AI was working against.
       if (projectId !== scope.projectId || environmentId !== scope.environmentId) throw new Error("MCP 연결의 프로젝트·환경이 바뀌었습니다. get_context로 현재 환경을 확인하고 사용자에게 실행 여부를 다시 확인하세요");
       if ([...this.runs.values()].some(r => r.state === "running")) throw new Error("MCP 테스트가 이미 실행 중입니다");
@@ -252,11 +274,12 @@ export class ApiMcpService {
       while (this.runs.size >= 30) this.runs.delete(this.runs.keys().next().value!);
       // The app shows MCP runs like its own, so the person can read the trace the AI never receives.
       const preview = await this.workspace.previewScenario(scope, item.source, item.bindings).catch(() => undefined); guard();
+      const runInputs = resolveMcpInputs(item.source, inputs);
       const runId = randomUUID();
       const run: Run = { controller: new AbortController(), state: "running" };
       this.runs.set(runId, run);
       const startedAt = new Date().toISOString();
-      void this.workspace.runScenario(scope, item.source, item.bindings, inputs, { runId, signal: run.controller.signal })
+      void this.workspace.runScenario(scope, item.source, item.bindings, runInputs, { runId, signal: run.controller.signal })
         .then(result => {
           run.state = result.status; run.result = summarize(result, parsedOrUndefined(item.source));
           if (preview) this.hooks.onRun?.({ ...scope, scenarioId: item.id, result, preview, bindings: item.bindings, startedAt, completedAt: new Date().toISOString() });
@@ -264,7 +287,7 @@ export class ApiMcpService {
         .catch(() => { run.state = run.controller.signal.aborted ? "cancelled" : "failed"; run.result = { message: "실행하지 못했습니다. validate_scenario로 명세·변수·입력을 확인하고, 앱에서 다른 실행이 진행 중인지 확인하세요." }; });
       return { runId, state: run.state };
     });
-    tool("run_suite", "저장된 스위트를 순서대로 실행하고 runId 반환. projectId·environmentId는 get_context의 값. inputsByScenario는 시나리오 ID별 입력. 실패 시 저장된 stop/continue 정책을 따르며 자동 정리는 보장하지 않습니다.", { id: z.string().uuid(), projectId: z.string().uuid(), environmentId: z.string().uuid(), inputsByScenario: z.record(z.string(), z.record(z.string(), z.json())).default({}) }, false, async ({ id, projectId, environmentId, inputsByScenario }) => {
+    tool("run_suite", "저장된 스위트를 순서대로 실행하고 runId 반환. projectId·environmentId는 get_context의 값. inputsByScenario는 시나리오 ID별 입력이며 datetime 입력은 ISO 8601 또는 now, now+3d, now-2h 형식을 지원합니다. 실패 시 저장된 stop/continue 정책을 따르며 자동 정리는 보장하지 않습니다.", { id: z.string().uuid(), projectId: z.string().uuid(), environmentId: z.string().uuid(), inputsByScenario: z.record(z.string(), z.record(z.string(), z.json())).default({}) }, false, async ({ id, projectId, environmentId, inputsByScenario }) => {
       if (projectId !== scope.projectId || environmentId !== scope.environmentId) throw new Error("MCP 연결의 프로젝트·환경이 바뀌었습니다. get_context로 현재 환경을 확인하고 사용자에게 실행 여부를 다시 확인하세요");
       if ([...this.runs.values()].some(r => r.state === "running")) throw new Error("MCP 테스트가 이미 실행 중입니다");
       const suite = await findSuite(id);
@@ -291,7 +314,8 @@ export class ApiMcpService {
             const preview = await this.workspace.previewScenario(scope, item.source, item.bindings);
             run.controller.signal.throwIfAborted();
             const startedAt = new Date().toISOString();
-            const result = await this.workspace.runScenario(scope, item.source, item.bindings, inputsByScenario[scenarioId] ?? {}, { runId, signal: run.controller.signal });
+            const runInputs = resolveMcpInputs(item.source, inputsByScenario[scenarioId] ?? {});
+            const result = await this.workspace.runScenario(scope, item.source, item.bindings, runInputs, { runId, signal: run.controller.signal });
             rows.push({ id: scenarioId, name, status: result.status, result: summarize(result, preview.scenario) });
             if (result.status !== "passed") produced.forEach(value => invalidated.add(value));
             else produced.forEach(value => invalidated.delete(value));
