@@ -317,13 +317,14 @@ test("list_scenarios summarizes without bodies; delete_scenario needs the app us
     answers.push(true);
     assert.deepEqual(await call("delete_suite", { id: suite.id, expectedUpdatedAt: suite.updatedAt }), { id: suite.id, deleted: true });
     assert.equal((await call("list_suites")).items.length, 0);
+    assert.equal(asked.length, 2);
 
     const stale = await client.callTool({ name: "delete_scenario", arguments: { id: login.id, expectedUpdatedAt: "2000-01-01T00:00:00.000Z" } });
     assert.equal(stale.isError, true);
-    assert.equal(asked.length, 0);
+    assert.equal(asked.length, 2);
     answers.push(false);
     assert.equal((await call("delete_scenario", { id: login.id, expectedUpdatedAt: login.updatedAt })).deleted, false);
-    assert.match(asked[0], /로그인/);
+    assert.match(asked[2], /로그인/);
     assert.equal((await call("list_scenarios")).total, 2);
     answers.push(true);
     assert.deepEqual(await call("delete_scenario", { id: login.id, expectedUpdatedAt: login.updatedAt }), { id: login.id, deleted: true });
