@@ -41,10 +41,12 @@ Then `주문 목록` 텍스트가 보인다 [대기 10초]
 | `manualControl` | `` `결제` 브라우저 직접 제어 [안내] `` | 최대 5분 입력 이벤트 대기 |
 | `manualResult` | `` `결과` 수동 결과 확인 [안내] `` | 최대 5분 판정 대기 |
 | `click` | `` `삭제` [2번째] 클릭 [대기 5초] `` | 보이는 n번째 클릭 |
+| `hover` | `` `css=a[href*="mypage"]` 호버 [대기 5초] `` | 클릭 대상과 같은 방식으로 찾아 마우스만 올림(`마우스 올리기`·`마우스 오버`도 인식). 다음 클릭 단계로 열린 드롭다운 항목을 누름 |
 | `select` | `` `상태`에서 `완료` 선택 `` | native/custom 선택 |
 | `expectText` | `` `저장 완료` 텍스트가 보인다 [대기 10초] `` | 보이는 텍스트 대기 |
+| `expectNoText` | `` `오류` 텍스트가 보이지 않는다 [대기 10초] `` | 텍스트가 사라질 때까지 대기(`표시되지 않는다`·`사라진다`도 인식) |
 
-`화면에 `조건`가 있는 경우`는 조건이 보일 때만 단계를 실행합니다. 미충족은 실패가 아니라 skip입니다. 파서는 manualResult → manualControl → 결과 확인 → manualFill → upload → fill → select → goto → click 우선순위를 사용합니다.
+`화면에 `조건`가 있는 경우`는 조건이 보일 때만 단계를 실행합니다. 미충족은 실패가 아니라 skip입니다. 파서는 manualResult → manualControl → 결과 확인 → manualFill → upload → fill → select → hover → goto → click 우선순위를 사용합니다.
 
 ## 표시·계산·직렬화
 
@@ -58,7 +60,7 @@ Then `주문 목록` 텍스트가 보인다 [대기 10초]
 | `scenarioToMarkdown` | Scenario를 표준 문법으로 직렬화 |
 | `replaceScenarioMarkdown` | 한 블록만 원문에서 교체 |
 
-> **직렬화 정책**: `useScenarioState.ts`의 `scenarioToMarkdown`은 태그를 유지합니다. 원래 주석·문장 형식은 표준화하고 waitSeconds는 click/expectText만 출력합니다. 복제의 manualFill value도 출력하지 않습니다. [편집 정책](../04-pages/020-scenario-editor/01-overview.md)과 [저장 정책](../04-pages/020-scenario-editor/03-api.md)을 함께 봅니다.
+> **직렬화 정책**: `useScenarioState.ts`의 `scenarioToMarkdown`은 태그를 유지합니다. 원래 주석·문장 형식은 표준화하고 waitSeconds는 click/hover/expectText/expectNoText만 출력합니다. 복제의 manualFill value도 출력하지 않습니다. [편집 정책](../04-pages/020-scenario-editor/01-overview.md)과 [저장 정책](../04-pages/020-scenario-editor/03-api.md)을 함께 봅니다.
 
 ## 파일·영상 서비스
 
@@ -75,7 +77,8 @@ Then `주문 목록` 텍스트가 보인다 [대기 10초]
 | --- | --- |
 | `inputFor` | CSS는 value 속성 조건을 제거한 첫 요소, 그 외 label·placeholder·input/textarea name 결합 locator의 첫 요소 |
 | `selectFor` | `css=` 또는 label/select name |
-| `clickTargetFor` | CSS의 보이는 n번째 또는 모든 frame의 button·label·text 후보를 컨테이너 중복 제거 후 frame/DOM 순서로 정렬 |
+| `clickTargetFor` | CSS의 보이는 n번째 또는 모든 frame의 button·link·label·text 후보를 컨테이너 중복 제거 후 frame/DOM 순서로 정렬. 보이는 후보가 모자라면 숨겨진 후보까지 센 n번째를 `revealByHover`로 드러내 반환 |
+| `revealByHover` | 숨겨진 요소의 가장 가까운 보이는 조상에 hover하고, 다단 메뉴처럼 더 깊은 조상이 새로 보이면 이어서 hover해 대상이 보이는지 확인 |
 | `waitForVisibleText` | 100ms 간격으로 visible text 대기 |
 | `hasVisibleText` | 조건 text 검사 |
 | `resultTargetFor` | “결과 확인”, “클릭” 접미 표현 제거 |

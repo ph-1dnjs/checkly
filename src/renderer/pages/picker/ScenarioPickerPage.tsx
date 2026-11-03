@@ -4,6 +4,7 @@ import type { WebScenarioRecord } from "../../../app/ipc/web-scenario/types";
 import { ActionTag } from "../../shared/ui/ActionTag";
 import { Button } from "../../shared/ui/Button";
 import { LoadingSpinner } from "../../shared/ui/LoadingSpinner";
+import { SortableList } from "../../shared/ui/SortableList";
 import { ScenarioList } from "../../widgets/ScenarioList";
 
 type Props = {
@@ -27,6 +28,20 @@ export const recordScenarios = (record: WebScenarioRecord): Scenario[] => {
     }) };
   });
 };
+type ScenarioGroup = { record: WebScenarioRecord; scenarios: Scenario[] };
+/** Picked scenarios grouped by file. Files and scenarios keep the order of `pickedKeys` (pick order). */
+export const pickedScenarioGroups = (groups: ScenarioGroup[], pickedKeys: Set<string>): ScenarioGroup[] => {
+  const owners = new Map(groups.flatMap(group => group.scenarios.map(scenario => [scenario.id, { group, scenario }] as const)));
+  const picked = new Map<string, ScenarioGroup>();
+  for (const key of pickedKeys) {
+    const owner = owners.get(key);
+    if (!owner) continue;
+    const entry = picked.get(owner.group.record.id) ?? { record: owner.group.record, scenarios: [] };
+    entry.scenarios.push(owner.scenario);
+    picked.set(owner.group.record.id, entry);
+  }
+  return [...picked.values()];
+};
 export const ScenarioPickerPage = ({ records, loading, pickedKeys, onPick, onOpenEditor, onRefresh, onRun }: Props) => {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
@@ -34,7 +49,7 @@ export const ScenarioPickerPage = ({ records, loading, pickedKeys, onPick, onOpe
   const activeGroup = groups.find(group => group.record.id === activeId) ?? groups[0];
   const activeRecord = activeGroup?.record;
   const activeScenarios = activeGroup?.scenarios ?? [];
-  const pickedGroups = groups.map(group => ({ ...group, scenarios: group.scenarios.filter(scenario => pickedKeys.has(scenario.id)) })).filter(group => group.scenarios.length);
+  const pickedGroups = pickedScenarioGroups(groups, pickedKeys);
   const picked = pickedGroups.flatMap(group => group.scenarios);
   const pickedCountByRecord = Object.fromEntries(pickedGroups.map(group => [group.record.id, group.scenarios.length]));
   const allActivePicked = activeScenarios.length > 0 && activeScenarios.every(scenario => pickedKeys.has(scenario.id));
@@ -50,6 +65,12 @@ export const ScenarioPickerPage = ({ records, loading, pickedKeys, onPick, onOpe
     const next = new Set(pickedKeys);
     next.has(id) ? next.delete(id) : next.add(id);
     onPick(next);
+  };
+  const moveGroup = (from: number, to: number) => {
+    const next = [...pickedGroups];
+    next.splice(to, 0, ...next.splice(from, 1));
+    // Keys of scenarios no longer in the list stay at the end.
+    onPick(new Set([...next.flatMap(group => group.scenarios.map(scenario => scenario.id)), ...pickedKeys]));
   };
   const toggleExpand = (id: string) => setExpandedKeys(current => {
     const next = new Set(current);
@@ -202,29 +223,37 @@ export const ScenarioPickerPage = ({ records, loading, pickedKeys, onPick, onOpe
                 선택한 시나리오가 여기에 모입니다. 여러 문서에서 골라 한 번에 실행할 수 있습니다.
               </p>
             ) : (
-              pickedGroups.map((group) => (
-                <div key={group.record.id}>
-                  <div className="picker-cart-group">
-                    <span title={group.record.title}>{group.record.title}</span>
-                    <b>{group.scenarios.length}개</b>
-                  </div>
-                  {group.scenarios.map((item) => (
-                    <div className="picker-cart-item" key={item.id}>
-                      <b>{String(picked.indexOf(item) + 1).padStart(2, "0")}</b>
-                      <span title={item.title}>{item.title}</span>
-                      <i>{item.steps.length}</i>
-                      <Button
-                        className="picker-cart-remove"
-                        title="빼기"
-                        aria-label={`${item.title} 빼기`}
-                        onClick={() => togglePick(item.id)}
-                      >
-                        <span className="msi" aria-hidden="true">close</span>
-                      </Button>
+              <SortableList
+                items={pickedGroups}
+                className="picker-cart-files"
+                itemKey={(group) => group.record.id}
+                itemLabel={(group, index) => `${index + 1}번째 파일 ${group.record.title}`}
+                itemClassName={() => "picker-cart-file"}
+                onMove={moveGroup}
+                renderItem={(group) => (
+                  <>
+                    <div className="picker-cart-group">
+                      <span title={group.record.title}>{group.record.title}</span>
+                      <b>{group.scenarios.length}개</b>
                     </div>
-                  ))}
-                </div>
-              ))
+                    {group.scenarios.map((item) => (
+                      <div className="picker-cart-item" key={item.id}>
+                        <b>{String(picked.indexOf(item) + 1).padStart(2, "0")}</b>
+                        <span title={item.title}>{item.title}</span>
+                        <i>{item.steps.length}</i>
+                        <Button
+                          className="picker-cart-remove"
+                          title="빼기"
+                          aria-label={`${item.title} 빼기`}
+                          onClick={() => togglePick(item.id)}
+                        >
+                          <span className="msi" aria-hidden="true">close</span>
+                        </Button>
+                      </div>
+                    ))}
+                  </>
+                )}
+              />
             )}
           </div>
           <footer>

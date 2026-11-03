@@ -1,4 +1,4 @@
-export type Action = "goto" | "fill" | "fileUpload" | "click" | "select" | "expectText" | "manualFill" | "manualControl" | "manualResult";
+export type Action = "goto" | "fill" | "fileUpload" | "click" | "hover" | "select" | "expectText" | "expectNoText" | "manualFill" | "manualControl" | "manualResult";
 
 export type Step = {
   id: string;
@@ -26,8 +26,12 @@ export type Scenario = {
   title: string;
   /** 설정(엔드포인트 × 환경)의 웹 엔드포인트 ID. 본문에는 `endpoint:`로 저장한다. */
   endpointId?: string;
+  /** 작성할 때 고른 설정의 환경 ID. 본문에는 `environment:`로 저장한다. */
+  environmentId?: string;
   /** 실행 시 해석한 시작 주소. 본문에는 저장하지 않는다(이전 문서의 `url:`만 읽는다). */
   url: string;
+  /** 이전 시나리오의 마지막 화면에서 이어서 실행한다. 본문에는 `start: continue`로 저장한다. */
+  continuePrevious?: boolean;
   steps: Step[];
   tag?: string;
 };
@@ -43,20 +47,47 @@ export const splitScenarioBlocks = (markdown: string): string[] =>
 
 const STEP_LINE = /^(Given|When|Then|And|But|If)\s+/i;
 
-/** 이전 문서의 `url:` 줄을 없앤다. 경로가 `/`가 아니면 첫 단계 앞에 같은 주소로 이동하는 단계를 넣어 동작을 유지한다. */
+/** 이동 주소는 환경과 무관한 경로만 보관한다. 쿼리와 해시는 유지한다. */
+export const routePath = (value: string): string => {
+  const route = value.trim();
+  if (/^(https?:)?\/\//i.test(route)) {
+    const url = new URL(route, "https://route.invalid");
+    return `${url.pathname}${url.search}${url.hash}`;
+  }
+  return route || "/";
+};
+
+/** 이전 시작 URL을 이동 단계로 옮기고 절대 이동 주소에서 호스트를 제거한다. */
 export const migrateLegacyUrl = (block: string): string => {
   const lines = block.split("\n");
   const index = lines.findIndex((line) => line.trim().startsWith("url:"));
-  if (index < 0) return block;
-  const url = lines[index].trim().slice(4).trim();
-  lines.splice(index, 1);
-  if (url && url !== "/") {
-    const first = lines.findIndex((line) => STEP_LINE.test(line.trim()));
-    const step = `Given \`${url}\` 페이지로 이동한다`;
-    if (first < 0) lines.push(step);
-    else lines.splice(first, 0, step);
+  if (index >= 0) {
+    const path = routePath(lines[index].trim().slice(4));
+    lines.splice(index, 1);
+    if (path !== "/") {
+      const first = lines.findIndex((line) => STEP_LINE.test(line.trim()));
+      const step = `Given \`${path}\` 페이지로 이동한다`;
+      if (first < 0) lines.push(step);
+      else lines.splice(first, 0, step);
+    }
   }
-  return lines.join("\n");
+  return lines.map(line => {
+    if (!STEP_LINE.test(line.trim())) return line;
+    const step = parseMarkdown(`# 시나리오: 경로\n${line}`)[0]?.steps[0];
+    if (step?.action !== "goto") return line;
+    const index = line.lastIndexOf(step.target);
+    return index < 0 ? line : line.slice(0, index) + routePath(step.target) + line.slice(index + step.target.length);
+  }).join("\n");
+};
+
+export const resolveScenarioUrl = (scenario: Scenario, baseUrl: string): Scenario => {
+  const base = new URL(baseUrl);
+  if (!/^https?:$/.test(base.protocol)) throw new Error("웹 주소를 확인하세요.");
+  return {
+    ...scenario,
+    url: scenario.url ? new URL(routePath(scenario.url), base).href : base.href,
+    steps: scenario.steps.map(step => step.action === "goto" ? { ...step, target: routePath(step.target) } : step),
+  };
 };
 
 // 저장된 id: UUID를 우선 사용한다. 이전 문서에는 source + 블록 순서로 임시 ID를 만든다.
@@ -80,6 +111,13 @@ export const parseMarkdown = (markdown: string, source?: string): Scenario[] =>
           .find((line) => line.startsWith("endpoint:"))
           ?.slice(9)
           .trim() || undefined;
+      const environmentId =
+        lines
+          .find((line) => line.startsWith("environment:"))
+          ?.slice(12)
+          .trim() || undefined;
+      const continuePrevious =
+        lines.find((line) => line.startsWith("start:"))?.slice(6).trim() === "continue" || undefined;
       const tag =
         lines
           .find((line) => line.startsWith("tag:"))
@@ -98,7 +136,7 @@ export const parseMarkdown = (markdown: string, source?: string): Scenario[] =>
           const waitMatch = conditionalText.match(/\[대기\s*(\d+)초\]\s*$/);
           const waitSeconds = waitMatch ? Number(waitMatch[1]) : undefined;
           const text = conditionalText.replace(/\s*\[대기\s*\d+초\]\s*$/, "");
-          const occurrenceMatch = text.match(/\[(\d+)번째\]\s*(?:버튼을?|버튼)?\s*클릭/);
+          const occurrenceMatch = text.match(/\[(\d+)번째\]\s*(?:(?:버튼을?|버튼)?\s*클릭|(?:에\s*)?(?:호버|마우스\s*(?:를\s*)?올리기|마우스\s*오버))/);
           const occurrence = occurrenceMatch ? Number(occurrenceMatch[1]) : undefined;
           const result = text
             .replace(
@@ -144,6 +182,19 @@ export const parseMarkdown = (markdown: string, source?: string): Scenario[] =>
               prompt: manualControl[2],
               waitSeconds,
               condition,
+              connected: true,
+            };
+          const absent = text.match(
+            /^(.+?)\s*(?:텍스트가\s*)?(?:보이지\s*않는다|표시되지\s*않는다|사라진다)\s*$/,
+          );
+          if (absent)
+            return {
+              id: String(stepIndex + 1),
+              databaseId,
+              action: "expectNoText",
+              target: unquoteMarkdownValue(absent[1].trim()),
+              condition,
+              waitSeconds,
               connected: true,
             };
           if (/보인다|포함된다|확인된다|표시된다|결과\s*확인/.test(text))
@@ -207,6 +258,21 @@ export const parseMarkdown = (markdown: string, source?: string): Scenario[] =>
               waitSeconds,
               connected: true,
             };
+          // 마우스를 올려야 열리는 드롭다운·메뉴를 위해 대상에 hover만 하고 클릭하지 않는다.
+          const hover = text.match(
+            /^(.+?)(?:\s*\[\d+번째\])?(?:에)?\s*(?:호버|마우스\s*(?:를\s*)?올리기|마우스\s*오버)(?:한다)?\s*$/,
+          );
+          if (hover)
+            return {
+              id: String(stepIndex + 1),
+              databaseId,
+              action: "hover",
+              target: unquoteMarkdownValue(hover[1].replace(/에$/, "").trim()),
+              occurrence: occurrence && occurrence > 1 ? occurrence : undefined,
+              condition,
+              waitSeconds,
+              connected: true,
+            };
           if (/(페이지로?\s*이동|접속|열기)/.test(text))
             return {
               id: String(stepIndex + 1),
@@ -239,7 +305,7 @@ export const parseMarkdown = (markdown: string, source?: string): Scenario[] =>
       const databaseId = lines.find(line => line.startsWith("id:"))?.slice(3).trim();
       const code = lines.find(line => line.startsWith("code:"))?.slice(5).trim();
       const id = databaseId || (source ? `${source}::scenario-${index}` : `scenario-${index}`);
-      return { id, code, sortOrder: index, title, endpointId, url, tag, steps };
+      return { id, code, sortOrder: index, title, endpointId, environmentId, url, continuePrevious, tag, steps };
     });
 
 export type ScenarioRunResult = {

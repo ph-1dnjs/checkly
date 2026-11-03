@@ -25,7 +25,11 @@ export const MarkerEditForm = ({ marker, isNew, onChange, onSelectUploadFile, on
       ? "라벨 또는 CSS 대상은 페이지의 실제 입력/선택 요소와 일치해야 합니다. 다르면 실행 단계가 실패할 수 있습니다."
       : marker.action === "expectText"
         ? "실행 후 화면에 표시되어야 하는 텍스트를 라벨에 입력하세요. 찾지 못하면 결과 확인 단계가 실패합니다."
-        : "";
+        : marker.action === "expectNoText"
+          ? "실행 후 화면에 없어야 하는 텍스트를 라벨에 입력하세요. 대기 시간이 지나도 보이면 미노출 확인 단계가 실패합니다."
+          : marker.action === "hover"
+            ? "마우스를 올려 드롭다운·메뉴를 연 뒤 다음 클릭 단계로 안의 항목을 누르세요. 텍스트가 없는 아이콘은 css= 선택자로 지정합니다."
+            : "";
   const conditionOn = marker.condition !== undefined;
   return (
     <div className="marker-form" onKeyDown={(event) => { if (event.key === "Escape") onCancel(); }}>
@@ -111,9 +115,9 @@ export const MarkerEditForm = ({ marker, isNew, onChange, onSelectUploadFile, on
           </span>
         </label>
       )}
-      {["click", "expectText"].includes(marker.action) && (
+      {["click", "hover", "expectText", "expectNoText"].includes(marker.action) && (
         <label className="marker-form-field">
-          <span>{marker.action === "click" ? "클릭 대상 대기 시간 (초)" : "결과 확인 대기 시간 (초)"}</span>
+          <span>{marker.action === "click" ? "클릭 대상 대기 시간 (초)" : marker.action === "hover" ? "호버 대상 대기 시간 (초)" : marker.action === "expectNoText" ? "사라질 때까지 대기 시간 (초)" : "결과 확인 대기 시간 (초)"}</span>
           <Input
             mono
             type="number"
@@ -123,14 +127,14 @@ export const MarkerEditForm = ({ marker, isNew, onChange, onSelectUploadFile, on
           />
         </label>
       )}
-      {marker.action === "click" && (
+      {(marker.action === "click" || marker.action === "hover") && (
         <label className="marker-form-field">
           <span>동일 대상 순서</span>
           <Input
             mono
             type="number"
             min="1"
-            title="같은 이름의 클릭 대상이 여러 개면 클릭할 순서를 지정합니다."
+            title="같은 이름의 대상이 여러 개면 사용할 순서를 지정합니다."
             value={marker.occurrence ?? 1}
             onChange={(event) => {
               const occurrence = Math.max(1, Number(event.target.value) || 1);

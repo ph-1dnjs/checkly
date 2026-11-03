@@ -2,6 +2,12 @@ import { expect, test } from '@playwright/test'
 import { authCalls, installAuthStub, owner } from './fixtures/auth-stub'
 
 const markdown = '# 시나리오: 팀 로그인\nendpoint: e-web\n\nGiven `로그인` 클릭'
+// 웹 사이트(서버)는 환경과 같은 모양의 메뉴로 고른다.
+const chooseWebsite = async (page: import('@playwright/test').Page, name: string) => {
+  await page.locator('.scenario-environment').getByRole('button', { name: '웹 사이트', exact: true }).click()
+  await page.getByRole('menu', { name: '서버 선택' }).getByRole('menuitemradio', { name: new RegExp(`^${name}`) }).click()
+}
+
 // 시나리오 환경은 API 테스트와 같은 환경 메뉴(EnvironmentMenu)로 고른다.
 const chooseEnvironment = async (page: import('@playwright/test').Page, name: string) => {
   await page.getByRole('button', { name: '시나리오 환경' }).click()
@@ -126,12 +132,12 @@ test('marker edits save together with the body and use the chosen environment', 
   await chooseEnvironment(page, 'staging')
   await page.getByRole('button', { name: '화면 추출', exact: true }).click()
   await expect(page.locator('webview')).toHaveAttribute('src', 'https://stg.app.com/')
-  await expect(page.getByLabel('웹 엔드포인트')).toHaveValue('e-web')
+  await expect(page.getByRole('button', { name: '웹 엔드포인트', exact: true })).toHaveCount(0)
   await expect(page.locator('.extract-url-base')).toHaveText('https://stg.app.com')
   await expect(page.getByLabel('대상 URL')).toHaveCount(0)
   await page.getByRole('button', { name: '텍스트', exact: true }).click()
   await page.getByRole('button', { name: '저장 후 돌아가기' }).click()
-  await expect(source).toHaveValue(/endpoint: e-web/)
+  await expect(source).toHaveValue(/endpoint: e-web\nenvironment: v-stg/)
   await expect(source).not.toHaveValue(/^url:/m)
   await expect(page.getByText('저장 안 됨', { exact: true })).toHaveCount(0)
   const saves = (await authCalls(page)).filter(([name]) => name === 'webScenarios.save')
@@ -174,10 +180,43 @@ test('shared DB list preserves selections across documents and shows the existin
   await expect(page.locator('.picker-scenario-name')).toHaveText('프로필')
 })
 
-test('scenario header has no global web endpoint picker and legacy url becomes a goto step on save', async ({ page }) => {
+test('run targets stack in pick order and files can be reordered by dragging', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 960 })
   await installAuthStub(page, { enabled: true, session: owner })
   await editor(page)
-  await expect(page.locator('.scenario-environment').getByLabel('웹 엔드포인트')).toHaveCount(0)
+  const source = page.getByRole('textbox', { name: '시나리오 Markdown 원본' })
+  await source.fill(markdown + '\n\n# 시나리오: 로그아웃\nendpoint: e-web\n\nGiven `로그아웃` 클릭')
+  await page.getByRole('button', { name: '저장', exact: true }).click()
+  await expect(page.getByText('저장 안 됨', { exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: '새 시나리오', exact: true }).click()
+  await source.fill(markdown.replace('팀 로그인', '프로필'))
+  await page.getByRole('button', { name: /^(저장|저장됨)$/ }).click()
+  await expect(page.getByText('저장 안 됨', { exact: true })).toHaveCount(0)
+  await page.getByRole('tab', { name: '실행', exact: true }).click()
+  const list = page.locator('.scenario-files')
+  const files = page.locator('.picker-cart-group span')
+  const items = page.locator('.picker-cart-item > span')
+  await list.getByRole('button', { name: /프로필/ }).click()
+  await page.locator('.picker-scenario-main[aria-pressed]').click()
+  await list.getByRole('button', { name: /팀 로그인/ }).click()
+  await page.getByRole('button', { name: '로그아웃 1단계' }).click()
+  await expect(items).toHaveText(['프로필', '로그아웃'])
+  await page.getByRole('button', { name: '팀 로그인 1단계' }).click()
+  await expect(files).toHaveText(['프로필', '팀 로그인'])
+  await expect(items).toHaveText(['프로필', '로그아웃', '팀 로그인'])
+  const handles = page.locator('.picker-cart-file > .api-sort-handle')
+  await handles.nth(1).dragTo(handles.nth(0), { targetPosition: { x: 4, y: 2 } })
+  await expect(files).toHaveText(['팀 로그인', '프로필'])
+  await expect(items).toHaveText(['로그아웃', '팀 로그인', '프로필'])
+  await page.locator('.picker-cart-file > .api-sort-handle').nth(0).press('ArrowDown')
+  await expect(files).toHaveText(['프로필', '팀 로그인'])
+  await page.screenshot({ path: '/tmp/checkly-db-picker-order.png', fullPage: true })
+})
+
+test('scenario header selects a website and legacy url becomes a goto step on save', async ({ page }) => {
+  await installAuthStub(page, { enabled: true, session: owner })
+  await editor(page)
+  await expect(page.locator('.scenario-environment').getByRole('button', { name: '웹 사이트', exact: true })).toContainText('프론트')
   await page.getByRole('button', { name: '새 시나리오', exact: true }).click()
   const source = page.getByRole('textbox', { name: '시나리오 Markdown 원본' })
   await expect(source).toHaveValue(/endpoint: e-web/)
@@ -186,4 +225,159 @@ test('scenario header has no global web endpoint picker and legacy url becomes a
   await expect(page.getByText('저장 안 됨', { exact: true })).toHaveCount(0)
   await expect(source).not.toHaveValue(/^url:/m)
   await expect(source).toHaveValue(/Given `\/login` 페이지로 이동한다[^\n]*\nGiven `로그인` 클릭/)
+})
+
+
+test('active document hover delete supports unsaved drafts without DB removal', async ({ page }) => {
+  await installAuthStub(page, { enabled: true, session: owner })
+  await editor(page)
+  const source = page.getByRole('textbox', { name: '시나리오 Markdown 원본' })
+  await source.fill(markdown)
+  await page.getByRole('button', { name: '저장', exact: true }).click()
+  await expect(page.getByText('저장 안 됨', { exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: '새 시나리오', exact: true }).click()
+  await source.fill(markdown.replace('팀 로그인', '저장 전 초안'))
+  const entry = page.locator('.scenario-files-entry').filter({ has: page.locator('.draft') })
+  const remove = entry.getByRole('button', { name: '시나리오 삭제', exact: true })
+  await page.getByRole('tab', { name: '편집', exact: true }).hover()
+  await expect(remove).toHaveCSS('opacity', '0')
+  await remove.focus()
+  await expect(remove).toHaveCSS('opacity', '1')
+  await entry.hover()
+  await remove.click()
+  const dialog = page.getByRole('dialog', { name: '시나리오 삭제' })
+  await expect(dialog).toContainText('저장 전 초안')
+  await dialog.getByRole('button', { name: '취소', exact: true }).click()
+  await expect(source).toHaveValue(/저장 전 초안/)
+  await entry.hover()
+  await remove.click()
+  await dialog.getByRole('button', { name: '삭제', exact: true }).click()
+  await expect(source).toHaveValue('')
+  await expect(page.locator('.scenario-files-row.draft')).toHaveCount(0)
+  await expect(page.locator('.scenario-files')).toContainText('팀 로그인')
+  expect((await authCalls(page)).filter(([name]) => name === 'webScenarios.remove')).toHaveLength(0)
+  await page.locator('.scenario-files-row').filter({ hasText: '팀 로그인' }).click()
+  await page.locator('.scenario-files-entry').hover()
+  await page.locator('.scenario-files').getByRole('button', { name: '시나리오 삭제', exact: true }).click()
+  await dialog.getByRole('button', { name: '삭제', exact: true }).click()
+  await expect(page.locator('.scenario-files-row')).toHaveCount(0)
+  expect((await authCalls(page)).filter(([name]) => name === 'webScenarios.remove')).toHaveLength(1)
+})
+
+
+test('scenarios save the header server and environment, reopen with them and list by server', async ({ page }) => {
+  await installAuthStub(page, { enabled: true, session: owner })
+  await page.addInitScript(() => {
+    const api = window.electronAPI
+    const getSettings = api.auth.getProjectSettings
+    api.auth.getProjectSettings = async () => {
+      const settings = await getSettings()
+      return { ...settings,
+        endpoints: [...settings.endpoints, { ...settings.endpoints[0], id: 'e-admin', name: '관리자' }],
+        urls: [...settings.urls, { ...settings.urls[0], endpointId: 'e-admin', environmentId: 'v-stg', baseUrl: 'https://admin.stg.app.com' }],
+      }
+    }
+    api.runQa = async scenario => {
+      sessionStorage.setItem('executed-scenario', JSON.stringify(scenario))
+      return { status: 'passed', log: [] } as any
+    }
+    api.finishQaWorker = async () => undefined
+  })
+  await editor(page)
+  const header = page.locator('.scenario-environment')
+  // 고르지 않았으면 첫 서버·환경
+  await expect(header.getByRole('button', { name: '웹 사이트', exact: true })).toHaveText(/프론트/)
+  await expect(header.getByRole('button', { name: '시나리오 환경', exact: true })).toHaveText(/dev/)
+  const source = page.getByRole('textbox', { name: '시나리오 Markdown 원본' })
+  await source.fill('# 시나리오: 주문 조회\nendpoint: e-web\nGiven `https://old.example/orders?q=1#list` 페이지로 이동한다')
+  await chooseWebsite(page, '관리자')
+  await chooseEnvironment(page, 'staging')
+  await page.getByRole('button', { name: '저장', exact: true }).click()
+  await expect(page.getByText('저장 안 됨', { exact: true })).toHaveCount(0)
+  await expect(source).toHaveValue(/endpoint: e-admin\nenvironment: v-stg/)
+  await expect(source).toHaveValue(/`\/orders\?q=1#list`/)
+  await expect(source).not.toHaveValue(/old.example|^url:/m)
+  await page.getByRole('button', { name: '화면 추출', exact: true }).click()
+  await expect(page.locator('webview')).toHaveAttribute('src', 'https://admin.stg.app.com/orders?q=1#list')
+  // 저장된 상태에서는 묻지 않고 텍스트로 돌아간다.
+  await page.getByRole('button', { name: '텍스트', exact: true }).click()
+  await expect(page.getByRole('dialog', { name: '시나리오를 저장할까요?' })).toHaveCount(0)
+
+  // 다른 서버·환경에서 새 문서를 저장하면 서버별로 목록이 나뉜다(환경은 상관없다).
+  await page.getByRole('button', { name: '새 시나리오', exact: true }).click()
+  await chooseWebsite(page, '프론트')
+  await chooseEnvironment(page, 'dev')
+  await source.fill('# 시나리오: 프론트 로그인\n\nGiven `로그인` 클릭')
+  await page.getByRole('button', { name: '저장', exact: true }).click()
+  await expect(page.getByText('저장 안 됨', { exact: true })).toHaveCount(0)
+  await expect(source).toHaveValue(/endpoint: e-web\nenvironment: v-dev/)
+  const files = page.locator('.scenario-files')
+  await expect(files).toContainText('프론트 로그인')
+  await expect(files).not.toContainText('주문 조회')
+
+  // 실행은 헤더의 서버·환경으로, 목록은 서버로 거른다.
+  await page.getByRole('tab', { name: '실행', exact: true }).click()
+  const picker = page.locator('.picker')
+  await expect(picker).toContainText('프론트 로그인')
+  await expect(picker).not.toContainText('주문 조회')
+  await chooseWebsite(page, '관리자')
+  await chooseEnvironment(page, 'staging')
+  await expect(picker).toContainText('주문 조회')
+  await expect(picker).not.toContainText('프론트 로그인')
+  await page.getByRole('checkbox', { name: '전체 선택' }).click()
+  await page.getByRole('button', { name: '1개 시나리오 실행' }).click()
+  await page.getByRole('dialog', { name: '실행하기 전에 세션을 유지하시겠습니까?' }).getByRole('button', { name: '닫기', exact: true }).click()
+  await expect.poll(() => page.evaluate(() => JSON.parse(sessionStorage.getItem('executed-scenario') || 'null'))).toMatchObject({
+    endpointId: 'e-admin', environmentId: 'v-stg', url: 'https://admin.stg.app.com/', steps: [{ target: '/orders?q=1#list' }],
+  })
+
+  // 편집으로 돌아오면 열린 문서의 서버·환경으로 헤더가 돌아온다.
+  await page.getByRole('tab', { name: '편집', exact: true }).click()
+  await expect(header.getByRole('button', { name: '웹 사이트', exact: true })).toHaveText(/프론트/)
+  await expect(header.getByRole('button', { name: '시나리오 환경', exact: true })).toHaveText(/dev/)
+  await expect(page.getByText('저장 안 됨', { exact: true })).toHaveCount(0)
+
+  // 문서를 열면 저장된 서버·환경으로 헤더가 바뀐다.
+  await chooseWebsite(page, '관리자')
+  await expect(source).toHaveValue(/endpoint: e-admin\nenvironment: v-dev/)
+  await files.getByRole('button').filter({ hasText: '주문 조회' }).click()
+  await page.getByRole('button', { name: '저장하지 않고 열기' }).click()
+  await expect(source).toHaveValue(/# 시나리오: 주문 조회/)
+  await expect(header.getByRole('button', { name: '웹 사이트', exact: true })).toHaveText(/관리자/)
+  await expect(header.getByRole('button', { name: '시나리오 환경', exact: true })).toHaveText(/staging/)
+  await expect(page.getByText('저장 안 됨', { exact: true })).toHaveCount(0)
+})
+
+test('screen extract adds next scenarios that continue from the previous one or start at a new path', async ({ page }) => {
+  await installAuthStub(page, { enabled: true, session: owner })
+  await editor(page)
+  await page.getByRole('button', { name: '새 시나리오', exact: true }).click()
+  const source = page.getByRole('textbox', { name: '시나리오 Markdown 원본' })
+  await source.fill(markdown)
+  await page.getByRole('button', { name: '저장', exact: true }).click()
+  await expect(page.getByText('저장 안 됨', { exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: '화면 추출', exact: true }).click()
+  const target = page.getByRole('combobox', { name: '편집 대상' })
+
+  await page.getByRole('button', { name: '다음 시나리오' }).click()
+  await expect(page.getByRole('radio', { name: '이전 단계에 이어서' })).toHaveAttribute('aria-checked', 'true')
+  await page.getByRole('button', { name: '추가', exact: true }).click()
+  await expect(target.locator('option')).toHaveText(['01  팀 로그인', '02  ↳ 시나리오 2'])
+  await expect(page.getByText('이전 시나리오의 마지막 화면에서 이어서 실행합니다.')).toBeVisible()
+  await expect(page.locator('.extract-marker-item')).toHaveCount(0)
+
+  await page.getByRole('button', { name: '다음 시나리오' }).click()
+  await page.getByRole('radio', { name: '새 URL 경로로 시작' }).click()
+  await page.getByRole('textbox', { name: '이동 경로' }).fill('https://old.example/orders?q=1')
+  await page.getByRole('button', { name: '추가', exact: true }).click()
+  await expect(target.locator('option')).toHaveText(['01  팀 로그인', '02  ↳ 시나리오 2', '03  시나리오 3'])
+  await expect(target).toHaveValue(await target.locator('option').nth(2).getAttribute('value') ?? '')
+  await expect(page.locator('.extract-marker-item')).toHaveCount(1)
+  await expect(page.locator('.extract-marker-target')).toHaveText('/orders?q=1')
+
+  await page.getByRole('button', { name: '텍스트', exact: true }).click()
+  await page.getByRole('button', { name: '저장 후 돌아가기' }).click()
+  await expect(source).toHaveValue(/# 시나리오: 시나리오 2\n[\s\S]*start: continue/)
+  await expect(source).toHaveValue(/# 시나리오: 시나리오 3\n(?![\s\S]*start: continue)[\s\S]*Given `\/orders\?q=1` 페이지로 이동한다/)
+  await expect(page.locator('.ws-preview-row').filter({ hasText: '시나리오 2' })).toContainText('이전 시나리오에 이어서')
 })

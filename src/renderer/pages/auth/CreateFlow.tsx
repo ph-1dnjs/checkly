@@ -31,6 +31,7 @@ export const CreateFlow = ({ bridge, backLabel, onBack, onEnter }: Props) => {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [createCode, setCreateCode] = useState("");
   const [showCreateCode, setShowCreateCode] = useState(false);
   const [created, setCreated] = useState<{ session: AuthSession; inviteCode: string } | null>(null);
@@ -101,7 +102,7 @@ export const CreateFlow = ({ bridge, backLabel, onBack, onEnter }: Props) => {
               />
             </Field>
             <Field label="닉네임" check={nickCheck}>
-              <AuthInput mono value={nickname} onValue={edit(setNickname)} placeholder="hyewon" aria-label="닉네임" />
+              <AuthInput mono value={nickname} onValue={edit(setNickname)} placeholder="닉네임 입력" aria-label="닉네임" />
             </Field>
             <Field label="비밀번호">
               <PasswordInput
@@ -116,14 +117,16 @@ export const CreateFlow = ({ bridge, backLabel, onBack, onEnter }: Props) => {
               />
             </Field>
             <Field label="비밀번호 확인" className="auth-field-gap">
-              <AuthInput
+              <PasswordInput
                 mono
-                type={showPassword ? "text" : "password"}
                 value={confirm}
                 onValue={edit(setConfirm)}
                 placeholder="한 번 더 입력"
                 aria-label="비밀번호 확인"
                 autoComplete="new-password"
+                subject="비밀번호 확인"
+                visible={showConfirm}
+                onToggle={() => setShowConfirm((value) => !value)}
               />
             </Field>
             <Field label="생성 코드" className="auth-field-gap" check={{ text: "운영자에게 받은 코드", tone: "hint", ok: true }}>

@@ -1,8 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { AuthFailure, MESSAGES } from "../auth/errors";
-import { normalizeDocument } from "./normalize";
-import type { RunRecord } from "./scenario";
+import { isUuid, normalizeDocument, type SavedOwners } from "./normalize";
+import { parseMarkdown, type RunRecord } from "./scenario";
 import type { WebScenarioInput, WebScenarioRecord } from "./types";
 
 const inputSchema = z.object({
@@ -70,12 +70,30 @@ export class WebScenarioStore {
     return records;
   }
 
+  /** 본문의 ID가 DB에서 어느 문서·시나리오에 속하는지 읽는다. 단계 줄을 다른 시나리오로 옮기면 ID가 따라가기 때문이다. */
+  private async savedOwners(markdown: string, documentId: string): Promise<SavedOwners> {
+    const parsed = parseMarkdown(markdown);
+    const scenarioIds = parsed.map(item => item.id).filter(isUuid);
+    const stepIds = parsed.flatMap(item => item.steps.map(step => step.databaseId)).filter(isUuid);
+    const [items, steps] = await Promise.all([
+      scenarioIds.length ? this.client.from("web_scenario_items").select("id,document_id").in("id", scenarioIds) : { data: [], error: null },
+      stepIds.length ? this.client.from("web_scenario_steps").select("id,scenario_id").in("id", stepIds) : { data: [], error: null },
+    ]);
+    if (items.error) throw items.error;
+    if (steps.error) throw steps.error;
+    return {
+      documentId,
+      scenarios: new Map((items.data ?? []).map(row => [row.id, row.document_id])),
+      steps: new Map((steps.data ?? []).map(row => [row.id, row.scenario_id])),
+    };
+  }
+
   async save(raw: WebScenarioInput): Promise<WebScenarioRecord> {
     const parsed = inputSchema.safeParse(raw);
     if (!parsed.success) throw new AuthFailure("시나리오 제목과 본문, 마커 데이터를 확인하세요.");
     const input = parsed.data;
     if (input.id && !input.expectedUpdatedAt) throw new AuthFailure(MESSAGES.conflict);
-    const normalized = normalizeDocument(input.markdown, input.positions, !input.id);
+    const normalized = normalizeDocument(input.markdown, input.positions, !input.id, input.id ? await this.savedOwners(input.markdown, input.id) : {});
     if (!normalized.scenarios.length) throw new AuthFailure("저장할 시나리오를 작성하세요.");
     const names = await this.memberNames();
     const { data, error } = await this.client.rpc("save_web_scenario_document", { p: { ...input,
@@ -122,14 +140,14 @@ export class WebScenarioStore {
 }
 
 const stepSchema = z.object({
-  id: z.string(), databaseId: z.uuid().optional(), action: z.enum(['goto','fill','fileUpload','click','select','expectText','manualFill','manualControl','manualResult']),
+  id: z.string(), databaseId: z.uuid().optional(), action: z.enum(['goto','fill','fileUpload','click','hover','select','expectText','expectNoText','manualFill','manualControl','manualResult']),
   required: z.boolean().optional(), connected: z.boolean().optional(),
   target: z.string(), value: z.string().optional(), prompt: z.string().optional(), condition: z.string().optional(),
   waitSeconds: z.number().nonnegative().optional(), occurrence: z.number().int().positive().optional(),
   x: z.number().min(0).max(100).optional(), y: z.number().min(0).max(100).optional(), color: z.string().optional(),
   markerViewport: z.enum(['mobile','tablet','desktop']).optional(), markerPageUrl: z.string().optional(),
 }).transform(step => step.action === 'fileUpload' ? { ...step, value: '' } : step);
-const scenarioSchema = z.object({ id: z.uuid(), title: z.string(), endpointId: z.string().optional(), url: z.string(), tag: z.string().optional(), code: z.string().optional(), sortOrder: z.number().optional(), steps: z.array(stepSchema) });
+const scenarioSchema = z.object({ id: z.uuid(), title: z.string(), endpointId: z.string().optional(), environmentId: z.string().optional(), url: z.string(), continuePrevious: z.boolean().optional(), tag: z.string().optional(), code: z.string().optional(), sortOrder: z.number().optional(), steps: z.array(stepSchema) });
 const runSchema = z.object({
   id: z.uuid(), trigger: z.enum(['editor','picker','rerun','single']), status: z.enum(['passed','failed','cancelled']),
   passed: z.number().int().nonnegative(), failed: z.number().int().nonnegative(), startedAt: z.iso.datetime(), ranAt: z.iso.datetime(),

@@ -98,3 +98,88 @@ test('copying a saved document into a new document renews scenario and step UUID
   assert.notEqual(copy.scenarios[0].steps[1].databaseId, first.scenarios[0].steps[1].databaseId);
   assert.equal(copy.scenarios[0].steps[1].x, 10);
 });
+
+test('saved navigation removes hosts and retains query, hash and stable step identity', () => {
+  const saved = normalizeDocument('# 시나리오: 경로\nurl: https://old.example/login?next=1#form\nGiven `https://old.example/orders?q=2#list` 페이지로 이동한다', '{}');
+  assert.doesNotMatch(saved.markdown, /https:\/\/old.example/);
+  assert.deepEqual(saved.scenarios[0].steps.map(step => step.target), ['/login?next=1#form', '/orders?q=2#list']);
+  assert.deepEqual(normalizeDocument(saved.markdown, saved.positions), saved);
+});
+
+test('selected environment overrides legacy absolute navigation addresses', async () => {
+  const { resolveScenarioUrl } = await import('../../src/app/ipc/web-scenario/scenario');
+  const scenario = parseMarkdown('# 시나리오: 경로\nurl: https://old.example/login\nGiven `//old.example/orders?q=2#list` 페이지로 이동한다')[0];
+  const resolved = resolveScenarioUrl(scenario, 'https://staging.example/app/');
+  assert.equal(resolved.url, 'https://staging.example/login');
+  assert.equal(new URL(resolved.steps[0].target, resolved.url).href, 'https://staging.example/orders?q=2#list');
+  assert.equal(scenario.url, 'https://old.example/login');
+  assert.equal(resolveScenarioUrl({ ...scenario, url: '' }, 'https://staging.example/app/').url, 'https://staging.example/app/');
+  assert.throws(() => resolveScenarioUrl(scenario, 'file:///tmp/test'));
+});
+
+test('steps moved to another scenario or a renewed scenario receive new UUIDs', () => {
+  const first = normalizeDocument('# 시나리오: 가\nGiven `로그인` 클릭\nAnd `확인` 클릭\n\n# 시나리오: 나\nGiven `메뉴` 클릭', '{}');
+  const [a, b] = first.scenarios;
+  const owners = {
+    documentId: 'doc',
+    scenarios: new Map([[a.id, 'doc'], [b.id, 'doc']]),
+    steps: new Map([...a.steps, ...b.steps].map(step => [step.databaseId!, a.steps.includes(step) ? a.id : b.id])),
+  };
+  const lines = first.markdown.split('\n');
+  const moved = lines.splice(lines.findIndex(line => line.includes('`확인`')), 1)[0];
+  const edited = lines.concat(moved).join('\n');
+  const [nextA, nextB] = normalizeDocument(edited, first.positions, false, owners).scenarios;
+  assert.equal(nextA.steps[0].databaseId, a.steps[0].databaseId);
+  assert.equal(nextB.steps[0].databaseId, b.steps[0].databaseId);
+  assert.notEqual(nextB.steps[1].databaseId, a.steps[1].databaseId);
+
+  const renewed = normalizeDocument(first.markdown.replace(`id: ${a.id}\n`, ''), first.positions, false, owners).scenarios[0];
+  assert.notEqual(renewed.id, a.id);
+  assert.ok(renewed.steps.every(step => !a.steps.some(old => old.databaseId === step.databaseId)));
+
+  const pasted = normalizeDocument(first.markdown, first.positions, false, { ...owners, documentId: 'other' }).scenarios[0];
+  assert.notEqual(pasted.id, a.id);
+  assert.notEqual(pasted.steps[0].databaseId, a.steps[0].databaseId);
+});
+
+test('absent text steps parse as expectNoText and keep visible text checks unchanged', () => {
+  const [scenario] = parseMarkdown([
+    '# 시나리오: 삭제',
+    'Given `/items` 페이지로 이동한다',
+    'Then `삭제할 항목` 텍스트가 보이지 않는다 [대기 5초]',
+    'Then `오류` 표시되지 않는다',
+    'Then `로딩 중` 텍스트가 사라진다',
+    'Then `삭제 완료` 텍스트가 보인다',
+  ].join('\n'));
+  assert.deepEqual(scenario.steps.slice(1).map(step => [step.action, step.target, step.waitSeconds]), [
+    ['expectNoText', '삭제할 항목', 5],
+    ['expectNoText', '오류', undefined],
+    ['expectNoText', '로딩 중', undefined],
+    ['expectText', '삭제 완료', undefined],
+  ]);
+});
+
+test('hover steps parse with occurrence and wait and stay apart from clicks', () => {
+  const [scenario] = parseMarkdown([
+    '# 시나리오: 로그아웃',
+    'Given `/` 페이지로 이동한다',
+    'And `css=a[href*="mypage"]` 호버',
+    'And `메뉴` [2번째] 호버 [대기 5초]',
+    'And `마이페이지`에 마우스 올리기',
+    'And `로그아웃` 클릭',
+  ].join('\n'));
+  assert.deepEqual(scenario.steps.slice(1).map(step => [step.action, step.target, step.occurrence, step.waitSeconds]), [
+    ['hover', 'css=a[href*="mypage"]', undefined, undefined],
+    ['hover', '메뉴', 2, 5],
+    ['hover', '마이페이지', undefined, undefined],
+    ['click', '로그아웃', undefined, undefined],
+  ]);
+});
+test('next scenario continuing from the previous one keeps start: continue through normalization', () => {
+  const source = '# 시나리오: 로그인\nGiven `/login` 페이지로 이동한다\n\n# 시나리오: 주문\nstart: continue\nGiven `주문` 클릭\n\n# 시나리오: 설정\nGiven `/settings` 페이지로 이동한다';
+  assert.deepEqual(parseMarkdown(source).map(item => item.continuePrevious), [undefined, true, undefined]);
+  const normalized = normalizeDocument(source, '{}');
+  assert.match(normalized.markdown, /^start: continue$/m);
+  assert.deepEqual(normalized.scenarios.map(item => item.continuePrevious), [undefined, true, undefined]);
+  assert.deepEqual(parseMarkdown(normalized.markdown).map(item => item.continuePrevious), [undefined, true, undefined]);
+});

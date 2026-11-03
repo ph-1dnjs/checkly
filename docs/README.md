@@ -60,6 +60,7 @@ Markdown 작성·가져오기
 
 편집·실행의 동작과 정책은 다음 문서를 함께 사용합니다. 현재 구현과 미보장 동작을 구분하며, 저장·취소·보존 정책을 변경할 때 같이 갱신합니다.
 
+- [AI 브라우저 TC 실행 구현 정책안](ai-browser-tc-policy.md) — 엑셀 TC를 AI가 브라우저에서 실행하는 신규 기능의 제안 정책
 - [편집 기능·문법·복제](04-pages/020-scenario-editor/01-overview.md), [원문·좌표 저장 정책](04-pages/020-scenario-editor/03-api.md), [저장 실패·직렬화 제한](04-pages/020-scenario-editor/04-edge-cases.md)
 - [실행·자동/수동 액션 정책](04-pages/040-scenario-run/01-overview.md), [결과·영상·리포트 보존](04-pages/040-scenario-run/03-api.md), [취소·오류·구현 제한](04-pages/040-scenario-run/04-edge-cases.md)
 

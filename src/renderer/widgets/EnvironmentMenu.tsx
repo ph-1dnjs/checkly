@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "../shared/ui/Icon";
-import { ServerTag } from "../entities/api-testing";
 
 import { Button } from "../shared/ui/Button";
 import { Input } from "../shared/ui/Input";
@@ -58,7 +57,6 @@ export function EnvironmentMenu({ project, environmentId, serverId, label, title
     catch (e) { setError((e as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, "")); }
     finally { setSaving(false); }
   };
-  const serverNames = Object.fromEntries(project.servers.map(server => [server.id, server.name]));
   return <div ref={root} className="api-env-menu">
     <Button ref={trigger} className="api-env-trigger" aria-label={label} aria-haspopup="menu" aria-expanded={open} title={title ?? (current ? `${current.name} 환경` : undefined)} disabled={disabled} onClick={() => open ? close() : setOpen(true)}>
       <span className="api-env-current">{current?.name ?? "환경 선택"}</span><Icon name="expand_more" size={16} />
@@ -70,10 +68,6 @@ export function EnvironmentMenu({ project, environmentId, serverId, label, title
         <span className="api-env-name">{environment.name}</span>
         <span className="api-env-host">{rowHost(environment.baseUrls)}</span>
       </Button>)}
-      {/* With several servers, which address each one calls in the current environment (their tag colours match the steps). */}
-      {project.servers.length > 1 && current && <div className="api-env-servers" aria-label="프로젝트 서버">
-        {project.servers.map(server => <div key={server.id} className="api-env-server"><ServerTag server={server.id} names={serverNames} /><span className="api-env-host">{hostOf(current.baseUrls[server.id]) || "미설정"}</span></div>)}
-      </div>}
       {onAdd && <>
         <div className="api-env-sep" role="separator" />
         {adding ? <div className="api-env-add">

@@ -166,7 +166,7 @@ export const JoinFlow = ({ bridge, backLabel, onBack, onEnter }: Props) => {
           <FlowHeading title="계정 설정" description="프로젝트에서 사용할 영문 닉네임과 비밀번호를 입력해주세요." />
           <form className="auth-form" onSubmit={submitJoin} noValidate>
             <Field label="닉네임" check={nickCheck}>
-              <AuthInput mono value={nickname} onValue={edit(setNickname)} placeholder="hyewon" aria-label="닉네임" autoFocus />
+              <AuthInput mono value={nickname} onValue={edit(setNickname)} placeholder="닉네임 입력" aria-label="닉네임" autoFocus />
             </Field>
             <Field label="비밀번호">
               <PasswordInput

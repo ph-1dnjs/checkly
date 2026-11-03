@@ -6,14 +6,14 @@ import { DashboardPage } from "../pages/dashboard/DashboardPage";
 import { ScenarioEditorPage } from "../pages/editor/ScenarioEditorPage";
 import { RunPage } from "../pages/run/RunPage";
 import { SettingsPage } from "../pages/settings/SettingsPage";
-import { ScenarioPickerPage, recordScenarios } from "../pages/picker/ScenarioPickerPage";
+import { ScenarioPickerPage, pickedScenarioGroups, recordScenarios } from "../pages/picker/ScenarioPickerPage";
 import { FormAutomationPage } from "../pages/form-automation/FormAutomationPage";
 import { BottomNavigation } from "../widgets/BottomNavigation";
 import { ScenarioWorkspaceHeaderExtra } from "../widgets/ScenarioWorkspaceHeaderExtra";
 import { PageLayout } from "../shared/ui/PageLayout";
 import { ScenarioList } from "../widgets/ScenarioList";
 import { useScenarioEnvironment } from "./hooks/useScenarioEnvironment";
-import { isScenarioWorkspaceRoute } from "../shared/model/scenario";
+import { isScenarioWorkspaceRoute, parseMarkdown } from "../shared/model/scenario";
 import { RunReportDrawer } from "../widgets/RunReportDrawer";
 import { RunReportViewer } from "../widgets/RunReportViewer";
 import "../shared/model/electron-api";
@@ -21,7 +21,10 @@ import { useNavigation } from "./hooks/useNavigation";
 import { useScenarioState } from "./hooks/useScenarioState";
 import { useRunOrchestration } from "./hooks/useRunOrchestration";
 import { EnvironmentMenu } from "../widgets/EnvironmentMenu";
+import { EndpointPicker } from "../widgets/EndpointPicker";
 import { ApiTestingPage } from "../pages/api-testing/ApiTestingPage";
+import { AiTcPage } from "../pages/ai-tc/AiTcPage";
+import { useAiTc } from "./hooks/useAiTc";
 import { AuthScreen } from "../pages/auth/AuthScreen";
 import { AuthUnavailable } from "../pages/auth/AuthUnavailable";
 import type { AuthAccount } from "../pages/auth/model";
@@ -42,7 +45,17 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
     showToast,
   } = useNavigation();
   const environment = useScenarioEnvironment(account?.session.projectId, showToast);
-  const scenarioState = useScenarioState({ projectId: account?.session.projectId, route, showToast, resolveBaseUrl: environment.baseUrlFor, defaultEndpointId: environment.defaultEndpointId });
+  useEffect(() => {
+    if (route === "picker" || route === "editor" || route === "ai-tc") void environment.refresh();
+  }, [route, account?.session.projectId]);
+  // 팀 모드면 프로젝트의 웹 엔드포인트 × 환경을, Supabase 설정이 없는 로컬 실행이면 직접 적은 주소를 쓴다.
+  const aiTc = useAiTc({ environment: account ? environment : null, showToast });
+  const scenarioState = useScenarioState({
+    projectId: account?.session.projectId, route, showToast,
+    resolveBaseUrl: () => environment.baseUrlFor(),
+    target: { endpointId: environment.endpointId, environmentId: environment.environmentId },
+    onOpenTarget: environment.select,
+  });
   const [pickedKeys, setPickedKeys] = useState<Set<string>>(new Set());
   const [confirmDelete, setConfirmDelete] = useState(false);
   const runOrchestration = useRunOrchestration({ showToast, setRoute, projectId: account?.session.projectId });
@@ -69,7 +82,7 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
     scenario,
     sourceMarkdown,
     isDirty,
-    records, activeRecord, loading, busy, refreshRecords, openRecord, newRecord, saveRecord, deleteRecord, duplicateRecord, importMarkdown,
+    records: allRecords, activeRecord, loading, busy, refreshRecords, openRecord, newRecord, saveRecord, deleteRecord, duplicateRecord, importMarkdown,
     markerScenarioId,
     editorMode,
     setEditorMode,
@@ -92,6 +105,7 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
     completeMarker,
     saveMarkerEditsAndReturn,
     selectMarkerScenario,
+    addNextScenario,
     reorderSteps,
     duplicateScenario,
     setScenario,
@@ -171,9 +185,20 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
     if (resolved) beginRuns(resolved, false, trigger);
   };
   const runEditorContent = () => runScenarios(commitEditorRunSnapshot(), "editor");
+  // 환경과 상관없이 헤더에서 고른 서버의 문서만 보여 준다. 편집 중인 문서는 서버를 바꿔도 목록에 남긴다.
+  const records = allRecords.filter(record => (route === "editor" && record.id === activeRecord?.id) || environment.endpointOf(parseMarkdown(record.markdown)[0]) === environment.endpointId);
+  // 헤더의 서버·환경을 바꾸면 편집 중인 문서에도 적는다.
+  const selectTarget = (next: { endpointId?: string; environmentId?: string }) => {
+    const target = environment.select(next);
+    if (route === "editor") scenarioState.retarget(target);
+  };
   const inWorkspace = isScenarioWorkspaceRoute(route);
   const awaitingManual = Boolean(manual || manualControl || manualResult);
-  const pickedScenarios = records.flatMap(recordScenarios).filter(item => pickedKeys.has(item.id));
+  // 실행 화면에서 서버·환경을 바꾼 뒤 편집으로 돌아오면, 열린 문서에 저장된 서버·환경으로 헤더를 되돌린다.
+  useEffect(() => {
+    if (route === "editor" && scenario.title) environment.select({ endpointId: scenario.endpointId, environmentId: scenario.environmentId });
+  }, [route]);
+  const pickedScenarios = pickedScenarioGroups(records.map(record => ({ record, scenarios: recordScenarios(record) })), pickedKeys).flatMap(group => group.scenarios);
   const openRequested = (id: string) => {
     if (id === "new") newRecord();
     else if (id === "refresh") { void refreshRecords(true); void environment.refresh(); }
@@ -200,6 +225,7 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
       className={`workspace${inWorkspace ? " scenario-workspace" : ""}${route === "form-automation" ? " form-automation-workspace" : ""}`}
     >
       <section className="content">
+        {route === "ai-tc" && <AiTcPage model={aiTc} environment={account ? environment : null} />}
         {route === "api-testing" && <ApiTestingPage onRunAction={setApiRunAction} onOpenSettings={() => setRoute("settings")} />}
         {route === "dashboard" && (
           <DashboardPage
@@ -222,7 +248,8 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
                 onNavigate={setRoute}
                 onEditorModeChange={(mode) => {
                   if (mode === editorMode) return;
-                  if (mode === "text") setSaveBeforeReturning(true);
+                  // 저장할 변경이 없으면 묻지 않고 텍스트로 돌아간다.
+                  if (mode === "text" && isDirty) setSaveBeforeReturning(true);
                   else setEditorMode(mode);
                 }}
                 running={running}
@@ -233,7 +260,7 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
                 isDirty={isDirty}
                 onSave={() => saveRecord()}
                 busy={busy || loading}
-                canDelete={Boolean(activeRecord)}
+                canDelete={Boolean(activeRecord || sourceMarkdown.trim())}
                 onDelete={() => setConfirmDelete(true)}
                 onDuplicate={duplicateRecord}
                 onImportMarkdown={importMarkdown}
@@ -246,12 +273,22 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
                 environment={
                   <div className="scenario-environment" title={environment.endpoints.length ? "실행 환경 · 설정 > 엔드포인트 × 환경" : "설정에서 웹 엔드포인트와 환경별 주소를 넣어 주세요."}>
                     {!environment.endpoints.length && <span className="msi scenario-environment-warn" aria-label="웹 엔드포인트 없음">warning</span>}
+                    <span>{account?.session.projectCode}</span>
+                    <EndpointPicker
+                      label="웹 사이트"
+                      endpoints={environment.endpoints}
+                      baseUrlFor={environment.baseUrlFor}
+                      disabled={busy || loading || running}
+                      value={environment.endpointId}
+                      onChange={id => selectTarget({ endpointId: id })}
+                    />
                     <EnvironmentMenu
                       project={environment.menuProject}
                       environmentId={environment.environmentId}
                       label="시나리오 환경"
-                      disabled={busy || loading}
-                      onSelect={id => environment.select({ environmentId: id })}
+                      disabled={busy || loading || running}
+                      serverId={environment.endpointId || undefined}
+                      onSelect={id => selectTarget({ environmentId: id })}
                     />
                   </div>
                 }
@@ -264,12 +301,12 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
             mode={editorMode}
             scenario={scenario}
             sourceMarkdown={sourceMarkdown}
-            baseUrl={environment.baseUrlFor(scenario.endpointId)}
+            baseUrl={environment.baseUrlFor()}
             resolveBaseUrl={environment.baseUrlFor}
             webEndpoints={environment.endpoints}
-            defaultEndpointId={environment.defaultEndpointId}
+            defaultEndpointId={environment.endpointId}
             sidebar={<ScenarioList records={records} activeId={activeRecord?.id ?? null} loading={loading} busy={busy}
-              draftTitle={activeRecord || !sourceMarkdown.trim() ? undefined : previews[0]?.title ?? ""} dirty={isDirty}
+              draftTitle={activeRecord || !sourceMarkdown.trim() ? undefined : previews[0]?.title ?? ""} dirty={isDirty} onDelete={() => setConfirmDelete(true)}
               onSelect={requestOpenRecord} onNew={() => requestOpenRecord("new")} onRefresh={() => requestOpenRecord("refresh")} />}
             previews={previews}
             markerScenarioId={markerScenarioId || previews[0]?.id || ""}
@@ -279,6 +316,7 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
             markerDialog={markerDialog}
             pendingMarker={pendingMarker}
             onSelectMarkerScenario={selectMarkerScenario}
+            onAddNextScenario={addNextScenario}
             onSelectUploadFile={() => window.electronAPI.selectUploadFile()}
             onSourceChange={updateSource}
             onScenarioChange={setScenario}
@@ -482,6 +520,7 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
       )}
       <BottomNavigation
         apiRunAction={apiRunAction}
+        aiTcAction={aiTc.dock}
         route={route}
         lastWorkspaceRoute={lastWorkspaceRoute}
         running={running}
@@ -562,7 +601,7 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
       {confirmDelete && (
         <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="delete-scenario-title">
           <div className="manual-modal"><h2 id="delete-scenario-title">시나리오 삭제</h2>
-            <p>“{activeRecord?.title}”을 팀 DB에서 삭제하시겠습니까?</p>
+            <p>{activeRecord ? `“${activeRecord.title}”을 팀 DB에서 삭제하시겠습니까?` : `저장 전 시나리오 “${previews[0]?.title || "제목 없는 시나리오"}”을 삭제하시겠습니까? 작성한 내용은 사라집니다.`}</p>
             <div className="modal-actions"><Button variant="secondary" disabled={busy} onClick={() => setConfirmDelete(false)}>취소</Button>
               <Button variant="danger" disabled={busy} onClick={async () => { await deleteRecord(); setConfirmDelete(false); }}>삭제</Button></div>
           </div>

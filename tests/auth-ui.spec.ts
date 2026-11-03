@@ -210,6 +210,16 @@ test('새 프로젝트 2단계와 초대코드 복사', async ({ page, context }
   await page.getByRole('button', { name: '새 프로젝트 만들기' }).click()
   const flow = page.locator('[data-screen-label="시작 · 새 프로젝트"]')
   await expect(flow.getByRole('heading', { name: '새 프로젝트 만들기' })).toBeVisible()
+  await expect(page.getByLabel('닉네임')).toHaveAttribute('placeholder', '닉네임 입력')
+  const password = page.getByLabel('비밀번호', { exact: true })
+  const confirm = page.getByLabel('비밀번호 확인', { exact: true })
+  await page.getByRole('button', { name: '비밀번호 표시', exact: true }).click()
+  await expect(password).toHaveAttribute('type', 'text')
+  await expect(confirm).toHaveAttribute('type', 'password')
+  await page.getByRole('button', { name: '비밀번호 확인 표시' }).click()
+  await page.getByRole('button', { name: '비밀번호 숨기기', exact: true }).click()
+  await expect(password).toHaveAttribute('type', 'password')
+  await expect(confirm).toHaveAttribute('type', 'text')
 
   const code = page.getByLabel('프로젝트 코드')
   await code.fill('Checkly-Team')
@@ -219,7 +229,7 @@ test('새 프로젝트 2단계와 초대코드 복사', async ({ page, context }
   await expect(flow.locator('.auth-field-check').first()).toHaveText('사용할 수 있는 코드입니다')
   await page.getByLabel('닉네임').fill('dain')
   await page.getByLabel('비밀번호', { exact: true }).fill('secret1')
-  await page.getByLabel('비밀번호 확인').fill('secret1')
+  await page.getByLabel('비밀번호 확인', { exact: true }).fill('secret1')
 
   // 생성 코드: 비우면 제출 전에 막고, 가림/표시를 바꿀 수 있고, 틀리면 서버 문장을 그대로 보여준다.
   const createCode = page.getByLabel('생성 코드', { exact: true })
@@ -253,6 +263,21 @@ test('새 프로젝트 2단계와 초대코드 복사', async ({ page, context }
 
   await page.getByRole('button', { name: '시작하기' }).click()
   await expect(dock(page)).toBeVisible()
+})
+
+test('설정에서 저장한 웹 주소가 시나리오 화면에 반영된다', async ({ page }) => {
+  await installAuthStub(page, { enabled: true, session: owner })
+  await page.goto('/')
+  await page.getByRole('button', { name: '시나리오 · 편집과 실행' }).click()
+  await dock(page).getByRole('button', { name: '설정' }).click()
+  await openSection(page, '엔드포인트')
+  await page.getByRole('button', { name: '프론트 편집' }).click()
+  await page.getByLabel('dev 주소').fill('https://updated.example.com')
+  await page.getByRole('button', { name: '저장', exact: true }).click()
+  await expect(page.locator('.setting-saved')).toBeVisible()
+  await dock(page).getByRole('button', { name: '시나리오 · 편집과 실행' }).click()
+  await page.getByRole('button', { name: '시나리오 환경' }).click()
+  await expect(page.getByRole('menu', { name: '환경 선택' })).toContainText('updated.example.com')
 })
 
 test.describe('설정 · 계정과 프로젝트', () => {

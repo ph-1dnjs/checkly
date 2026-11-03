@@ -6,8 +6,10 @@ export const ACTIONS = [
   "manualControl",
   "manualResult",
   "click",
+  "hover",
   "select",
   "expectText",
+  "expectNoText",
 ] as const;
 
 export type Action = (typeof ACTIONS)[number];
@@ -21,6 +23,8 @@ export const actionLabel: Record<Action, string> = {
   manualControl: "직접 제어",
   manualResult: "수동 결과 확인",
   click: "클릭",
+  hover: "호버",
   select: "선택",
   expectText: "결과 확인",
+  expectNoText: "미노출 확인",
 };

@@ -8,6 +8,8 @@
 
 실행마다 sequence를 증가시키고 문자열 workerId로 전달합니다. 같은 workerId의 시나리오는 하나의 headless Chromium과 BrowserContext를 공유하고 각각 새 Page를 생성합니다. 따라서 같은 origin의 쿠키/localStorage 등 컨텍스트 세션 상태가 다음 시나리오에 영향을 줄 수 있습니다. 편집기 WebView의 세션을 실행 컨텍스트로 가져오는 코드는 없습니다.
 
+`start: continue`(`continuePrevious`) 시나리오는 worker가 기억한 앞 시나리오의 마지막 화면 주소(`lastUrl`, http/https만)로 시작합니다. 컨텍스트의 쿠키·저장소는 이어지지만 Page는 새로 만들므로 모달·입력값 같은 화면 안 상태는 이어지지 않습니다. 앞 시나리오가 없으면(단독 실행, 새 worker) 로그에 남기고 기준 주소에서 시작합니다. 앞 시나리오가 실패해도 그 시점의 주소에서 이어집니다.
+
 - 시나리오 하나가 failed여도 다음 시나리오를 계속 실행합니다. cancelled이면 큐를 중단합니다.
 - 취소되지 않은 묶음은 하나라도 실패하면 failed, 아니면 passed로 최근 기록에 추가합니다.
 - worker ID가 바뀌면 기존 컨텍스트를 닫습니다. 큐 종료 시 기본적으로 `qa:finish-worker`로 컨텍스트·브라우저를 닫습니다.
@@ -82,16 +84,18 @@
 | fill | input 클릭 → 전체 선택 → Backspace → type → blur | 입력 후 waitSeconds가 있으면 추가 대기 |
 | fileUpload | input locator에 setInputFiles(value) | 빈 경로는 명시 오류, 없는 파일/잘못된 대상은 실행 실패 |
 | click | 보이는 n번째 대상 선택 후 click | 탐색·click에 waitSeconds 또는 10초; click 실패 시 force click 1회 |
+| hover | click과 같은 방식으로 대상 선택 후 마우스를 (0,0)으로 비켰다가 대상 위에 올림. 클릭하지 않으며 마우스는 다음 단계까지 그 자리에 남음 | 탐색·hover에 waitSeconds 또는 10초 |
 | select | native select면 label 선택 후 실패 시 value 선택; custom이면 대상과 값 각각 클릭 | custom 탐색·클릭에 waitSeconds 또는 10초 |
 | expectText | 정규식 특수문자 escape 후 대소문자 무시 부분 일치, visible 후보 확인 | 100ms 간격, waitSeconds 또는 10초 후 실패 |
+| expectNoText | expectText와 같은 방식으로 찾아 visible 후보가 없으면 통과 | 100ms 간격, waitSeconds 또는 10초 동안 계속 보이면 실패 |
 
 입력 대상은 `css=`이면 CSS의 `[value=...]` 조건을 제거한 첫 요소입니다. 그 외는 `필드`/`입력란` 접미사를 정리한 label·placeholder·input/textarea name 부분 일치의 결합 locator에서 첫 요소를 사용합니다. select도 CSS 또는 label/select name을 사용합니다.
 
-클릭은 CSS이면 main page의 보이는 요소 중 순번을 사용합니다. 텍스트이면 모든 frame의 button·label·text 후보를 모아 클릭 컨테이너 중복을 제거하고 frame 순서와 DOM 순서로 정렬합니다. label은 공백·제로폭 공백을 제거해 비교합니다. 화면 좌표순 정렬은 아닙니다. occurrence는 기본 1입니다. iframe 탐색 지원은 텍스트 클릭 경로이며 입력·선택·결과 확인 전체에 적용되는 기능은 아닙니다.
+클릭은 CSS이면 main page의 보이는 요소 중 순번을 사용합니다. 텍스트이면 모든 frame의 button·link(aria-label·alt 등 접근성 이름 포함)·label·text 후보를 모아 클릭 컨테이너 중복을 제거하고 frame 순서와 DOM 순서로 정렬합니다. label은 공백·제로폭 공백을 제거해 비교합니다. 화면 좌표순 정렬은 아닙니다. occurrence는 기본 1입니다. 보이는 후보가 occurrence보다 적으면 행·카드·메뉴에 마우스를 올려야 나타나는 요소로 보고, 숨겨진 후보까지 같은 순서로 센 n번째 요소의 가장 가까운 보이는 조상에 hover해 드러낸 뒤 클릭합니다. 다단 메뉴는 새로 보이는 하위 메뉴로 이어서 hover합니다. iframe 탐색 지원은 텍스트 클릭 경로이며 입력·선택·결과 확인 전체에 적용되는 기능은 아닙니다.
 
 `resultTargetFor`가 “결과 확인”·“클릭” 접미사를 제거한 결과가 click target과 다르면 실제 클릭 대신 텍스트 확인을 수행합니다. 이 호환 경로는 기본 10초를 사용합니다.
 
-> **대기 의미**: waitSeconds는 전역 단계 timeout이 아닙니다. 조건 확인과 액션에서 각각 소비할 수 있고, 클릭 fallback이나 select label/value 재시도로 전체 소요 시간이 더 길어질 수 있습니다. 마커 직렬화는 click/expectText의 대기만 보존합니다.
+> **대기 의미**: waitSeconds는 전역 단계 timeout이 아닙니다. 조건 확인과 액션에서 각각 소비할 수 있고, 클릭 fallback이나 select label/value 재시도로 전체 소요 시간이 더 길어질 수 있습니다. 마커 직렬화는 click/hover/expectText/expectNoText의 대기만 보존합니다.
 
 ## 수동 단계
 
