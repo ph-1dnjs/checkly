@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { aiFixFailures, aiFixResponse } from "../../src/renderer/features/api-testing/author-scenarios/model/ai-fix";
+import { aiFixFailures, aiFixPrompt, aiFixResponse } from "../../src/renderer/features/api-testing/author-scenarios/model/ai-fix";
 import type { ApiScenarioResult } from "../../src/app/api-testing/shared/workspace";
 
 const result: ApiScenarioResult = { status: "failed", variables: {}, steps: [
@@ -19,4 +19,13 @@ test("the response sent on request is the failed step's body with secret-looking
   assert.equal(aiFixResponse(result), expected);
   assert.equal(aiFixResponse(result, 5), `${expected.slice(0, 5)}…`);
   assert.equal(aiFixResponse({ ...result, steps: [{ ...result.steps[1]!, body: undefined }] }), undefined);
+});
+
+test("external repair prompt includes failure context and only the masked response the user opted to include", () => {
+  const prompt = aiFixPrompt({ scenarioName: "상품 등록", request: "주소 검증을 봐줘", failures: aiFixFailures(result), response: aiFixResponse(result) });
+  assert.match(prompt, /상품 등록/);
+  assert.match(prompt, /주소 검증을 봐줘/);
+  assert.match(prompt, /2단계 '수정 신청' 실패 · HTTP 오류 상태 · HTTP 400/);
+  assert.match(prompt, /accessToken.*\*\*\*/);
+  assert.doesNotMatch(prompt, /주소 abc|refresh_token": "t2/);
 });

@@ -652,7 +652,7 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 @keyframes ckSpin { to { transform:rotate(360deg); } }
 @media(max-width:800px) { .api-swagger-shell { padding-left:12px; padding-right:12px; } .api-swagger-shell .api-toolbar { align-items:flex-start; flex-direction:column; } }
 @media(max-width:600px) { .content:has(.api-compose-layout) { padding-bottom:80px; } }
-.api-suite-panel{min-width:0;padding-bottom:110px}.api-suite-editor{display:grid;gap:16px;padding:20px 0}.api-suite-editor>label,.api-suite-editor fieldset>label{display:grid;gap:6px}.api-suite-editor input,.api-suite-editor select{min-width:0;width:100%}.api-suite-editor fieldset{display:grid;gap:10px;border:1px solid var(--ck-color-line);padding:14px}.api-suite-results{margin:24px 0}.api-suite-results details{border:1px solid var(--ck-color-line);margin-top:8px;padding:12px}.api-suite-results summary{cursor:pointer;font-weight:600}.api-suite-results li{margin:6px 0;overflow-wrap:anywhere}
+.api-suite-panel{min-width:0;padding-bottom:110px}.api-suite-editor{display:grid;gap:16px;padding:20px 0}.api-suite-editor>label,.api-suite-editor fieldset>label{display:grid;gap:6px}.api-suite-editor input,.api-suite-editor select{min-width:0;width:100%}.api-suite-editor fieldset{display:grid;gap:10px;border:1px solid var(--ck-color-line);padding:14px}.api-suite-results{display:grid;gap:8px;margin-top:16px}.api-suite-view-list details{flex:1;min-width:0}.api-suite-view-list details summary{cursor:pointer;font-weight:600}.api-suite-view-list details > ol{margin:10px 0 0 22px}.api-suite-view-list details > ol > li{display:list-item;margin:6px 0;padding:0;border:0;overflow-wrap:anywhere}
 .api-scenarios aside .api-sidebar-section{min-width:0;margin-top:14px}
 .api-sidebar-section>header{display:flex;align-items:center;gap:6px;margin:0 0 8px!important;padding-top:12px;border-top:1px solid var(--api-border)}
 .api-sidebar-section-toggle{display:flex!important;flex:1;flex-direction:row!important;align-items:center!important;justify-content:space-between;width:auto!important;min-width:0;min-height:30px;padding:4px 2px!important;border:0!important;background:transparent!important;font-weight:600}
@@ -1055,8 +1055,8 @@ html:has(.api-value-modal-backdrop) { overflow:hidden; }
 .api-suite-view { display:grid; gap:8px; margin-top:12px; }
 .api-suite-view .api-spec-meta { margin:0; }
 .api-suite-view-list { display:grid; gap:6px; margin:0; padding:0; list-style:none; counter-reset:suite-step; }
-.api-suite-view-list li { display:flex; align-items:center; gap:10px; padding:10px 12px; border:1px solid var(--api-border); border-radius:var(--ck-dim-radius-base); counter-increment:suite-step; font-size:13px; }
-.api-suite-view-list li::before { content:counter(suite-step); display:inline-grid; place-items:center; width:22px; height:22px; border-radius:50%; background:var(--ck-color-line-faint); color:var(--api-muted); font-size:11px; font-weight:600; }
+.api-suite-view-list > li { display:flex; align-items:center; gap:10px; padding:10px 12px; border:1px solid var(--api-border); border-radius:var(--ck-dim-radius-base); counter-increment:suite-step; font-size:13px; }
+.api-suite-view-list > li::before { content:counter(suite-step); display:inline-grid; place-items:center; width:22px; height:22px; border-radius:50%; background:var(--ck-color-line-faint); color:var(--api-muted); font-size:11px; font-weight:600; }
 /* Every delete trigger reads red; the destructive confirm stays in its popover. */
 .api-testing-page button.api-delete-trigger { color:var(--ck-color-fail-ink); }
 /* Flow / latest run: one segmented control, same look as the composer's step switch. */
@@ -1157,8 +1157,8 @@ body.panel-resizing { cursor:col-resize; user-select:none; }
 .api-suite-readiness ul ul, .api-suite-blocked { margin:4px 0 6px; padding-left:18px; color:var(--api-body); }
 .api-suite-readiness code, .api-suite-blocked code { font-family:var(--ck-font-mono); }
 .api-run-result-status:is(.is-skipped,.is-cancelled) { color:var(--api-muted); background:var(--ck-color-line-soft); }
-.api-suite-results summary .api-run-result-status { margin-left:6px; padding:2px 7px; font-size:10.5px; }
-.api-suite-results summary small { color:var(--api-muted); }
+.api-suite-view-list summary .api-run-result-status { margin-left:6px; padding:2px 7px; font-size:10.5px; }
+.api-suite-view-list summary small { color:var(--api-muted); }
 /* Passed checks count on a folded step: quiet, next to the HTTP status. */
 .api-run-result-check-badge.is-passed { background:var(--ck-color-pass-tint); color:var(--ck-color-pass); }
 /* The checks badge gets its own column next to the HTTP status, leaving the step name its row. */
@@ -1184,7 +1184,7 @@ body.panel-resizing { cursor:col-resize; user-select:none; }
 /* Which server a step calls, shown only in scenarios that use more than one. */
 .api-run-server { display:inline-block; margin-right:6px; padding:0 5px; border:1px solid var(--api-border); border-radius:var(--ck-dim-radius-pill); color:var(--api-muted); font-size:10.5px; line-height:1.5; }
 /* Suite results: open the scenario (its requests and responses), actual value on a failed check. */
-.api-suite-results summary .api-suite-open, .api-suite-readiness .api-suite-open { margin-left:10px; font-size:11.5px; }
+.api-suite-view-list summary .api-suite-open, .api-suite-readiness .api-suite-open { margin-left:10px; font-size:11.5px; }
 .api-suite-actual { color:var(--api-body); font-weight:400; }
 /* Request body JSON: values are click-to-edit; empty ones show the spec example faintly (not sent). */
 .api-testing-page button.api-json-value-edit { min-height:0; padding:0 2px; border:0; border-radius:3px; background:transparent; color:inherit; font:inherit; cursor:text; }

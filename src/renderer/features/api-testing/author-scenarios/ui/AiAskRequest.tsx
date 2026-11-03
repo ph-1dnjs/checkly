@@ -1,7 +1,8 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { aiFixFailures, aiFixResponse } from "../model/ai-fix";
+import { aiFixFailures, aiFixPrompt, aiFixResponse } from "../model/ai-fix";
 import { Icon } from "../../../../shared/ui/Icon";
 import type { ApiEnvironmentScope, ApiScenarioResult, ApiTestingBridge } from "../../../../../app/api-testing/shared/workspace";
+import { backendFolderCount, chatTool } from "../../../../entities/api-testing";
 
 import { Button } from "../../../../shared/ui/Button";
 const errorText = (error: unknown) => (error as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, "");
@@ -32,16 +33,31 @@ export function AiAskRequest({ scope, scenarioId, scenarioName, failedRun, inclu
   const response = failedRun ? aiFixResponse(failedRun) : undefined;
   const [withFailure, setWithFailure] = useState(includeFailure && failures.length > 0);
   const [withResponse, setWithResponse] = useState(false);
-  const [target, setTarget] = useState<AiAskTarget>("quick");
   // The terminal is offered only while its conversation is open (the CLI must be there to read the request).
   const [terminalOpen, setTerminalOpen] = useState(false);
+  const [chatReady, setChatReady] = useState(false);
+  const [mcpConnected, setMcpConnected] = useState(false);
+  const [checkingDestinations, setCheckingDestinations] = useState(true);
+  const [delivery, setDelivery] = useState<AiAskTarget | "copy">("copy");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   useEffect(() => {
     let active = true;
-    void bridge.getAiTerminal(scope.projectId).then(current => { if (active) setTerminalOpen(Boolean(current?.running)); }).catch(() => undefined);
+    void Promise.all([
+      bridge.getAiTerminal(scope.projectId).catch(() => null),
+      bridge.getAiChatStatus().catch(() => ({ tools: [] })),
+      bridge.getAiChatSettings(scope.projectId).catch(() => ({ folders: {} })),
+      bridge.getMcpStatus().catch(() => ({ enabled: false } as const)),
+    ]).then(([terminal, status, settings, mcp]) => {
+      if (!active) return;
+      const ready = Boolean(chatTool(settings, status.tools)) && backendFolderCount(settings) > 0;
+      setTerminalOpen(Boolean(terminal?.running));
+      setChatReady(ready);
+      setMcpConnected(mcp.enabled && mcp.projectId === scope.projectId && mcp.environmentId === scope.environmentId);
+      setCheckingDestinations(false);
+    });
     return () => { active = false; };
-  }, [bridge, scope.projectId]);
+  }, [bridge, scope.projectId, scope.environmentId]);
   const ready = Boolean(message.trim()) || (withFailure && failures.length > 0);
   const send = async (event: FormEvent) => {
     event.preventDefault();
@@ -52,9 +68,20 @@ export function AiAskRequest({ scope, scenarioId, scenarioName, failedRun, inclu
       about: { scenarioId, ...(withFailure ? { failures, ...(withResponse && response ? { response } : {}) } : {}) },
     };
     try {
-      if (target === "terminal") await bridge.askAiTerminal(request);
+      if (delivery === "copy") {
+        await navigator.clipboard.writeText(aiFixPrompt({
+          scenarioName,
+          request: request.request,
+          failures: withFailure ? failures : [],
+          ...(withFailure && withResponse && response ? { response } : {}),
+        }));
+        setMessage("수정 프롬프트를 복사했습니다. 백엔드 프로젝트를 연 AI 대화에 붙여넣으세요.");
+        setSending(false);
+        return;
+      }
+      if (delivery === "terminal") await bridge.askAiTerminal(request);
       else await bridge.startAiQuick(request);
-      onSent(target);
+      onSent(delivery);
     } catch (e) { setError(errorText(e)); setSending(false); }
   };
   return <div className="api-input-modal-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget && !sending) onCancel(); }}>
@@ -73,13 +100,15 @@ export function AiAskRequest({ scope, scenarioId, scenarioName, failedRun, inclu
         </>}
       </div>}
       <fieldset className="api-ai-ask-target" disabled={sending}>
-        <legend>어디에 물어볼까요?</legend>
-        <label className="api-check-row"><input type="radio" name="api-ai-ask-target" checked={target === "quick"} onChange={() => setTarget("quick")} />새로 가볍게<small>바로 만들기 새 대화</small></label>
-        <label className="api-check-row"><input type="radio" name="api-ai-ask-target" checked={target === "terminal"} disabled={!terminalOpen} onChange={() => setTarget("terminal")} />터미널 대화에 이어서<small>{terminalOpen ? "지금 열린 대화가 이어서 답합니다" : "열린 터미널 대화가 없습니다"}</small></label>
+        <legend>어디에서 이어갈까요?</legend>
+        <label className="api-check-row"><input type="radio" name="api-ai-ask-target" checked={delivery === "quick"} disabled={!chatReady} onChange={() => setDelivery("quick")} />앱에서 AI와 대화<small>{chatReady ? "백엔드 코드 폴더를 볼 수 있는 새 대화" : "AI와 백엔드 코드 폴더를 먼저 연결하세요"}</small></label>
+        <label className="api-check-row"><input type="radio" name="api-ai-ask-target" checked={delivery === "terminal"} disabled={!chatReady || !terminalOpen} onChange={() => setDelivery("terminal")} />열린 터미널 대화에 이어서<small>{!chatReady ? "AI와 백엔드 코드 폴더를 먼저 연결하세요" : terminalOpen ? "지금 열린 대화가 이어서 답합니다" : "열린 터미널 대화가 없습니다"}</small></label>
+        <label className="api-check-row"><input type="radio" name="api-ai-ask-target" checked={delivery === "copy"} onChange={() => setDelivery("copy")} />외부 AI에 수정 프롬프트 복사<small>{mcpConnected ? "MCP 연결됨 · 외부 AI 대화에 붙여넣으세요" : "백엔드 프로젝트를 연 Claude Code나 Codex에 붙여넣으세요"}</small></label>
       </fieldset>
-      <p className="api-input-note">시나리오 YAML{withFailure ? `과 실패한 단계·상태 코드${withResponse ? ", 응답 앞부분(토큰·비밀번호 같은 값은 가림)" : ""}` : ""}, 적은 말만 AI에 보냅니다. 질문이면 답만 하고, 고친 결과는 AI 작성 도우미에서 확인하고 저장합니다.</p>
+      {checkingDestinations && <p className="api-field-help" role="status">AI 연결 상태를 확인하는 중…</p>}
+      <p className="api-input-note">{delivery === "copy" ? `실패 단계와 상태 코드${withResponse ? ", 민감한 응답 값은 가린 앞부분" : ""}을 포함한 프롬프트를 복사합니다. 시나리오 YAML과 실제 요청값은 포함하지 않습니다.` : `시나리오 YAML과 적은 말을 AI에 보냅니다${withFailure ? `. 실패 단계·상태 코드${withResponse ? ", 민감한 응답 값은 가린 앞부분" : ""}도 포함합니다` : ""}. 실제 요청값은 보내지 않습니다.`}</p>
       {error && <p className="api-warning" role="alert">{error}</p>}
-      <footer className="api-actions"><Button variant="secondary" disabled={sending} onClick={onCancel}>취소</Button><Button variant="primary" type="submit" disabled={sending || disabled || !ready}>{sending ? "보내는 중…" : "AI에 보내기"}</Button></footer>
+      <footer className="api-actions"><Button variant="secondary" disabled={sending} onClick={onCancel}>취소</Button><Button variant="primary" type="submit" disabled={sending || disabled || !ready || (delivery !== "copy" && !chatReady) || (delivery === "terminal" && !terminalOpen)}>{sending ? "처리 중…" : delivery === "copy" ? "수정 프롬프트 복사" : "AI에 보내기"}</Button></footer>
     </form>
   </div>;
 }

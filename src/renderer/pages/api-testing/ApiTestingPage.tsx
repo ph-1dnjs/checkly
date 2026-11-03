@@ -14,6 +14,7 @@ import { SpecSourcePanel, SpecRefreshControl, isProductionEnvironment, specRefre
 import "./ui/api-testing.css";
 import type { OnRunAction } from "../../shared/model/run-action";
 import { readWorkspaceUrl, workspaceUrl, type ApiTab } from "./lib/workspace-url";
+import { readWorkspacePreference, resolveWorkspacePreference, writeWorkspacePreference } from "./lib/workspace-preferences";
 
 import { Button } from "../../shared/ui/Button";
 /**
@@ -150,31 +151,39 @@ export function ApiTestingPage({ onRunAction, onOpenSettings, bridge = window.el
       setTab(target.tab);
       setScenarioEditorScenarioId(target.scenarioId || null);
       if (selected) {
+        const preference = resolveWorkspacePreference(selected, target, readWorkspacePreference(selected.id), mcpStatus);
         setProjectId(selected.id);
-        setServerId(selected.servers.find(s => s.id === target.serverId)?.id ?? selected.servers[0]?.id ?? "");
-        setEnvironmentId(selected.environments.find(e => e.id === target.environmentId)?.id ?? selected.environments[0]?.id ?? "");
+        setServerId(preference.serverId);
+        setEnvironmentId(preference.environmentId);
+        writeWorkspacePreference(selected.id, preference);
       }
     };
     window.addEventListener("popstate", restore);
     return () => window.removeEventListener("popstate", restore);
-  }, [busy, scenarioComposerOpen, projects, tab, projectId, serverId, environmentId, scenarioEditorScenarioId]);
+  }, [busy, scenarioComposerOpen, projects, tab, projectId, serverId, environmentId, scenarioEditorScenarioId, mcpStatus]);
   const project = projects.find(p => p.id === projectId);
   const scope = { projectId, serverId, environmentId };
   // A team project may have no API server or environment yet.
-  const selectProject = (p: ApiProject) => { setProjectId(p.id); setServerId(p.servers[0]?.id ?? ""); setEnvironmentId(p.environments[0]?.id ?? ""); setUrl(""); setScenarioEditorScenarioId(null); };
   const loadProjects = (live: () => boolean) => bridge.getStorage().then(async info => {
     if (!live()) return;
     setStorage(info);
     // Signed out there is nothing to list: the page asks for a sign-in.
-    const items = info.mode === "signed-out" ? [] : await bridge.listProjects();
+    const [items, savedMcpStatus] = await Promise.all([
+      info.mode === "signed-out" ? Promise.resolve([] as ApiProject[]) : bridge.listProjects(),
+      bridge.getMcpStatus?.().catch(() => ({ enabled: false } as ApiMcpStatus)) ?? Promise.resolve({ enabled: false } as ApiMcpStatus),
+    ]);
     if (!live()) return;
     setProjects(items);
+    setMcpStatus(savedMcpStatus);
     const target = readWorkspaceUrl(window.location.href);
     const selected = items.find(p => p.id === target.projectId) ?? items[0];
     if (selected) {
-      selectProject(selected);
-      setServerId(selected.servers.find(s => s.id === target.serverId)?.id ?? selected.servers[0]?.id ?? "");
-      setEnvironmentId(selected.environments.find(e => e.id === target.environmentId)?.id ?? selected.environments[0]?.id ?? "");
+      const preference = resolveWorkspacePreference(selected, target, readWorkspacePreference(selected.id), savedMcpStatus);
+      setProjectId(selected.id);
+      setServerId(preference.serverId);
+      setEnvironmentId(preference.environmentId);
+      writeWorkspacePreference(selected.id, preference);
+      setUrl("");
       setScenarioEditorScenarioId(target.scenarioId || null);
     } else { setProjectId(""); setServerId(""); setEnvironmentId(""); }
   }).catch(error => {
@@ -253,7 +262,7 @@ export function ApiTestingPage({ onRunAction, onOpenSettings, bridge = window.el
   };
   if (!bridge) return <section className="api-testing-page api-swagger-shell api-layout"><PageHeader icon="data_object" title="API 테스트" /><p className="api-page-message">프로젝트 저장과 실제 API 호출은 Checkly 데스크톱 앱에서 사용할 수 있습니다.</p></section>;
   const locked = busy || scenarioComposerOpen || refreshingSpec;
-  const environmentPicker = project && <EnvironmentMenu project={project} environmentId={environmentId} serverId={serverId} label={tab === "scenario-editor" ? "시나리오 전체 호출 환경" : "API 환경"} title={tab === "scenario-editor" ? "이 시나리오의 전체 API 호출 환경" : undefined} disabled={busy || loading} onSelect={id => { if (id !== environmentId) { setEnvironmentId(id); setUrl(""); } }} />;
+  const environmentPicker = project && <EnvironmentMenu project={project} environmentId={environmentId} serverId={serverId} label={tab === "scenario-editor" ? "시나리오 전체 호출 환경" : "API 환경"} title={tab === "scenario-editor" ? "이 시나리오의 전체 API 호출 환경" : undefined} disabled={busy || loading} onSelect={id => { if (id !== environmentId) { setEnvironmentId(id); writeWorkspacePreference(projectId, { serverId, environmentId: id }); setUrl(""); } }} />;
   const valueActions = <div className="api-context-value-actions"><GlobalVariableMenu projectId={projectId} bridge={bridge} disabled={busy} /></div>;
   // One project: its name only ("팀" when it is the signed-in team project).
   const projectPicker = project && <div className="api-actions api-project-picker">
@@ -276,7 +285,7 @@ export function ApiTestingPage({ onRunAction, onOpenSettings, bridge = window.el
     </div>,
     // Server selects the spec only; environment also selects where all scenario steps run.
     context: <div className="api-workspace-context" role="region" aria-label="API 서버·환경 및 문서">
-      <label className="api-workspace-selector"><span>서버</span><span className="api-select-chip" title="명세 조회·갱신 대상 서버입니다. 시나리오는 각 단계에 지정한 서버를 사용합니다."><select aria-label="API 서버" value={serverId} disabled={locked || loading} onChange={event => { setServerId(event.target.value); setUrl(""); }}>{project.servers.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select><Icon name="expand_more" size={16} /></span></label>
+      <label className="api-workspace-selector"><span>서버</span><span className="api-select-chip" title="명세 조회·갱신 대상 서버입니다. 시나리오는 각 단계에 지정한 서버를 사용합니다."><select aria-label="API 서버" value={serverId} disabled={locked || loading} onChange={event => { const next = event.target.value; setServerId(next); writeWorkspacePreference(projectId, { serverId: next, environmentId }); setUrl(""); }}>{project.servers.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select><Icon name="expand_more" size={16} /></span></label>
       <div className={`api-workspace-selector${isProductionEnvironment(environment?.name ?? "") ? " is-production" : ""}`}><span>환경</span>{environmentPicker}</div>
       <SpecRefreshControl catalog={catalog} sync={sync} loading={loading} refreshing={refreshingSpec} error={specError} disabled={locked} scopeLabel={`${server?.name ?? ""} / ${environment?.name ?? ""}`} onRefresh={() => void refreshSpec()} />
       {valueActions}

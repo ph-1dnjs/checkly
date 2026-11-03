@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ApiProject, ApiScope, ApiScenarioInputRequest, ApiScenarioResult, ApiTestingBridge, SavedApiScenario, SavedApiSuite } from "../../../../app/api-testing/shared/workspace";
 import { formatDuration, producedGlobalNames, renderSuiteReport, reportFilename, reportScenario, usesInvalidatedGlobal, type SuiteReport, type SuiteReportScenario } from "../../../../app/api-testing/shared/suite-report";
 import { groupMissingGlobals, issueGlobal, missingGlobalIssue, stepNumbersText } from "../../../../app/api-testing/shared/preflight-issues";
-import { GlobalVariableSetupLink, SidebarMetadataFields, writeLastRun } from "../../../entities/api-testing";
+import { GlobalVariableSetupLink, readLastSuiteRun, SidebarMetadataFields, writeLastRun, writeLastSuiteRun } from "../../../entities/api-testing";
 import { useGlobalVariableAccess } from "../../../features/api-testing/configure-globals";
 
 import { AuthorshipLine, DeleteAction } from "../../../entities/api-testing";
@@ -38,8 +38,27 @@ function IssueList({ issues, className, onConfigure, producers, currentId, onOpe
   </ul>;
 }
 
+function SuiteResultRow({ row, index, blocked, result, scenarios, producers, onConfigure, onOpenScenario }: {
+  row: SuiteReportScenario;
+  index: number;
+  blocked?: string[];
+  result?: ApiScenarioResult;
+  scenarios: SavedApiScenario[];
+  producers: Record<string, Array<{ id: string; name: string }>>;
+  onConfigure: (name: string) => void;
+  onOpenScenario?: (id: string) => void;
+}) {
+  const canOpenScenario = scenarios.some(scenario => scenario.id === row.id);
+  return <details open={["failed", "error", "blocked"].includes(row.status)}>
+    <summary>{index + 1}. {row.name} <strong className={`api-run-result-status is-${row.status}`}>{statusName(row.status)}</strong> <small>{row.status === "skipped" ? row.reason : formatDuration(row.durationMs)}</small>{onOpenScenario && canOpenScenario && <Button className="api-compose-link api-suite-open" onClick={event => { event.preventDefault(); event.stopPropagation(); onOpenScenario(row.id); }}>시나리오 열기</Button>}</summary>
+    {blocked ? <IssueList className="api-suite-blocked" issues={blocked} onConfigure={onConfigure} producers={producers} currentId={row.id} onOpenScenario={onOpenScenario} /> : row.status !== "skipped" && row.reason && <p>{row.reason}</p>}
+    <ol>{row.steps.map((step, stepIndex) => <li key={stepIndex}>{step.reference} · {statusName(step.status)}{step.httpStatus !== undefined && ` · HTTP ${step.httpStatus}`}{step.reason && ` · ${step.reason}`}{!!step.checkResults?.length && <ul className="api-suite-checks">{step.checkResults.map((check, checkIndex) => <li key={checkIndex} className={check.passed ? "is-passed" : "is-failed"}>{check.passed ? "✓" : "✗"} {check.label}{!check.passed && result?.steps[stepIndex]?.checks?.[checkIndex]?.actual !== undefined && <span className="api-suite-actual"> · 실제 {result.steps[stepIndex].checks![checkIndex].actual}</span>}</li>)}</ul>}</li>)}</ol>
+  </details>;
+}
+
 export function SuitePanel({ project, scope, bridge, scenarios, suites, selectedId, onSuitesChange, onSelectedIdChange, onBusy, onOpenScenario }: Props) {
   const selected = suites.find(suite => suite.id === selectedId);
+  const [restoredRun] = useState(() => selected ? readLastSuiteRun(project.id, scope.environmentId, selected.id, selected.updatedAt) : null);
   const [name, setName] = useState(selected?.name ?? "");
   const [description, setDescription] = useState(selected?.description ?? "");
   const [ids, setIds] = useState<string[]>(selected?.scenarioIds ?? []);
@@ -50,15 +69,15 @@ export function SuitePanel({ project, scope, bridge, scenarios, suites, selected
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState("");
   const [error, setError] = useState("");
-  const [report, setReport] = useState<SuiteReport | null>(null);
+  const [report, setReport] = useState<SuiteReport | null>(restoredRun?.report ?? null);
   const [pending, setPending] = useState<ApiScenarioInputRequest | null>(null);
   // Before running: what each scenario still needs (globals made by an earlier scenario don't count).
   const [readiness, setReadiness] = useState<Array<{ index: number; id: string; name: string; issues: string[] }>>([]);
   const [globalProducers, setGlobalProducers] = useState<Record<string, Array<{ id: string; name: string }>>>({});
   // After running: the concrete reason a scenario was blocked, by its position in the suite.
-  const [blocked, setBlocked] = useState<Record<number, string[]>>({});
+  const [blocked, setBlocked] = useState<Record<number, string[]>>(restoredRun?.blocked ?? {});
   // The raw results behind each row (by position), for actual values on failed checks — app only, never the HTML report.
-  const [runResults, setRunResults] = useState<Record<number, ApiScenarioResult>>({});
+  const [runResults, setRunResults] = useState<Record<number, ApiScenarioResult>>(restoredRun?.results ?? {});
   const globalAccess = useGlobalVariableAccess();
   const groupPathMap = new Map<string, string[]>();
   for (const item of [...scenarios, ...suites]) for (let depth = 1; depth <= (item.groupPath?.length ?? 0); depth++) {
@@ -69,6 +88,9 @@ export function SuitePanel({ project, scope, bridge, scenarios, suites, selected
   const cancelRequested = useRef(false);
   const live = useRef(true);
   useEffect(() => { live.current = true; return () => { live.current = false; }; }, []);
+  useEffect(() => {
+    if (selected && report) writeLastSuiteRun(project.id, scope.environmentId, selected.id, { suiteUpdatedAt: selected.updatedAt, report, blocked, results: runResults });
+  }, [selected?.id, selected?.updatedAt, project.id, scope.environmentId, report, blocked, runResults]);
   useEffect(() => {
     if (!running) { setPending(null); return; }
     let active = true;
@@ -195,7 +217,10 @@ export function SuitePanel({ project, scope, bridge, scenarios, suites, selected
       {selected && editing && unsaved && !running && <p className="api-run-notice">저장하지 않은 변경사항이 있습니다. <strong>스위트 저장</strong> 후 실행할 수 있습니다.</p>}
       {selected && !editing && <section className="api-suite-view" aria-label="스위트 구성">
         <p className="api-spec-meta">{selected.scenarioIds.length}개 시나리오 · {selected.onFailure === "stop" ? "실패하면 나머지 건너뛰기" : "실패해도 다음 시나리오 계속"}{selected.groupPath?.length ? ` · ${selected.groupPath.join(" › ")}` : ""}</p>{selected.description?.trim() && <p className="api-scn-desc api-suite-description">{selected.description}</p>}
-        <ol className="api-suite-view-list">{selected.scenarioIds.map((id, index) => <li key={`${id}:${index}`}>{scenarios.find(scenario => scenario.id === id)?.name ?? "삭제된 시나리오"}</li>)}</ol>
+        {report ? <div className="api-suite-results" role="region" aria-label="스위트 실행 결과">
+          <header className="api-run-section-heading"><div><h3>실행 결과 · {statusName(report.status)}</h3><small>{report.scenarios.length}개 시나리오 · {new Date(report.completedAt).toLocaleString()}</small></div><Button variant="secondary" disabled={running} title="시나리오 이름·API 경로·검증 결과만 담습니다" onClick={() => void download()}><Icon name="download" size={16} />HTML 리포트 받기</Button></header>
+          <ol className="api-suite-view-list">{report.scenarios.map((row, index) => <li key={`${row.id}:${index}`}><SuiteResultRow row={row} index={index} blocked={blocked[index]} result={runResults[index]} scenarios={scenarios} producers={globalProducers} onConfigure={globalAccess.open} onOpenScenario={onOpenScenario} /></li>)}</ol>
+        </div> : <ol className="api-suite-view-list">{selected.scenarioIds.map((id, index) => <li key={`${id}:${index}`}>{scenarios.find(scenario => scenario.id === id)?.name ?? "삭제된 시나리오"}</li>)}</ol>}
       </section>}
       {editing && <div className="api-suite-editor"><label>스위트 이름<Input value={name} disabled={running} onChange={event => setName(event.target.value)} placeholder="예: 회원 가입부터 승인까지" /></label><label>설명<textarea className="api-prose-input" aria-label="스위트 설명" value={description} disabled={running} maxLength={5000} placeholder="실행 전 준비할 시나리오, 필요한 전역변수, 순서와 참고 링크를 적어 두세요" onChange={event => setDescription(event.target.value)} /></label><SidebarMetadataFields groupPath={groupPath} existingGroupPaths={existingGroupPaths} disabled={running} onGroupPathChange={setGroupPath} /><fieldset disabled={running}><legend>실행 순서</legend><SortableList items={ids} disabled={running} className="api-suite-orders"
         itemKey={(id, index) => `${id}:${ids.slice(0, index).filter(other => other === id).length}`}
@@ -212,6 +237,5 @@ export function SuitePanel({ project, scope, bridge, scenarios, suites, selected
       {running && <p role="status">{progress || "스위트 실행 준비 중…"}</p>}
       {pending && <RunInputModal key={pending.requestId} request={pending} scope={{ projectId: scope.projectId, environmentId: scope.environmentId }} bridge={bridge} context={progress.replace(/^\d+\/\d+ · /, "") || undefined} onSubmitted={() => setPending(null)} onCancel={() => { setPending(null); void cancel(); }} />}
       {error && <p className="api-warning" role="alert">{error}</p>}
-      {report && <section className="api-suite-results" aria-label="스위트 실행 결과"><header className="api-run-section-heading"><div><h3>실행 결과 · {statusName(report.status)}</h3><small>{report.scenarios.length}개 시나리오 · {new Date(report.completedAt).toLocaleString()}</small></div><Button variant="secondary" disabled={running} title="시나리오 이름·API 경로·검증 결과만 담습니다" onClick={() => void download()}><Icon name="download" size={16} />HTML 리포트 받기</Button></header>{report.scenarios.map((row, index) => <details key={`${row.id}:${index}`} open={!["passed", "skipped"].includes(row.status)}><summary>{index + 1}. {row.name} <strong className={`api-run-result-status is-${row.status}`}>{statusName(row.status)}</strong> <small>{row.status === "skipped" ? row.reason : formatDuration(row.durationMs)}</small>{onOpenScenario && scenarios.some(scenario => scenario.id === row.id) && <Button className="api-compose-link api-suite-open" disabled={running} onClick={event => { event.preventDefault(); onOpenScenario(row.id); }}>시나리오 열기</Button>}</summary>{blocked[index] ? <IssueList className="api-suite-blocked" issues={blocked[index]} onConfigure={globalAccess.open} producers={globalProducers} currentId={row.id} onOpenScenario={onOpenScenario} /> : row.status !== "skipped" && row.reason && <p>{row.reason}</p>}<ol>{row.steps.map((step, stepIndex) => <li key={stepIndex}>{step.reference} · {statusName(step.status)}{step.httpStatus !== undefined && ` · HTTP ${step.httpStatus}`}{step.reason && ` · ${step.reason}`}{!!step.checkResults?.length && <ul className="api-suite-checks">{step.checkResults.map((check, checkIndex) => <li key={checkIndex} className={check.passed ? "is-passed" : "is-failed"}>{check.passed ? "✓" : "✗"} {check.label}{!check.passed && runResults[index]?.steps[stepIndex]?.checks?.[checkIndex]?.actual !== undefined && <span className="api-suite-actual"> · 실제 {runResults[index].steps[stepIndex].checks![checkIndex].actual}</span>}</li>)}</ul>}</li>)}</ol></details>)}</section>}
     </article>;
 }
