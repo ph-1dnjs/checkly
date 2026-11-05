@@ -27,5 +27,13 @@ test("external repair prompt includes failure context and only the masked respon
   assert.match(prompt, /주소 검증을 봐줘/);
   assert.match(prompt, /2단계 '수정 신청' 실패 · HTTP 오류 상태 · HTTP 400/);
   assert.match(prompt, /accessToken.*\*\*\*/);
+  assert.match(prompt, /## 목표[\s\S]*실패 원인을 시나리오 설정 관점에서 확인하고, 설정 오류라면 바로잡아 주세요/);
+  assert.match(prompt, /## 확인/);
+  assert.match(prompt, /앞 단계에서 준비하는 데이터와 시나리오 실행 순서/);
+  assert.match(prompt, /기대 상태 코드와 응답 검증/);
+  assert.match(prompt, /## 수정 범위[\s\S]*MCP로 수정할 수 있으면 YAML을 검증한 뒤 Checkly에 저장/);
+  assert.match(prompt, /백엔드 소스 코드와 테스트는 수정하지 말고,? 시나리오도 실행하지 마세요/);
+  assert.match(prompt, /## 결과/);
+  assert.doesNotMatch(prompt, /백엔드 저장소의 API 계약|회귀 테스트를 추가/);
   assert.doesNotMatch(prompt, /주소 abc|refresh_token": "t2/);
 });

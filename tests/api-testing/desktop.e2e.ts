@@ -312,11 +312,30 @@ process.stdin.on("data", chunk => {
     await expect(fixForm).toContainText("1단계 '로그인' 실패 · HTTP 오류 상태 · HTTP 400");
     await fixForm.getByLabel("AI에게 할 말", { exact: true }).fill("로그인 아이디를 고쳐 주세요");
     await expect(fixForm.getByRole("checkbox", { name: "최근 실행 실패 내용 포함" })).toBeChecked();
-    await expect(fixForm.getByRole("radio", { name: /새로 가볍게/ })).toBeChecked();
     await expect(fixForm.getByRole("radio", { name: /터미널 대화에 이어서/ })).toBeDisabled();
+    await expect(fixForm.getByRole("radio", { name: /외부 AI에 수정 프롬프트 복사/ })).toBeChecked();
     await fixForm.getByRole("checkbox", { name: "실패한 단계의 응답 내용도 보내기" }).check();
     await shot("ai-fix");
-    await fixForm.getByRole("button", { name: "AI에 보내기", exact: true }).click();
+    await fixForm.getByRole("button", { name: "수정 프롬프트 복사", exact: true }).click();
+    await expect(fixForm).toContainText("수정 프롬프트를 복사했습니다.");
+    const copiedFixPrompt = await app.evaluate(({ clipboard }) => clipboard.readText());
+    expect(copiedFixPrompt).toContain("## 목표");
+    expect(copiedFixPrompt).toContain("추가 요청: 로그인 아이디를 고쳐 주세요");
+    expect(copiedFixPrompt).toContain("앞 단계에서 준비하는 데이터와 시나리오 실행 순서");
+    expect(copiedFixPrompt).toContain("백엔드 소스 코드와 테스트는 수정하지 말고, 시나리오도 실행하지 마세요.");
+    expect(copiedFixPrompt).toContain("주소 필수");
+    expect(copiedFixPrompt).toContain('"accessToken": "***"');
+    expect(copiedFixPrompt).not.toContain("login-secret-token");
+    expect(copiedFixPrompt).not.toContain("loginId: fail-me");
+    await fixForm.getByRole("button", { name: "취소", exact: true }).click();
+    await page.getByRole("button", { name: "AI로 고치기", exact: true }).click();
+    const appFixForm = page.getByRole("dialog", { name: "빠른 로그인", exact: true });
+    await appFixForm.getByLabel("AI에게 할 말", { exact: true }).fill("로그인 아이디를 고쳐 주세요");
+    await expect(appFixForm.getByRole("checkbox", { name: "최근 실행 실패 내용 포함" })).toBeChecked();
+    await appFixForm.getByRole("checkbox", { name: "실패한 단계의 응답 내용도 보내기" }).check();
+    await appFixForm.getByRole("radio", { name: /앱에서 AI와 대화/ }).check();
+    await expect(appFixForm.getByRole("radio", { name: /앱에서 AI와 대화/ })).toBeChecked();
+    await appFixForm.getByRole("button", { name: "AI에 보내기", exact: true }).click();
     await expect(quickPane.getByLabel("AI 메모", { exact: true })).toContainText("로그인 값을 고쳤습니다.", { timeout: 15_000 });
     await expect(quickPane).toContainText("‘빠른 로그인’ 고치기 · 로그인 아이디를 고쳐 주세요");
     await expect(quickPane.getByLabel("빠른 로그인 저장 방식", { exact: true })).toHaveValue("update");
@@ -963,6 +982,19 @@ process.stdin.on("data", chunk => {
     await restored.getByRole("button", { name: "시나리오 목록으로", exact: true }).click();
     await restored.getByRole("button", { name: "변경사항 버리고 닫기", exact: true }).click();
     await expect(warnedEntry).toBeVisible();
+    await warnedEntry.click();
+    await expect(restored.getByRole("heading", { name: "로그인 후 상품 조회", exact: true })).toBeVisible();
+    await restored.evaluate(async () => {
+      const bridge = (window as unknown as { electronAPI: { apiTesting: ApiTestingBridge } }).electronAPI.apiTesting;
+      const project = (await bridge.listProjects())[0];
+      const current = (await bridge.listScenarios(project.id)).find(item => item.name === "로그인 후 상품 조회");
+      if (!current) throw new Error("Saved scenario was not found for the refresh check");
+      const source = current.source.replace(/^name:\s*.*$/m, "name: 외부에서 수정한 시나리오");
+      await bridge.saveScenario({ projectId: project.id, environmentId: project.environments[0].id }, source, current.bindings, current.updatedAt, { groupPath: current.groupPath ?? [] });
+    });
+    await restored.getByRole("tab", { name: "시나리오", exact: true }).click();
+    await expect(restored.getByRole("button", { name: "외부에서 수정한 시나리오", exact: true })).toBeVisible();
+    await expect(restored.getByRole("heading", { name: "외부에서 수정한 시나리오", exact: true })).toBeVisible();
   } finally {
     try {
       const electronProcess = app?.process();

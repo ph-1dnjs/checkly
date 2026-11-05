@@ -29,14 +29,28 @@ export function aiFixResponse(result: ApiScenarioResult, limit = 2000): string |
   return text.length > limit ? `${text.slice(0, limit)}…` : text;
 }
 
-/** A standalone, safe prompt for an external AI in the user's backend repository. */
+/** A standalone prompt that focuses the external AI on correcting the Checkly scenario. */
 export function aiFixPrompt(input: { scenarioName: string; request?: string; failures: string[]; response?: string }): string {
   return [
-    `Checkly API 테스트 시나리오 '${input.scenarioName}' 실행이 실패했습니다. 백엔드 프로젝트에서 원인을 조사하고 필요한 서버 코드를 수정해 주세요.`,
+    "## 목표",
+    `Checkly API 테스트 시나리오 '${input.scenarioName}'의 실패 원인을 시나리오 설정 관점에서 확인하고, 설정 오류라면 바로잡아 주세요.`,
     input.request?.trim() ? `추가 요청: ${input.request.trim()}` : "",
-    input.failures.length ? `실패 정보:\n${input.failures.map(item => `- ${item}`).join("\n")}` : "",
+    input.failures.length ? `## 실패 정보\n${input.failures.map(item => `- ${item}`).join("\n")}` : "",
     input.response ? `실패 응답 (민감한 값은 가림 처리됨):\n${input.response}` : "",
-    "저장소의 관련 API 구현과 테스트를 확인하고, 수정 후 관련 테스트를 실행해 주세요. Checkly MCP가 연결되어 있으면 API 명세와 시나리오를 확인하는 데 사용해도 됩니다.",
+    "## 확인",
+    "Checkly MCP에서 시나리오와 관련 API 명세를 확인하고 다음을 비교하세요.",
+    "- 실패 단계의 요청 필드와 입력값 참조",
+    "- 앞 단계에서 준비하는 데이터와 시나리오 실행 순서",
+    "- 기대 상태 코드와 응답 검증 조건",
+    "4xx·5xx 응답도 의도된 실패 테스트일 수 있으므로, 응답 코드만으로 서버 문제라고 판단하지 마세요.",
+    "## 수정 범위",
+    "- 시나리오 설정 오류가 확인되면 필요한 부분만 수정하세요.",
+    "- MCP로 수정할 수 있으면 YAML을 검증한 뒤 Checkly에 저장하세요.",
+    "- MCP로 수정할 수 없으면 수정한 YAML 전문과 변경 이유를 제시하세요.",
+    "- 백엔드 소스 코드와 테스트는 수정하지 말고, 시나리오도 실행하지 마세요.",
+    "## 결과",
+    "- 시나리오를 수정했다면 변경 내용과 저장 여부를 알려 주세요.",
+    "- 시나리오가 명세와 일치한다면 비교 근거와 함께 서버 쪽 확인이 필요하다고 알려 주세요.",
     "",
   ].filter(Boolean).join("\n\n");
 }

@@ -17,6 +17,7 @@ import { readWorkspaceUrl, workspaceUrl, type ApiTab } from "./lib/workspace-url
 import { readWorkspacePreference, resolveWorkspacePreference, writeWorkspacePreference } from "./lib/workspace-preferences";
 
 import { Button } from "../../shared/ui/Button";
+const emptyApiCatalogs: Record<string, ApiCatalog | null> = {};
 /**
  * API testing works on the signed-in team project (one project, several backend servers). Its servers,
  * environments and addresses are edited in 전체 설정 → 엔드포인트 × 환경; scenarios and suites are in the team DB.
@@ -42,6 +43,7 @@ export function ApiTestingPage({ onRunAction, onOpenSettings, bridge = window.el
   const [environmentId, setEnvironmentId] = useState("");
   const [mcpStatus, setMcpStatus] = useState<ApiMcpStatus>({ enabled: false });
   const [catalog, setCatalog] = useState<ApiCatalog | null>(null);
+  const [serverCatalogState, setServerCatalogState] = useState<{ projectId: string; environmentId: string; catalogs: Record<string, ApiCatalog | null> } | null>(null);
   const [specRevision, setSpecRevision] = useState(0);
   const [specSettingsRequest, setSpecSettingsRequest] = useState(0);
   const [refreshingSpec, setRefreshingSpec] = useState(false);
@@ -87,6 +89,8 @@ export function ApiTestingPage({ onRunAction, onOpenSettings, bridge = window.el
   // The composer's toolbar takes the header row where the tabs and environment usually are.
   const [composeToolbarSlot, setComposeToolbarSlot] = useState<HTMLDivElement | null>(null);
   const [scenarioCreateRequest, setScenarioCreateRequest] = useState(0);
+  const [scenarioRefreshRequest, setScenarioRefreshRequest] = useState(0);
+  const [refreshingScenarios, setRefreshingScenarios] = useState(false);
   const [scenarioEditorScenarioId, setScenarioEditorScenarioId] = useState(() => readWorkspaceUrl(window.location.href).scenarioId || null);
   useEffect(() => {
     // Keep one handler mounted for the lifetime of the page. Some embedded
@@ -214,9 +218,14 @@ export function ApiTestingPage({ onRunAction, onOpenSettings, bridge = window.el
     let live = true;
     if (!project || !environmentId || !bridge) return;
     void Promise.all(project.servers.map(server => bridge.getCatalog({ projectId: project.id, environmentId, serverId: server.id }).catch(() => null)))
-      .then(catalogs => { if (live) setAiHasSpec(catalogs.some(item => Boolean(item?.operations.length))); });
+      .then(catalogs => {
+        if (!live) return;
+        const byServer = Object.fromEntries(project.servers.map((server, index) => [server.id, catalogs[index]]));
+        setServerCatalogState({ projectId: project.id, environmentId, catalogs: byServer });
+        setAiHasSpec(catalogs.some(item => Boolean(item?.operations.length)));
+      });
     return () => { live = false; };
-  }, [project, environmentId, catalog?.importedAt, specRevision]);
+  }, [bridge, project, environmentId, specRevision]);
   // Checked only on the API tab, after a spec (re)load, or on request — never blocks the sync itself.
   const [missingCheck, setMissingCheck] = useState(0);
   const [checkingMissing, setCheckingMissing] = useState(false);
@@ -270,16 +279,22 @@ export function ApiTestingPage({ onRunAction, onOpenSettings, bridge = window.el
   </div>;
   // A team project can lack an API server or environment until someone sets them up.
   const ready = Boolean(project?.servers.length && project.environments.length);
+  const serverCatalogs = serverCatalogState?.projectId === projectId && serverCatalogState.environmentId === environmentId
+    ? serverCatalogState.catalogs
+    : emptyApiCatalogs;
   const server = project?.servers.find(item => item.id === serverId);
   const environment = project?.environments.find(item => item.id === environmentId);
   // Tabs and the server/environment context, in the header once a project is ready.
   const workbar = project && ready ? {
     tabs: <div className="api-tabs" role="tablist" aria-label="API 작업 영역">
-      <Button role="tab" aria-selected={tab === "scenarios" || tab === "scenario-editor"} disabled={busy || refreshingSpec} onClick={() => {
-        if (tab !== "scenario-editor") { changeTab("scenarios"); return; }
+      <Button role="tab" aria-selected={tab === "scenarios" || tab === "scenario-editor"} aria-busy={refreshingScenarios || undefined} disabled={busy || refreshingSpec} title={tab === "scenarios" ? refreshingScenarios ? "시나리오·스위트 목록을 불러오는 중입니다" : "다시 누르면 시나리오·스위트 목록을 새로 불러옵니다" : undefined} onClick={() => {
+        if (tab !== "scenario-editor") {
+          if (tab === "scenarios") { setRefreshingScenarios(true); setScenarioRefreshRequest(request => request + 1); return; }
+          changeTab("scenarios"); return;
+        }
         if (scenarioDirty) setError("저장하지 않은 변경사항이 있습니다. 저장하거나 ← 목록에서 변경사항을 버리고 닫으세요.");
         else backToScenarios();
-      }}>시나리오</Button>
+      }}>시나리오{refreshingScenarios && <><Icon name="refresh" size={14} className="api-tab-refresh-spinner" /><span className="api-tab-refresh-status">조회 중</span></>}</Button>
       <Button role="tab" aria-selected={tab === "api"} disabled={locked} onClick={() => changeTab("api")}>API 문서{catalog ? <small className="api-tab-count" title={`API ${catalog.operations.length}개`}>{catalog.operations.length}</small> : null}</Button>
       <Button role="tab" aria-selected={tab === "ai"} disabled={locked || (!aiHasSpec && tab !== "ai")} title={aiHasSpec ? undefined : "이 환경에 가져온 API 명세가 없습니다. API 문서에서 명세를 먼저 가져오세요"} onClick={() => changeTab("ai")}>AI 작성 도우미</Button>
     </div>,
@@ -314,7 +329,7 @@ export function ApiTestingPage({ onRunAction, onOpenSettings, bridge = window.el
         {/* Only this area scrolls; the header row above stays in place. */}
         <div className="api-page-body">
         {tab === "ai" && <AiAuthorPanel key={`${projectId}:${environmentId}`} project={project} scope={{ projectId, environmentId }} specRevision={specRevision} bridge={bridge} onBusy={setBusy} mcp={{ status: mcpStatus, onStatus: setMcpStatus }} onOpenSpecs={() => changeTab("api")} onSaved={first => { setBusy(false); setOpenSaved(first ?? null); setTab("scenarios"); }} />}
-        {tab === "scenarios" && <ScenarioPanel key={`${projectId}:${environmentId}`} specRevision={specRevision} project={project} scope={scope} bridge={bridge} onBusy={setBusy} onRunAction={onRunAction} runSaved={runSaved} onRunSavedConsumed={() => setRunSaved(null)} openSaved={openSaved} onOpenSavedConsumed={() => setOpenSaved(null)} onOpenAi={() => changeTab("ai")} onAiAskSent={target => { showAiChat(projectId, target); changeTab("ai"); }} onCreateScenario={() => openScenarioEditor()} onEditScenario={item => openScenarioEditor(item.id)} />}
+        {tab === "scenarios" && <ScenarioPanel key={`${projectId}:${environmentId}`} refreshRequest={scenarioRefreshRequest} onRefreshComplete={() => setRefreshingScenarios(false)} specRevision={specRevision} catalogsByServer={serverCatalogs} project={project} scope={scope} bridge={bridge} onBusy={setBusy} onRunAction={onRunAction} runSaved={runSaved} onRunSavedConsumed={() => setRunSaved(null)} openSaved={openSaved} onOpenSavedConsumed={() => setOpenSaved(null)} onOpenAi={() => changeTab("ai")} onAiAskSent={target => { showAiChat(projectId, target); changeTab("ai"); }} onCreateScenario={() => openScenarioEditor()} onEditScenario={item => openScenarioEditor(item.id)} />}
         {tab === "scenario-editor" && <ScenarioEditorPanel key={`${projectId}:${serverId}`} project={project} scope={scope} bridge={bridge} onBusy={setBusy} onRunAction={onRunAction} onBackToScenarios={backToScenarios} onOpenSpecs={openSpecs} onExecuteSaved={executeSaved} startCreateRequest={scenarioCreateRequest} editScenarioId={scenarioEditorScenarioId} onCreateConsumed={() => setScenarioCreateRequest(0)} onComposerOpenChange={setScenarioComposerOpen} onUnsavedChange={setScenarioDirty} onCreateScenario={() => openScenarioEditor()} onEditScenario={item => openScenarioEditor(item.id)} composeContext={<div className="api-compose-context">{workbar?.context}</div>} composeToolbarSlot={composeToolbarSlot} />}
         {tab === "api" && <>
         {environment && server && !environment.baseUrls[serverId] && <p className="api-warning" role="status">{environment.name} 환경에 {server.name} 서버 주소가 설정되지 않았습니다(미설정). 명세는 볼 수 있지만, API를 호출하려면 전체 설정의 엔드포인트 × 환경에서 주소를 입력하세요.</p>}

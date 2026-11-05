@@ -13,7 +13,7 @@ import { Icon } from "../../../shared/ui/Icon";
 
 import { Button } from "../../../shared/ui/Button";
 import { Input } from "../../../shared/ui/Input";
-type Props = { project: ApiProject; scope: ApiScope; bridge: ApiTestingBridge; scenarios: SavedApiScenario[]; suites: SavedApiSuite[]; selectedId: string; onSuitesChange: (suites: SavedApiSuite[]) => void; /** "" opens a new suite; null leaves suites for the scenario view. */ onSelectedIdChange: (id: string | null) => void; onBusy: (busy: boolean) => void; /** Opens a saved scenario to inspect its flow or last result. */ onOpenScenario?: (id: string) => void };
+type Props = { project: ApiProject; scope: ApiScope; bridge: ApiTestingBridge; scenarios: SavedApiScenario[]; suites: SavedApiSuite[]; selectedId: string; onSuitesChange: (suites: SavedApiSuite[]) => void; /** "" opens a new suite; null leaves suites for the scenario view. */ onSelectedIdChange: (id: string | null) => void; onBusy: (busy: boolean) => void; onEditingChange?: (editing: boolean) => void; /** Opens a saved scenario to inspect its flow or last result. */ onOpenScenario?: (id: string) => void };
 const message = (error: unknown) => (error as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, "");
 const statusName = runStatusName;
 class SuiteDependencyError extends Error {}
@@ -56,7 +56,7 @@ function SuiteResultRow({ row, index, blocked, result, scenarios, producers, onC
   </details>;
 }
 
-export function SuitePanel({ project, scope, bridge, scenarios, suites, selectedId, onSuitesChange, onSelectedIdChange, onBusy, onOpenScenario }: Props) {
+export function SuitePanel({ project, scope, bridge, scenarios, suites, selectedId, onSuitesChange, onSelectedIdChange, onBusy, onEditingChange, onOpenScenario }: Props) {
   const selected = suites.find(suite => suite.id === selectedId);
   const [restoredRun] = useState(() => selected ? readLastSuiteRun(project.id, scope.environmentId, selected.id, selected.updatedAt) : null);
   const [name, setName] = useState(selected?.name ?? "");
@@ -88,6 +88,10 @@ export function SuitePanel({ project, scope, bridge, scenarios, suites, selected
   const cancelRequested = useRef(false);
   const live = useRef(true);
   useEffect(() => { live.current = true; return () => { live.current = false; }; }, []);
+  useEffect(() => {
+    onEditingChange?.(editing);
+    return () => onEditingChange?.(false);
+  }, [editing, onEditingChange]);
   useEffect(() => {
     if (selected && report) writeLastSuiteRun(project.id, scope.environmentId, selected.id, { suiteUpdatedAt: selected.updatedAt, report, blocked, results: runResults });
   }, [selected?.id, selected?.updatedAt, project.id, scope.environmentId, report, blocked, runResults]);
@@ -149,6 +153,7 @@ export function SuitePanel({ project, scope, bridge, scenarios, suites, selected
   const cancel = async () => { cancelRequested.current = true; await bridge.cancel(scope); };
   const run = async () => {
     if (!selected) return;
+    setEditing(false);
     setRunning(true); onBusy(true); setError(""); setReport(null); setBlocked({}); setRunResults({}); cancelRequested.current = false;
     const startedAt = new Date().toISOString();
     const rows: SuiteReportScenario[] = [];
@@ -230,7 +235,7 @@ export function SuitePanel({ project, scope, bridge, scenarios, suites, selected
         renderItem={(id, index, position) => { const item = scenarios.find(scenario => scenario.id === id); return <>
           <span className="api-suite-order-number">{position + 1}</span>
           <span className="api-suite-order-name">{item?.name ?? "삭제된 시나리오"}</span>
-          {item?.groupPath?.length ? <small className="api-suite-order-group">{item.groupPath.join(" / ")}</small> : null}
+          {item?.groupPath?.length ? <small className="api-suite-order-group" title={item.groupPath.join(" / ")}>{item.groupPath.join(" / ")}</small> : null}
           <Button variant="ghost" iconOnly className="api-suite-order-remove" title="스위트에서 빼기" aria-label={`${index + 1}번째 ${item?.name ?? "삭제된 시나리오"} 스위트에서 빼기`} onClick={() => setIds(ids.filter((_, i) => i !== index))}><Icon name="close" size={16} /></Button>
         </>; }} /><label>+ 시나리오 추가<select value="" onChange={event => { if (event.target.value) setIds([...ids, event.target.value]); }}><option value="">선택하세요</option>{scenarios.filter(item => !item.draft).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><small>같은 시나리오를 여러 번 추가할 수 있습니다. 각 항목을 순서대로 다시 실행합니다.</small></fieldset><fieldset className="api-suite-failure" disabled={running}><legend>실패 시 동작</legend><div role="radiogroup" aria-label="실패 시 동작">{([["stop", "중단하고 나머지 건너뛰기", "기본"], ["continue", "다음 시나리오 계속 실행", "결과를 모두 보고 싶을 때"]] as const).map(([value, label, meta]) => <label key={value} className={`api-suite-failure-option${onFailure === value ? " is-checked" : ""}`}><input type="radio" name="api-suite-failure" value={value} checked={onFailure === value} onChange={() => setOnFailure(value)} />{label}<small>{meta}</small></label>)}</div></fieldset><div className="api-actions">{/* Say why saving is off instead of a silent disabled button. */}{!running && (!name.trim() || !ids.length) && <small className="api-suite-save-hint">{!name.trim() && !ids.length ? "이름을 적고 시나리오를 추가하면 저장할 수 있습니다." : !name.trim() ? "스위트 이름을 적으세요." : "시나리오를 하나 이상 추가하세요."}</small>}<Button variant={unsaved ? "primary" : "secondary"}  disabled={running || !name.trim() || !ids.length || !unsaved} onClick={() => void save()}>스위트 저장</Button>{selected && <Button variant="secondary" disabled={running} onClick={stopEditing}>취소</Button>}</div></div>}
       {selected && !editing && !running && !report && readiness.length > 0 && <div role="alert" className="api-warning api-suite-readiness"><strong>실행 전 확인</strong><ul>{readiness.map(row => <li key={row.index}>{row.index + 1}. {row.name}{onOpenScenario && scenarios.some(scenario => scenario.id === row.id) && <Button className="api-compose-link api-suite-open" onClick={() => onOpenScenario(row.id)}>시나리오 열기</Button>}<IssueList issues={row.issues} onConfigure={globalAccess.open} producers={globalProducers} currentId={row.id} onOpenScenario={onOpenScenario} /></li>)}</ul><small className="api-suite-readiness-note">앞 시나리오가 만드는 변수는 제외합니다. 후보가 여러 개면 알맞은 준비 시나리오를 선택하세요.</small></div>}
