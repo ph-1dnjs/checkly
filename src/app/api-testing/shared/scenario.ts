@@ -13,9 +13,22 @@ export const scenarioInputSchema = z.object({
   name: z.string().regex(/^[A-Za-z][A-Za-z0-9_]*$/),
   label: z.string().min(1).max(200).optional(),
   type: z.enum(["string", "number", "boolean", "object", "array", "datetime"]).default("string"),
+  datetimeFormat: z.enum(["iso", "local"]).optional(),
   required: z.boolean().default(true),
+  /** Re-evaluated at the start of each scenario run; currently only datetime expressions are supported. */
+  default: z.string().optional(),
   sensitive: ignoredSensitive,
-}).strict();
+}).strict().superRefine((input, ctx) => {
+  if (input.datetimeFormat !== undefined && input.type !== "datetime") ctx.addIssue({ code: "custom", path: ["datetimeFormat"], message: "날짜·시간 전송 형식은 날짜·시간 입력에서만 사용할 수 있습니다" });
+  if (input.default !== undefined && input.type !== "datetime") ctx.addIssue({ code: "custom", path: ["default"], message: "기본값은 날짜·시간 입력에서만 사용할 수 있습니다" });
+  if (input.default !== undefined) {
+    try {
+      if (!/^now(?:\s*([+-])\s*(\d+)\s*([smhd]))?$/i.test(input.default.trim())) throw new Error("relative expression required");
+      resolveDateTimeInput(input.default);
+    }
+    catch { ctx.addIssue({ code: "custom", path: ["default"], message: "기본값은 ISO 8601 또는 now, now+3d, now-2h 형식이어야 합니다" }); }
+  }
+});
 export type ScenarioInput = z.infer<typeof scenarioInputSchema>;
 export type ScenarioInputRequest = ScenarioInput & {
   runId: string;
@@ -32,26 +45,34 @@ export function scenarioInputType(value: Json | undefined): string {
   return Array.isArray(value) ? "array" : value === null ? "null" : typeof value;
 }
 
-export function matchesScenarioInputType(value: Json | undefined, type: ScenarioInput["type"]): boolean {
-  if (type === "datetime") return typeof value === "string" && isIsoDateTime(value);
+export function matchesScenarioInputType(value: Json | undefined, type: ScenarioInput["type"], datetimeFormat: ScenarioInput["datetimeFormat"] = "local"): boolean {
+  if (type === "datetime") return typeof value === "string" && (datetimeFormat === "local" ? isLocalDateTime(value) : isIsoDateTime(value));
   return scenarioInputType(value) === type;
 }
 
 const isoDateTime = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
 function isIsoDateTime(value: string): boolean { return isoDateTime.test(value) && Number.isFinite(Date.parse(value)); }
+const localDateTime = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?$/;
+function isLocalDateTime(value: string): boolean { return localDateTime.test(value) && Number.isFinite(Date.parse(value)); }
 
-/** Resolve `now`, `now+3d`, or an ISO timestamp to a canonical UTC timestamp. */
-export function resolveDateTimeInput(value: string, now = new Date()): string {
+/** Resolve `now`, `now+3d`, or a date-time value to an ISO instant or a zone-less local timestamp. */
+export function resolveDateTimeInput(value: string, now = new Date(), datetimeFormat: ScenarioInput["datetimeFormat"] = "local"): string {
+  const format = (date: Date) => datetimeFormat === "local" ? formatLocalDateTime(date) : date.toISOString();
   const relative = /^now(?:\s*([+-])\s*(\d+)\s*([smhd]))?$/i.exec(value.trim());
   if (relative) {
     const amount = relative[2] ? Number(relative[2]) : 0;
     const unitMs = relative[3] ? ({ s: 1_000, m: 60_000, h: 3_600_000, d: 86_400_000 } as const)[relative[3].toLowerCase() as "s" | "m" | "h" | "d"] : 0;
     const offset = (relative[1] === "-" ? -1 : 1) * amount * unitMs;
     const resolved = new Date(now.getTime() + offset);
-    if (Number.isFinite(resolved.getTime())) return resolved.toISOString();
+    if (Number.isFinite(resolved.getTime())) return format(resolved);
   }
-  if (isIsoDateTime(value.trim())) return new Date(value.trim()).toISOString();
+  if (isIsoDateTime(value.trim()) || isLocalDateTime(value.trim())) return format(new Date(value.trim()));
   throw new Error("날짜·시간은 ISO 8601 형식 또는 now, now+3d, now-2h 형식으로 입력하세요");
+}
+
+function formatLocalDateTime(date: Date): string {
+  const pad = (value: number, width = 2) => String(value).padStart(width, "0");
+  return `${pad(date.getFullYear(), 4)}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}.${pad(date.getMilliseconds(), 3)}`;
 }
 
 const expectation = z.object({
@@ -165,11 +186,11 @@ export function scenarioStepInputs(step: Scenario["steps"][number]): ScenarioInp
 
 /** Resolves only declared datetime inputs so ordinary string inputs keep their literal value. */
 export function resolveScenarioDateTimeInputs(scenario: Scenario, values: Record<string, Json>, now = new Date()): Record<string, Json> {
-  const datetimeNames = new Set(scenario.steps.flatMap(step => scenarioStepInputs(step)).filter(input => input.type === "datetime").map(input => input.name));
+  const formats = new Map(scenario.steps.flatMap(step => scenarioStepInputs(step)).filter(input => input.type === "datetime").map(input => [input.name, input.datetimeFormat] as const));
   const resolved = { ...values };
-  for (const name of datetimeNames) if (Object.hasOwn(resolved, name)) {
+  for (const [name, format] of formats) if (Object.hasOwn(resolved, name)) {
     if (typeof resolved[name] !== "string") throw new Error(`날짜·시간 입력 '${name}'은 문자열로 전달하세요 (예: now+3d)`);
-    resolved[name] = resolveDateTimeInput(resolved[name] as string, now);
+    resolved[name] = resolveDateTimeInput(resolved[name] as string, now, format);
   }
   return resolved;
 }

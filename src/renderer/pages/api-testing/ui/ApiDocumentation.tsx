@@ -1,7 +1,6 @@
 import { createPortal } from "react-dom";
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties, type ReactNode } from "react";
+import { lazy, memo, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties, type ReactNode } from "react";
 import { ResizeHandle, useStoredWidth } from "../../../shared/ui/ResizeHandle";
-import SwaggerUI from "swagger-ui-react";
 import "./swagger-vendor.css";
 import type { Scenario } from "../../../../app/api-testing/shared/scenario";
 import type { ApiCatalog, ApiDocInput, ApiScope, ApiTestingBridge, ApiSidebarMetadata } from "../../../../app/api-testing/shared/workspace";
@@ -25,7 +24,7 @@ import { submitMethods, createSwaggerPlugin } from "./swagger-plugin";
 import { LoadingSpinner } from "../../../shared/ui/LoadingSpinner";
 
 import { Button } from "../../../shared/ui/Button";
-const StableSwaggerUI = memo(SwaggerUI);
+const StableSwaggerUI = memo(lazy(() => import("swagger-ui-react")));
 const emptyCatalogs: Record<string, ApiCatalog | null> = {};
 
 export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy, onRunAction, project, initialEdit, onEditConsumed, mode = "document", onCloseComposer, onSaved, onUnsavedChange, onExecuteSaved, sidebarGroupPath, sidebarGroupPaths = [], onSidebarGroupPathChange, onNewScenario, sidebarMetadata, toolbarContext, toolbarSlot, onOpenSpecs }: {
@@ -363,7 +362,7 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
         <code>{displayBaseUrl || "기본 주소 없음"}</code>
         {composeCatalogLoading ? <small>명세를 불러오는 중…</small> : <small className="api-compose-server-note">보기·추가 전용 · 요청값은 ② 값 설정에서</small>}
       </div>}
-      {displayCatalog ? <StableSwaggerUI
+      {displayCatalog ? <Suspense fallback={<LoadingSpinner label="API 문서를 준비하는 중…" />}><StableSwaggerUI
         key={`${scope.environmentId}:${composeServerId}:${displayCatalog.importedAt}`}
         spec={spec}
         plugins={plugins}
@@ -383,7 +382,7 @@ export function ApiDocumentation({ catalog, scope, bridge, baseUrl, busy, onBusy
         supportedSubmitMethods={composing ? [] : submitMethods}
         showExtensions={false}
         showCommonExtensions={false}
-      /> : composeCatalogLoading ? <LoadingSpinner label="선택한 서버의 API 문서를 준비하는 중…" /> : <div className="api-empty api-compose-server-empty"><h2>API 명세를 가져오세요</h2><p>선택한 서버·환경에 API 명세가 없습니다.</p>{onOpenSpecs && <div className="api-actions"><Button variant="primary" onClick={onOpenSpecs}>API 문서로 이동</Button></div>}</div>}
+      /></Suspense> : composeCatalogLoading ? <LoadingSpinner label="선택한 서버의 API 문서를 준비하는 중…" /> : <div className="api-empty api-compose-server-empty"><h2>API 명세를 가져오세요</h2><p>선택한 서버·환경에 API 명세가 없습니다.</p>{onOpenSpecs && <div className="api-actions"><Button variant="primary" onClick={onOpenSpecs}>API 문서로 이동</Button></div>}</div>}
     </div>
     {composing && composeView === "select" && <aside className="api-selection-basket" aria-label="선택한 API" data-scroll="light">
       <h2>선택한 API · {draft.steps.length}개</h2>

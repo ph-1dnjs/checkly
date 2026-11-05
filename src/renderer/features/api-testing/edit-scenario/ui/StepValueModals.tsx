@@ -10,6 +10,7 @@ import { Modal } from "../../../../shared/ui/Modal";
 
 import { Button } from "../../../../shared/ui/Button";
 import { Input } from "../../../../shared/ui/Input";
+import { formatRelativeDateTimeDefault, parseDateTimeDefault } from "../model/datetime-default";
 export function RequestBodyEditor({ operation, step, update, bodyFields, renderField }: {
   operation: ApiOperation;
   step: Scenario["steps"][number];
@@ -193,6 +194,23 @@ export function ScenarioInputSettingsModal({ index, field, userInput, onChange, 
   onRemove: () => void;
   onClose: () => void;
 }) {
+  const dateTimeDefault = parseDateTimeDefault(userInput.default);
+  const [offsetOperation, setOffsetOperation] = useState<"+" | "-" | "">(dateTimeDefault.mode === "function" ? dateTimeDefault.operation : "");
+  const [offsetAmount, setOffsetAmount] = useState(dateTimeDefault.mode === "function" ? dateTimeDefault.amount : "");
+  const [offsetUnit, setOffsetUnit] = useState<"s" | "m" | "h" | "d">(dateTimeDefault.mode === "function" ? dateTimeDefault.unit : "d");
+  useEffect(() => {
+    const parsed = parseDateTimeDefault(userInput.default);
+    if (parsed.mode === "function") { setOffsetOperation(parsed.operation); setOffsetAmount(parsed.amount); setOffsetUnit(parsed.unit); }
+    else { setOffsetOperation(""); setOffsetAmount(""); setOffsetUnit("d"); }
+  }, [userInput.default]);
+  const setDateTimeMode = (mode: string) => {
+    if (mode === "function") onChange({ default: "now" });
+    else onChange({ default: undefined });
+  };
+  const updateDateTimeOffset = (operation: "+" | "-" | "", amount: string, unit: "s" | "m" | "h" | "d") => {
+    setOffsetOperation(operation); setOffsetAmount(amount); setOffsetUnit(unit);
+    if (!operation || /^\d+$/.test(amount) && Number(amount) > 0) onChange({ default: formatRelativeDateTimeDefault(operation, amount, unit) });
+  };
   return <Modal backdropClassName="api-value-modal-backdrop" className="api-value-modal api-input-settings-modal" label={`${field.name} 실행 중 입력 설정`} onClose={onClose}>
       <header>
         <div><p className="api-value-modal-kicker">실행 중 입력</p><h2>{field.name} 입력 설정</h2><small>{index + 1}단계 · {field.area} · {field.type}</small></div>
@@ -201,10 +219,19 @@ export function ScenarioInputSettingsModal({ index, field, userInput, onChange, 
       <p className="api-value-modal-note">이 단계의 API를 호출하기 직전에 값을 입력받아 <code>{field.name}</code>에 넣습니다. 입력한 값은 시나리오에 저장하지 않습니다.</p>
       <label>입력 안내 문구<Input aria-label={`${index + 1}단계 ${field.name} 실행 중 입력 안내`} value={userInput.label ?? ""} placeholder={`${field.name} 입력`} onChange={event => onChange({ label: event.target.value || undefined })} /></label>
       <div className="api-input-settings-grid">
-        <label>값 형식<select aria-label={`${index + 1}단계 ${field.name} 실행 중 입력 형식`} value={userInput.type} onChange={event => onChange({ type: event.target.value as ScenarioInput["type"] })}><option value="string">문자열</option><option value="number">숫자</option><option value="boolean">불리언</option><option value="object">JSON 객체</option><option value="array">JSON 배열</option><option value="datetime">날짜·시간</option></select></label>
+        <label>값 형식<select aria-label={`${index + 1}단계 ${field.name} 실행 중 입력 형식`} value={userInput.type} onChange={event => { const type = event.target.value as ScenarioInput["type"]; onChange({ type, ...(type === "datetime" ? { datetimeFormat: userInput.datetimeFormat ?? "local" } : { default: undefined, datetimeFormat: undefined }) }); }}><option value="string">문자열</option><option value="number">숫자</option><option value="boolean">불리언</option><option value="object">JSON 객체</option><option value="array">JSON 배열</option><option value="datetime">날짜·시간</option></select></label>
         <label className="api-check-row api-input-required"><input type="checkbox" checked={userInput.required} onChange={event => onChange({ required: event.target.checked })} />필수 입력 (비우면 실행 중단)</label>
       </div>
-      {userInput.type === "datetime" && <p className="api-value-modal-note">실행할 때 날짜·시간을 직접 고르거나 현재 시각 기준으로 입력합니다. 예: now+3d, now-2h</p>}
+      {userInput.type === "datetime" && <>
+        <label>실행 기본값<select aria-label={`${index + 1}단계 ${field.name} 날짜·시간 기본값 방식`} value={dateTimeDefault.mode} onChange={event => setDateTimeMode(event.target.value)}><option value="prompt">실행할 때 입력</option><option value="function">함수로 자동 계산</option></select></label>
+        {dateTimeDefault.mode === "function" && <div className="api-datetime-function-settings">
+          <label>서버 날짜 형식<select aria-label={`${index + 1}단계 ${field.name} 서버 날짜 형식`} value={userInput.datetimeFormat ?? "local"} onChange={event => onChange({ datetimeFormat: event.target.value as "iso" | "local" })}><option value="local">시간대 없는 현지 시각 (LocalDateTime)</option><option value="iso">UTC ISO 8601 (Z)</option></select></label>
+          <label>함수<select aria-label={`${index + 1}단계 ${field.name} 날짜·시간 함수`} value="now" onChange={() => {}}><option value="now">현재 시각 (now)</option></select></label>
+          <label>계산<select aria-label={`${index + 1}단계 ${field.name} 시간 계산 방향`} value={offsetOperation} onChange={event => updateDateTimeOffset(event.target.value as "+" | "-" | "", offsetAmount, offsetUnit)}><option value="">그대로 사용</option><option value="+">더하기</option><option value="-">빼기</option></select></label>
+          {offsetOperation && <><label>값<Input aria-label={`${index + 1}단계 ${field.name} 시간 계산 값`} type="number" min="1" step="1" value={offsetAmount} onChange={event => updateDateTimeOffset(offsetOperation, event.target.value, offsetUnit)} /></label><label>단위<select aria-label={`${index + 1}단계 ${field.name} 시간 계산 단위`} value={offsetUnit} onChange={event => updateDateTimeOffset(offsetOperation, offsetAmount, event.target.value as "s" | "m" | "h" | "d")}><option value="s">초</option><option value="m">분</option><option value="h">시간</option><option value="d">일</option></select></label></>}
+        </div>}
+        <p className="api-value-modal-note">{dateTimeDefault.mode === "function" ? `${userInput.datetimeFormat === "iso" ? "UTC ISO 8601 형식으로" : "시간대 표시 없이 기기 현지 시각으로"} 함수 결과를 전송합니다. 함수 기본값은 시나리오 실행 때마다 계산하며 날짜·시간 입력창 없이 적용합니다.` : "기본값이 없으면 실행 중 입력을 받습니다. 시간대 없는 기기 현지 시각으로 전송합니다."}</p>
+      </>}
             <footer><Button variant="danger" onClick={onRemove}>실행 중 입력 해제</Button><Button variant="primary" onClick={onClose}>완료</Button></footer>
   </Modal>;
 }

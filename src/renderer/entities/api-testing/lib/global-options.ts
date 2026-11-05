@@ -4,17 +4,21 @@ import type { ApiGlobal, SavedApiScenario } from "../../../../app/api-testing/sh
 export type GlobalOption = { name: string; status: string; sources: string[] };
 
 /** Runnable saved scenarios that declare a value for this global, without running them. */
-export function globalProducerScenarios(name: string, saved: SavedApiScenario[], currentId: string, environment: string): string[] {
-  const names = new Set<string>();
+export function globalProducerScenarioItems(name: string, saved: SavedApiScenario[], currentId: string, environment: string): Array<{ id: string; name: string }> {
+  const items: Array<{ id: string; name: string }> = [];
   for (const item of saved) {
     if (item.draft || item.id === currentId) continue;
     try {
       const scenario = parseScenario(item.source);
       if (scenario.id === currentId || scenario.environments && !scenario.environments.includes(environment)) continue;
-      if (scenario.steps.some(step => step.extract.some(extract => extract.target === `globals.${name}`))) names.add(item.name);
+      if (scenario.steps.some(step => step.extract.some(extract => extract.target === `globals.${name}`))) items.push({ id: item.id, name: item.name });
     } catch { /* Invalid saved sources cannot be recommended for execution. */ }
   }
-  return [...names];
+  return items;
+}
+
+export function globalProducerScenarios(name: string, saved: SavedApiScenario[], currentId: string, environment: string): string[] {
+  return [...new Set(globalProducerScenarioItems(name, saved, currentId, environment).map(item => item.name))];
 }
 
 /** Definitions are metadata, never values and never implicit execution dependencies. */

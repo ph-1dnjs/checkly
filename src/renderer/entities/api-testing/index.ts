@@ -5,7 +5,7 @@ export type { SearchableScenario } from "./lib/scenario-search";
 export { configuredFields } from "./lib/settings-summary-model";
 export { DeleteAction } from "./ui/DeleteAction";
 export { globalOptions } from "./lib/global-options";
-export { globalProducerScenarios } from "./lib/global-options";
+export { globalProducerScenarioItems, globalProducerScenarios } from "./lib/global-options";
 export { GlobalVariableSetupLink } from "./ui/GlobalVariableSetupLink";
 export { JsonCode } from "./ui/JsonCode";
 export { objectValue } from "./lib/response-fields";

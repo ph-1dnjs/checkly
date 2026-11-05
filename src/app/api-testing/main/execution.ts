@@ -1,7 +1,7 @@
 import { buildMultipart } from "./multipart";
 import { selectArray, SelectionError } from "./selection";
 import { isDeepStrictEqual } from "node:util";
-import { isProvidedScenarioInput, matchesScenarioInputType, scenarioInputType, scenarioSchema, scenarioStepInputs, scenarioStepLabel, type Scenario, type Json, type ScenarioInputRequest, type ValueBinding } from "../shared/scenario";
+import { isProvidedScenarioInput, matchesScenarioInputType, resolveDateTimeInput, scenarioInputType, scenarioSchema, scenarioStepInputs, scenarioStepLabel, type Scenario, type Json, type ScenarioInputRequest, type ValueBinding } from "../shared/scenario";
 import type { ApiRequestTrace } from "../shared/workspace";
 import { appendQueryParameter } from "../shared/query";
 import { atPointer, GlobalStore, MissingValue, resolve, type Context, type Variables } from "./variables";
@@ -171,6 +171,7 @@ export class ApiRunner {
 
   async run(input: Scenario, options: RunOptions): Promise<RunResult> {
     const scenario = scenarioSchema.parse(input);
+    const scenarioStartedAt = new Date();
     const release = this.globals.acquire(options.projectId);
     try {
       const context: Context = { inputs: structuredClone(options.inputs ?? {}), vars: structuredClone(scenario.vars), globals: this.globals.snapshot(options.projectId) };
@@ -207,6 +208,8 @@ export class ApiRunner {
             if (Object.hasOwn(context.vars, input.name)) value = context.vars[input.name];
             else if (Object.hasOwn(context.inputs, input.name)) value = context.inputs[input.name];
             else if (Object.hasOwn(context.globals, input.name)) value = context.globals[input.name];
+            if (!isProvidedScenarioInput(value) && input.type === "datetime" && input.default !== undefined)
+              value = resolveDateTimeInput(input.default, scenarioStartedAt, input.datetimeFormat);
             if (!isProvidedScenarioInput(value)) {
               const waitStarted = Date.now();
               value = await waitForScenarioInput(options, {
@@ -223,7 +226,7 @@ export class ApiRunner {
             inputResults.push({ name: input.name, provided });
             if (!provided) {
               if (input.required) throw new MissingValue(`필수 실행 입력 누락: ${input.name}`);
-            } else if (!matchesScenarioInputType(value, input.type)) {
+            } else if (!matchesScenarioInputType(value, input.type, input.datetimeFormat)) {
               throw new MissingValue(`실행 입력 타입 오류: ${input.name} (${scenarioInputType(value)})`);
             } else {
               context.vars[input.name] = structuredClone(value!);

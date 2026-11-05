@@ -1,5 +1,5 @@
 import { runStatusName } from "../../../entities/api-testing";
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { ResizeHandle, useStoredWidth } from "../../../shared/ui/ResizeHandle";
 import type { ApiCatalog, ApiProject, ApiScope, ApiTestingBridge, ApiScenarioInputRequest, ApiScenarioPreview, ApiScenarioResult, SavedApiScenario, SavedApiSuite } from "../../../../app/api-testing/shared/workspace";
 import { parseScenario, stringifyScenario, type Json, type Scenario } from "../../../../app/api-testing/shared/scenario";
@@ -15,7 +15,7 @@ import { AiAskButton, AiAskRequest, type AiAskTarget } from "../../../features/a
 import { onLastRunWritten, readLastRun, writeLastRun, type ScenarioLastRun } from "../../../entities/api-testing";
 import { SuitePanel } from "./SuitePanel";
 import { RunInputModal } from "../../../features/api-testing/submit-run-input";
-import { globalProducerScenarios } from "../../../entities/api-testing";
+import { globalProducerScenarioItems } from "../../../entities/api-testing";
 import { AuthorshipLine, ScenarioSidebarTree } from "../../../entities/api-testing";
 import { Icon } from "../../../shared/ui/Icon";
 import { renderSuiteReport, reportFilename, scenarioRunReport } from "../../../../app/api-testing/shared/suite-report";
@@ -70,7 +70,12 @@ const reasonText = (reason: { description?: true; apis: string[] }) =>
 
 export type ScenarioPanelProps = {
   project: ApiProject;
+  /** Incremented when the selected scenario tab is clicked again. */
+  refreshRequest?: number;
+  onRefreshComplete?: () => void;
   specRevision?: number;
+  /** Shared with the page's AI readiness check to avoid requesting every server's catalog twice. */
+  catalogsByServer?: Record<string, ApiCatalog | null>;
   scope: ApiScope;
   bridge: ApiTestingBridge;
   onBusy: (busy: boolean) => void;
@@ -101,7 +106,7 @@ export type ScenarioPanelProps = {
   composeToolbarSlot?: HTMLElement | null;
 };
 
-export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, specRevision = 0, mode = "run", startCreateRequest = 0, editScenarioId, onCreateConsumed, onComposerOpenChange, onUnsavedChange, onCreateScenario, onOpenAi, onAiAskSent, onEditScenario, onExecuteSaved, runSaved, onRunSavedConsumed, openSaved, onOpenSavedConsumed, onBackToScenarios, onOpenSpecs, composeContext, composeToolbarSlot }: ScenarioPanelProps) {
+export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, refreshRequest = 0, onRefreshComplete, specRevision = 0, catalogsByServer, mode = "run", startCreateRequest = 0, editScenarioId, onCreateConsumed, onComposerOpenChange, onUnsavedChange, onCreateScenario, onOpenAi, onAiAskSent, onEditScenario, onExecuteSaved, runSaved, onRunSavedConsumed, openSaved, onOpenSavedConsumed, onBackToScenarios, onOpenSpecs, composeContext, composeToolbarSlot }: ScenarioPanelProps) {
   const editorMode = mode === "editor";
   const globalAccess = useGlobalVariableAccess();
   const checkedGlobalRevision = useRef(globalAccess.revision);
@@ -134,10 +139,13 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, spe
   const [running, setRunning] = useState(false);
   const [checkedSource, setCheckedSource] = useState("");
   const [pendingInput, setPendingInput] = useState<ApiScenarioInputRequest | null>(null);
-  const [catalogs, setCatalogs] = useState<Record<string, ApiCatalog | null>>({});
+  const [loadedCatalogs, setLoadedCatalogs] = useState<Record<string, ApiCatalog | null>>({});
   const [composer, setComposer] = useState<{ saved?: SavedApiScenario; scenario?: Scenario } | null>(null);
   const [dirty, setDirty] = useState(false);
   const live = useRef(true);
+  const handledRefreshRequest = useRef(refreshRequest);
+  const suiteEditingRef = useRef(false);
+  const reportSuiteEditing = useCallback((editing: boolean) => { suiteEditingRef.current = editing; }, []);
   const runButton = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     onComposerOpenChange?.(composer !== null || (editorMode && dirty));
@@ -156,19 +164,20 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, spe
   useEffect(() => {
     if (editorMode) return;
     let active = true;
+    if (!savedLoaded) return;
     void bridge.checkScenarioSpecs(scenarioScope).then(impact => {
       if (active) setSpecWarnings(new Map(impact.missing.map(item => [item.scenarioId, `명세에 없는 API를 쓰는 단계: ${item.steps.join(", ")}`])));
     }).catch(() => {});
     return () => { active = false; };
-  }, [scope.projectId, scope.environmentId, saved, specRevision]);
+  }, [scope.projectId, scope.environmentId, saved, savedLoaded, specRevision]);
   useEffect(() => {
-    if (editorMode) return;
+    if (editorMode || catalogsByServer !== undefined) return;
     let active = true;
     void Promise.all(project.servers.map(async server => [server.id, await bridge.getCatalog({ ...scope, serverId: server.id })] as const))
-      .then(entries => { if (active) setCatalogs(Object.fromEntries(entries)); })
-      .catch(() => { if (active) setCatalogs({}); });
+      .then(entries => { if (active) setLoadedCatalogs(Object.fromEntries(entries)); })
+      .catch(() => { if (active) setLoadedCatalogs({}); });
     return () => { active = false; };
-  }, [bridge, editorMode, project.servers, scope.environmentId, scope.projectId, specRevision]);
+  }, [bridge, catalogsByServer, editorMode, project.servers, scope.environmentId, scope.projectId, specRevision]);
   useEffect(() => {
     if (!running) {
       setPendingInput(null);
@@ -235,6 +244,54 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, spe
       if (editorMode) openComposer(item, data, item.bindings);
     } catch (e) { setError(errorText(e)); } finally { working(false); }
   };
+  useEffect(() => {
+    if (refreshRequest === handledRefreshRequest.current || editorMode) return;
+    handledRefreshRequest.current = refreshRequest;
+    let active = true;
+    const refresh = async () => {
+      const startedAt = Date.now();
+      working(true);
+      setError("");
+      try {
+        const [nextScenarios, nextSuites] = await Promise.all([bridge.listScenarios(project.id), bridge.listSuites(project.id)]);
+        if (!active || !live.current) return;
+        setSaved(nextScenarios);
+        let visibleSuites = nextSuites;
+        if (suiteEditingRef.current && suiteSelection) {
+          // Keep the edited suite's original revision so a concurrent save still conflicts safely.
+          const editingSuite = suites.find(item => item.id === suiteSelection);
+          if (editingSuite) {
+            visibleSuites = nextSuites.filter(item => item.id !== suiteSelection);
+            visibleSuites.splice(Math.min(suites.indexOf(editingSuite), visibleSuites.length), 0, editingSuite);
+          }
+        } else if (suiteSelection && !nextSuites.some(item => item.id === suiteSelection)) {
+          setSuiteSelection(null);
+        }
+        setSuites(visibleSuites);
+
+        if (suiteSelection === null && current) {
+          const latest = nextScenarios.find(item => item.id === current.id);
+          if (!latest) {
+            setCurrent(null); setSource(""); setScenarioGroupPath([]); setPreview(null); setResult(null); setLastRun(null); setBindings({}); setInputs({}); setNotice("열어 둔 시나리오가 다른 곳에서 삭제되었습니다.");
+            onRunAction(null);
+          } else if (latest.source !== current.source || JSON.stringify(latest.bindings) !== JSON.stringify(current.bindings)) {
+            await load(latest);
+          } else {
+            setCurrent(latest);
+            setScenarioGroupPath(latest.groupPath ?? []);
+          }
+        }
+      } catch (cause) {
+        if (active && live.current) setError(errorText(cause));
+      } finally {
+        const visibleFor = Date.now() - startedAt;
+        if (active && visibleFor < 400) await new Promise(resolve => window.setTimeout(resolve, 400 - visibleFor));
+        if (active && live.current) { working(false); onRefreshComplete?.(); }
+      }
+    };
+    void refresh();
+    return () => { active = false; };
+  }, [refreshRequest]);
   // An external AI may run the open scenario over MCP; show that run like one started here.
   useEffect(() => {
     if (!current) return;
@@ -315,6 +372,7 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, spe
   }, [runSaved, editorMode, canUse, busy]);
   const ignoreComposerAction = useRef<OnRunAction>(() => {});
   useRunAction(composer ? ignoreComposerAction.current : onRunAction, () => runButton.current?.click(), busy || !canUse, "시나리오 실행");
+  const catalogs = catalogsByServer ?? loadedCatalogs;
   const activeCatalog = catalogs[scope.serverId];
   const metadataEntries = [...saved, ...suites];
   const groupPathMap = new Map<string, string[]>();
@@ -429,6 +487,7 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, spe
 
   const failedRun = result && result.status !== "passed" && result.status !== "cancelled" ? result : undefined;
   const canAsk = Boolean(current && onAiAskSent);
+  const selectedSuite = suites.find(item => item.id === suiteSelection);
   useEffect(() => { setAiAsk(null); }, [current?.id, lastRun?.completedAt]);
   return <div ref={columnsRef} className="api-columns api-scenarios api-scenario-run" style={listWidth === null ? undefined : { "--api-list-width": `${listWidth}px` } as CSSProperties}>
     <aside ref={sidebarRef} aria-label="저장된 시나리오와 스위트">
@@ -442,7 +501,7 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, spe
         {suitesExpanded && <ScenarioSidebarTree kind="suite" expandAll={Boolean(normalizedQuery)} reasons={sidebarReasons} items={sidebarSuites} selectedId={suiteSelection || null} disabled={busy} onSelect={item => setSuiteSelection(item.id)} />}
       </section>
     </aside>
-    {suiteSelection !== null ? <SuitePanel key={suiteSelection} project={project} scope={scope} bridge={bridge} scenarios={saved} suites={suites} selectedId={suiteSelection} onSuitesChange={setSuites} onSelectedIdChange={setSuiteSelection} onBusy={working} onOpenScenario={id => { if (busy) return; const item = saved.find(scenario => scenario.id === id); if (item) { setSuiteSelection(null); void load(item); } }} /> : <>
+    {suiteSelection !== null ? <SuitePanel key={`${suiteSelection}:${selectedSuite?.updatedAt ?? "new"}`} project={project} scope={scope} bridge={bridge} scenarios={saved} suites={suites} selectedId={suiteSelection} onSuitesChange={setSuites} onSelectedIdChange={setSuiteSelection} onBusy={working} onEditingChange={reportSuiteEditing} onOpenScenario={id => { if (busy) return; const item = saved.find(scenario => scenario.id === id); if (item) { setSuiteSelection(null); void load(item); } }} /> : <>
     <article className="api-request-panel api-scenario-detail">
       {(current || preview) && (() => {
         const name = preview?.scenario.name ?? current?.name;
@@ -479,9 +538,9 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, spe
             const { globals, others } = groupMissingGlobals(preview.executionIssues);
             return <>
               {globals.map(({ name, steps }) => {
-                const producers = globalProducerScenarios(name, saved, preview.scenario.id, scope.environmentId);
+                const producers = globalProducerScenarioItems(name, saved, preview.scenario.id, scope.environmentId);
                 const shown = steps.filter(step => step <= preview.scenario.steps.length);
-                return <li key={name}><code>{name}</code> 값 없음{shown.length > 0 && <> · {shown.map((step, index) => <span key={step}>{index > 0 && "·"}<Button className="api-issue-step-link" aria-label={`${step}단계로 이동`} onClick={() => focusStep(preview.scenario.steps[step - 1].id)}>{step}</Button></span>)}단계</>} <GlobalVariableSetupLink onConfigure={globalAccess.open} name={name} />{producers.length > 0 && <span className="api-scn-notice-hint"> · 이 값을 추출하는 시나리오: {producers.join(", ")}. 먼저 실행한 뒤 다시 확인하세요.</span>}</li>;
+                return <li key={name}><code>{name}</code> 값 없음{shown.length > 0 && <> · {shown.map((step, index) => <span key={step}>{index > 0 && "·"}<Button className="api-issue-step-link" aria-label={`${step}단계로 이동`} onClick={() => focusStep(preview.scenario.steps[step - 1].id)}>{step}</Button></span>)}단계</>} <GlobalVariableSetupLink onConfigure={globalAccess.open} name={name} />{producers.length > 0 && <span className="api-scn-notice-hint"> · 이 값을 추출하는 시나리오: {producers.map((producer, index) => <span key={producer.id}>{index > 0 && ", "}<Button className="api-compose-link" disabled={busy} onClick={() => { if (busy) return; const item = saved.find(scenario => scenario.id === producer.id); if (item) void load(item); }}>{producer.name} 열기</Button></span>)}. 먼저 실행한 뒤 다시 확인하세요.</span>}</li>;
               })}
               {others.map(issue => { const name = issueGlobal(issue); return <li key={issue}>{issue}{name && <> <GlobalVariableSetupLink onConfigure={globalAccess.open} name={name} /></>}</li>; })}
             </>;

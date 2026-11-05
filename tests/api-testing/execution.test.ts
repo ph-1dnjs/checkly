@@ -137,6 +137,42 @@ test("step input waits for a value and exposes it only through vars", async t =>
   } finally { clock.mock.restore(); server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); }
 });
 
+test("datetime input defaults are evaluated at scenario start without prompting", async () => {
+  const seen: string[] = [];
+  const server = createServer((req, res) => {
+    seen.push(new URL(req.url ?? "/", "http://localhost").searchParams.get("at") ?? "");
+    res.setHeader("content-type", "application/json"); res.end(JSON.stringify({ ok: true }));
+  });
+  await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const scenario = scenarioSchema.parse({ version: 1, id: "date-default", name: "기간 조회", steps: [{
+      id: "read", name: "조회", server: "api", api: { method: "GET", path: "/events" },
+      inputs: [{ name: "startAt", type: "datetime", datetimeFormat: "local", default: "now+3d" }],
+      request: { query: { at: "{{vars.startAt}}" } },
+    }] });
+    let prompts = 0;
+    const run = () => new ApiRunner().run(scenario, {
+      projectId: "date-default-project", environment: "local",
+      servers: { api: { baseUrl: `http://127.0.0.1:${(server.address() as { port: number }).port}` } },
+      requestInput: async () => { prompts++; return undefined; },
+    });
+    const before = Date.now();
+    assert.equal((await run()).status, "passed");
+    const afterFirst = Date.now();
+    assert.equal((await run()).status, "passed");
+    const afterSecond = Date.now();
+    assert.equal(prompts, 0);
+    assert.equal(seen.length, 2);
+    for (const [index, value] of seen.entries()) {
+      assert.doesNotMatch(value, /Z$/);
+      const timestamp = Date.parse(value);
+      const lower = index === 0 ? before : afterFirst;
+      const upper = index === 0 ? afterFirst : afterSecond;
+      assert.ok(timestamp >= lower + 3 * 86_400_000 && timestamp <= upper + 3 * 86_400_000, `${value} is resolved from that run's start`);
+    }
+  } finally { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); }
+});
+
 test("a step can wait for multiple runtime inputs", async () => {
   const server = createServer(async (req, res) => {
     let body = "";

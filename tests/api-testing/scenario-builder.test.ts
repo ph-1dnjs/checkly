@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { describeCheck, linkedValueLabel, parseScenario, stringifyScenario, type Scenario } from "../../src/app/api-testing/shared/scenario";
 import { apiReference, connectValue, linkVariableName, moveStep } from "../../src/renderer/features/api-testing/edit-scenario/model/scenario-builder-model";
+import { formatRelativeDateTimeDefault, parseDateTimeDefault } from "../../src/renderer/features/api-testing/edit-scenario/model/datetime-default";
 
 const sample = () => parseScenario(`id: imported
 name: AI 원본
@@ -15,6 +16,15 @@ steps:
 `);
 // Saving and reading back must not change what is saved.
 const stable = (scenario: Scenario) => assert.equal(stringifyScenario(parseScenario(stringifyScenario(scenario, true)), true), stringifyScenario(scenario, true));
+
+test("datetime defaults can be selected as a function with a signed unit offset", () => {
+  assert.deepEqual(parseDateTimeDefault(undefined), { mode: "prompt" });
+  assert.deepEqual(parseDateTimeDefault("now+3d"), { mode: "function", operation: "+", amount: "3", unit: "d" });
+  assert.deepEqual(parseDateTimeDefault("now-15m"), { mode: "function", operation: "-", amount: "15", unit: "m" });
+  assert.equal(formatRelativeDateTimeDefault("+", "3", "d"), "now+3d");
+  assert.equal(formatRelativeDateTimeDefault("-", "15", "m"), "now-15m");
+  assert.throws(() => parseDateTimeDefault("2026-11-03T00:00:00.000Z"), /now 기준 함수만 지원/);
+});
 
 test("automatic links reuse source identity and survive duplicate endpoints and reordering", () => {
   const source = sample();

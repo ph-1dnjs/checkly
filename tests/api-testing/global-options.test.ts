@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { stringify } from "yaml";
 import { parseScenario, stringifyScenario } from "../../src/app/api-testing/shared/scenario";
-import { globalOptions, globalProducerScenarios } from "../../src/renderer/entities/api-testing/lib/global-options";
+import { globalOptions, globalProducerScenarioItems, globalProducerScenarios } from "../../src/renderer/entities/api-testing/lib/global-options";
 
 test("global options separate values, prior extraction, future extraction and unresolved references", () => {
   const scenario = parseScenario(stringify({ id: "current", name: "현재", server: "backend", steps: [
@@ -32,5 +32,6 @@ test("missing global lists every runnable producer but excludes current, draft a
   });
   const saved = [item("a", "관리자 로그인"), item("b", "사용자 로그인"), item("current", "현재"), item("draft", "초안", undefined, true), item("prod", "운영 로그인", "prod")];
   assert.deepEqual(globalProducerScenarios("token", saved, "current", "dev"), ["관리자 로그인", "사용자 로그인"]);
+  assert.deepEqual(globalProducerScenarioItems("token", saved, "current", "dev"), [{ id: "a", name: "관리자 로그인" }, { id: "b", name: "사용자 로그인" }]);
   assert.deepEqual(globalProducerScenarios("other", saved, "current", "dev"), []);
 });
