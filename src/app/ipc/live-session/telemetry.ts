@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { safePageUrl } from "./storage";
 import { recordedBody } from "./payload";
+import { isImageLoadingEvent } from "./noise";
 
 import type { BrowserLog } from "./types";
 export type { BrowserLog } from "./types";
@@ -10,6 +11,7 @@ const pageErrors = ["page-error", "resource-error", "unhandled-rejection", "cons
 export const browserLog = (payload: unknown, sessionId: string, source: BrowserLog["source"], now = Date.now()): BrowserLog | null => {
   if (!payload || typeof payload !== "object") return null;
   const event = payload as Record<string, unknown>;
+  if (isImageLoadingEvent(event)) return null;
   const kind = typeof event.type === "string" ? event.type : "";
   if (!["fetch", "xhr", "navigation", ...pageErrors].includes(kind)) return null;
   let url = "";

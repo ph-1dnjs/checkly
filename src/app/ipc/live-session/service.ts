@@ -207,7 +207,7 @@ export const attachReplayGuest = (contents: WebContents, owner: WebContents, par
     if (isMainFrame) receiveGuestError(contents, { type: "navigation", url, pageUrl: url });
   });
   contents.on("did-fail-load", (_event, code, _description, url, isMainFrame) => {
-    if (isMainFrame && code !== -3) receiveGuestError(contents, { type: "resource-error", url, status: 0 });
+    if (isMainFrame && code !== -3) receiveGuestError(contents, { type: "navigation", url, status: 0 });
   });
   contents.on("dom-ready", () => {
     if (!/^https?:\/\//i.test(contents.getURL())) return;
@@ -328,7 +328,12 @@ export const startScenarioRecording = async (context: BrowserContext, owner: Web
     };
     context.on("page", page => {
       page.on("pageerror", () => signal({ type: "page-error", url: page.url() }));
-      page.on("console", message => { if (message.type() === "error") signal({ type: "console-error", url: page.url() }); });
+      page.on("console", message => {
+        if (message.type() !== "error") return;
+        const browserResourceError = message.args().length === 0 && /^Failed to load resource:/.test(message.text());
+        signal({ type: "console-error", url: browserResourceError ? message.location().url || page.url() : page.url(),
+          pageUrl: page.url(), browserResourceError });
+      });
       page.on("framenavigated", frame => { if (frame === page.mainFrame()) signal({ type: "navigation", url: frame.url(), pageUrl: frame.url() }); });
     });
     context.on("response", response => {
@@ -339,7 +344,7 @@ export const startScenarioRecording = async (context: BrowserContext, owner: Web
       try { pageUrl = request.frame().url(); } catch { /* Service worker requests have no frame. */ }
       const payload = {
         type: request.resourceType() === "xhr" ? "xhr" : "fetch", status: response.status(), url: response.url(), method: request.method(),
-        pageUrl,
+        pageUrl, resourceType: request.resourceType(),
       };
       if (!api || response.status() < 400) { signal(payload); return; }
       const id = contextSessions.get(context);
@@ -367,7 +372,7 @@ export const startScenarioRecording = async (context: BrowserContext, owner: Web
       let pageUrl = "";
       try { pageUrl = request.frame().url(); } catch { /* Service worker requests have no frame. */ }
       signal({ type: request.resourceType() === "xhr" ? "xhr" : "fetch", status: 0, error: true, url: request.url(), method: request.method(),
-        pageUrl, requestBody: request.postData() });
+        pageUrl, resourceType: request.resourceType(), requestBody: request.postData() });
     });
     const template = await recorderSource("playwright", "__CHECKLY_DYNAMIC_KEY__");
     const script = template.replace('"__CHECKLY_DYNAMIC_KEY__"', "key");

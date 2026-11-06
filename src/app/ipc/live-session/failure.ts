@@ -1,9 +1,11 @@
 import type { LiveSession } from "./types";
 import { safePageUrl } from "./storage";
+import { isImageLoadingEvent } from "./noise";
 
 export const failureTrigger = (payload: unknown): LiveSession["trigger"] | null => {
   if (!payload || typeof payload !== "object") return null;
   const event = payload as Record<string, unknown>;
+  if (isImageLoadingEvent(event)) return null;
   const type = typeof event.type === "string" ? event.type : "";
   const status = typeof event.status === "number" ? event.status : undefined;
   const pageError = ["page-error", "resource-error", "unhandled-rejection", "console-error"].includes(type);
