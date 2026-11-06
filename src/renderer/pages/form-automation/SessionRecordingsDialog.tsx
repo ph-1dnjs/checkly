@@ -3,8 +3,8 @@ import type { LiveSession, RecordingScope, SessionRecording } from "../../shared
 import { Button } from "../../shared/ui/Button";
 import { SessionPlayer } from "./SessionPlayer";
 
-const statusLabel: Record<LiveSession["status"], string> = {
-  recording: "오류 후 수집 중", saved: "저장됨", interrupted: "중단된 기록", error: "저장 오류",
+const statusLabel: Record<Exclude<LiveSession["status"], "saved">, string> = {
+  recording: "오류 후 수집 중", interrupted: "중단된 기록", error: "저장 오류",
 };
 
 export const SessionRecordingsDialog = ({ onClose }: { onClose: () => void }) => {
@@ -15,6 +15,9 @@ export const SessionRecordingsDialog = ({ onClose }: { onClose: () => void }) =>
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [confirmSelectedDelete, setConfirmSelectedDelete] = useState(false);
+  const [deleteMessage, setDeleteMessage] = useState("");
+  const deleteInFlight = useRef(false);
   const [busy, setBusy] = useState(false);
   const [mode, setMode] = useState<"local" | "team">("local");
   const [downloading, setDownloading] = useState(false);
@@ -51,7 +54,8 @@ export const SessionRecordingsDialog = ({ onClose }: { onClose: () => void }) =>
       if (current !== request.current || listVersion !== listRequest.current) return;
       setSessions(result.sessions); setMode(result.mode ?? "local"); setError(result.error ?? "");
       setUploadableIds(result.uploadableIds ?? []);
-      setSelectedIds(previous => previous.filter(id => result.uploadableIds?.includes(id)));
+      const selectableIds = scope === "team" ? result.sessions.filter(session => session.status !== "recording").map(session => session.id) : result.uploadableIds ?? [];
+      setSelectedIds(previous => previous.filter(id => selectableIds.includes(id)));
       return result;
     }
     catch (cause) { if (current === request.current && listVersion === listRequest.current) setError(`목록을 불러오지 못했습니다: ${String(cause)}`); }
@@ -62,6 +66,7 @@ export const SessionRecordingsDialog = ({ onClose }: { onClose: () => void }) =>
     const offAuth = window.electronAPI?.auth?.onSessionChange(() => {
       request.current++; setSessions([]); setRecording(null); setConfirmDelete(null); setLoading(false); setDownloadMessage("");
       setScope("local"); setSelectedIds([]); setUploadableIds([]); setUploadMessage("");
+      setConfirmSelectedDelete(false); setDeleteMessage("");
       if (scope === "local") void refresh();
     });
     return () => { off?.(); offAuth?.(); request.current++; };
@@ -70,7 +75,7 @@ export const SessionRecordingsDialog = ({ onClose }: { onClose: () => void }) =>
   const open = async (id: string) => {
     if (!api) return;
     const current = ++request.current;
-    setLoading(true); setError(""); setRecording(null); setConfirmDelete(null); setDownloadMessage("");
+    setLoading(true); setError(""); setRecording(null); setConfirmDelete(null); setConfirmSelectedDelete(false); setDownloadMessage("");
     try {
       const result = await api.read(id, scope);
       if (current !== request.current) return;
@@ -83,6 +88,35 @@ export const SessionRecordingsDialog = ({ onClose }: { onClose: () => void }) =>
     if (next === scope) return;
     request.current++; setScope(next); setSessions([]); setRecording(null); setConfirmDelete(null);
     setSelectedIds([]); setUploadableIds([]); setError(""); setUploadMessage(""); setDownloadMessage(""); setLoading(false);
+    setConfirmSelectedDelete(false); setDeleteMessage("");
+  };
+
+  const deletableIds = sessions.filter(session => session.status !== "recording").map(session => session.id);
+  const allSelected = deletableIds.length > 0 && deletableIds.every(id => selectedIds.includes(id));
+  const deleteSelected = async () => {
+    if (!api || scope !== "team" || busy || deleteInFlight.current || !selectedIds.length) return;
+    const ids = selectedIds.filter(id => deletableIds.includes(id));
+    const current = ++request.current;
+    deleteInFlight.current = true; setBusy(true); setLoading(false); setError(""); setDeleteMessage("");
+    const deleted: string[] = [];
+    const failed: { id: string; message: string }[] = [];
+    try {
+      for (const id of ids) {
+        // Stop issuing deletes if the dialog closes or the account changes.
+        if (current !== request.current) return;
+        try { await api.remove(id, "team"); deleted.push(id); }
+        catch (cause) { failed.push({ id, message: String(cause) }); }
+      }
+      if (current !== request.current) return;
+      setSessions(previous => previous.filter(session => !deleted.includes(session.id)));
+      setSelectedIds(failed.map(item => item.id));
+      if (recording && deleted.includes(recording.session.id)) { setRecording(null); setDownloadMessage(""); }
+      setConfirmSelectedDelete(false);
+      await refresh();
+      if (current !== request.current) return;
+      setDeleteMessage(`${deleted.length}개 삭제 완료${failed.length ? ` · ${failed.length}개 실패. 선택된 기록을 다시 삭제할 수 있습니다.` : ""}`);
+      if (failed.length) setError(failed.map(item => `${sessions.find(session => session.id === item.id)?.title || "기록"}: ${item.message}`).join("\n"));
+    } finally { deleteInFlight.current = false; setBusy(false); }
   };
   const uploadSelected = async () => {
     if (!api || uploadInFlight.current || !selectedIds.length) return;
@@ -118,32 +152,48 @@ export const SessionRecordingsDialog = ({ onClose }: { onClose: () => void }) =>
         <Button variant="secondary" aria-pressed={scope === "team"} disabled={mode !== "team" || uploading || busy} onClick={() => switchScope("team")}>서버 기록</Button>
       </div>
     </div>
-    <p className="ls-sharing-note" role="status">{uploadMessage || (scope === "team"
+    <p className="ls-sharing-note" role="status">{deleteMessage || uploadMessage || (scope === "team"
       ? "팀에서 공유한 기록입니다. 서버에서 삭제해도 이 PC의 로컬 기록은 남습니다."
       : mode === "team" ? "기록과 API 로그는 이 PC에 저장됩니다. 체크한 기록의 화면과 해당 구간의 API 로그만 서버로 보냅니다."
         : "기록과 API 로그는 이 PC에 저장됩니다. 서버로 보내려면 로그인해 주세요.")}</p>
     <div className="ls-workbench">
       <aside className="ls-session-list" aria-label="저장된 세션">
         <div className="ls-section-label">{scope === "team" ? "서버 기록" : "로컬 기록"} <span>{sessions.length}</span>
+          {scope === "team" && <label className="ls-select-all">
+            <input type="checkbox" aria-label="서버 기록 전체 선택" checked={allSelected}
+              ref={element => { if (element) element.indeterminate = selectedIds.length > 0 && !allSelected; }}
+              disabled={busy || !deletableIds.length} onChange={event => {
+                setSelectedIds(event.target.checked ? deletableIds : []); setConfirmSelectedDelete(false);
+              }} /> 전체 선택
+          </label>}
           <div className="ls-session-list-actions">
+            {scope === "team" && selectedIds.length > 0 && <Button variant="danger" disabled={busy} onClick={() => {
+              setConfirmDelete(null); setConfirmSelectedDelete(true);
+            }}><span className="msi" aria-hidden="true">delete</span>{busy ? "삭제 중…" : `선택 삭제 (${selectedIds.length})`}</Button>}
             {scope === "local" && selectedIds.length > 0 && <Button variant="primary" disabled={mode !== "team" || uploading || busy} onClick={() => void uploadSelected()}>
               {uploading ? "전송 중…" : `서버로 보내기 (${selectedIds.length})`}
             </Button>}
             <Button variant="secondary" disabled={uploading || busy} onClick={() => void refresh()}>새로고침</Button>
           </div>
         </div>
-        {sessions.map(session => <div data-session-id={session.id} className={`ls-session-row${scope === "local" ? " with-checkbox" : ""}${recording?.session.id === session.id ? " selected" : ""}${selectedIds.includes(session.id) ? " checked" : ""}`} key={session.id}>
-          {scope === "local" && <label className="ls-upload-checkbox">
-            <input type="checkbox" aria-label={`${session.title || "브라우저 테스트"} 서버 전송 선택`} checked={selectedIds.includes(session.id)}
-              disabled={uploading || busy || !uploadableIds.includes(session.id)} onChange={event => {
+        {scope === "team" && confirmSelectedDelete && selectedIds.length > 0 && <div className="ls-bulk-delete-confirm ls-delete-confirm">
+          <span>선택한 서버 기록 {selectedIds.length}개를 삭제할까요? 팀원도 볼 수 없게 됩니다. 이 PC의 로컬 기록은 유지됩니다.</span>
+          <Button variant="danger" disabled={busy} onClick={() => void deleteSelected()}>선택한 {selectedIds.length}개 삭제 확인</Button>
+          <Button variant="secondary" disabled={busy} onClick={() => setConfirmSelectedDelete(false)}>취소</Button>
+        </div>}
+        {sessions.map(session => <div data-session-id={session.id} className={`ls-session-row with-checkbox${recording?.session.id === session.id ? " selected" : ""}${selectedIds.includes(session.id) ? " checked" : ""}`} key={session.id}>
+          <label className="ls-upload-checkbox">
+            <input type="checkbox" aria-label={`${session.title || "브라우저 테스트"} ${scope === "team" ? "서버 삭제 선택" : "서버 전송 선택"}`} checked={selectedIds.includes(session.id)}
+              disabled={uploading || busy || (scope === "team" ? session.status === "recording" : !uploadableIds.includes(session.id))} onChange={event => {
                 setSelectedIds(previous => event.target.checked ? [...previous, session.id] : previous.filter(id => id !== session.id));
+                setConfirmSelectedDelete(false);
               }} />
-          </label>}
+          </label>
           <div className="ls-session-content">
-            <Button className="ls-session-open" disabled={uploading} onClick={() => void open(session.id)}>
+            <Button className="ls-session-open" disabled={uploading || busy} onClick={() => void open(session.id)}>
               <strong>{session.title || "브라우저 테스트"}</strong>
               <span className="ls-session-url ls-mono">{session.url}</span>
-              <span className="ls-session-meta"><span className={`ls-status ${session.status}`}>{statusLabel[session.status]}</span></span>
+              {session.status !== "saved" && <span className="ls-session-meta"><span className={`ls-status ${session.status}`}>{statusLabel[session.status]}</span></span>}
               <span className="ls-session-meta ls-mono">{new Date(session.startedAt).toLocaleString("ko-KR")} · {(session.bytes / 1024).toFixed(0)} KB</span>
             </Button>
             {session.error && <p className="ls-error">{session.error}</p>}
@@ -160,8 +210,11 @@ export const SessionRecordingsDialog = ({ onClose }: { onClose: () => void }) =>
                 } catch (cause) { setError(String(cause)); }
                 finally { setBusy(false); }
               }}>삭제 확인</Button>
-              <Button variant="secondary" className="button" onClick={() => setConfirmDelete(null)}>취소</Button>
-            </div> : <Button variant="ghost" className="ls-delete" disabled={uploading} aria-label={`${session.title} 삭제`} onClick={() => setConfirmDelete(session.id)}>{scope === "team" ? "서버에서 삭제" : "로컬에서 삭제"}</Button>)}
+              <Button variant="secondary" className="button" disabled={busy} onClick={() => setConfirmDelete(null)}>취소</Button>
+            </div> : <Button variant="ghost" iconOnly={scope === "local"} className="ls-delete" disabled={uploading || busy}
+              title={scope === "team" ? "서버에서 삭제" : "로컬에서 삭제"}
+              aria-label={`${session.title || "브라우저 테스트"} ${scope === "team" ? "서버에서 삭제" : "로컬에서 삭제"}`}
+              onClick={() => { setConfirmSelectedDelete(false); setConfirmDelete(session.id); }}>{scope === "team" ? "서버에서 삭제" : <span className="msi" aria-hidden="true">delete</span>}</Button>)}
           </div>
         </div>)}
         {!sessions.length && <div className="ls-empty">{scope === "team" ? "서버에 공유된 기록이 없습니다." : "이 PC에 저장된 오류 기록이 없습니다. 오류 전후 5초만 로컬에 자동 저장합니다."}</div>}
@@ -173,7 +226,7 @@ export const SessionRecordingsDialog = ({ onClose }: { onClose: () => void }) =>
             <select aria-label="기록된 페이지" value={documentId} onChange={event => setDocumentId(event.target.value)}>
               {recording.documents.map((item, index) => <option key={item.id} value={item.id}>{index + 1}. {item.title || item.url}</option>)}
             </select>
-            <Button variant="secondary" className="button" disabled={downloading || !document?.events.some(event => event.type === 2) || recording.session.status === "recording"} onClick={async () => {
+            <Button variant="secondary" className="button" disabled={busy || downloading || !document?.events.some(event => event.type === 2) || recording.session.status === "recording"} onClick={async () => {
               if (!api || !document) return;
               const current = request.current;
               setDownloading(true); setDownloadMessage(""); setError("");

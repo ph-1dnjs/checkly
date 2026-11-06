@@ -29,7 +29,6 @@
 .ls-session-meta { display:flex; gap:10px; font-size:11px; color:#5a646e; }
 .ls-status::before { content:""; display:inline-block; width:7px; height:7px; background:#8a939c; margin-right:5px; }
 .ls-status.recording::before { background:#de3b45; }
-.ls-status.saved::before { background:#0e8a5f; }
 .ls-status.error::before,.ls-status.interrupted::before { background:#ad6800; }
 .ls-mono { font-family:var(--ck-font-mono); font-variant-numeric:tabular-nums; }
 .ls-detail { flex:1; display:flex; min-width:0; min-height:0; flex-direction:column; }
@@ -57,8 +56,10 @@
 .ls-notice { padding:10px 16px; background:#fafbfc; border-bottom:1px solid #e4e7ea; }
 .ls-error { color:#de3b45 !important; }
 .ls-auto-recording { align-self:center; color:#5a646e; font-size:11px; white-space:nowrap; }
-.ls-delete { background:transparent; border:0; padding:6px 0 0; color:#5a646e; cursor:pointer; font-size:11px; }
+.ls-delete { margin-top:4px; }
 .ls-delete-confirm { display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-top:6px; }
+.ls-bulk-delete-confirm { margin:0; padding:12px; border-bottom:1px solid #e4e7ea; }
+.ls-select-all { display:flex; align-items:center; gap:4px; white-space:nowrap; }
 @media(max-width:1100px) { .ls-session-list { width:320px; } .ls-activities { width:260px; } .ls-local-note { display:none; } }
 
 .ls-timeline-filter { padding:8px 12px; border-bottom:1px solid #e4e7ea; }
