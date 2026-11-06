@@ -185,6 +185,8 @@ export const RunView = ({ model }: { model: AiTcModel }) => {
               </div>
             ))}
           </footer>
+          {run.usage && <div className="aitc-pad-bottom">확인된 실행 호출 토큰 · 입력 {run.usage.input.toLocaleString()} · 출력 {run.usage.output.toLocaleString()} · 캐시 읽기 {run.usage.cachedInput.toLocaleString()} · 캐시 생성 {run.usage.cacheWrite.toLocaleString()} {run.usage.unknown > 0 && `· 진행 중 또는 미확인 ${run.usage.unknown}회`}<br />준비 단계 제외 · {run.provider === "Claude CLI" ? "Claude 입력은 캐시 토큰 별도" : "Codex 입력에 캐시 읽기 포함"}</div>}
+          {run.budget.tokenWarning && <div role="status" className="aitc-warn-line">{run.budget.tokenWarning}</div>}
         </div>
       </div>
 
