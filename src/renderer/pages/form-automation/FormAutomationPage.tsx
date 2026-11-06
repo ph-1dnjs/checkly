@@ -492,11 +492,29 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
     const webview = activeWebview();
     if (!webview?.setUserAgent) return;
     try {
-      webview.setUserAgent(browserUserAgent(browserIdentity, navigator.userAgent));
+      webview.setUserAgent(browserUserAgent(browserIdentity, navigator.userAgent, viewport.id.startsWith("mobile")));
       webview.reload();
     } catch (error) {
       showToast(`브라우저 식별 변경 실패: ${error instanceof Error ? error.message : String(error)}`);
     }
+  };
+
+  const changeViewport = (nextId: string) => {
+    const mobile = nextId.startsWith("mobile");
+    if (mobile !== viewport.id.startsWith("mobile")) {
+      for (const tab of browserTabsRef.current) {
+        if (tab.browserIdentity !== "safari") continue;
+        const webview = webviewRefs.current.get(tab.id);
+        if (!webview?.setUserAgent) continue;
+        try {
+          webview.setUserAgent(browserUserAgent("safari", navigator.userAgent, mobile));
+          webview.reload();
+        } catch (error) {
+          showToast(`브라우저 식별 변경 실패: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+    }
+    setViewportId(nextId);
   };
 
   const closeBrowserTab = (tabId: string) => {
@@ -1366,7 +1384,7 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
           <div className="fa-viewport-toolbar">
             <label>
               <MaterialIcon name={viewport.width ? "smartphone" : "desktop_windows"} />
-              <select aria-label="미리보기 화면 크기" value={viewport.id} onChange={(event) => setViewportId(event.target.value)}>
+              <select aria-label="미리보기 화면 크기" value={viewport.id} onChange={(event) => changeViewport(event.target.value)}>
                 {VIEWPORT_PRESETS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
               </select>
             </label>
@@ -1420,7 +1438,7 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
                         ref={webviewRefFor(tab.id)}
                         src={tab.url}
                         partition={browserSessionPartition(tab.id)}
-                        useragent={browserUserAgent(tab.browserIdentity || "electron", navigator.userAgent)}
+                        useragent={browserUserAgent(tab.browserIdentity || "electron", navigator.userAgent, viewport.id.startsWith("mobile"))}
                         // React types declare a boolean, but React omits true for this DOM attribute.
                         // Electron requires the attribute to be present, so emit an empty string.
                         allowpopups={"" as unknown as boolean}

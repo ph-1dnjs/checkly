@@ -9,7 +9,7 @@ export const BROWSER_IDENTITY_LABELS: Record<BrowserIdentity, string> = {
   safari: "Safari UA",
 };
 
-export const browserUserAgent = (identity: BrowserIdentity, electronUserAgent: string): string => {
+export const browserUserAgent = (identity: BrowserIdentity, electronUserAgent: string, mobile = false): string => {
   if (identity === "electron") return electronUserAgent;
   const chromeAgent = electronUserAgent.replace(/\sElectron\/[\d.]+/g, "");
   if (identity === "chrome") return chromeAgent;
@@ -18,6 +18,7 @@ export const browserUserAgent = (identity: BrowserIdentity, electronUserAgent: s
     return `${chromeAgent} Edg/${chromiumVersion}`;
   }
   // Safari identification only; Electron still renders with Chromium.
+  if (mobile) return "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1";
   return "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Safari/605.1.15";
 };
 
