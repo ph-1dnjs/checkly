@@ -33,7 +33,7 @@ export type FileSpec = z.infer<typeof fileSpecSchema>;
 const caseSchema = z.object({
   key: z.string(),
   data: z.array(z.object({ label: z.string().min(1).max(100), value: z.string().max(2000) }).strict()).max(20),
-  files: z.array(fileSpecSchema).max(5),
+  files: z.array(fileSpecSchema).max(10),
   note: z.string().max(300).optional(),
 }).strict();
 export type PreparedCase = z.infer<typeof caseSchema>;
@@ -49,6 +49,8 @@ export function preparationPrompt(cases: PrepareCase[], today: string): string {
 - 상품·회원 등 이미 시스템에 있어야 하는 데이터는 지어내지 말고 data의 value에 "화면에서 조건에 맞는 항목을 고른다: <조건>"처럼 고르는 기준을 적는다.
 - 비밀번호·토큰·실제 개인정보는 만들지 않는다. 로그인은 사용자가 직접 한다.
 - 업로드가 필요하면 files에 명세를 적는다. 이미지 크기·형식·용량 조건이 TC에 있으면 그대로 width·height·type·maxKB에 반영하고, 없으면 png 800x600으로 한다. 같은 TC에 여러 파일이 필요하면 각각 적는다.
+- 파일 type은 png, jpg, pdf, txt, csv, xlsx 중 하나만 사용한다. jpeg는 jpg로 적는다. 지원하지 않는 형식이 필요하면 files에 넣지 말고 note에 적는다.
+- files는 TC당 최대 10개다. 더 많은 파일이 필요하면 10개만 적고 나머지는 note에 설명한다.
 - 입력이 필요 없는 TC는 data와 files를 빈 배열로 둔다.
 - 모든 TC를 key 그대로 한 번씩 포함한다.
 
@@ -69,7 +71,21 @@ export function parsePreparation(text: string, keys: string[]): PreparedCase[] {
   if (start < 0 || end < start) throw new Error("테스트 데이터 응답에 JSON이 없습니다.");
   let json: unknown;
   try { json = JSON.parse(text.slice(start, end + 1)); } catch { throw new Error("테스트 데이터 응답을 해석하지 못했습니다."); }
-  const parsed = z.object({ cases: z.array(caseSchema).max(100) }).parse(json).cases;
+  const raw = z.object({ cases: z.array(z.unknown()).max(100) }).parse(json).cases;
+  const parsed = raw.map(value => {
+    const item = z.object({ key: z.string(), data: caseSchema.shape.data, files: z.array(z.unknown()).max(100), note: caseSchema.shape.note }).strict().parse(value);
+    const files: FileSpec[] = [];
+    const unsupported: string[] = [];
+    for (const file of item.files) {
+      const candidate = z.object({ label: z.string().min(1).max(100), type: z.string() }).passthrough().parse(file);
+      const type = candidate.type.trim().toLowerCase().replace(/^\./, "");
+      const normalized = type === "jpeg" ? "jpg" : type;
+      if (!fileSpecSchema.shape.type.safeParse(normalized).success) { unsupported.push(`${candidate.label} (${candidate.type})`); continue; }
+      files.push(fileSpecSchema.parse({ ...candidate, type: normalized }));
+    }
+    const note = [files.length > 10 ? `파일 ${files.length}개 중 10개만 준비했습니다. 나머지는 직접 확인하세요.` : "", unsupported.length ? `지원하지 않는 파일 형식: ${unsupported.join(", ")}. 직접 파일을 추가하세요.` : "", item.note].filter(Boolean).join(" · ").slice(0, 300);
+    return { ...item, files: files.slice(0, 10), ...(note ? { note } : {}) };
+  });
   const wanted = new Set(keys);
   const byKey = new Map(parsed.filter(item => wanted.has(item.key)).map(item => [item.key, item]));
   // 빠진 TC는 빈 준비로 채워 다시 묻지 않는다(실행 중 부족하면 AI가 사용자에게 넘긴다).

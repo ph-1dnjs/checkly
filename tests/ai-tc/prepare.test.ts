@@ -19,8 +19,23 @@ test("응답을 검증하고 빠진 TC는 빈 준비로, 모르는 key는 버린
   assert.equal(result.length, 2);
   assert.equal(result[0]!.files[0]!.width, 375);
   assert.deepEqual(result[1], { key: "QA.xlsx:BOS_TC:5", data: [], files: [], note: "AI가 준비 값을 돌려주지 않음" });
-  assert.throws(() => parsePreparation(`{"cases":[{"key":"${tc.key}","data":[],"files":[{"label":"x","type":"exe"}]}]}`, [tc.key]));
   assert.throws(() => parsePreparation("없음", [tc.key]), /JSON/);
+});
+
+test("지원하지 않는 파일만 안내하고 나머지 데이터와 지원 파일은 보존한다", () => {
+  const [result] = parsePreparation(`{"cases":[{"key":"${tc.key}","data":[{"label":"제목","value":"테스트"}],"files":[{"label":"사진","type":"JPEG"},{"label":"영상","type":"mp4"}]}]}`, [tc.key]);
+  assert.equal(result!.data[0]!.value, "테스트");
+  assert.equal(result!.files[0]!.type, "jpg");
+  assert.match(result!.note!, /영상 \(mp4\)/);
+});
+
+test("파일 5개를 넘어도 준비하고 실행 한도 10개를 넘으면 안내한다", () => {
+  const files = Array.from({ length: 11 }, (_, index) => ({ label: `파일 ${index + 1}`, type: "png" }));
+  const [six] = parsePreparation(JSON.stringify({ cases: [{ key: tc.key, data: [], files: files.slice(0, 6) }] }), [tc.key]);
+  assert.equal(six!.files.length, 6);
+  const [eleven] = parsePreparation(JSON.stringify({ cases: [{ key: tc.key, data: [], files }] }), [tc.key]);
+  assert.equal(eleven!.files.length, 10);
+  assert.match(eleven!.note!, /11개 중 10개/);
 });
 
 test("{{len:N}}은 정확히 N자로 바꾼다", () => {
