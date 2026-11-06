@@ -275,10 +275,11 @@ export type AiTcExpectedResult = AiTcExpected & {
   basis: Array<{ k: string; v: string }>;
   captureId?: string;
   at?: string;
-  /** ai: 모델 판정 · system: 앱이 기록한 실행 불가 사유 · user: 사용자 수정 */
-  by: "ai" | "system" | "user";
+  /** ai: 모델 판정 · automation: 승인된 조건 재검증 · system: 실행 불가 · user: 사용자 수정 */
+  by: "ai" | "automation" | "system" | "user";
   /** 사용자가 바꾸기 전 판정 */
   original?: AiTcVerdict;
+  originalBy?: "ai" | "automation" | "system";
   note?: string;
 };
 
@@ -293,6 +294,11 @@ export type AiTcCaseResult = {
   row: number;
   expected: AiTcExpectedResult[];
   actions: AiTcActionLog[];
+  /** 성공한 동작의 재실행 후보. verify는 이전 판정을 포함하지 않는다. */
+  recording?: import("./recording").RecordedStep[];
+  timing?: { observationMs: number; modelMs: number; browserMs: number };
+  usage?: { input: number; output: number; cachedInput: number; cacheWrite: number; measured: number; unknown: number };
+  repairSuggestion?: { reason: string; index: number; step: import("./recording").RecordedStep };
   reason?: string;
   startedAt?: string;
   endedAt?: string;
@@ -301,6 +307,7 @@ export type AiTcCaseResult = {
 export type AiTcWaitKind = "login" | "confirm" | "domain" | "popup" | "download" | "handoff";
 
 export type AiTcWait = {
+  context?: { source: "app" | "ai"; attempted: string; request: string };
   kind: AiTcWaitKind;
   title: string;
   body: string;
@@ -309,7 +316,11 @@ export type AiTcWait = {
 
 export type AiTcRunStatus = "running" | "waiting" | "done" | "cancelled" | "error";
 
+export type AiTcUsage = { input: number; output: number; cachedInput: number; cacheWrite: number; measured: number; unknown: number };
+export type AiTcUsagePhase = "explore" | "judge" | "retry" | "repair";
+
 export type AiTcRunState = {
+  usageByPhase?: Partial<Record<AiTcUsagePhase, AiTcUsage>>;
   runId: string;
   status: AiTcRunStatus;
   wait?: AiTcWait;
@@ -321,7 +332,11 @@ export type AiTcRunState = {
   capturePaused: boolean;
   highlight?: { x: number; y: number; w: number; h: number; label: string };
   cases: AiTcCaseResult[];
-  budget: { actions: number; modelCalls: number; maxActions: number; maxModelCalls: number; maxMinutes: number; caseStartedAt?: string };
+  budget: { actions: number; modelCalls: number; maxActions: number; maxModelCalls: number; maxMinutes: number; caseStartedAt?: string; tokenWarning?: string };
+  usage?: { input: number; output: number; cachedInput: number; cacheWrite: number; measured: number; unknown: number };
+  preparationUsage?: AiTcPreparationUsage;
+  previousRun?: { elapsedMs: number; userWaitMs?: number; modelCalls: number; input: number; output: number; cachedInput: number; cacheWrite: number; unknown: number };
+  userWaitMs?: number;
   provider: string;
   allowedHosts: string[];
   viewport: { width: number; height: number };
@@ -353,9 +368,15 @@ export type AiTcRunPlan = {
   allowedHosts: string[];
   capture: boolean;
   video: boolean;
+  imageToAi?: boolean;
   tool: "claude" | "codex";
   environmentLabel: string;
+  tokenLimit?: number;
+  tokenLimitPerCase?: number;
+  preparationUsage?: AiTcPreparationUsage;
 };
+
+export type AiTcPreparationUsage = Record<"claude" | "codex", { input: number; output: number; cached: number; write: number; unknown: number }>;
 
 /** 사용자 대기에서 고른 조치. */
 export type AiTcDecision = "resume" | "allow" | "handoff" | "block" | "stop";

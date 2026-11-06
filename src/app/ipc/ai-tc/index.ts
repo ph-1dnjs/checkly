@@ -9,7 +9,7 @@ import type { AiTcCase } from "./model";
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { chromium } from "@playwright/test";
 import type { MainDomain } from "../domain";
-import { availableTools, callModel } from "./ai";
+import { availableTools, callModel, type ModelUsage } from "./ai";
 import { AiTcImportError, readWorkbook } from "./excel";
 import { exportRunWorkbook } from "./export";
 import { AI_TC_LIMITS } from "./model";
@@ -61,7 +61,7 @@ export const aiTcDomain: MainDomain = {
       return { token, name: path.basename(filePath) };
     });
     // TC·시나리오 문맥으로 입력값과 업로드 파일을 정하고, 파일은 임시 폴더에 만들어 업로드 토큰으로 등록한다.
-    ipcMain.handle("ai-tc:prepare", async (_event, input: unknown) => {
+    ipcMain.handle("ai-tc:prepare", async (event, input: unknown) => {
       const { tool, cases } = z.object({ tool: z.enum(["claude", "codex"]), cases: z.array(z.object({
         key: z.string().max(2000), id: z.string().max(200), scenarioId: z.string().max(1000), pre: z.string().max(10000),
         steps: z.array(z.string().max(10000)).max(100), expected: z.array(z.object({ id: z.string(), text: z.string().max(10000) })).max(50),
@@ -71,7 +71,13 @@ export const aiTcDomain: MainDomain = {
       if (!executable) throw new Error("선택한 AI CLI를 찾지 못했습니다.");
       temporaryDir ??= await mkdtemp(path.join(os.tmpdir(), "checkly-ai-tc-"));
       const today = new Date().toLocaleDateString("sv-SE");
-      const reply = await callModel({ tool, file: executable.path, cwd: temporaryDir, prompt: preparationPrompt(cases, today), timeoutMs: 240_000 }).promise;
+      let usage: ModelUsage | undefined;
+      let reply: string;
+      try {
+        reply = await callModel({ tool, file: executable.path, cwd: temporaryDir, prompt: preparationPrompt(cases, today), timeoutMs: 240_000, onUsage: value => { usage = value; } }).promise;
+      } finally {
+        if (!event.sender.isDestroyed()) event.sender.send("ai-tc:prepare-usage", { tool, usage });
+      }
       const results = parsePreparation(reply, cases.map(item => item.key));
       const maker = new FixtureMaker(temporaryDir, chromium.executablePath().replace("app.asar", "app.asar.unpacked"));
       try {
@@ -92,10 +98,15 @@ export const aiTcDomain: MainDomain = {
     });
     ipcMain.handle("ai-tc:tools", async () => (await availableTools()).map(item => ({ tool: item.tool, version: item.version })));
     ipcMain.handle("ai-tc:start", (_event, plan: unknown) => getRunner().start(plan));
+    ipcMain.handle("ai-tc:replay", (_event, runId: unknown, assisted: unknown) => getRunner().startReplay(runId, z.boolean().default(false).parse(assisted)));
+    ipcMain.handle("ai-tc:replay-saved", (_event, plan: unknown, assisted: unknown) => getRunner().startSavedReplay(plan, z.boolean().default(false).parse(assisted)));
+    ipcMain.handle("ai-tc:saved-needs", (_event, plan: unknown) => getRunner().savedNeeds(plan));
     ipcMain.handle("ai-tc:decide", (_event, runId: unknown, decision: unknown, reply: unknown) => getRunner().decide(runId, decision, reply));
     ipcMain.handle("ai-tc:browser-event", (_event, runId: unknown, input: unknown) => getRunner().browserEvent(runId, input));
     ipcMain.handle("ai-tc:cancel", (_event, runId: unknown) => getRunner().cancel(runId));
     ipcMain.handle("ai-tc:review", (_event, input: unknown) => getRunner().review(input));
+    ipcMain.handle("ai-tc:approve-assertion", (_event, input: unknown) => getRunner().approveAssertion(input));
+    ipcMain.handle("ai-tc:apply-repair", (_event, input: unknown) => getRunner().applyRepair(input));
     ipcMain.handle("ai-tc:capture", (_event, runId: unknown, captureId: unknown) => getRunner().capture(runId, captureId));
     ipcMain.handle("ai-tc:current", () => getRunner().current());
     // 결과를 .xlsx로 저장한다. 캡처·영상은 산출물 폴더에 남아 있어 함께 열 수 있다.
