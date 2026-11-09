@@ -239,6 +239,7 @@ export const SessionRecordingsDialog = ({ onClose }: { onClose: () => void }) =>
             }}>{downloading ? "MP4 저장 중…" : "MP4 다운로드"}</Button>
           </div>
           <p className="ls-timeline-note" role="status">{downloadMessage || "선택한 페이지의 화면만 MP4로 저장합니다. 소리와 API 타임라인은 포함하지 않습니다."}</p>
+          {recording.session.notes && <div className="ls-recording-notes"><strong>참고사항</strong><p>{recording.session.notes}</p></div>}
           {document ? <SessionPlayer key={document.id} document={document} startAt={recording.session.captureStartAt} endAt={recording.session.captureEndAt} errorAt={recording.session.trigger?.at} logs={recording.logs} logsWarning={recording.logsWarning} /> : <div className="ls-empty">기록된 화면이 없습니다.</div>}
         </> : <div className="ls-empty ls-detail-empty">
           <span className="msi" aria-hidden="true">screen_record</span>

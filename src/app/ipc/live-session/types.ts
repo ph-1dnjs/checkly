@@ -33,6 +33,7 @@ export type LiveSession = {
   syncStatus?: "local" | "pending" | "uploaded" | "error";
   syncError?: string;
   browserSessionId?: string;
+  notes?: string;
 };
 export type SessionDocument = { id: string; url: string; title: string; events: ReplayEvent[] };
 export type SessionRecording = { session: LiveSession; documents: SessionDocument[]; logs?: BrowserLog[]; logsWarning?: string };
