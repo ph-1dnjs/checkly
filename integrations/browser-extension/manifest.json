@@ -1,0 +1,46 @@
+{
+  "manifest_version": 3,
+  "name": "Checkly Recorder",
+  "version": "0.1.2",
+  "minimum_chrome_version": "120",
+  "description": "선택한 테스트 탭의 오류 전후 화면을 체클리 팀에 공유합니다.",
+  "permissions": [
+    "storage",
+    "scripting",
+    "activeTab",
+    "alarms",
+    "sidePanel",
+    "tabs",
+    "clipboardWrite"
+  ],
+  "host_permissions": [
+    "https://aphxwkthjgoyrfnoljjh.supabase.co/*"
+  ],
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*",
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Checkly 사이드 패널 열기"
+  },
+  "icons": {
+    "128": "icon.png"
+  },
+  "side_panel": {
+    "default_path": "popup.html"
+  },
+  "commands": {
+    "capture-screen": {
+      "suggested_key": {
+        "default": "Alt+Shift+S",
+        "mac": "Command+Shift+S"
+      },
+      "description": "현재 탭 화면 캡처"
+    }
+  }
+}
