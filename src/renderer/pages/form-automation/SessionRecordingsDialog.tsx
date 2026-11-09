@@ -92,7 +92,8 @@ export const SessionRecordingsDialog = ({ onClose }: { onClose: () => void }) =>
   };
 
   const deletableIds = sessions.filter(session => session.status !== "recording").map(session => session.id);
-  const allSelected = deletableIds.length > 0 && deletableIds.every(id => selectedIds.includes(id));
+  const selectableIds = scope === "team" ? deletableIds : sessions.filter(session => uploadableIds.includes(session.id)).map(session => session.id);
+  const allSelected = selectableIds.length > 0 && selectableIds.every(id => selectedIds.includes(id));
   const deleteSelected = async () => {
     if (!api || scope !== "team" || busy || deleteInFlight.current || !selectedIds.length) return;
     const ids = selectedIds.filter(id => deletableIds.includes(id));
@@ -159,13 +160,13 @@ export const SessionRecordingsDialog = ({ onClose }: { onClose: () => void }) =>
     <div className="ls-workbench">
       <aside className="ls-session-list" aria-label="저장된 세션">
         <div className="ls-section-label">{scope === "team" ? "서버 기록" : "로컬 기록"} <span>{sessions.length}</span>
-          {scope === "team" && <label className="ls-select-all">
-            <input type="checkbox" aria-label="서버 기록 전체 선택" checked={allSelected}
+          <label className="ls-select-all">
+            <input type="checkbox" aria-label={scope === "team" ? "서버 기록 전체 선택" : "로컬 기록 전체 선택"} checked={allSelected}
               ref={element => { if (element) element.indeterminate = selectedIds.length > 0 && !allSelected; }}
-              disabled={busy || !deletableIds.length} onChange={event => {
-                setSelectedIds(event.target.checked ? deletableIds : []); setConfirmSelectedDelete(false);
+              disabled={busy || uploading || !selectableIds.length} onChange={event => {
+                setSelectedIds(event.target.checked ? selectableIds : []); setConfirmSelectedDelete(false);
               }} /> 전체 선택
-          </label>}
+          </label>
           <div className="ls-session-list-actions">
             {scope === "team" && selectedIds.length > 0 && <Button variant="danger" disabled={busy} onClick={() => {
               setConfirmDelete(null); setConfirmSelectedDelete(true);
