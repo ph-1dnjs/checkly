@@ -153,7 +153,7 @@ export const SessionRecordingsDialog = ({ onClose }: { onClose: () => void }) =>
       </div>
     </div>
     <p className="ls-sharing-note" role="status">{deleteMessage || uploadMessage || (scope === "team"
-      ? "팀에서 공유한 기록입니다. 서버에서 삭제해도 이 PC의 로컬 기록은 남습니다."
+      ? "서버 기록은 저장 후 30일이 지나면 자동 삭제됩니다. 이 PC의 로컬 기록은 남습니다."
       : mode === "team" ? "기록과 API 로그는 이 PC에 저장됩니다. 체크한 기록의 화면과 해당 구간의 API 로그만 서버로 보냅니다."
         : "기록과 API 로그는 이 PC에 저장됩니다. 서버로 보내려면 로그인해 주세요.")}</p>
     <div className="ls-workbench">

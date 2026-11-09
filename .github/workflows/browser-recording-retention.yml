@@ -1,0 +1,30 @@
+name: Browser recording retention
+
+# Scheduled workflows run from the repository's default branch (develop).
+on:
+  schedule:
+    - cron: '17 18 * * *' # 03:17 Asia/Seoul
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: browser-recording-retention
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SUPABASE_PROJECT_REF: aphxwkthjgoyrfnoljjh
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: node scripts/retention/browser-recordings.mjs

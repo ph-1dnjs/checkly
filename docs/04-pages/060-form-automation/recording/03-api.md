@@ -9,7 +9,7 @@
 
 ## 팀 저장
 
-마이그레이션: `supabase/migrations/20261019051932_browser_telemetry.sql`. `develop`에 반영되면 기존 `.github/workflows/supabase.yml`의 `db push`가 적용한다. 새 Edge Function은 필요하지 않다.
+마이그레이션: `supabase/migrations/20261019051932_browser_telemetry.sql`. 새 DB 스키마나 Edge Function은 필요하지 않다.
 
 | 저장소 | 내용 |
 | --- | --- |
@@ -18,6 +18,12 @@
 | 비공개 `browser-error-replays` 버킷 | `<projectId>/<userId>/<clipId>.json.gz`: `SessionRecording` 전체 |
 
 모두 로그인 클라이언트를 사용하며 RLS로 현재 프로젝트만 접근한다. 로그는 append-only이며 UUID로 중복 전송을 무시한다. 본인 기록만 업로드/덮어쓸 수 있고 팀원은 조회·재생·삭제할 수 있다. Storage 업로드 후 DB 메타데이터를 쓰며 실패한 전송은 같은 경로로 재시도한다. 업로드 성공한 로컬 파일은 캐시이므로 팀 DB에서 삭제된 기록을 목록에 되살리지 않는다.
+
+### 서버 보존 기간
+
+`.github/workflows/browser-recording-retention.yml`은 매일 03:17 KST에 `scripts/retention/browser-recordings.mjs`를 실행한다. GitHub의 예약 워크플로는 기본 브랜치(`develop`)에 반영돼야 실행된다. 수동 실행도 가능하다. 저장소의 기존 `SUPABASE_ACCESS_TOKEN`이 Management API의 프로젝트 키 조회 권한을 가져야 한다. 작업은 실행 중에만 서버 키를 읽고 값은 로그나 저장소에 기록하지 않는다. 접근 토큰이 없거나 권한이 부족하면 작업이 실패하며 삭제하지 않는다. Actions 실패 알림을 확인해 권한을 복구한다.
+
+서버에서 `created_at`이 30일을 지난 `form_browser_recordings`·`form_browser_logs`를 정리한다. 녹화 파일은 Storage API로 지운 후 행을 삭제하며, 파일 삭제 실패 시 행을 유지한다. 한 번에 각 최대 10,000개를 처리하고 초과분은 다음 실행에서 이어진다. GitHub 스케줄 지연·작업 실패 시 30일 직후 삭제가 보장되지 않는다. 로컬 파일 및 DB 메타데이터가 없는 고아 Storage 객체는 대상이 아니다. 운영 반영 후 공개 개인정보처리방침의 보관 기간도 실제 동작에 맞게 변경한다.
 
 로그 대기는 메모리에 최대 2,000개이며 100개씩 전송한다. 연결 실패 시 다음 5초 tick에서 재시도한다. 한도 초과 시 새 로그를 버리고 상태 메시지를 표시한다. 앱 정상 종료 시 로그를 전송하지만 강제 종료 시 미전송 로그는 유실될 수 있다. 오류 파일은 로컬에 남아 다음 실행에서 같은 계정으로 로그인하면 한 번에 하나씩 재시도한다.
 
