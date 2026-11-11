@@ -3,9 +3,9 @@ import { Button } from "../../shared/ui/Button";
 import { WindowSettingsSection } from "./WindowSettingsSection";
 import type { Scenario } from "../../shared/model/scenario";
 import type { UpdateStatus } from "../../shared/model/update";
-import checklyMark from "../../assets/checkly-mark.png";
 import { copyText, type AuthAccount } from "../auth/model";
 import { AccountCard } from "./AccountCard";
+import { BrandCarousel } from "./BrandCarousel";
 import { AccountSection } from "./AccountSection";
 import { EndpointSettings } from "./EndpointSettings";
 import { SettingRow, SettingsSection, Switch, useOpenSections, type SectionId } from "./SettingsSection";
@@ -228,14 +228,7 @@ export const SettingsPage = ({ scenario, account }: Props) => {
           )}
         </SettingsSection>
 
-        <div className="settings-brand-footer">
-          <img src={checklyMark} alt="Checkly 마크" />
-          <div className="settings-brand-wordmark">
-            Check<span>ly</span>
-          </div>
-          <div className="settings-brand-tagline">반복되는 확인을 대신 맡습니다</div>
-          <div className="settings-brand-version">{version}</div>
-        </div>
+        <BrandCarousel version={version} />
       </div>
     </div>
   );
