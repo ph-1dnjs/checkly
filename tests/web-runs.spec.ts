@@ -61,3 +61,26 @@ test('cancelled execution is saved and restored as cancelled rather than passed 
   await page.reload();
   await expect(page.locator('.dash-row')).toContainText('취소');
 });
+
+test('dashboard history scrolls while its header stays fixed', async ({ page }) => {
+  await page.setViewportSize({ width: 1000, height: 650 });
+  await prepare(page);
+  await page.addInitScript(() => {
+    const scenario = { id: 'scenario-1', title: '스크롤 기록', steps: [] };
+    const records = Array.from({ length: 20 }, (_, index) => ({
+      id: `run-${index}`, status: 'passed', passed: 1, failed: 0,
+      ranAt: '2026-10-14T00:00:00Z', results: [{ scenario, elapsedSeconds: 1 }],
+    }));
+    sessionStorage.setItem('web-runs', JSON.stringify(records));
+  });
+  await page.goto('/');
+  await expect(page.locator('.dash-row')).toHaveCount(20);
+  const history = page.locator('.dash-history');
+  const header = page.locator('.dash-table-head');
+  const top = (await header.boundingBox())!.y;
+  await history.evaluate(element => { element.scrollTop = element.scrollHeight; });
+  await expect.poll(() => history.evaluate(element => element.scrollTop)).toBeGreaterThan(0);
+  expect((await header.boundingBox())!.y).toBeCloseTo(top, 0);
+  const lastRow = (await page.locator('.dash-row').last().boundingBox())!;
+  expect(lastRow.y + lastRow.height).toBeLessThan(650 - 70);
+});

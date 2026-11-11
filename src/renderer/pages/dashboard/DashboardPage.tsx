@@ -154,66 +154,68 @@ export const DashboardPage = ({
         </div>
       </div>
 
-      <div className="dash-table-head">
-        <div />
-        <div>RUN</div>
-        <div className="dash-col-right">PASS RATE</div>
-        <div className="dash-col-right">TIME</div>
-        <div className="dash-col-right">STARTED</div>
-      </div>
-
-      {history.length ? (
-        history.map((record) => {
-          const rate = passRateOf(record);
-          return (
-            <div
-              className="dash-row"
-              key={record.id}
-              role="button"
-              tabIndex={0}
-              onClick={() => onOpenReport(record)}
-            >
-              <div>
-                <div
-                  className={`dash-dot ${record.status}`}
-                />
-              </div>
-              <div className="dash-row-name">
-                <div className="dash-row-title">
-                  {record.scenarios.length > 1
-                    ? `전체 회귀 · ${record.scenarios.length}개 시나리오`
-                    : (record.scenarios[0]?.title ?? "시나리오 실행")}
-                </div>
-                <div className="dash-row-subtitle">
-                  {record.status === "cancelled" ? "취소 · " : ""}{record.scenarios.map((scenario) => scenario.title).join(" · ")}
-                </div>
-              </div>
-              <div
-                className={`dash-col-right dash-mono ${record.status}`}
-              >
-                {rate}%
-              </div>
-              <div className="dash-col-right dash-mono dash-muted">
-                {formatClock(durationOf(record))}
-              </div>
-              <div className="dash-col-right dash-mono dash-muted">
-                {new Date(record.ranAt).toLocaleTimeString("ko-KR", {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
-              </div>
-            </div>
-          );
-        })
-      ) : (
-        <div className="dash-empty">
-          <strong>아직 실행 기록이 없습니다.</strong>
-          <p>시나리오를 실행하면 최근 50개의 기록이 여기에 저장됩니다.</p>
-          <Button variant="secondary" onClick={onOpenRun}>
-            실행 화면으로 이동
-          </Button>
+      <div className="dash-history">
+        <div className="dash-table-head">
+          <div />
+          <div>RUN</div>
+          <div className="dash-col-right">PASS RATE</div>
+          <div className="dash-col-right">TIME</div>
+          <div className="dash-col-right">STARTED</div>
         </div>
-      )}
+
+        {history.length ? (
+          history.map((record) => {
+            const rate = passRateOf(record);
+            return (
+              <div
+                className="dash-row"
+                key={record.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => onOpenReport(record)}
+              >
+                <div>
+                  <div
+                    className={`dash-dot ${record.status}`}
+                  />
+                </div>
+                <div className="dash-row-name">
+                  <div className="dash-row-title">
+                    {record.scenarios.length > 1
+                      ? `전체 회귀 · ${record.scenarios.length}개 시나리오`
+                      : (record.scenarios[0]?.title ?? "시나리오 실행")}
+                  </div>
+                  <div className="dash-row-subtitle">
+                    {record.status === "cancelled" ? "취소 · " : ""}{record.scenarios.map((scenario) => scenario.title).join(" · ")}
+                  </div>
+                </div>
+                <div
+                  className={`dash-col-right dash-mono ${record.status}`}
+                >
+                  {rate}%
+                </div>
+                <div className="dash-col-right dash-mono dash-muted">
+                  {formatClock(durationOf(record))}
+                </div>
+                <div className="dash-col-right dash-mono dash-muted">
+                  {new Date(record.ranAt).toLocaleTimeString("ko-KR", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </div>
+              </div>
+            );
+          })
+        ) : (
+          <div className="dash-empty">
+            <strong>아직 실행 기록이 없습니다.</strong>
+            <p>시나리오를 실행하면 최근 50개의 기록이 여기에 저장됩니다.</p>
+            <Button variant="secondary" onClick={onOpenRun}>
+              실행 화면으로 이동
+            </Button>
+          </div>
+        )}
+      </div>
     </div>
   );
 };

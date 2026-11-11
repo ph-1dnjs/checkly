@@ -1,4 +1,6 @@
-.dash{max-width:1100px;margin:0 auto}
+.dash{display:flex;flex-direction:column;max-width:1100px;height:100%;margin:0 auto;overflow-y:auto}
+.dash-title,.dash-stats{flex:none}
+.dash-history{flex:1 1 auto;min-height:100px;margin-top:34px;padding-bottom:100px;overflow-y:auto}
 .dash-title{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:44px 0 28px}
 .dash-heading{font-family:'Nunito',Verdana,'Apple SD Gothic Neo',sans-serif;font-size:26px;font-weight:800;letter-spacing:-.02em;color:#14181c}
 .dash-title-actions{margin-left:auto;display:flex;align-items:center;gap:8px}
@@ -26,7 +28,7 @@
 .dash-tape-bar.failed{background:#b32318}
 .dash-tape-bar.cancelled{background:#a9b1b8}
 .dash-tape-bar.empty{background:#e4e7ea}
-.dash-table-head{display:grid;grid-template-columns:26px 1fr 92px 76px 84px;gap:16px;align-items:center;height:30px;border-bottom:1px solid #e4e7ea;font-family:D2Coding,ui-monospace,monospace;font-size:10px;letter-spacing:.08em;color:#8a939c;margin-top:34px}
+.dash-table-head{position:sticky;top:0;z-index:1;display:grid;grid-template-columns:26px 1fr 92px 76px 84px;gap:16px;align-items:center;height:30px;border-bottom:1px solid #e4e7ea;background:#fff;font-family:D2Coding,ui-monospace,monospace;font-size:10px;letter-spacing:.08em;color:#8a939c}
 .dash-col-right{text-align:right}
 .dash-row{display:grid;grid-template-columns:26px 1fr 92px 76px 84px;gap:16px;align-items:center;min-height:46px;border-bottom:1px solid #edf0f2;cursor:pointer;background:transparent;transition:background .11s ease}
 .dash-row:hover{background:#f7f9fa}
