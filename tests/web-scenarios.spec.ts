@@ -99,6 +99,42 @@ test('DB CRUD persists across reload, protects drafts and removes file controls'
   expect(update.expectedUpdatedAt).toBeTruthy()
 })
 
+test('접힌 편집 도구는 세로 스크롤이 있을 때만 왼쪽으로 이동한다', async ({ page }) => {
+  await installAuthStub(page, { enabled: true, session: owner })
+  await editor(page)
+  const source = page.getByRole('textbox', { name: '시나리오 Markdown 원본' })
+  await page.getByRole('button', { name: '편집 도구 접기' }).click()
+  const toggle = page.getByRole('button', { name: '편집 도구 펼치기' })
+  await source.fill('짧은 내용')
+  await expect(toggle).toHaveCSS('right', '12px')
+  await source.fill(Array(100).fill('긴 내용').join('\n'))
+  await expect(toggle).toHaveCSS('right', '22px')
+  await source.fill('짧은 내용')
+  await expect(toggle).toHaveCSS('right', '12px')
+})
+
+test('시나리오 도구로 추가할 때마다 고유 ID를 생성한다', async ({ page }) => {
+  await installAuthStub(page, { enabled: true, session: owner })
+  await editor(page)
+  const source = page.getByRole('textbox', { name: '시나리오 Markdown 원본' })
+  await source.fill('')
+  await chooseEnvironment(page, 'staging')
+  const add = page.getByRole('toolbar', { name: '시나리오 편집 도구' }).getByRole('button', { name: '시나리오', exact: true })
+  await add.click()
+  await add.click()
+  const ids = [...(await source.inputValue()).matchAll(/^id: (.+)$/gm)].map(match => match[1])
+  expect(ids).toHaveLength(2)
+  expect(new Set(ids).size).toBe(2)
+  const content = await source.inputValue()
+  expect([...content.matchAll(/^code: (.+)$/gm)].map(match => match[1])).toEqual(['TC_1', 'TC_2'])
+  expect([...content.matchAll(/^endpoint: (.+)$/gm)].map(match => match[1])).toEqual(['e-web', 'e-web'])
+  expect([...content.matchAll(/^environment: (.+)$/gm)].map(match => match[1])).toEqual(['v-stg', 'v-stg'])
+  for (const id of ids) expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i)
+  await page.getByRole('button', { name: '저장', exact: true }).click()
+  const saved = (await authCalls(page)).filter(([name]) => name === 'webScenarios.save').at(-1)![1].markdown as string
+  expect([...saved.matchAll(/^id: (.+)$/gm)].map(match => match[1])).toEqual(ids)
+})
+
 test('saving assigns unique IDs to blank and duplicated scenario IDs', async ({ page }) => {
   await installAuthStub(page, { enabled: true, session: owner })
   await editor(page)

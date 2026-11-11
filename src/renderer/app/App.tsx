@@ -305,6 +305,7 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
             resolveBaseUrl={environment.baseUrlFor}
             webEndpoints={environment.endpoints}
             defaultEndpointId={environment.endpointId}
+            environmentId={environment.environmentId}
             sidebar={<ScenarioList records={records} activeId={activeRecord?.id ?? null} loading={loading} busy={busy}
               draftTitle={activeRecord || !sourceMarkdown.trim() ? undefined : documentTitle(sourceMarkdown) || previews[0]?.title || ""} dirty={isDirty} onDelete={() => setConfirmDelete(true)}
               onSelect={requestOpenRecord} onNew={() => requestOpenRecord("new")} onRefresh={() => requestOpenRecord("refresh")} />}

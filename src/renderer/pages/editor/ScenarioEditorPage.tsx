@@ -36,6 +36,22 @@ const GRAMMAR: Array<[string, string, string]> = [
   ["조건", "And", " 화면에 `공지`가 있는 경우 `닫기` 클릭"],
 ];
 
+const EDITOR_TOOLS = [
+  { label: "제목", icon: "title", text: "# 문서: 문서 제목" },
+  { label: "해시태그", icon: "tag", text: "해시태그: #태그" },
+  { label: "시나리오", icon: "add_box", text: "# 시나리오: 제목" },
+  { label: "태그", icon: "sell", text: "tag: 태그" },
+  { label: "이동", icon: "open_in_browser", text: "Given `/경로` 페이지로 이동한다" },
+  { label: "클릭", icon: "ads_click", text: "When `대상` 클릭" },
+  { label: "입력", icon: "keyboard", text: "And `대상`에 `값` 입력" },
+  { label: "선택", icon: "check_circle", text: "And `대상`에서 `값` 선택" },
+  { label: "업로드", icon: "upload_file", text: "And `대상`에 `파일 경로` 파일 업로드" },
+  { label: "표시", icon: "visibility", text: "Then `텍스트` 텍스트가 보인다" },
+  { label: "미표시", icon: "visibility_off", text: "Then `텍스트` 텍스트 미노출 확인" },
+  { label: "수동확인", icon: "task_alt", text: "Then `확인 대상` 수동 결과 확인 [안내 문구]" },
+  { label: "직접제어", icon: "pan_tool", text: "And `화면` 브라우저 직접 제어 [안내 문구]" },
+];
+
 const SAMPLE_STEPS = [
   "Given `/login` 페이지로 이동한다",
   "And `아이디`에 `user@example.com` 입력",
@@ -73,6 +89,7 @@ type Props = {
   resolveBaseUrl: (endpointId?: string) => string;
   webEndpoints: Array<{ id: string; name: string }>;
   defaultEndpointId: string;
+  environmentId: string;
   previews: Scenario[];
   markerScenarioId: string;
   selectedId: string;
@@ -114,6 +131,7 @@ export const ScenarioEditorPage = ({
   resolveBaseUrl,
   webEndpoints,
   defaultEndpointId,
+  environmentId,
   previews,
   markerScenarioId,
   selectedId,
@@ -144,6 +162,41 @@ export const ScenarioEditorPage = ({
   const [draggedStepId, setDraggedStepId] = useState<string | null>(null);
   const [device, setDevice] = useState<Device>("desktop");
   const lineNumbersRef = useRef<HTMLOListElement | null>(null);
+  const sourceRef = useRef<HTMLTextAreaElement | null>(null);
+  const [toolbarOpen, setToolbarOpen] = useState(true);
+  const [sourceScrollable, setSourceScrollable] = useState(false);
+  useEffect(() => {
+    const source = sourceRef.current;
+    if (!source) return;
+    const update = () => setSourceScrollable(source.scrollHeight > source.clientHeight);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(source);
+    return () => observer.disconnect();
+  }, [mode, sourceMarkdown, toolbarOpen]);
+  const newScenarioText = () => {
+    const usedCodes = new Set(previews.map((item) => item.code));
+    let number = 1;
+    while (usedCodes.has(`TC_${number}`)) number += 1;
+    return ["# 시나리오: 제목", `id: ${crypto.randomUUID()}`, `code: TC_${number}`,
+      ...(defaultEndpointId ? [`endpoint: ${defaultEndpointId}`] : []),
+      ...(environmentId ? [`environment: ${environmentId}`] : [])].join("\n");
+  };
+  const insertTool = (text: string) => {
+    const source = sourceRef.current;
+    if (!source) return;
+    const start = source.selectionStart;
+    const end = source.selectionEnd;
+    const before = sourceMarkdown.slice(0, start);
+    const after = sourceMarkdown.slice(end);
+    const prefix = before && !before.endsWith("\n") ? "\n" : "";
+    const suffix = after && !after.startsWith("\n") ? "\n" : "";
+    onSourceChange(before + prefix + text + suffix + after);
+    requestAnimationFrame(() => {
+      source.focus();
+      source.setSelectionRange(start + prefix.length + text.length, start + prefix.length + text.length);
+    });
+  };
   const [openPreviewIds, setOpenPreviewIds] = useState<Set<string>>(
     () => new Set(previews[0] ? [previews[0].id] : []),
   );
@@ -315,11 +368,25 @@ export const ScenarioEditorPage = ({
               {lines.length} lines · {previews.length} scenarios
             </span>
           </div>
+          {toolbarOpen && (
+            <div className="scenario-editor-toolbar" role="toolbar" aria-label="시나리오 편집 도구">
+              <div className="scenario-editor-toolbar-items">
+                {EDITOR_TOOLS.map((tool) => (
+                  <Button key={tool.label} variant="plain" className="scenario-editor-tool" onMouseDown={(event) => event.preventDefault()} onClick={() => insertTool(tool.label === "시나리오" ? newScenarioText() : tool.text)} title={`${tool.label} 삽입`}>
+                    <span className="msi" aria-hidden="true">{tool.icon}</span><span>{tool.label}</span>
+                  </Button>
+                ))}
+              </div>
+              <Button variant="plain" className="scenario-editor-toolbar-toggle" onClick={() => setToolbarOpen(false)} aria-label="편집 도구 접기" title="편집 도구 접기"><span className="msi" aria-hidden="true">keyboard_double_arrow_up</span></Button>
+            </div>
+          )}
           <div className="markdown-editor-body">
+            {!toolbarOpen && <Button variant="plain" className={`scenario-editor-toolbar-open${sourceScrollable ? " has-scroll" : ""}`} onClick={() => setToolbarOpen(true)} aria-label="편집 도구 펼치기" title="편집 도구 펼치기"><span className="msi" aria-hidden="true">construction</span></Button>}
             <ol className="markdown-line-numbers" aria-hidden="true" ref={lineNumbersRef}>
               {lines.map((_, index) => <li key={index}>{index + 1}</li>)}
             </ol>
             <textarea
+              ref={sourceRef}
               className="scenario-source"
               data-ck-scroll="light"
               value={sourceMarkdown}
