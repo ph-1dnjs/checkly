@@ -69,16 +69,19 @@ export const AiTcPage = ({ model, environment }: { model: AiTcModel; environment
   const tabs: Array<{ id: Exclude<Pane, "">; label: string }> = [{ id: "chat", label: "대화" }, ...(screen === "run" ? [{ id: "list" as const, label: "목록" }] : [])];
 
   const extra = (
-    <div className="aitcx-header">
-      {workbook && (
-        <div className="aitc-file-chip" title={`${workbook.fileName} · 원본 변경 없음`}>
-          <span className="msi" aria-hidden="true">table_view</span>
-          <span className="aitc-file-name">{workbook.fileName}</span>
-        </div>
-      )}
-      <span className="aitc-divider" aria-hidden="true" />
-      <EnvPicker model={model} environment={environment} />
-    </div>
+    <>
+      <span className="aitc-beta">BETA</span>
+      <div className="aitcx-header">
+        {workbook && (
+          <div className="aitc-file-chip" title={`${workbook.fileName} · 원본 변경 없음`}>
+            <span className="msi" aria-hidden="true">table_view</span>
+            <span className="aitc-file-name">{workbook.fileName}</span>
+          </div>
+        )}
+        <span className="aitc-divider" aria-hidden="true" />
+        <EnvPicker model={model} environment={environment} />
+      </div>
+    </>
   );
 
   return (

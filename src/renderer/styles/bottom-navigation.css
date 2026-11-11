@@ -36,7 +36,8 @@
 .workspace .bottom-nav-brand-accent { color:var(--dock-accent); }
 
 .workspace .bottom-nav-controls { display:flex; align-items:center; gap:2px; padding:0 6px; }
-.workspace .bottom-nav-item { display:grid; flex:0 0 52px; width:52px; height:44px; place-items:center; padding:0; border:0; border-radius:999px; background:transparent; color:var(--item-fg); cursor:pointer; transition:background .12s ease, color .12s ease; }
+.workspace .bottom-nav-item { position:relative; display:grid; flex:0 0 52px; width:52px; height:44px; place-items:center; padding:0; border:0; border-radius:999px; background:transparent; color:var(--item-fg); cursor:pointer; transition:background .12s ease, color .12s ease; }
+.workspace .bottom-nav-beta { position:absolute; top:0; right:0; padding:2px 3px; border-radius:4px; background:#1f63ae; color:#fff; font-size:7px; font-weight:800; line-height:1; }
 .workspace .bottom-nav-item:hover { background:var(--item-hover); }
 .workspace .bottom-nav-item:disabled { background:transparent; opacity:.55; cursor:not-allowed; }
 .workspace .bottom-nav-item.active { background:var(--item-active-bg); color:var(--item-active-fg); box-shadow:var(--item-active-shadow); }
