@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { routePath, migrateLegacyUrl, parseMarkdown, splitScenarioBlocks, type Scenario, type Step } from './scenario';
+import { routePath, migrateLegacyUrl, parseMarkdown, splitScenarioBlocks, documentTitle, documentTags, withDocumentTitle, type Scenario, type Step } from './scenario';
 
 export const isUuid = (value: string | undefined): value is string => !!value && /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(value);
 
@@ -45,7 +45,7 @@ export const normalizeDocument = (source: string, positions: string, newDocument
     return lines.map(line => /^(Given|When|Then|And|But|If)\s+/i.test(line.trim())
       ? `${line.replace(/\s*<!-- step:[a-f0-9-]{36} -->/g, '')} <!-- step:${scenario.steps[stepIndex++].databaseId} -->` : line).join('\n');
   });
-  return { scenarios, markdown: blocks.join('\n\n'), positions: JSON.stringify(Object.fromEntries(scenarios.map(scenario => [scenario.id,
+  return { scenarios, markdown: documentTitle(source) ? withDocumentTitle(blocks.join('\n\n'), documentTitle(source), documentTags(source)) : blocks.join('\n\n'), positions: JSON.stringify(Object.fromEntries(scenarios.map(scenario => [scenario.id,
     scenario.steps.filter(step => step.x !== undefined && step.y !== undefined),
   ]))) };
 };

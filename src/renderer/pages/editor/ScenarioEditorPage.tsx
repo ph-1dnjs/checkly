@@ -310,7 +310,7 @@ export const ScenarioEditorPage = ({
         {sidebar}
         <section className="ws-editor-source">
           <div className="ws-col-label">
-            <span>MARKDOWN</span>
+            <span title="문서 제목 바로 아래에 해시태그: #태그 형식으로 입력하세요.">MARKDOWN · 해시태그: #태그</span>
             <span>
               {lines.length} lines · {previews.length} scenarios
             </span>
@@ -324,7 +324,7 @@ export const ScenarioEditorPage = ({
               data-ck-scroll="light"
               value={sourceMarkdown}
               spellCheck={false}
-              placeholder={"# 시나리오: 제목\nendpoint: <엔드포인트 ID>\n\nGiven `/login` 페이지로 이동한다"}
+              placeholder={"# 문서: 문서 제목\n해시태그: #인증 #로그인\n\n# 시나리오: 제목\nendpoint: <엔드포인트 ID>\n\nGiven `/login` 페이지로 이동한다"}
               onChange={(event) => onSourceChange(event.target.value)}
               onScroll={(event) => {
                 if (lineNumbersRef.current)

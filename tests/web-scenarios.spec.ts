@@ -20,6 +20,49 @@ const editor = async (page: import('@playwright/test').Page) => {
   await page.getByRole('tab', { name: '편집' }).click()
 }
 
+test('문서 제목을 시나리오 제목과 별도로 저장하고 이전 본문에는 제목을 채운다', async ({ page }) => {
+  await installAuthStub(page, { enabled: true, session: owner })
+  await editor(page)
+  const source = page.getByRole('textbox', { name: '시나리오 Markdown 원본' })
+  await source.fill('# 문서: 인증 테스트\n\n' + markdown)
+  await page.getByRole('button', { name: '저장', exact: true }).click()
+  await expect(page.locator('.scenario-files')).toContainText('인증 테스트')
+  let saved = (await authCalls(page)).filter(([name]) => name === 'webScenarios.save').at(-1)![1]
+  expect(saved.title).toBe('인증 테스트')
+  expect(saved.markdown).toMatch(/^# 문서: 인증 테스트\n\n# 시나리오: 팀 로그인/)
+  await source.fill(markdown)
+  await page.getByRole('button', { name: '저장', exact: true }).click()
+  saved = (await authCalls(page)).filter(([name]) => name === 'webScenarios.save').at(-1)![1]
+  expect(saved.title).toBe('팀 로그인')
+  expect(saved.markdown).toMatch(/^# 문서: 팀 로그인\n\n# 시나리오: 팀 로그인/)
+})
+
+test('문서 해시태그를 저장하고 # 검색과 제목 검색을 구분한다', async ({ page }) => {
+  await installAuthStub(page, { enabled: true, session: owner })
+  await editor(page)
+  const source = page.getByRole('textbox', { name: '시나리오 Markdown 원본' })
+  await source.fill('# 문서: 인증 문서\n해시태그: #로그인 #Smoke\n\n' + markdown)
+  await page.getByRole('button', { name: '저장', exact: true }).click()
+  const saved = (await authCalls(page)).filter(([name]) => name === 'webScenarios.save').at(-1)![1]
+  expect(saved.markdown).toContain('해시태그: #로그인 #Smoke')
+  const search = page.getByRole('searchbox', { name: '문서 검색' })
+  await search.fill('#smo')
+  await expect(page.locator('.scenario-files-row').filter({ hasText: '인증 문서' })).toBeVisible()
+  await search.fill('로그인')
+  await expect(page.locator('.scenario-files-row').filter({ hasText: '인증 문서' })).toHaveCount(0)
+  await search.fill('인증')
+  await expect(page.locator('.scenario-files-row').filter({ hasText: '인증 문서' })).toBeVisible()
+  await search.fill('#인증')
+  await expect(page.locator('.scenario-files-row').filter({ hasText: '인증 문서' })).toHaveCount(0)
+  await search.fill('')
+  await page.reload()
+  await page.getByRole('button', { name: '시나리오 · 편집과 실행' }).click()
+  await page.getByRole('tab', { name: '편집' }).click()
+  await page.getByRole('searchbox', { name: '문서 검색' }).fill('#로그인')
+  await page.locator('.scenario-files-row').filter({ hasText: '인증 문서' }).click()
+  await expect(source).toHaveValue(/해시태그: #로그인 #Smoke/)
+})
+
 test('DB CRUD persists across reload, protects drafts and removes file controls', async ({ page }) => {
   await installAuthStub(page, { enabled: true, session: owner })
   await editor(page)
@@ -54,6 +97,35 @@ test('DB CRUD persists across reload, protects drafts and removes file controls'
   const update = calls.filter(([name]) => name === 'webScenarios.save')[1][1]
   expect(update.id).toBeTruthy()
   expect(update.expectedUpdatedAt).toBeTruthy()
+})
+
+test('saving assigns unique IDs to blank and duplicated scenario IDs', async ({ page }) => {
+  await installAuthStub(page, { enabled: true, session: owner })
+  await editor(page)
+  const source = page.getByRole('textbox', { name: '시나리오 Markdown 원본' })
+  const existingId = 'a1111111-1111-4111-8111-111111111111'
+  await source.fill(`# 시나리오: 기존\nid: ${existingId}\nGiven \`기존\` 클릭\n\n# 시나리오: 빈 ID\nid: \nGiven \`추가\` 클릭\n\n# 시나리오: 복사\nid: ${existingId}\nGiven \`복사\` 클릭\n\n# 시나리오: ID 없음\nGiven \`마지막\` 클릭`)
+  await page.getByRole('button', { name: '저장', exact: true }).click()
+  await expect(page.getByText('저장 안 됨', { exact: true })).toHaveCount(0)
+  const saved = (await authCalls(page)).filter(([name]) => name === 'webScenarios.save')[0][1].markdown as string
+  const ids = [...saved.matchAll(/^id: (.+)$/gm)].map(match => match[1])
+  expect(ids).toHaveLength(4)
+  expect(ids[0]).toBe(existingId)
+  expect(new Set(ids).size).toBe(4)
+  for (const id of ids) expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i)
+  const persisted = await source.inputValue()
+  const persistedIds = [...persisted.matchAll(/^id: (.+)$/gm)].map(match => match[1])
+  expect(persistedIds).toHaveLength(4)
+  expect(new Set(persistedIds).size).toBe(4)
+  await page.reload()
+  await page.getByRole('button', { name: '시나리오 · 편집과 실행' }).click()
+  await page.getByRole('tab', { name: '편집' }).click()
+  await page.locator('.scenario-files button').filter({ hasText: '기존' }).click()
+  await expect(source).toHaveValue(persisted)
+  await source.fill(persisted.replace('시나리오: 기존', '시나리오: 수정'))
+  await page.getByRole('button', { name: '저장', exact: true }).click()
+  await expect(page.getByText('저장 안 됨', { exact: true })).toHaveCount(0)
+  expect([...(await source.inputValue()).matchAll(/^id: (.+)$/gm)].map(match => match[1])).toEqual(persistedIds)
 })
 
 test('conflicting save and delete preserve the local draft', async ({ page }) => {
@@ -211,6 +283,31 @@ test('run targets stack in pick order and files can be reordered by dragging', a
   await page.locator('.picker-cart-file > .api-sort-handle').nth(0).press('ArrowDown')
   await expect(files).toHaveText(['프로필', '팀 로그인'])
   await page.screenshot({ path: '/tmp/checkly-db-picker-order.png', fullPage: true })
+})
+
+test('tag selection and scenario ordering apply within a document', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 960 })
+  await installAuthStub(page, { enabled: true, session: owner })
+  await editor(page)
+  const source = page.getByRole('textbox', { name: '시나리오 Markdown 원본' })
+  await source.fill(markdown.replace('endpoint: e-web', 'endpoint: e-web\ntag: 인증') + '\n\n# 시나리오: 로그아웃\nendpoint: e-web\ntag: 인증\n\nGiven `로그아웃` 클릭\n\n# 시나리오: 프로필\nendpoint: e-web\ntag: 기타\n\nGiven `프로필` 클릭')
+  await page.getByRole('button', { name: '저장', exact: true }).click()
+  await page.getByRole('tab', { name: '실행', exact: true }).click()
+  const tag = page.getByRole('checkbox', { name: '인증 태그 선택' })
+  const items = page.locator('.picker-cart-item > span')
+  await tag.click()
+  await expect(items).toHaveText(['팀 로그인', '로그아웃'])
+  await page.locator('.picker-cart-scenarios > .picker-cart-item > .api-sort-handle').first().press('ArrowDown')
+  await expect(items).toHaveText(['로그아웃', '팀 로그인'])
+  const handles = page.locator('.picker-cart-scenarios > .picker-cart-item > .api-sort-handle')
+  await handles.nth(1).dragTo(handles.nth(0), { targetPosition: { x: 4, y: 2 } })
+  await expect(items).toHaveText(['팀 로그인', '로그아웃'])
+  await page.getByRole('button', { name: '팀 로그인 빼기' }).click()
+  await expect(tag).toHaveAttribute('aria-checked', 'mixed')
+  await tag.click()
+  await expect(items).toHaveText(['로그아웃', '팀 로그인'])
+  await tag.click()
+  await expect(items).toHaveCount(0)
 })
 
 test('scenario header selects a website and legacy url becomes a goto step on save', async ({ page }) => {

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import type { WebScenarioRecord } from "../../app/ipc/web-scenario/types";
-import { parseMarkdown } from "../shared/model/scenario";
+import { documentTags, parseMarkdown } from "../shared/model/scenario";
 import { LoadingSpinner } from "../shared/ui/LoadingSpinner";
 import { Button } from "../shared/ui/Button";
 import { Input } from "../shared/ui/Input";
@@ -34,7 +34,9 @@ export const ScenarioList = ({ records, activeId, busy, loading, onSelect, onNew
   const [query, setQuery] = useState("");
   const counts = useMemo(() => Object.fromEntries(records.map(record => [record.id, parseMarkdown(record.markdown).length])), [records]);
   const keyword = query.trim().toLowerCase();
-  const visible = keyword ? records.filter(record => record.title.toLowerCase().includes(keyword)) : records;
+  const visible = keyword ? records.filter(record => keyword.startsWith("#")
+    ? documentTags(record.markdown).some(tag => tag.toLowerCase().includes(keyword.slice(1)))
+    : record.title.toLowerCase().includes(keyword)) : records;
   const showDraft = draftTitle !== undefined && activeId === null;
   const deleteButton = onDelete && (
     <Button className="scenario-files-delete" variant="ghost" iconOnly aria-label="시나리오 삭제" title="시나리오 삭제" disabled={busy || loading} onClick={onDelete}>
@@ -61,7 +63,7 @@ export const ScenarioList = ({ records, activeId, busy, loading, onSelect, onNew
         <Input
           type="search"
           aria-label="문서 검색"
-          placeholder="문서 검색"
+          placeholder="제목 또는 #해시태그 검색"
           value={query}
           onChange={event => setQuery(event.target.value)}
           leading={<span className="msi" aria-hidden="true">search</span>}

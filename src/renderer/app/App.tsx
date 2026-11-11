@@ -13,7 +13,7 @@ import { ScenarioWorkspaceHeaderExtra } from "../widgets/ScenarioWorkspaceHeader
 import { PageLayout } from "../shared/ui/PageLayout";
 import { ScenarioList } from "../widgets/ScenarioList";
 import { useScenarioEnvironment } from "./hooks/useScenarioEnvironment";
-import { isScenarioWorkspaceRoute, parseMarkdown } from "../shared/model/scenario";
+import { documentTitle, isScenarioWorkspaceRoute, parseMarkdown } from "../shared/model/scenario";
 import { RunReportDrawer } from "../widgets/RunReportDrawer";
 import { RunReportViewer } from "../widgets/RunReportViewer";
 import "../shared/model/electron-api";
@@ -306,7 +306,7 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
             webEndpoints={environment.endpoints}
             defaultEndpointId={environment.endpointId}
             sidebar={<ScenarioList records={records} activeId={activeRecord?.id ?? null} loading={loading} busy={busy}
-              draftTitle={activeRecord || !sourceMarkdown.trim() ? undefined : previews[0]?.title ?? ""} dirty={isDirty} onDelete={() => setConfirmDelete(true)}
+              draftTitle={activeRecord || !sourceMarkdown.trim() ? undefined : documentTitle(sourceMarkdown) || previews[0]?.title || ""} dirty={isDirty} onDelete={() => setConfirmDelete(true)}
               onSelect={requestOpenRecord} onNew={() => requestOpenRecord("new")} onRefresh={() => requestOpenRecord("refresh")} />}
             previews={previews}
             markerScenarioId={markerScenarioId || previews[0]?.id || ""}

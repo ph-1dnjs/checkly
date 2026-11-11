@@ -159,6 +159,7 @@
 .picker-tags>span { color:#8a939c; font-size:11px; white-space:nowrap; }
 .scenario-workspace .picker-tag { height:22px; display:flex; align-items:center; gap:6px; padding:0 8px; border:1px solid #b9d4f1; border-radius:4px; background:#edf4fc; color:#1f63ae; font-family:D2Coding,ui-monospace,monospace; font-size:11px; font-style:normal; letter-spacing:0; white-space:nowrap; }
 .picker-tag b { color:#8a939c; font-weight:400; }
+.scenario-workspace .picker-tag[aria-checked="true"], .scenario-workspace .picker-tag[aria-checked="mixed"] { border-color:#1f63ae; background:#dcecff; }
 .picker-scenario-list { flex:1 1 auto; min-height:0; overflow:auto; padding-bottom:120px; }
 .scenario-workspace .picker-scenario { border-bottom:1px solid #edf0f2; border-left:2px solid transparent; }
 .scenario-workspace .picker-scenario.picked { background:#f5f9fe; border-left-color:#3d8ce0; }

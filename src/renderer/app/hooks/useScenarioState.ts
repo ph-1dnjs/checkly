@@ -8,6 +8,9 @@ import {
   routePath,
   parseMarkdown,
   splitScenarioBlocks,
+  documentTitle,
+  documentTags,
+  withDocumentTitle,
   emptyScenario,
   type Action,
   type MarkerPositionStore,
@@ -29,11 +32,13 @@ const isUuid = (id: string) => /^[a-f0-9-]{36}$/i.test(id);
 const identifyMarkdown = (source: string, previous: Scenario[] = []): string => {
   const markdown = splitScenarioBlocks(source).map(migrateLegacyUrl).join("\n\n");
   const parsed = parseMarkdown(markdown);
+  const usedScenarioIds = new Set<string>();
   const usedStepIds = new Set<string>();
-  return splitScenarioBlocks(markdown).map((block, index) => {
+  const blocks = splitScenarioBlocks(markdown).map((block, index) => {
     const item = parsed[index];
     const prior = previous.find(scenario => scenario.id === item.id) ?? previous[index];
-    const id = isUuid(item.id) ? item.id : prior && isUuid(prior.id) ? prior.id : crypto.randomUUID();
+    const id = isUuid(item.id) && !usedScenarioIds.has(item.id) ? item.id : crypto.randomUUID();
+    usedScenarioIds.add(id);
     const code = item.code ?? prior?.code ?? `TC_${index + 1}`;
     let stepIndex = 0;
     const lines = block.trim().split("\n").filter(line => !/^\s*(id|code):/.test(line));
@@ -48,10 +53,11 @@ const identifyMarkdown = (source: string, previous: Scenario[] = []): string => 
       return `${line.replace(/\s*<!-- step:[a-f0-9-]{36} -->/, "")} <!-- step:${stepId} -->`;
     }).join("\n");
   }).join("\n\n");
+  return documentTitle(source) ? withDocumentTitle(blocks, documentTitle(source), documentTags(source)) : blocks;
 };
 /** 모든 시나리오 블록의 `endpoint:`·`environment:`를 헤더에서 고른 서버·환경으로 맞춘다. */
-const withTarget = (markdown: string, target: ScenarioTarget): string =>
-  splitScenarioBlocks(markdown).map(block => {
+const withTarget = (markdown: string, target: ScenarioTarget): string => {
+  const blocks = splitScenarioBlocks(markdown).map(block => {
     if (!/^\s*(#{1,3}\s*시나리오:|Scenario:)/i.test(block)) return block.trim();
     const lines = block.trim().split("\n").filter(line => !/^\s*(endpoint|environment):/.test(line));
     let at = 1;
@@ -61,6 +67,8 @@ const withTarget = (markdown: string, target: ScenarioTarget): string =>
       ...(target.environmentId ? [`environment: ${target.environmentId}`] : []));
     return lines.join("\n");
   }).join("\n\n");
+  return /^\s*#\s*문서:/i.test(markdown) ? withDocumentTitle(blocks, documentTitle(markdown), documentTags(markdown)) : blocks;
+};
 const positionKey = (scenario: Scenario) =>
   scenario.id;
 const applyPositions = (
@@ -160,7 +168,8 @@ const replaceScenarioMarkdown = (
   );
   if (index < 0) return sourceMarkdown;
   blocks[index] = scenarioToMarkdown(scenario);
-  return blocks.join("\n\n").trim();
+  const result = blocks.join("\n\n").trim();
+  return documentTitle(sourceMarkdown) ? withDocumentTitle(result, documentTitle(sourceMarkdown), documentTags(sourceMarkdown)) : result;
 };
 
 type UseScenarioStateOptions = {
@@ -339,7 +348,7 @@ export const useScenarioState = ({
     setPositionStore({});
     setSavedPositions("{}");
     setSavedMarkdown("");
-    const markdown = identifyMarkdown(withTarget("# 시나리오: 새 시나리오\n\n", target));
+    const markdown = identifyMarkdown(withTarget("# 문서: 새 시나리오\n\n# 시나리오: 새 시나리오\n\n", target));
     setSourceMarkdown(markdown);
     const first = parseMarkdown(markdown)[0];
     setScenario(first);
@@ -360,7 +369,7 @@ export const useScenarioState = ({
       .map(line => line.replace(/\s*<!-- step:[a-f0-9-]{36} -->/, ""))
       .join("\n")
       .replace(/^(#\s*시나리오:\s*)(.+)$/m, (_, head: string, title: string) => `${head}${title.trim()} 복사본`);
-    const markdown = identifyMarkdown(stripped);
+    const markdown = identifyMarkdown(withDocumentTitle(stripped, `${documentTitle(source) || original[0].title} 복사본`));
     const copied = parseMarkdown(markdown);
     const store = Object.fromEntries(copied.map((item, index) => [item.id,
       (currentPositions[positionKey(original[index])] ?? []).map(({ databaseId: _databaseId, ...point }) => point),
@@ -391,6 +400,8 @@ export const useScenarioState = ({
     markdown = withTarget(markdown, target);
     const parsed = parseMarkdown(markdown);
     if (!parsed.length) { showToast("저장할 시나리오를 작성하세요."); return false; }
+    const title = documentTitle(markdown) || parsed[0].title;
+    markdown = withDocumentTitle(markdown, title);
     markdown = identifyMarkdown(markdown, previews);
     const identified = parseMarkdown(markdown);
     const positions = serializePositions(Object.fromEntries(identified.map((item, index) => [positionKey(item), currentPositions[positionKey(parsed[index])] ?? []])));
@@ -400,7 +411,7 @@ export const useScenarioState = ({
       const shared = separateUploadPaths(markdown, positions);
       const saved = await window.electronAPI.webScenarios.save({
         id: activeRecord?.id, expectedUpdatedAt: activeRecord?.updatedAt,
-        title: parsed[0].title, markdown: shared.markdown, positions: shared.positions,
+        title, markdown: shared.markdown, positions: shared.positions,
       });
       const record = restoreUploadPaths(saved, shared.paths);
       setActiveRecord(record);

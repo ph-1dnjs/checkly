@@ -75,17 +75,20 @@ export class WebScenarioStore {
     const parsed = parseMarkdown(markdown);
     const scenarioIds = parsed.map(item => item.id).filter(isUuid);
     const stepIds = parsed.flatMap(item => item.steps.map(step => step.databaseId)).filter(isUuid);
-    const [items, steps] = await Promise.all([
-      scenarioIds.length ? this.client.from("web_scenario_items").select("id,document_id").in("id", scenarioIds) : { data: [], error: null },
-      stepIds.length ? this.client.from("web_scenario_steps").select("id,scenario_id").in("id", stepIds) : { data: [], error: null },
-    ]);
-    if (items.error) throw items.error;
-    if (steps.error) throw steps.error;
-    return {
-      documentId,
-      scenarios: new Map((items.data ?? []).map(row => [row.id, row.document_id])),
-      steps: new Map((steps.data ?? []).map(row => [row.id, row.scenario_id])),
-    };
+    const scenarios = new Map<string, string>();
+    const steps = new Map<string, string>();
+    // PostgREST encodes IDs in the URL; keep each request small for large documents.
+    for (let i = 0; i < scenarioIds.length; i += 50) {
+      const { data, error } = await this.client.from("web_scenario_items").select("id,document_id").in("id", scenarioIds.slice(i, i + 50));
+      if (error) throw error;
+      for (const row of data ?? []) scenarios.set(row.id, row.document_id);
+    }
+    for (let i = 0; i < stepIds.length; i += 50) {
+      const { data, error } = await this.client.from("web_scenario_steps").select("id,scenario_id").in("id", stepIds.slice(i, i + 50));
+      if (error) throw error;
+      for (const row of data ?? []) steps.set(row.id, row.scenario_id);
+    }
+    return { documentId, scenarios, steps };
   }
 
   async save(raw: WebScenarioInput): Promise<WebScenarioRecord> {

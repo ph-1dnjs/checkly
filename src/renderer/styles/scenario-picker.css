@@ -55,6 +55,10 @@
 .picker-cart-group span{font-family:D2Coding,ui-monospace,monospace;font-size:11px;color:#3d4650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .picker-cart-group b{margin-left:auto;font-family:D2Coding,ui-monospace,monospace;font-size:10px;color:#8a939c;font-weight:400}
 .picker-cart-files{margin:0}
+.picker-cart-scenarios{margin:0}
+.picker-cart-scenarios>.picker-cart-item>.api-sort-handle{flex:none;color:#a6aeb5;cursor:grab}
+.picker-cart-scenarios.is-sorting>.picker-cart-item{transition:transform .18s cubic-bezier(.2,.8,.2,1)}
+@media(prefers-reduced-motion:reduce){.picker-cart-scenarios.is-sorting>.picker-cart-item{transition:none}}
 .picker-cart-file{display:grid;grid-template-columns:minmax(0,1fr);background:#fff}
 .picker-cart .picker-cart-file>.picker-cart-group{grid-area:1/1;padding-left:30px}
 .picker-cart-file>.api-sort-handle{grid-area:1/1;position:sticky;top:0;z-index:2;align-self:start;justify-self:start;display:flex;align-items:center;justify-content:center;width:26px;height:26px;padding:0;border:0;background:transparent;color:#a6aeb5;cursor:grab}
