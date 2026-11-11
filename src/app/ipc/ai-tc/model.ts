@@ -2,10 +2,11 @@
 // Node·Electron·DOM을 import하지 않는 순수 함수만 둔다. 정책: docs/ai-browser-tc-policy.md
 
 /** 엑셀에서 읽는 TC 필드. 필수는 TC ID·테스트 단계·기대 결과. */
-export type AiTcField = "id" | "scenarioId" | "kind" | "pre" | "steps" | "expected" | "data";
+export type AiTcField = "id" | "title" | "scenarioId" | "kind" | "pre" | "steps" | "expected" | "data";
 
 export const AI_TC_FIELDS: Array<{ field: AiTcField; label: string; required: boolean; aliases: string[] }> = [
   { field: "id", label: "TC ID", required: true, aliases: ["tcid", "테스트케이스id", "케이스id", "tc번호", "tcno"] },
+  { field: "title", label: "TC명", required: false, aliases: ["테스트케이스명", "테스트명", "testcasename", "title"] },
   { field: "scenarioId", label: "시나리오 ID", required: false, aliases: ["시나리오id", "scenarioid", "시나리오번호"] },
   { field: "kind", label: "구분", required: false, aliases: ["구분", "분류", "유형", "category"] },
   { field: "pre", label: "사전 조건", required: false, aliases: ["사전조건", "전제조건", "precondition", "preconditions"] },
@@ -131,18 +132,29 @@ export function dataNeeds(input: { data: string; steps: string; pre: string }): 
 
 const textOf = (row: AiTcRawRow, col: number | undefined) => (col ? row.cells[col] ?? "" : "").trim();
 
+/** TC 표 위의 '공통 사전 조건' 행: 첫 칸은 라벨, 오른쪽 칸들은 해당 시트의 조건이다. */
+export function commonPreconditions(sheet: AiTcSheet, options: AiTcImportOptions): string[] {
+  if (!sheet.headerRow || (sheet.hidden && !options.hiddenSheets)) return [];
+  return sheet.rows.filter(row => row.row < sheet.headerRow && (!row.hidden || options.hiddenRows)
+    && normalize(row.cells[1] ?? "") === "공통사전조건")
+    .map(row => Object.entries(row.cells).filter(([col]) => Number(col) > 1 && !row.mergedFrom.includes(Number(col)))
+      .map(([, value]) => value.trim()).filter(Boolean).join("\n")).filter(Boolean);
+}
+
 /** 시트들의 행을 TC로 바꾸고 빈 ID·중복 ID·빈 단계·빈 기대 결과를 행 오류로 표시한다. */
 export function buildCases(workbook: AiTcWorkbook, options: AiTcImportOptions): AiTcCase[] {
   const cases: AiTcCase[] = [];
   for (const sheet of workbook.sheets) {
     if (!sheet.headerRow || (sheet.hidden && !options.hiddenSheets)) continue;
     const map = sheet.mapping;
+    const common = commonPreconditions(sheet, options).join("\n");
     for (const row of sheet.rows) {
       if (row.row <= sheet.headerRow || (row.hidden && !options.hiddenRows)) continue;
       // TC ID·단계·기대 결과는 병합된 칸을 이어받지 않는다(같은 TC가 여러 행으로 늘어나지 않도록).
       const own = (field: AiTcField) => (map[field] && row.mergedFrom.includes(map[field]!) ? "" : textOf(row, map[field]));
       const id = own("id"), stepsRaw = own("steps"), expectedRaw = own("expected");
-      const pre = textOf(row, map.pre), data = textOf(row, map.data);
+      const ownPre = textOf(row, map.pre), data = textOf(row, map.data);
+      const pre = [common ? `공통 사전 조건:\n${common}` : "", ownPre].filter(Boolean).join("\n\n");
       if (!id && !stepsRaw && !expectedRaw) continue;
       const steps = splitItems(stepsRaw);
       const expected = splitItems(expectedRaw).map((text, index) => ({ id: `E${index + 1}`, text }));
@@ -156,7 +168,7 @@ export function buildCases(workbook: AiTcWorkbook, options: AiTcImportOptions): 
       cases.push({
         key: `${workbook.fileName}:${sheet.name}:${row.row}`,
         id, scenarioId: textOf(row, map.scenarioId), kind: textOf(row, map.kind),
-        title: steps[0] ?? stepsRaw, pre, steps, stepsRaw, expected, expectedRaw,
+        title: own("title") || steps[0] || stepsRaw, pre, steps, stepsRaw, expected, expectedRaw,
         data: dataNeeds({ data, steps: stepsRaw, pre }),
         sheet: sheet.name, row: row.row, refs: id ? findRefs(pre, id) : [], errors, warnings,
       });
@@ -275,10 +287,11 @@ export type AiTcExpectedResult = AiTcExpected & {
   basis: Array<{ k: string; v: string }>;
   captureId?: string;
   at?: string;
-  /** ai: 모델 판정 · system: 앱이 기록한 실행 불가 사유 · user: 사용자 수정 */
-  by: "ai" | "system" | "user";
+  /** ai: 모델 판정 · automation: 승인된 조건 재검증 · system: 실행 불가 · user: 사용자 수정 */
+  by: "ai" | "automation" | "system" | "user";
   /** 사용자가 바꾸기 전 판정 */
   original?: AiTcVerdict;
+  originalBy?: "ai" | "automation" | "system";
   note?: string;
 };
 
@@ -293,6 +306,12 @@ export type AiTcCaseResult = {
   row: number;
   expected: AiTcExpectedResult[];
   actions: AiTcActionLog[];
+  /** 성공한 동작의 재실행 후보. verify는 이전 판정을 포함하지 않는다. */
+  recording?: import("./recording").RecordedStep[];
+  timing?: { observationMs: number; modelMs: number; browserMs: number };
+  usage?: { input: number; output: number; cachedInput: number; cacheWrite: number; measured: number; unknown: number };
+  modelCalls?: Array<{ phase: AiTcUsagePhase; attempt: number; promptChars: number; snapshotChars: number; image: boolean; usage?: import("./ai").ModelUsage; outcome: "pending" | "used" | "discarded" | "error"; reason?: "format" | "call" | "guard" | "page" | "snapshot" | "observation" | "unexpected" }>;
+  repairSuggestion?: { reason: string; index: number; step: import("./recording").RecordedStep };
   reason?: string;
   startedAt?: string;
   endedAt?: string;
@@ -301,6 +320,7 @@ export type AiTcCaseResult = {
 export type AiTcWaitKind = "login" | "confirm" | "domain" | "popup" | "download" | "handoff";
 
 export type AiTcWait = {
+  context?: { source: "app" | "ai"; attempted: string; request: string };
   kind: AiTcWaitKind;
   title: string;
   body: string;
@@ -309,7 +329,11 @@ export type AiTcWait = {
 
 export type AiTcRunStatus = "running" | "waiting" | "done" | "cancelled" | "error";
 
+export type AiTcUsage = { input: number; output: number; cachedInput: number; cacheWrite: number; measured: number; unknown: number };
+export type AiTcUsagePhase = "explore" | "judge" | "retry" | "repair";
+
 export type AiTcRunState = {
+  usageByPhase?: Partial<Record<AiTcUsagePhase, AiTcUsage>>;
   runId: string;
   status: AiTcRunStatus;
   wait?: AiTcWait;
@@ -321,7 +345,11 @@ export type AiTcRunState = {
   capturePaused: boolean;
   highlight?: { x: number; y: number; w: number; h: number; label: string };
   cases: AiTcCaseResult[];
-  budget: { actions: number; modelCalls: number; maxActions: number; maxModelCalls: number; maxMinutes: number; caseStartedAt?: string };
+  budget: { actions: number; modelCalls: number; maxActions: number; maxModelCalls: number; maxMinutes: number; caseStartedAt?: string; tokenWarning?: string };
+  usage?: { input: number; output: number; cachedInput: number; cacheWrite: number; measured: number; unknown: number };
+  preparationUsage?: AiTcPreparationUsage;
+  previousRun?: { elapsedMs: number; userWaitMs?: number; modelCalls: number; input: number; output: number; cachedInput: number; cacheWrite: number; unknown: number };
+  userWaitMs?: number;
   provider: string;
   allowedHosts: string[];
   viewport: { width: number; height: number };
@@ -353,9 +381,15 @@ export type AiTcRunPlan = {
   allowedHosts: string[];
   capture: boolean;
   video: boolean;
+  imageToAi?: boolean;
   tool: "claude" | "codex";
   environmentLabel: string;
+  tokenLimit?: number;
+  tokenLimitPerCase?: number;
+  preparationUsage?: AiTcPreparationUsage;
 };
+
+export type AiTcPreparationUsage = Record<"claude" | "codex", { input: number; output: number; cached: number; write: number; unknown: number }>;
 
 /** 사용자 대기에서 고른 조치. */
 export type AiTcDecision = "resume" | "allow" | "handoff" | "block" | "stop";

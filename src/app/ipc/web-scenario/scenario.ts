@@ -38,8 +38,20 @@ export type Scenario = {
 const unquoteMarkdownValue = (value: string) =>
   value.trim().replace(/^`([\s\S]*)`$/, "$1");
 
+export const documentTitle = (markdown: string): string =>
+  markdown.match(/^\s*#[ \t]*문서:[ \t]*([^\r\n]*)/i)?.[1]?.trim() ?? "";
+
+const documentHeader = /^\s*#\s*문서:[^\r\n]*(?:\r?\n[ \t]*해시태그:[^\r\n]*)?(?:\r?\n)*/i;
+export const documentTags = (markdown: string): string[] => {
+  const tags = markdown.match(/^\s*#\s*문서:[^\r\n]*\r?\n[ \t]*해시태그:[ \t]*([^\r\n]*)/i)?.[1] ?? "";
+  return [...tags.matchAll(/#([^\s#,]+)/g)].map(match => match[1]);
+};
+
+export const withDocumentTitle = (markdown: string, title: string, tags = documentTags(markdown)): string =>
+  [`# 문서: ${title}${tags.length ? `\n해시태그: ${tags.map(tag => `#${tag}`).join(" ")}` : ""}`, markdown.replace(documentHeader, "").trim()].filter(Boolean).join("\n\n");
+
 export const splitScenarioBlocks = (markdown: string): string[] =>
-  markdown
+  markdown.replace(documentHeader, "")
     .split(/(?=^#{1,3}\s*시나리오:|^Scenario:)/im)
     // 편집 중에는 Enter/Delete로 공백 줄만 남는 중간 상태가 생길 수 있다.
     // 이 상태는 시나리오 블록이 아니므로 파싱/교체 대상에서 제외한다.

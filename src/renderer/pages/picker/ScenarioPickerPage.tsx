@@ -66,11 +66,24 @@ export const ScenarioPickerPage = ({ records, loading, pickedKeys, onPick, onOpe
     next.has(id) ? next.delete(id) : next.add(id);
     onPick(next);
   };
+  const toggleTag = (tag: string) => {
+    const tagged = activeScenarios.filter(scenario => scenario.tag === tag);
+    const allPicked = tagged.every(scenario => pickedKeys.has(scenario.id));
+    const next = new Set(pickedKeys);
+    tagged.forEach(scenario => allPicked ? next.delete(scenario.id) : next.add(scenario.id));
+    onPick(next);
+  };
   const moveGroup = (from: number, to: number) => {
     const next = [...pickedGroups];
     next.splice(to, 0, ...next.splice(from, 1));
     // Keys of scenarios no longer in the list stay at the end.
     onPick(new Set([...next.flatMap(group => group.scenarios.map(scenario => scenario.id)), ...pickedKeys]));
+  };
+  const moveScenario = (group: ScenarioGroup, from: number, to: number) => {
+    const scenarios = [...group.scenarios];
+    scenarios.splice(to, 0, ...scenarios.splice(from, 1));
+    const next = pickedGroups.map(item => item.record.id === group.record.id ? { ...item, scenarios } : item);
+    onPick(new Set([...next.flatMap(item => item.scenarios.map(scenario => scenario.id)), ...pickedKeys]));
   };
   const toggleExpand = (id: string) => setExpandedKeys(current => {
     const next = new Set(current);
@@ -137,9 +150,13 @@ export const ScenarioPickerPage = ({ records, loading, pickedKeys, onPick, onOpe
                 {Object.keys(tagCounts).length > 0 && (
                   <div className="picker-tags">
                     <span>태그</span>
-                    {Object.entries(tagCounts).map(([tag, count]) => (
-                      <em key={tag} className="picker-tag">{tag}<b>{count}</b></em>
-                    ))}
+                    {Object.entries(tagCounts).map(([tag, count]) => {
+                      const tagged = activeScenarios.filter(scenario => scenario.tag === tag);
+                      const selected = tagged.filter(scenario => pickedKeys.has(scenario.id)).length;
+                      return <Button key={tag} className="picker-tag" role="checkbox"
+                        aria-label={`${tag} 태그 선택`} aria-checked={selected === count ? true : selected ? "mixed" : false}
+                        onClick={() => toggleTag(tag)}>{tag}<b>{selected}/{count}</b></Button>;
+                    })}
                   </div>
                 )}
               </div>
@@ -236,8 +253,14 @@ export const ScenarioPickerPage = ({ records, loading, pickedKeys, onPick, onOpe
                       <span title={group.record.title}>{group.record.title}</span>
                       <b>{group.scenarios.length}개</b>
                     </div>
-                    {group.scenarios.map((item) => (
-                      <div className="picker-cart-item" key={item.id}>
+                    <SortableList
+                      items={group.scenarios}
+                      className="picker-cart-scenarios"
+                      itemKey={item => item.id}
+                      itemLabel={(item, index) => `${index + 1}번째 시나리오 ${item.title}`}
+                      itemClassName={() => "picker-cart-item"}
+                      onMove={(from, to) => moveScenario(group, from, to)}
+                      renderItem={(item) => <>
                         <b>{String(picked.indexOf(item) + 1).padStart(2, "0")}</b>
                         <span title={item.title}>{item.title}</span>
                         <i>{item.steps.length}</i>
@@ -249,8 +272,8 @@ export const ScenarioPickerPage = ({ records, loading, pickedKeys, onPick, onOpe
                         >
                           <span className="msi" aria-hidden="true">close</span>
                         </Button>
-                      </div>
-                    ))}
+                      </>}
+                    />
                   </>
                 )}
               />

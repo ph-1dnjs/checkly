@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { prepareBatches } from "./prepareBatches";
 import {
   aggregate, buildCases, cascadeDeselect, hostOf, orderCases, runnable,
   type AiTcCase, type AiTcColumnMap, type AiTcDecision, type AiTcField, type AiTcImportOptions,
@@ -34,17 +35,26 @@ export const useAiTc = ({ environment, showToast }: { environment: AiTcEnvironme
   const [refDecision, setRefDecision] = useState<Record<string, AiTcRefDecision | undefined>>({});
   const [excluded, setExcluded] = useState<string[]>([]);
   const [prepared, setPrepared] = useState<Record<string, AiTcPrepared>>({});
+  const [autoPrepare, setAutoPrepare] = useState(true);
   /** 자동 세팅 진행: 끝낸 TC 수 / 전체 */
-  const [preparing, setPreparing] = useState<{ done: number; total: number } | null>(null);
+  const [preparing, setPreparing] = useState<{ done: number; total: number; currentKey: string } | null>(null);
   const [prepareError, setPrepareError] = useState("");
+  const [prepareErrors, setPrepareErrors] = useState<Record<string, string>>({});
+  const [prepareUsage, setPrepareUsage] = useState<Record<"claude" | "codex", { input: number; output: number; cached: number; write: number; unknown: number }>>({ claude: { input: 0, output: 0, cached: 0, write: 0, unknown: 0 }, codex: { input: 0, output: 0, cached: 0, write: 0, unknown: 0 } });
+  const [prepareCalls, setPrepareCalls] = useState<Array<{ tool: "claude" | "codex"; caseIds: string[]; promptChars: number; reason: "initial" | "missing" | "failure"; outcome: "complete" | "partial" | "error"; usage?: import("../../../app/ipc/ai-tc/ai").ModelUsage }>>([]);
   const [prepareAttempt, setPrepareAttempt] = useState(0);
   const preparationRequest = useRef(0);
+  const forcePreparation = useRef(new Set<string>());
+  const saveQueue = useRef<Promise<void>>(Promise.resolve());
   const [inputs, setInputs] = useState<Record<string, string>>({});
   const [files, setFiles] = useState<Record<string, { token: string; name: string }>>({});
   const [skippedNeeds, setSkippedNeeds] = useState<string[]>([]);
   /** 잘못 나뉜 기대 결과를 사용자가 고친 값(한 줄에 하나). 원문은 expectedRaw로 남는다. */
   const [splitEdits, setSplitEdits] = useState<Record<string, string>>({});
   const [capture, setCapture] = useState(true);
+  const [imageToAi, setImageToAi] = useState(false);
+  const [tokenLimit, setTokenLimit] = useState("");
+  const [tokenLimitPerCase, setTokenLimitPerCase] = useState("");
   const [video, setVideo] = useState(true);
   const [tools, setTools] = useState<Array<{ tool: "claude" | "codex"; version: string }> | null>(null);
   const [tool, setTool] = useState<"claude" | "codex">("claude");
@@ -63,7 +73,12 @@ export const useAiTc = ({ environment, showToast }: { environment: AiTcEnvironme
     void api.tools().then(list => { setTools(list); if (list[0] && !list.some(item => item.tool === tool)) setTool(list[0].tool); }).catch(() => setTools([]));
     const offState = api.onState(state => { if (state.runId === runId.current) setRun(state); });
     const offPreview = api.onPreview(item => { if (item.runId === runId.current) setPreview(item.image); });
-    return () => { offState(); offPreview(); };
+    const offUsage = api.onPrepareUsage?.(({ tool: provider, usage, caseIds = [], promptChars = 0, reason = "initial", outcome = "complete" }) => { setPrepareCalls(current => [...current, { tool: provider, usage, caseIds, promptChars, reason, outcome }]); setPrepareUsage(current => {
+      const total = current[provider];
+      const complete = usage && (provider !== "claude" || (usage.cachedInput !== undefined && usage.cacheWrite !== undefined));
+      return { ...current, [provider]: { input: total.input + (usage?.input ?? 0), output: total.output + (usage?.output ?? 0), cached: total.cached + (usage?.cachedInput ?? 0), write: total.write + (usage?.cacheWrite ?? 0), unknown: total.unknown + (complete ? 0 : 1) } };
+    }); });
+    return () => { offState(); offPreview(); offUsage?.(); };
   }, []);
 
   useEffect(() => { if (cascade) { const timer = window.setTimeout(() => setCascade(null), 6000); return () => window.clearTimeout(timer); } }, [cascade]);
@@ -96,35 +111,66 @@ export const useAiTc = ({ environment, showToast }: { environment: AiTcEnvironme
     return lines.join("\n").slice(0, 3000);
   };
 
-  // 준비 화면에 들어오면 아직 세팅하지 않은 TC를 8개씩 AI에 보내 입력값과 업로드 파일을 자동으로 세팅한다.
+  const preparationCase = (item: AiTcCase) => ({
+    key: item.key, id: item.id, scenarioId: item.scenarioId, pre: item.pre, steps: item.steps, expected: item.expected,
+    given: item.data.filter(need => need.kind === "given").map(need => need.value).join("\n"), scenario: scenarioContext(item),
+  });
+
+  const savePrepared = (key: string, next: AiTcPrepared) => {
+    const item = byKey.get(key);
+    if (!item || !api?.savePreparation) return;
+    const input = preparationCase(item);
+    saveQueue.current = saveQueue.current.then(() => api.savePreparation(input, next)).catch(() => { showToast("테스트 데이터 세팅을 저장하지 못했습니다."); });
+  };
+  const editPrepared = (key: string, change: (entry: AiTcPrepared) => AiTcPrepared) => {
+    const entry = prepared[key];
+    if (!entry) return;
+    const next = change(entry);
+    setPrepared(current => ({ ...current, [key]: next }));
+    savePrepared(key, next);
+  };
+
+  // 최대 5개씩 준비하고 실패하거나 누락된 항목은 작은 묶음으로 재시도한다.
   useEffect(() => {
-    if (screen !== "prep" || !api || !tools?.some(item => item.tool === tool)) return;
+    if (screen !== "prep" || !api) return;
     const missing = pickedCases.filter(item => !prepared[item.key]);
     if (!missing.length) return;
+    if (!autoPrepare) {
+      setPrepared(current => ({ ...current, ...Object.fromEntries(missing.map(item => [item.key, { key: item.key, data: [], files: [], note: "직접 입력" }])) }));
+      return;
+    }
+    if (!tools) return;
     const request = ++preparationRequest.current;
     setPrepareError("");
-    setPreparing({ done: 0, total: missing.length });
+    setPrepareErrors({});
+    setPreparing({ done: 0, total: missing.length, currentKey: missing[0]!.key });
     void (async () => {
-      for (let index = 0; index < missing.length; index += 8) {
-        const chunk = missing.slice(index, index + 8);
-        try {
-          const results = await api.prepare({ tool, cases: chunk.map(item => ({
-            key: item.key, id: item.id, scenarioId: item.scenarioId, pre: item.pre, steps: item.steps, expected: item.expected,
-            given: item.data.filter(need => need.kind === "given").map(need => need.value).join("\n"), scenario: scenarioContext(item),
-          })) });
-          if (preparationRequest.current !== request) return;
-          setPrepared(current => ({ ...current, ...Object.fromEntries(results.map(result => [result.key, result])) }));
-          setPreparing({ done: Math.min(missing.length, index + chunk.length), total: missing.length });
-        } catch (error) {
-          if (preparationRequest.current !== request) return;
-          setPrepareError(error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : "테스트 데이터 준비에 실패했습니다.");
-          break;
+      let failed = 0, done = 0;
+      const active = () => preparationRequest.current === request;
+      // 강제 재생성은 캐시를 쓰는 일반 요청과 분리한다.
+      for (const force of [false, true]) {
+        const group = missing.filter(item => forcePreparation.current.has(item.key) === force);
+        for (let index = 0; index < group.length && active(); index += 5) {
+          await prepareBatches(group.slice(index, index + 5), async (items, reason) => {
+            setPreparing({ done, total: missing.length, currentKey: items[0]!.key });
+            await saveQueue.current;
+            if (!active()) return [];
+            return api.prepare({ tool, cases: items.map(preparationCase), force, reason });
+          }, result => {
+            done++;
+            forcePreparation.current.delete(result.key);
+            setPrepared(current => current[result.key] ? current : { ...current, [result.key]: result });
+          }, (item, error) => {
+            done++; failed++;
+            const message = error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : "테스트 데이터 준비에 실패했습니다.";
+            setPrepareErrors(current => ({ ...current, [item.key]: message }));
+          }, active);
         }
       }
-      if (preparationRequest.current === request) setPreparing(null);
+      if (preparationRequest.current === request) { setPreparing(null); if (failed) setPrepareError(`${failed}개 TC의 자동 세팅에 실패했습니다. 해당 TC를 확인하고 다시 시도하세요.`); }
     })();
     return () => { preparationRequest.current++; setPreparing(null); };
-  }, [screen, picked.join("|"), tool, tools, prepareAttempt]);
+  }, [screen, picked.join("|"), tool, tools, prepareAttempt, autoPrepare]);
 
   const importFile = async () => {
     if (!api) return showToast("데스크톱 앱에서만 엑셀을 가져올 수 있습니다.");
@@ -139,7 +185,7 @@ export const useAiTc = ({ environment, showToast }: { environment: AiTcEnvironme
       setSheet(first?.name ?? "");
       const built = buildCases(next, options);
       setSelected(built.filter(runnable).filter(item => item.sheet === first?.name).map(item => item.key));
-      preparationRequest.current++; setPrepared({}); setRefDecision({}); setExcluded([]); setInputs({}); setFiles({}); setSkippedNeeds([]); setSplitEdits({}); setCascade(null);
+      preparationRequest.current++; forcePreparation.current.clear(); setPrepared({}); setRefDecision({}); setExcluded([]); setInputs({}); setFiles({}); setSkippedNeeds([]); setSplitEdits({}); setCascade(null);
     } catch (error) { showToast(error instanceof Error ? error.message : "파일을 읽지 못했습니다."); }
     finally { setImporting(false); }
   };
@@ -206,14 +252,14 @@ export const useAiTc = ({ environment, showToast }: { environment: AiTcEnvironme
   const endpointName = environment?.endpoints.find(item => item.id === environment.endpointId)?.name ?? "";
   const environmentName = environment?.environments.find(item => item.id === environment.environmentId)?.name ?? "로컬";
   const startProblem = !startUrl ? (environment ? (environment.endpoints.length ? "설정에서 선택한 환경의 웹 주소를 넣어 주세요." : "설정에서 웹 엔드포인트를 추가해 주세요.") : "시작 URL을 입력해 주세요.")
-    : !hostOf(startUrl) ? "시작 URL 형식을 확인해 주세요." : !tools?.length ? "이 PC에서 Claude Code나 Codex CLI를 찾지 못했습니다." : "";
+    : !hostOf(startUrl) ? "시작 URL 형식을 확인해 주세요." : "";
   // 자동 세팅이 실패해도 실행은 막지 않는다. 값이 부족하면 AI가 실행 중 사용자에게 넘긴다.
-  const cantRun = preparing ? `테스트 데이터 자동 세팅 중 ${preparing.done}/${preparing.total}` : !ordered ? "선행 TC가 서로를 참조합니다. 선행 확인을 바꿔 주세요." : notReady ? `입력 필요 ${notReady}건` : !readyCount ? "실행할 TC가 없습니다." : startProblem;
+  const limitProblem = [tokenLimit, tokenLimitPerCase].some(value => value && (!/^[1-9]\d*$/.test(value) || Number(value) > 100_000_000)) ? "토큰 한도는 1부터 100,000,000까지 입력하세요." : "";
+  const cantRun = preparing ? `테스트 데이터 자동 세팅 중 ${preparing.done}/${preparing.total}` : limitProblem || (!ordered ? "선행 TC가 서로를 참조합니다. 선행 확인을 바꿔 주세요." : notReady ? `입력 필요 ${notReady}건` : !readyCount ? "실행할 TC가 없습니다." : startProblem);
 
   const live = run && ["running", "waiting", "error"].includes(run.status);
 
-  const start = async () => {
-    if (!api || cantRun || live || !ordered) { if (cantRun) showToast(cantRun); return; }
+  const makePlan = (): AiTcRunPlan => {
     const runCases = readyList.filter(entry => entry.ready.state === "ok").map(({ item }) => {
       const decision = refOf(item);
       const inFile = item.refs.filter(ref => byId.has(ref));
@@ -228,14 +274,40 @@ export const useAiTc = ({ environment, showToast }: { environment: AiTcEnvironme
         readyRefs: decision === "ready" ? item.refs : [],
       };
     });
-    const plan: AiTcRunPlan = {
-      cases: runCases, startUrl, allowedHosts, capture, video, tool,
+    return {
+      cases: runCases, startUrl, allowedHosts, capture, video, imageToAi, tool,
       environmentLabel: environment ? `${endpointName} · ${environmentName}` : `로컬 · ${hostOf(startUrl)}`,
+      ...(tokenLimit ? { tokenLimit: Number(tokenLimit) } : {}),
+      ...(tokenLimitPerCase ? { tokenLimitPerCase: Number(tokenLimitPerCase) } : {}),
+      preparationUsage: prepareUsage,
     };
+  };
+
+  const loadSavedNeeds = async () => {
+    if (!api || cantRun || live || !ordered) { if (cantRun) showToast(cantRun); return; }
+    try {
+      const needs = await api.savedNeeds(makePlan());
+      setPrepared(current => {
+        const next = { ...current };
+        for (const need of needs) {
+          const entry = next[need.key] ?? { key: need.key, data: [], files: [], note: "직접 입력" };
+          const given = byKey.get(need.key)?.data.filter(item => item.kind === "given").map(item => `엑셀 ${item.label}`) ?? [];
+          next[need.key] = { ...entry, data: [...entry.data, ...need.labels.filter(label => !given.includes(label) && !entry.data.some(item => item.label === label)).map(label => ({ label, value: "" }))] };
+        }
+        return next;
+      });
+      showToast("저장된 절차의 데이터 항목을 불러왔습니다.");
+    } catch (error) { showToast(error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : "저장된 항목을 불러오지 못했습니다."); }
+  };
+
+  const start = async (mode: "ai" | "saved" | "assisted" = "ai") => {
+    if (!api || cantRun || live || !ordered) { if (cantRun) showToast(cantRun); return; }
+    if (mode !== "saved" && !tools?.some(item => item.tool === tool)) { showToast("선택한 AI CLI를 찾지 못했습니다."); return; }
+    const plan = makePlan();
     setStarting(true);
     try {
       setPreview("");
-      const state = await api.start(plan);
+      const state = mode === "ai" ? await api.start(plan) : await api.replaySaved(plan, mode === "assisted");
       runId.current = state.runId;
       setRun(state);
       setScreen("run");
@@ -243,13 +315,32 @@ export const useAiTc = ({ environment, showToast }: { environment: AiTcEnvironme
     finally { setStarting(false); }
   };
 
-  const decide = (decision: AiTcDecision, reply?: string) => { if (run && api) void browserQueue.current.then(() => api.decide(run.runId, decision, reply)); };
+  const decide = (decision: AiTcDecision, reply?: string) => { if (run && api) void browserQueue.current.then(() => api.decide(run.runId, decision, reply)).catch(error => showToast(error instanceof Error ? error.message : "실행을 재개하지 못했습니다.")); };
   const browserEvent: NonNullable<typeof api>["browserEvent"] extends (id: string, event: infer E) => unknown ? (event: E) => void : never = event => { if (run && api) browserQueue.current = browserQueue.current.then(() => api.browserEvent(run.runId, event)).catch(error => showToast(error instanceof Error ? error.message : "브라우저 조작에 실패했습니다.")); };
   const cancel = () => { if (run) void api?.cancel(run.runId); };
+  const replay = async (assisted = false) => {
+    if (!run || !api || live || starting) return;
+    setStarting(true);
+    try {
+      const state = await api.replay(run.runId, assisted);
+      runId.current = state.runId; setRun(state); setPreview(""); setScreen("run");
+    } catch (error) { showToast(error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : "빠른 재실행을 시작하지 못했습니다."); }
+    finally { setStarting(false); }
+  };
   const review = async (caseKey: string, expectedId: string, verdict: AiTcVerdict | null, note: string) => {
     if (!run || !api) return;
     const next = await api.review({ runId: run.runId, caseKey, expectedId, verdict, note });
     if (next) setRun(next);
+  };
+  const approveAssertion = async (caseKey: string, expectedId: string, approved: boolean) => {
+    if (!run || !api) return;
+    const next = await api.approveAssertion({ runId: run.runId, caseKey, expectedId, approved });
+    if (next) setRun(next);
+  };
+  const applyRepair = async (caseKey: string) => {
+    if (!run || !api) return;
+    try { const next = await api.applyRepair({ runId: run.runId, caseKey }); if (next) setRun(next); }
+    catch (error) { showToast(error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : "후보를 적용하지 못했습니다."); }
   };
   const exportResult = async () => {
     if (!run || !api) return;
@@ -294,25 +385,26 @@ export const useAiTc = ({ environment, showToast }: { environment: AiTcEnvironme
     refOf, confirmAllRefs, exportResult, downloadVideo, openFolder,
     refDecision, setRef: (key: string, decision: AiTcRefDecision | undefined) => setRefDecision(current => ({ ...current, [key]: decision })),
     selectedRefs, excluded, toggleExcluded: (key: string) => setExcluded(current => (current.includes(key) ? current.filter(item => item !== key) : [...current, key])),
-    prepared, preparing, prepareError, retryPreparation: () => setPrepareAttempt(value => value + 1),
+    prepared, preparing, prepareError, prepareErrors, prepareUsage, prepareCalls, autoPrepare, setAutoPrepare, retryPreparation: () => setPrepareAttempt(value => value + 1),
+    resetPrepareUsage: () => { setPrepareCalls([]); setPrepareUsage({ claude: { input: 0, output: 0, cached: 0, write: 0, unknown: 0 }, codex: { input: 0, output: 0, cached: 0, write: 0, unknown: 0 } }); },
     /** 선택한 TC의 자동 세팅을 버리고 처음부터 다시 만든다. */
-    regeneratePreparation: () => { setPrepared(current => Object.fromEntries(Object.entries(current).filter(([key]) => !picked.includes(key)))); setPrepareAttempt(value => value + 1); },
-    editPrepared: (key: string, change: (entry: AiTcPrepared) => AiTcPrepared) => setPrepared(current => current[key] ? { ...current, [key]: change(current[key]!) } : current),
+    regeneratePreparation: () => { forcePreparation.current = new Set(picked); setPrepared(current => Object.fromEntries(Object.entries(current).filter(([key]) => !picked.includes(key)))); setPrepareAttempt(value => value + 1); },
+    editPrepared,
     replacePreparedFile: async (key: string, index: number) => {
       const chosen = await api?.pickUpload();
-      if (chosen) setPrepared(current => current[key] ? { ...current, [key]: { ...current[key]!, files: current[key]!.files.map((file, at) => (at === index ? { ...file, ...chosen, spec: "직접 고른 파일" } : file)) } } : current);
+      if (chosen) editPrepared(key, entry => ({ ...entry, files: entry.files.map((file, at) => at === index ? { ...file, ...chosen, spec: "직접 고른 파일" } : file) }));
     },
     addPreparedFile: async (key: string) => {
       const chosen = await api?.pickUpload();
-      if (chosen) setPrepared(current => ({ ...current, [key]: { ...(current[key] ?? { key, data: [], files: [], note: "" }), files: [...(current[key]?.files ?? []), { label: "업로드 파일", ...chosen, spec: "직접 고른 파일" }] } }));
+      if (chosen) editPrepared(key, entry => ({ ...entry, files: [...entry.files, { label: "업로드 파일", ...chosen, spec: "직접 고른 파일" }] }));
     },
     inputs, setInput: (caseKey: string, dataId: string, value: string) => setInputs(current => ({ ...current, [needKey(caseKey, dataId)]: value })),
     files, pickFile, skippedNeeds, toggleNeed: (caseKey: string, dataId: string) => { const key = needKey(caseKey, dataId); setSkippedNeeds(current => (current.includes(key) ? current.filter(item => item !== key) : [...current, key])); },
     splitEdits, setSplit: (key: string, value: string | undefined) => setSplitEdits(current => { const next = { ...current }; if (value === undefined) delete next[key]; else next[key] = value; return next; }),
     needKey, readiness, ordered, readyList, notReady, readyCount, cantRun,
-    capture, setCapture, video, setVideo, tools, tool, setTool,
+    capture, setCapture, imageToAi, setImageToAi, video, setVideo, tools, tool, setTool, tokenLimit, setTokenLimit, tokenLimitPerCase, setTokenLimitPerCase,
     localUrl, setLocalUrl, localHosts, setLocalHosts, startUrl, allowedHosts, endpointName, environmentName,
-    run, live: Boolean(live), preview, starting, start, decide, browserEvent, cancel, review, loadCapture, progress, dock, tcVerdict,
+    run, live: Boolean(live), preview, starting, start, loadSavedNeeds, replay, decide, browserEvent, cancel, review, approveAssertion, applyRepair, loadCapture, progress, dock, tcVerdict,
   };
 };
 

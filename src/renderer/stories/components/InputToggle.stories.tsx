@@ -96,3 +96,21 @@ export default meta;
 type Story = StoryObj<typeof InputToggleDoc>;
 
 export const Overview: Story = {};
+
+/** 텍스트 인풋 상태 모음(크기 small·large) */
+export const InputStates: Story = {
+  render: () => (
+    <div style={{ display: "grid", gap: 16, padding: 16, width: 720 }}>
+      {(["small", "large"] as const).map((size) => (
+        <div key={size} style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
+          <Input size={size} placeholder="닉네임" aria-label={`${size} 기본`} />
+          <Input size={size} mono defaultValue="checkly-team" aria-label={`${size} 모노`} />
+          <PasswordInput size={size} placeholder="비밀번호" aria-label={`${size} 비밀번호`} />
+          <Input size={size} leading={<Icon name="search" size={size === "large" ? 18 : 16} />} placeholder="검색" aria-label={`${size} 검색`} />
+          <Input size={size} invalid defaultValue="잘못된 값" aria-label={`${size} 오류`} />
+          <Input size={size} disabled defaultValue="비활성" aria-label={`${size} 비활성`} />
+        </div>
+      ))}
+    </div>
+  ),
+};

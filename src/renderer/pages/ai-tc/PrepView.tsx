@@ -36,8 +36,8 @@ export const PrepView = ({ model, environment }: { model: AiTcModel; environment
   const excluded = ready.state === "ex";
   const given = item.data.filter(need => need.kind === "given");
   const prep = model.prepared[item.key];
-  const sendOn = ["TC 원문 · 기대 결과 · 테스트 데이터", "현재 URL · 페이지 제목", "접근성 요소 (역할·이름·상태)", ...(model.capture ? ["화면 캡처"] : [])];
-  const sendOff = ["수동 입력 · 비밀번호 칸의 값", "로컬 파일 경로 · 업로드 파일 내용", ...(model.capture ? [] : ["화면 캡처"])];
+  const sendOn = ["TC 원문 · 기대 결과 · 테스트 데이터", "현재 URL · 페이지 제목", "접근성 요소 (역할·이름·상태)", ...(model.imageToAi ? ["화면 이미지"] : [])];
+  const sendOff = ["수동 입력 · 비밀번호 칸의 값", "로컬 파일 경로 · 업로드 파일 내용", ...(model.imageToAi ? [] : ["화면 이미지"])];
   const toolName = model.tool === "claude" ? "Claude CLI" : "Codex CLI";
 
   const section = (title: string, ok: boolean | null, okWord: string, todoWord: string, children: ReactNode) => (
@@ -69,6 +69,8 @@ export const PrepView = ({ model, environment }: { model: AiTcModel; environment
           <Button variant="secondary" className="aitc-full aitc-bulk" disabled={Boolean(model.preparing) || model.live} onClick={model.regeneratePreparation} title="선택한 TC의 입력값과 임시 업로드 파일을 다시 만듭니다">
             <span className="msi" aria-hidden="true">auto_fix_high</span>{model.preparing ? `데이터 세팅 중 ${model.preparing.done}/${model.preparing.total}` : "테스트 데이터 다시 세팅"}
           </Button>
+          <Button variant="secondary" className="aitc-full aitc-bulk" disabled={Boolean(model.cantRun) || model.live} onClick={() => void model.loadSavedNeeds()}>저장된 절차의 데이터 항목 불러오기</Button>
+          {(["claude", "codex"] as const).map(provider => { const usage = model.prepareUsage[provider]; return (usage.input || usage.output || usage.unknown) ? <div className="aitc-mute" key={provider}>준비 토큰 ({provider}, 현재 화면 세션): 입력 {usage.input.toLocaleString()} · 출력 {usage.output.toLocaleString()} · 캐시 읽기 {usage.cached.toLocaleString()} · 캐시 생성 {usage.write.toLocaleString()}{usage.unknown ? ` · 미확인 ${usage.unknown}회` : ""} · {provider === "codex" ? "입력에 캐시 읽기 포함" : "캐시 입력 별도"}</div> : null; })}
           {model.notReady > 0 && <Button variant="secondary" className="aitc-full aitc-bulk" onClick={model.confirmAllRefs}>남은 선행 모두 "이미 준비됨"으로 확인</Button>}
         </div>
         <div className="aitc-scroll aitc-pad-bottom">
@@ -132,7 +134,7 @@ export const PrepView = ({ model, environment }: { model: AiTcModel; environment
               {!prep && model.preparing && <div className="aitc-mute">TC와 시나리오를 바탕으로 AI가 입력값과 업로드 파일을 세팅하고 있습니다 ({model.preparing.done}/{model.preparing.total}).</div>}
               {!prep && !model.preparing && model.prepareError && <div className="aitc-todo-box slim"><span className="msi" aria-hidden="true">error</span>{model.prepareError}<Button variant="secondary" className="aitc-push" onClick={model.retryPreparation}>다시 시도</Button></div>}
               {prep && <>
-                <div className="aitc-need-head"><span>AI 자동 세팅</span><small>{prep.note || "TC·시나리오 기반 · 실행 전 수정 가능"}</small></div>
+                <div className="aitc-need-head"><span>{model.autoPrepare ? "AI 자동 세팅" : "직접 입력"}</span><small>{prep.note || "실행 전 수정 가능"}</small></div>
                 {prep.data.map((entry, index) => (
                   <div key={index} className="aitc-auto-row">
                     <Input value={entry.label} aria-label="항목" onChange={event => model.editPrepared(item.key, current => ({ ...current, data: current.data.map((value, at) => (at === index ? { ...value, label: event.target.value } : value)) }))} />
@@ -148,7 +150,7 @@ export const PrepView = ({ model, environment }: { model: AiTcModel; environment
                     <Button variant="ghost" iconOnly aria-label={`${file.label} 삭제`} onClick={() => model.editPrepared(item.key, current => ({ ...current, files: current.files.filter((_, at) => at !== index) }))}><span className="msi" aria-hidden="true">close</span></Button>
                   </div>
                 ))}
-                {!prep.data.length && !prep.files.length && <div className="aitc-mute">입력이 필요 없는 TC로 판단했습니다.</div>}
+                {!prep.data.length && !prep.files.length && <div className="aitc-mute">{model.autoPrepare ? "입력이 필요 없는 TC로 판단했습니다." : "저장된 절차에 필요한 값을 아래에서 추가하세요."}</div>}
                 <div className="aitc-auto-actions">
                   <Button className="aitc-link" onClick={() => model.editPrepared(item.key, current => ({ ...current, data: [...current.data, { label: "", value: "" }] }))}>+ 값 추가</Button>
                   <Button className="aitc-link" onClick={() => void model.addPreparedFile(item.key)}>+ 파일 추가</Button>
@@ -223,6 +225,7 @@ export const PrepView = ({ model, environment }: { model: AiTcModel; environment
                       <small className="aitc-mute">이 PC의 CLI 로그인으로 실행합니다. 변경해도 이미 준비한 데이터는 유지됩니다. 보관·학습 정책과 비용은 제공자 설정을 확인하세요.</small>
                     </div>
                     <div className="aitc-send">
+                      <Toggle label="화면 이미지 AI 전송" hint="시각적 판단이 필요할 때 사용 · 로컬 근거 캡처와 별도" on={model.imageToAi} onToggle={() => model.setImageToAi(!model.imageToAi)} />
                       <div className="aitc-send-head wait">외부 전송</div>
                       {sendOn.map(text => <div key={text} className="aitc-send-row on"><span className="msi" aria-hidden="true">north_east</span>{text}</div>)}
                       <div className="aitc-send-head">전송 안 함</div>
@@ -242,6 +245,8 @@ export const PrepView = ({ model, environment }: { model: AiTcModel; environment
                     <div><small>동작 / TC</small><b>{AI_TC_RUN_LIMITS.actionsPerCase}<em>회</em></b></div>
                     <div><small>시간 / TC</small><b>{AI_TC_RUN_LIMITS.minutesPerCase}<em>분</em></b></div>
                     <div><small>모델 호출</small><b>{AI_TC_RUN_LIMITS.modelCalls}<em>회</em></b></div>
+                    <label className="aitc-field"><span>실행 토큰 한도 (선택)</span><Input inputMode="numeric" value={model.tokenLimit} onChange={event => model.setTokenLimit(event.target.value)} placeholder="한도 없음" /><small>준비 단계 제외. 완료된 호출 기준으로 다음 호출을 중단하므로 진행 중인 호출은 한도를 초과할 수 있습니다.</small></label>
+                    <label className="aitc-field"><span>TC별 토큰 한도 (선택)</span><Input inputMode="numeric" value={model.tokenLimitPerCase} onChange={event => model.setTokenLimitPerCase(event.target.value)} placeholder="한도 없음" /><small>80% 도달 시 경고하며 한도를 넘긴 TC의 다음 AI 호출을 중단합니다.</small></label>
                   </div>
                 )}
               </div>
@@ -250,6 +255,8 @@ export const PrepView = ({ model, environment }: { model: AiTcModel; environment
         </div>
         <footer className="aitc-pane-foot">
           {model.cantRun && <div className="aitc-run-hint">{model.cantRun}</div>}
+          <Button variant="secondary" className="aitc-full" disabled={Boolean(model.cantRun) || model.starting || model.live} onClick={() => { if (window.confirm("저장된 동작을 현재 데이터로 다시 실행합니다. 등록·저장이 중복될 수 있습니다. 계속할까요?")) void model.start("saved"); }}>저장된 절차로 빠른 실행</Button>
+          <Button variant="secondary" className="aitc-full" disabled={Boolean(model.cantRun) || model.starting || model.live} onClick={() => { if (window.confirm("저장된 동작을 현재 데이터로 실행합니다. 등록·저장이 중복될 수 있으며 미승인 결과는 AI로 판정합니다. 계속할까요?")) void model.start("assisted"); }}>저장된 절차로 AI 보조 실행</Button>
           <Button variant="primary" className="aitc-full" disabled={Boolean(model.cantRun) || model.starting || model.live} onClick={() => void model.start()}>
             <span className="msi" aria-hidden="true">play_arrow</span>{model.live ? "실행 중" : model.notReady ? `입력 필요 ${model.notReady}건` : `${model.readyCount}개 TC 실행`}
           </Button>

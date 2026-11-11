@@ -104,6 +104,18 @@
 /* 편집 · 텍스트: 문서 | MARKDOWN | PREVIEW */
 .ws-editor { flex:1 1 auto; min-height:0; display:grid; grid-template-columns:260px minmax(0,1fr) minmax(0,1fr); animation:ckRise 180ms ease; }
 .ws-editor-source { min-height:0; display:flex; flex-direction:column; border-right:1px solid #e4e7ea; }
+.scenario-editor-toolbar { display:flex; flex:none; min-width:0; height:54px; border-bottom:1px solid #e4e7ea; background:#fafbfc; }
+.scenario-editor-toolbar-items { display:flex; flex:1; min-width:0; overflow-x:auto; scrollbar-width:thin; }
+.scenario-editor-tool { display:flex; flex:none; flex-direction:column; align-items:center; justify-content:center; gap:2px; min-width:42px; padding:3px 5px; border:0; background:transparent; color:#4b5661; font-family:inherit; font-size:10px; line-height:1.2; white-space:nowrap; cursor:pointer; }
+.scenario-editor-tool:hover { background:#edf2f6; }
+.scenario-editor-tool .msi { font-size:17px; }
+.scenario-editor-toolbar-toggle { flex:none; width:30px; border:0; background:#fafbfc; color:#84909b; cursor:pointer; }
+.scenario-editor-toolbar-toggle:hover { background:#edf2f6; }
+.scenario-editor-toolbar-toggle .msi { font-size:17px; }
+.scenario-editor-toolbar-open { position:absolute; z-index:1; top:9px; right:12px; display:grid; width:32px; height:32px; place-items:center; border:1px solid #d8dde2; border-radius:50%; background:#fff; color:#4b5661; box-shadow:0 2px 5px #00000018; cursor:pointer; }
+.scenario-editor-toolbar-open.has-scroll { right:22px; }
+.scenario-editor-toolbar-open:hover { background:#f5f7f8; }
+.scenario-editor-toolbar-open .msi { font-size:17px; }
 .ws-editor-source .markdown-editor-body { flex:1 1 auto; min-height:0; display:flex; overflow:hidden; }
 .ws-editor-source .markdown-line-numbers { width:auto; min-width:40px; flex:none; margin:0; padding:12px 9px 110px; overflow:hidden; list-style:none; border-right:1px solid #edf0f2; background:#fafbfc; color:#bfc6cc; font:11px/1.85 D2Coding,ui-monospace,monospace; text-align:right; user-select:none; }
 .ws-editor-source .markdown-line-numbers li { height:calc(12px * 1.85); line-height:calc(12px * 1.85); }
@@ -159,6 +171,7 @@
 .picker-tags>span { color:#8a939c; font-size:11px; white-space:nowrap; }
 .scenario-workspace .picker-tag { height:22px; display:flex; align-items:center; gap:6px; padding:0 8px; border:1px solid #b9d4f1; border-radius:4px; background:#edf4fc; color:#1f63ae; font-family:D2Coding,ui-monospace,monospace; font-size:11px; font-style:normal; letter-spacing:0; white-space:nowrap; }
 .picker-tag b { color:#8a939c; font-weight:400; }
+.scenario-workspace .picker-tag[aria-checked="true"], .scenario-workspace .picker-tag[aria-checked="mixed"] { border-color:#1f63ae; background:#dcecff; }
 .picker-scenario-list { flex:1 1 auto; min-height:0; overflow:auto; padding-bottom:120px; }
 .scenario-workspace .picker-scenario { border-bottom:1px solid #edf0f2; border-left:2px solid transparent; }
 .scenario-workspace .picker-scenario.picked { background:#f5f9fe; border-left-color:#3d8ce0; }

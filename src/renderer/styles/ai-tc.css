@@ -1,6 +1,9 @@
 /* AI TC 실행 화면 (가져오기 · 준비 · 실행 · 결과). 디자인: Checkly AI TC v2 */
 .aitc-page { --aitc-line: var(--ck-color-line); --aitc-soft: var(--ck-color-line-soft); --aitc-faint: var(--ck-color-line-faint); --aitc-mono: var(--ck-font-mono); --aitc-amber: #c08a15; }
+/* 시나리오·설정 화면처럼 공통 .content의 최대 폭(1520px)과 바깥 여백을 풀어 창 전체를 쓴다. 하단 독 여백은 각 패널이 직접 둔다. */
+.workspace .content:has(> .aitc-page) { width:100%; max-width:none; height:100%; padding:0; display:flex; flex-direction:column; }
 .aitc-page .page-layout-extra { justify-content:flex-start; }
+.aitc-beta { align-self:center; padding:3px 6px; border-radius:4px; background:#e7f1fc; color:#1f63ae; font-size:10px; font-weight:800; line-height:1; }
 .aitc-page .page-layout-content { overflow:hidden; }
 
 /* 헤더 */

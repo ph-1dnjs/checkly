@@ -1,11 +1,19 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeDocument, isUuid } from '../../src/app/ipc/web-scenario/normalize';
-import { parseMarkdown } from '../../src/app/ipc/web-scenario/scenario';
+import { documentTags, documentTitle, parseMarkdown } from '../../src/app/ipc/web-scenario/scenario';
 import { stepOutcomes } from '../../src/renderer/shared/report/run-report';
 
 const markdown = '# 시나리오: 로그인\nurl: /login\nGiven `로그인` 클릭\nAnd `로그인` 클릭';
 const current = markdown.replace('url: /login', 'endpoint: 2f1c3c9e-6a55-4d8f-9d6a-1b2c3d4e5f60');
+
+test('document tags survive normalization without becoming a scenario', () => {
+  const source = '# 문서: 인증\n해시태그: #로그인 #Smoke\n\n' + markdown;
+  const result = normalizeDocument(source, '{}');
+  assert.equal(result.scenarios.length, 1);
+  assert.deepEqual(documentTags(result.markdown), ['로그인', 'Smoke']);
+  assert.equal(documentTitle('# 문서: \n해시태그: #로그인\n\n' + markdown), '');
+});
 
 test('legacy url line becomes a goto step and endpoint id is kept in the body', () => {
   const migrated = normalizeDocument(markdown, '{}');
@@ -182,4 +190,34 @@ test('next scenario continuing from the previous one keeps start: continue throu
   assert.match(normalized.markdown, /^start: continue$/m);
   assert.deepEqual(normalized.scenarios.map(item => item.continuePrevious), [undefined, true, undefined]);
   assert.deepEqual(parseMarkdown(normalized.markdown).map(item => item.continuePrevious), [undefined, true, undefined]);
+});
+
+test('saving a large document looks up all saved IDs in bounded requests', async () => {
+  const { WebScenarioStore } = await import('../../src/app/ipc/web-scenario/store');
+  const documentId = crypto.randomUUID();
+  const original = normalizeDocument(`# 시나리오: 대량\n${Array.from({ length: 120 }, (_, i) => `And \`버튼 ${i}\` 클릭`).join('\n')}`, '{}');
+  const scenario = original.scenarios[0];
+  const calls: number[] = [];
+  let payload: any;
+  const client = {
+    from(table: string) {
+      return { select() { return {
+        in(_column: string, ids: string[]) {
+          calls.push(ids.length);
+          assert.ok(ids.length <= 50);
+          return Promise.resolve({ data: ids.map(id => table === 'web_scenario_items'
+            ? { id, document_id: documentId } : { id, scenario_id: scenario.id }), error: null });
+        },
+        eq() { return Promise.resolve({ data: [], error: null }); },
+      }; } };
+    },
+    async rpc(_name: string, value: any) {
+      payload = value.p;
+      return { data: { id: documentId, title: '대량', markdown: payload.markdown, positions: {}, updated_at: 'now', created_by: null, updated_by: null }, error: null };
+    },
+  };
+  const store = new WebScenarioStore(client as any, crypto.randomUUID());
+  await store.save({ id: documentId, expectedUpdatedAt: 'then', title: '대량', markdown: original.markdown, positions: original.positions });
+  assert.deepEqual(calls, [1, 50, 50, 20]);
+  assert.deepEqual(payload.scenarios[0].steps.map((step: any) => step.databaseId), scenario.steps.map(step => step.databaseId));
 });

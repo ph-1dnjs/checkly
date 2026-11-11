@@ -20,6 +20,7 @@
 @import "./page-layout.css" layer(legacy);
 @import "./scenario-workspace.css" layer(legacy);
 @import "./ai-tc.css" layer(legacy);
+@import "./ai-tc-chat.css" layer(legacy);
 @import "./controls.css";
 
 @layer legacy {

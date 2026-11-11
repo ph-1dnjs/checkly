@@ -28,6 +28,7 @@ export const ImportView = ({ model }: { model: AiTcModel }) => {
         <h2>TC 엑셀을 가져오세요</h2>
         <p>.xlsx 파일의 TC 시트를 읽어 TC ID·테스트 단계·기대 결과를 확인합니다. 원본 파일은 바꾸지 않으며 매크로와 수식은 실행하지 않습니다.</p>
         <p className="aitc-mute">최대 {AI_TC_LIMITS.fileBytes / 1024 / 1024}MB · 시트 {AI_TC_LIMITS.sheets}개 · 시트당 {AI_TC_LIMITS.rowsPerSheet}행 · 칸당 {AI_TC_LIMITS.cellChars}자</p>
+        <Toggle label="AI 데이터 자동 준비" hint="끄면 준비 화면에서 값을 직접 입력합니다" on={model.autoPrepare} onToggle={() => model.setAutoPrepare(!model.autoPrepare)} />
         <Button variant="primary" size="large" disabled={model.importing} onClick={() => void model.importFile()}>
           <span className="msi" aria-hidden="true">table_view</span>{model.importing ? "읽는 중…" : "엑셀 파일 선택"}
         </Button>
@@ -76,6 +77,7 @@ export const ImportView = ({ model }: { model: AiTcModel }) => {
         </div>
         <div className="aitc-pane-foot">
           <div className="aitc-caption">가져오기 옵션</div>
+          <Toggle label="AI 데이터 자동 준비" hint="끄면 준비 화면에서 값을 직접 입력합니다" on={model.autoPrepare} onToggle={() => model.setAutoPrepare(!model.autoPrepare)} />
           <Toggle label="숨긴 시트 포함" on={model.options.hiddenSheets} onToggle={() => model.setOptions({ ...model.options, hiddenSheets: !model.options.hiddenSheets })} />
           <Toggle label="숨긴 행 포함" on={model.options.hiddenRows} onToggle={() => model.setOptions({ ...model.options, hiddenRows: !model.options.hiddenRows })} />
           <Button variant="secondary" className="aitc-full" disabled={model.importing} onClick={() => void model.importFile()}>다른 파일 가져오기</Button>

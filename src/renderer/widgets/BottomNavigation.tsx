@@ -23,7 +23,7 @@ type Props = {
 const NAVS: Array<{ route: Route | "workspace"; label: string; icon: string }> =
   [
     { route: "workspace", label: "시나리오 · 편집과 실행", icon: "fact_check" },
-    { route: "ai-tc", label: "AI TC 실행", icon: "smart_toy" },
+    { route: "ai-tc", label: "AI TC 실행 BETA", icon: "smart_toy" },
     { route: "form-automation", label: "폼 자동 완성", icon: "auto_fix_high" },
     { route: "api-testing", label: "API 테스트", icon: "data_object" },
     { route: "settings", label: "설정", icon: "settings" },
@@ -118,6 +118,7 @@ export const BottomNavigation = ({
               <span className="msi" aria-hidden="true">
                 {item.icon}
               </span>
+              {item.route === "ai-tc" && <span className="bottom-nav-beta" aria-hidden="true">BETA</span>}
             </Button>
           );
         })}

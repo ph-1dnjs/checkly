@@ -5,11 +5,12 @@ import os from "node:os";
 import { z } from "zod";
 import { parsePreparation, preparationPrompt } from "./prepare";
 import { FixtureMaker } from "./fixtures";
+import { PreparationCache } from "./preparation-cache";
 import type { AiTcCase } from "./model";
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { chromium } from "@playwright/test";
 import type { MainDomain } from "../domain";
-import { availableTools, callModel } from "./ai";
+import { availableTools, callModel, type ModelUsage } from "./ai";
 import { AiTcImportError, readWorkbook } from "./excel";
 import { exportRunWorkbook } from "./export";
 import { AI_TC_LIMITS } from "./model";
@@ -18,6 +19,7 @@ import { AiTcRunner } from "./runner";
 /** 사용자가 고른 업로드 파일. renderer·모델에는 토큰과 이름만 준다. */
 const uploads = new Map<string, string>();
 let temporaryDir: string | undefined;
+const preparationCache = () => new PreparationCache(path.join(app.getPath("userData"), "ai-tc", "preparation"), uploads);
 
 const broadcast = (channel: string, value: unknown) => {
   for (const window of BrowserWindow.getAllWindows()) if (!window.isDestroyed()) window.webContents.send(channel, value);
@@ -61,41 +63,64 @@ export const aiTcDomain: MainDomain = {
       return { token, name: path.basename(filePath) };
     });
     // TC·시나리오 문맥으로 입력값과 업로드 파일을 정하고, 파일은 임시 폴더에 만들어 업로드 토큰으로 등록한다.
-    ipcMain.handle("ai-tc:prepare", async (_event, input: unknown) => {
-      const { tool, cases } = z.object({ tool: z.enum(["claude", "codex"]), cases: z.array(z.object({
+    ipcMain.handle("ai-tc:prepare", async (event, input: unknown) => {
+      const { tool, cases, force, reason } = z.object({ force: z.boolean().optional(), reason: z.enum(["initial", "missing", "failure"]).default("initial"), tool: z.enum(["claude", "codex"]), cases: z.array(z.object({
         key: z.string().max(2000), id: z.string().max(200), scenarioId: z.string().max(1000), pre: z.string().max(10000),
         steps: z.array(z.string().max(10000)).max(100), expected: z.array(z.object({ id: z.string(), text: z.string().max(10000) })).max(50),
         given: z.string().max(10000), scenario: z.string().max(4000),
       })).min(1).max(20) }).parse(input);
+      const cached = force ? cases.map(() => null) : await Promise.all(cases.map(item => preparationCache().load(item)));
+      const missing = cases.filter((_item, index) => !cached[index]);
+      if (!missing.length) return cached;
       const executable = (await availableTools()).find(item => item.tool === tool);
       if (!executable) throw new Error("선택한 AI CLI를 찾지 못했습니다.");
       temporaryDir ??= await mkdtemp(path.join(os.tmpdir(), "checkly-ai-tc-"));
       const today = new Date().toLocaleDateString("sv-SE");
-      const reply = await callModel({ tool, file: executable.path, cwd: temporaryDir, prompt: preparationPrompt(cases, today), timeoutMs: 240_000 }).promise;
-      const results = parsePreparation(reply, cases.map(item => item.key));
-      const maker = new FixtureMaker(temporaryDir, chromium.executablePath().replace("app.asar", "app.asar.unpacked"));
+      const prompt = preparationPrompt(missing, today);
+      let usage: ModelUsage | undefined;
+      let outcome: "complete" | "partial" | "error" = "error";
       try {
-        const out = [];
-        for (const result of results) {
-          const id = cases.find(item => item.key === result.key)!.id;
-          const files = [];
-          for (const spec of result.files) {
-            const made = await maker.make(spec, `${id.replace(/[^\w-]/g, "")}_${randomUUID().slice(0, 4)}`);
-            const token = randomUUID();
-            uploads.set(token, made.filePath);
-            files.push({ label: spec.label, token, name: made.name, spec: `${spec.type.toUpperCase()}${spec.width ? ` ${spec.width}×${spec.height ?? spec.width}` : ""} · ${Math.max(1, Math.round(made.bytes / 1024))}KB` });
+        const reply = await callModel({ tool, file: executable.path, cwd: temporaryDir, prompt, timeoutMs: 240_000, onUsage: value => { usage = value; } }).promise;
+        const results = parsePreparation(reply, missing.map(item => item.key));
+        const maker = new FixtureMaker(temporaryDir, chromium.executablePath().replace("app.asar", "app.asar.unpacked"));
+        try {
+          const out = [];
+          for (const result of results) {
+            const id = cases.find(item => item.key === result.key)!.id;
+            const files = [];
+            for (const spec of result.files) {
+              const made = await maker.make(spec, `${id.replace(/[^\w-]/g, "")}_${randomUUID().slice(0, 4)}`);
+              const token = randomUUID();
+              uploads.set(token, made.filePath);
+              files.push({ label: spec.label, token, name: made.name, spec: `${spec.type.toUpperCase()}${spec.width ? ` ${spec.width}×${spec.height ?? spec.width}` : ""} · ${Math.max(1, Math.round(made.bytes / 1024))}KB` });
+            }
+            out.push({ key: result.key, data: result.data, files, note: result.note ?? "" });
           }
-          out.push({ key: result.key, data: result.data, files, note: result.note ?? "" });
-        }
-        return out;
-      } finally { await maker.close(); }
+          for (const result of out) await preparationCache().save(cases.find(item => item.key === result.key)!, result);
+          outcome = out.length === missing.length ? "complete" : "partial";
+          return [...cached.filter(item => item !== null), ...out];
+        } finally { await maker.close(); }
+      } finally {
+        if (!event.sender.isDestroyed()) event.sender.send("ai-tc:prepare-usage", { tool, usage, caseIds: missing.map(item => item.id), promptChars: prompt.length, reason, outcome });
+      }
+    });
+    ipcMain.handle("ai-tc:save-preparation", async (_event, input: unknown) => {
+      const parsed = z.object({ item: z.object({ key: z.string().max(2000), id: z.string().max(200), scenarioId: z.string().max(1000), pre: z.string().max(10000), steps: z.array(z.string().max(10000)).max(100), expected: z.array(z.object({ id: z.string(), text: z.string().max(10000) })).max(50), given: z.string().max(10000), scenario: z.string().max(4000) }), prepared: z.object({ key: z.string(), data: z.array(z.object({ label: z.string(), value: z.string() })).max(25), files: z.array(z.object({ label: z.string(), token: z.string(), name: z.string(), spec: z.string() })).max(10), note: z.string() }) }).parse(input);
+      if (parsed.item.key !== parsed.prepared.key) throw new Error("TC 정보가 일치하지 않습니다.");
+      await preparationCache().save(parsed.item, parsed.prepared);
     });
     ipcMain.handle("ai-tc:tools", async () => (await availableTools()).map(item => ({ tool: item.tool, version: item.version })));
     ipcMain.handle("ai-tc:start", (_event, plan: unknown) => getRunner().start(plan));
+    ipcMain.handle("ai-tc:replay", (_event, runId: unknown, assisted: unknown) => getRunner().startReplay(runId, z.boolean().default(false).parse(assisted)));
+    ipcMain.handle("ai-tc:replay-saved", (_event, plan: unknown, assisted: unknown) => getRunner().startSavedReplay(plan, z.boolean().default(false).parse(assisted)));
+    ipcMain.handle("ai-tc:saved-needs", (_event, plan: unknown) => getRunner().savedNeeds(plan));
     ipcMain.handle("ai-tc:decide", (_event, runId: unknown, decision: unknown, reply: unknown) => getRunner().decide(runId, decision, reply));
     ipcMain.handle("ai-tc:browser-event", (_event, runId: unknown, input: unknown) => getRunner().browserEvent(runId, input));
+    ipcMain.handle("ai-tc:resize", (_event, runId: unknown, size: unknown) => getRunner().resize(runId, size));
     ipcMain.handle("ai-tc:cancel", (_event, runId: unknown) => getRunner().cancel(runId));
     ipcMain.handle("ai-tc:review", (_event, input: unknown) => getRunner().review(input));
+    ipcMain.handle("ai-tc:approve-assertion", (_event, input: unknown) => getRunner().approveAssertion(input));
+    ipcMain.handle("ai-tc:apply-repair", (_event, input: unknown) => getRunner().applyRepair(input));
     ipcMain.handle("ai-tc:capture", (_event, runId: unknown, captureId: unknown) => getRunner().capture(runId, captureId));
     ipcMain.handle("ai-tc:current", () => getRunner().current());
     // 결과를 .xlsx로 저장한다. 캡처·영상은 산출물 폴더에 남아 있어 함께 열 수 있다.

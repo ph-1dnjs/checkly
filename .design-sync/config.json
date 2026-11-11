@@ -1,0 +1,57 @@
+{
+  "projectId": "d261385a-c13a-49b1-bc07-3fc1b197cdf2",
+  "shape": "storybook",
+  "pkg": "checkly-ui",
+  "globalName": "Checkly",
+  "entry": ".design-sync/.cache/ds-pkg/index.js",
+  "buildCmd": "node .design-sync/build-ds.mjs",
+  "cssEntry": "index.css",
+  "storybookStatic": ".design-sync/sb-reference",
+  "storybookConfigDir": ".storybook",
+  "titleMap": {
+    "Typography": null,
+    "Color": null,
+    "Dimensions": null,
+    "Effects": null,
+    "Icons": null,
+    "Segmented": null,
+    "Badge·Tag": null,
+    "Status": null,
+    "Progress": null,
+    "ListRow": null,
+    "PanelHeader": null,
+    "Callout": null,
+    "Toast": null,
+    "Modal": null,
+    "Drawer": null,
+    "Dock·Console": null,
+    "Input·Toggle": "Input",
+    "ModalDialog": "Modal"
+  },
+  "overrides": {
+    "Button": {
+      "skip": [
+        "components-controls-button--overview"
+      ],
+      "primaryStory": "Variants"
+    },
+    "Input": {
+      "skip": [
+        "components-controls-input-·-toggle--overview"
+      ],
+      "primaryStory": "InputStates",
+      "cardMode": "column"
+    },
+    "Modal": {
+      "cardMode": "single",
+      "primaryStory": "ConfirmDelete"
+    },
+    "ActionTag": {
+      "cardMode": "column"
+    },
+    "Icon": {
+      "cardMode": "column"
+    }
+  },
+  "readmeHeader": ".design-sync/conventions.md"
+}
