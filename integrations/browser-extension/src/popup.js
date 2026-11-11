@@ -34,9 +34,9 @@ chrome.runtime.onMessage.addListener((message,sender)=>{
   if(message.type==='upload-progress'&&currentTeam&&message.team.userId===currentTeam.userId&&message.team.projectId===currentTeam.projectId)renderUploadProgress(message);
   if(message.type==='recording-storage-error'){captures=[];renderCaptureProgress();$('local-save-status').textContent='로컬 기록을 저장하지 못했습니다. 저장 공간을 확인해 주세요.';}
 });
-const consentReady=chrome.storage.local.get('recordingConsentV1').then(value=>{consentAccepted=value.recordingConsentV1===true;renderConsent();});
+const consentReady=chrome.storage.local.get('recordingConsentV2').then(value=>{consentAccepted=value.recordingConsentV2===true;renderConsent();});
 function renderConsent(){$('consent').checked=consentAccepted;$('consent-box').hidden=consentAccepted;}
-$('consent').onchange=async()=>{const accepted=$('consent').checked;try{await chrome.storage.local.set({recordingConsentV1:accepted});consentAccepted=accepted;renderConsent();}catch(e){$('consent').checked=consentAccepted;$('message').textContent=`동의를 저장하지 못했습니다: ${e.message}`;}};
+$('consent').onchange=async()=>{const accepted=$('consent').checked;try{await chrome.storage.local.set({recordingConsentV2:accepted});consentAccepted=accepted;renderConsent();}catch(e){$('consent').checked=consentAccepted;$('message').textContent=`동의를 저장하지 못했습니다: ${e.message}`;}};
 function setPlayback(playing){$('preview-play').innerHTML=playing?pauseIcon:previewIcon;const label=playing?'일시정지':'재생';$('preview-play').setAttribute('aria-label',label);$('preview-play').title=label;}
 setPlayback(false);
 function closeMenu(){$('account-menu').hidden=true;$('more').setAttribute('aria-expanded','false');}

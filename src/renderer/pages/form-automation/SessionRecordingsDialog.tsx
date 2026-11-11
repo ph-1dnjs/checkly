@@ -142,7 +142,7 @@ export const SessionRecordingsDialog = ({ onClose }: { onClose: () => void }) =>
     <section ref={dialog} className="ls-recordings-dialog" role="dialog" aria-modal="true" aria-label="브라우저 기록">
       <header className="ls-dialog-header">
         <h2>브라우저 기록</h2>
-        <span className="ls-local-note">오류 전후 5초 · 입력값 마스킹 · 기본 로컬 저장</span>
+        <span className="ls-local-note">오류 전후 5초 · 기본 로컬 저장</span>
         <Button variant="secondary" className="button ls-close" onClick={onClose} aria-label="브라우저 기록 닫기">닫기</Button>
       </header>
     {!api && <div className="ls-notice">로컬 기록·재생은 Electron 앱에서 사용할 수 있습니다.</div>}

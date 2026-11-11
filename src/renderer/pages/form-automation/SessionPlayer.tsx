@@ -103,7 +103,7 @@ export const SessionPlayer = ({ document, startAt, endAt, errorAt, logs, logsWar
   const label = (event: typeof activities[number]) => {
     if (event.type === 4) return "페이지 화면";
     const source = (event.data as { source: number }).source;
-    return source === 5 ? "입력 (마스킹)" : source === 3 ? "스크롤" : "클릭";
+    return source === 5 ? "입력" : source === 3 ? "스크롤" : "클릭";
   };
 
   const timeline = [

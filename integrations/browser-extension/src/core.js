@@ -16,6 +16,10 @@ export function addLog(state,event,team,now=Date.now()){
   if(!event||!kinds.includes(event.type))return;
   const status=Number.isInteger(event.status)&&event.status>=0&&event.status<=599?event.status:null;
   const log={id:crypto.randomUUID(),browser_session_id:state.id,source:'browser',kind:event.type,occurred_at:new Date(now).toISOString(),url:cleanUrl(event.url),page_url:cleanUrl(event.pageUrl),method:typeof event.method==='string'&&/^[A-Z]{1,16}$/.test(event.method)?event.method:null,status,duration_ms:null,is_error:event.type.endsWith('error')||event.type==='unhandled-rejection'||status===0||status>=400};
+  if(['fetch','xhr'].includes(event.type)&&event.payload&&bytes(event.payload)<=140_000){
+    const body=value=>value&&['captured','empty','unavailable','omitted'].includes(value.state)&&(!value.text||typeof value.text==='string'&&bytes(value.text)<=70_000)?value:{state:'unavailable',note:'본문을 읽을 수 없습니다.'};
+    log.payload={request:body(event.payload.request),response:body(event.payload.response),responseContentType:typeof event.payload.responseContentType==='string'?event.payload.responseContentType.slice(0,200):undefined};
+  }
   state.logs=[...state.logs.filter(l=>Date.parse(l.occurred_at)>=now-5000),log].slice(-200);
   if(state.clip){state.clip.logs.push(log);return;}
   if(!log.is_error)return;
