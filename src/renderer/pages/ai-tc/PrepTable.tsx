@@ -3,7 +3,8 @@ import { Button } from "../../shared/ui/Button";
 import { Input } from "../../shared/ui/Input";
 import type { AiTcModel } from "../../app/hooks/useAiTc";
 import { runnable, type AiTcCase } from "../../../app/ipc/ai-tc/model";
-import { Badge, BadgeToggle, Check, WorkHead, caseGroups, matches, type Tone } from "./parts";
+import { Badge, BadgeToggle, Check, WorkHead, matches, type Tone } from "./parts";
+import { CommonConditions } from "./CommonConditions";
 
 /** Step 2 준비: 실행할 TC 선택 · 실행 순서 · 테스트 데이터 */
 export const PrepTable = ({ model }: { model: AiTcModel }) => {
@@ -14,7 +15,24 @@ export const PrepTable = ({ model }: { model: AiTcModel }) => {
   const isOn = (item: AiTcCase) => model.picked.includes(item.key);
   const order = new Map(model.readyList.map((entry, index) => [entry.item.key, index + 1]));
   const pool = all.filter(item => (filter === "on" ? isOn(item) : filter === "off" ? !isOn(item) : true)).filter(item => matches(query, item));
-  const groups = caseGroups(pool);
+  const rows: Array<{ group: string; items: AiTcCase[]; depth: number } | { item: AiTcCase }> = [];
+  const addGroups = (items: AiTcCase[], depth: number) => {
+    const groups = new Map<string, AiTcCase[]>();
+    for (const item of items) {
+      const parts = item.id.split("-");
+      if (depth >= parts.length || !parts[depth]) {
+        rows.push({ item });
+        continue;
+      }
+      const group = parts.slice(0, depth + 1).join("-");
+      groups.set(group, [...(groups.get(group) ?? []), item]);
+    }
+    for (const [group, members] of groups) {
+      if (depth < 2 || members.length >= 2) rows.push({ group, items: members, depth });
+      addGroups(members, depth + 1);
+    }
+  };
+  addGroups(pool, 0);
   const visibleOn = pool.filter(isOn).length;
   const toggle = (items: AiTcCase[], on: boolean) => (on ? model.deselect(items.map(item => item.key)) : model.select(items.map(item => item.key)));
 
@@ -33,11 +51,17 @@ export const PrepTable = ({ model }: { model: AiTcModel }) => {
 
   return (
     <div className="aitcx-ws">
+      <CommonConditions workbook={model.workbook} options={model.options} />
       <WorkHead title="실행 순서" sub={`${model.picked.length} / ${all.length}개 선택 · 선행 TC 기준 자동 정렬`}
         chips={[{ key: "all", label: "전체", count: all.length }, { key: "on", label: "선택", count: model.picked.length }, { key: "off", label: "선택 안 함", count: all.length - model.picked.length }]}
         filter={filter} onFilter={setFilter} shown={pool.length} query={query} onQuery={setQuery} />
-      {/* 디자인 미반영: 테스트 데이터 다시 세팅(regeneratePreparation), 저장된 절차의 데이터 항목 불러오기(loadSavedNeeds), 준비 토큰 사용량(prepareUsage),
-          남은 선행 모두 "이미 준비됨"(confirmAllRefs), 선행 순환 경고, TC 제외(toggleExcluded), TC 상세(사전 조건·기대 결과·계정 안내) — 기존 PrepView.tsx 참고 */}
+      <div className="aitc-pad-bottom">
+        <Button variant="secondary" disabled={!model.autoPrepare || Boolean(model.preparing) || model.live || !model.picked.length} title={!model.autoPrepare ? "AI 데이터 자동 준비를 켜야 다시 세팅할 수 있습니다." : undefined} onClick={() => { if (window.confirm("선택한 TC의 입력값과 파일을 다시 준비합니다. 수정한 값은 바뀔 수 있습니다. 계속할까요?")) model.regeneratePreparation(); }}>테스트 데이터 다시 세팅</Button>{" "}
+        <Button variant="secondary" disabled={Boolean(model.cantRun) || model.live} onClick={() => void model.loadSavedNeeds()}>저장된 절차의 데이터 항목 불러오기</Button>{" "}
+        <Button variant="secondary" disabled={Boolean(model.cantRun) || model.starting || model.live} onClick={() => { if (window.confirm("저장된 동작을 현재 데이터로 실행합니다. 등록·저장이 중복될 수 있습니다. 계속할까요?")) void model.start("saved"); }}>저장된 절차로 빠른 실행</Button>{" "}
+        <Button variant="secondary" disabled={Boolean(model.cantRun) || model.starting || model.live} onClick={() => { if (window.confirm("저장된 동작을 현재 데이터로 실행합니다. 등록·저장이 중복될 수 있으며 미승인 결과는 AI로 판정합니다. 계속할까요?")) void model.start("assisted"); }}>저장된 절차로 AI 보조 실행</Button>
+      </div>
+      {/* 디자인 미반영: 남은 선행 모두 "이미 준비됨"(confirmAllRefs), 선행 순환 경고, TC 제외(toggleExcluded), TC 상세(사전 조건·기대 결과·계정 안내) — 기존 PrepView.tsx 참고 */}
       <div className="aitcx-table-box">
         <table className="aitcx-table">
           <thead>
@@ -48,32 +72,31 @@ export const PrepTable = ({ model }: { model: AiTcModel }) => {
             </tr>
           </thead>
           <tbody>
-            {groups.map(([group, items]) => {
-              const n = items.filter(isOn).length;
-              return (
-                <Fragment key={group}>
-                  <tr className="group">
-                    <td><Check on={n === items.length} part={n > 0} label={`${group} 전체 선택`} onToggle={() => toggle(items, n === items.length)} /></td>
-                    <td colSpan={5}><Button className="aitcx-group" onClick={() => toggle(items, n === items.length)}><b>{group}</b><span>{n} / {items.length}</span></Button></td>
+            {rows.map(row => {
+              if ("group" in row) {
+                const n = row.items.filter(isOn).length;
+                return (
+                  <tr className="group" key={`group-${row.group}`}>
+                    <td><Check on={n === row.items.length} part={n > 0} label={`${row.group} 전체 선택`} onToggle={() => toggle(row.items, n === row.items.length)} /></td>
+                    <td colSpan={5}><Button className="aitcx-group" style={{ marginLeft: row.depth * 16 }} onClick={() => toggle(row.items, n === row.items.length)}><b>{row.group}</b><span>{n} / {row.items.length}</span></Button></td>
                   </tr>
-                  {items.map(item => {
-                    const on = isOn(item);
-                    const state = dataState(item);
-                    const open = on && openKey === item.key;
-                    return (
-                      <Fragment key={item.key}>
-                        <tr className={on ? "" : "off"}>
-                          <td><Check on={on} label={`${item.id} 선택`} onToggle={() => toggle([item], on)} /></td>
-                          <td className="mono mute">{on ? order.get(item.key) ?? "—" : "—"}</td>
-                          <td className="mono">{item.id}</td>
-                          <td>{item.title}</td>
-                          <td className="mono mute">{item.refs.join(", ") || "—"}</td>
-                          <td>{state ? <BadgeToggle tone={state.tone} open={open} onToggle={() => setOpenKey(open ? "" : item.key)}>{state.text}</BadgeToggle> : <span className="mute">—</span>}</td>
-                        </tr>
-                        {open && <tr className="detail"><td colSpan={6}><DataDetail model={model} item={item} /></td></tr>}
-                      </Fragment>
-                    );
-                  })}
+                );
+              }
+              const item = row.item;
+              const on = isOn(item);
+              const state = dataState(item);
+              const open = on && openKey === item.key;
+              return (
+                <Fragment key={item.key}>
+                  <tr className={on ? "" : "off"}>
+                    <td><Check on={on} label={`${item.id} 선택`} onToggle={() => toggle([item], on)} /></td>
+                    <td className="mono mute">{on ? order.get(item.key) ?? "—" : "—"}</td>
+                    <td className="mono">{item.id}</td>
+                    <td>{item.title}</td>
+                    <td className="mono mute">{item.refs.join(", ") || "—"}</td>
+                    <td>{state ? <BadgeToggle tone={state.tone} open={open} onToggle={() => setOpenKey(open ? "" : item.key)}>{state.text}</BadgeToggle> : <span className="mute">—</span>}</td>
+                  </tr>
+                  {open && <tr className="detail"><td colSpan={6}><DataDetail model={model} item={item} /></td></tr>}
                 </Fragment>
               );
             })}

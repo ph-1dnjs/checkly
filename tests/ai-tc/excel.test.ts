@@ -38,3 +38,27 @@ test(".xlsx가 아니거나 손상된 파일은 가져오지 않는다", async (
   await assert.rejects(readWorkbook("a.xls", Buffer.from("x")), AiTcImportError);
   await assert.rejects(readWorkbook("a.xlsx", Buffer.from("not a zip")), /손상/);
 });
+
+test("표 위 공통 사전 조건은 실행에 전달하고 TC명은 이름 열로 표시한다", async () => {
+  const book = new ExcelJS.Workbook();
+  const sheet = book.addWorksheet("BOS_TC");
+  sheet.addRow(["공통 사전 조건", "BOS 로그인 후 프로모션 관리 진입"]);
+  sheet.mergeCells("B1:H1");
+  sheet.addRow(["공통 사전 조건", "숨긴 조건"]);
+  sheet.getRow(2).hidden = true;
+  sheet.addRow(["테스트케이스 ID", "테스트케이스명", "테스트 절차", "사전조건", "예상결과"]);
+  sheet.addRow(["A-001", "제목 공란 검증", "제목을 지운다", "정상 초안", "오류 표시"]);
+  sheet.addRow(["A-002", "", "등록 일시 정렬 클릭", "", "정렬됨"]);
+  const other = book.addWorksheet("다른 TC");
+  other.addRow(["TC ID", "테스트 단계", "기대 결과"]);
+  other.addRow(["B-001", "조회", "표시"]);
+  const workbook = await readWorkbook("common.xlsx", Buffer.from(await book.xlsx.writeBuffer()));
+  const cases = buildCases(workbook, { hiddenSheets: false, hiddenRows: false });
+  assert.equal(cases.length, 3, "공통 조건 행은 TC가 아니다");
+  assert.equal(cases[0]!.title, "제목 공란 검증");
+  assert.deepEqual(cases[0]!.steps, ["제목을 지운다"]);
+  assert.equal(cases[0]!.pre, "공통 사전 조건:\nBOS 로그인 후 프로모션 관리 진입\n\n정상 초안");
+  assert.equal(cases[1]!.title, "등록 일시 정렬 클릭", "기존 파일의 첫 단계 대체 유지");
+  assert.equal(cases[2]!.pre, "", "다른 시트에 공통 조건이 누출되지 않는다");
+  assert.match(buildCases(workbook, { hiddenSheets: false, hiddenRows: true })[0]!.pre, /숨긴 조건/);
+});

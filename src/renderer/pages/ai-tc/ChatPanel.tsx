@@ -152,13 +152,16 @@ export const stepMessage = (step: number, ctx: ChatContext): ChatMessage[] => {
   }];
 };
 
-export const ChatPanel = ({ ctx, step, notes, draft, setDraft, canReply, onSend, onClose }: {
-  ctx: ChatContext; step: number; notes: string[]; draft: string; setDraft: (value: string) => void;
+export const ChatPanel = ({ ctx, step, history, draft, setDraft, canReply, onSend, onClose }: {
+  ctx: ChatContext; step: number; history: Array<{ message: ChatMessage } | { reply: string }>; draft: string; setDraft: (value: string) => void;
   canReply: boolean; onSend: () => void; onClose: () => void;
 }) => {
   const scroll = useRef<HTMLDivElement>(null);
   const groups = Array.from({ length: step + 1 }, (_, k) => ({ k, msgs: stepMessage(k, ctx) }));
-  const signature = groups.map(group => group.msgs.map(msg => msg.title).join("/")).join("|") + notes.length;
+  const waiting = ctx.model.run?.status === "waiting";
+  const runMessages = groups[2]?.msgs;
+  const activeWait = waiting ? runMessages?.pop() : undefined;
+  const signature = groups.map(group => group.msgs.map(msg => msg.title).join("/")).join("|") + history.length + (activeWait?.title ?? "");
   const prepUsage = ctx.model.prepareUsage;
   const run = ctx.model.run;
   useEffect(() => { scroll.current?.scrollTo({ top: scroll.current.scrollHeight, behavior: "smooth" }); }, [signature]);
@@ -169,10 +172,21 @@ export const ChatPanel = ({ ctx, step, notes, draft, setDraft, canReply, onSend,
         <Button variant="ghost" iconOnly className="aitcx-push" aria-label="대화 패널 닫기" onClick={onClose}><span className="msi" aria-hidden="true">left_panel_close</span></Button>
       </div>
       <div className="aitcx-chat-scroll" ref={scroll}>
-        {groups.map(({ k, msgs }) => msgs.map((msg, index) => {
-          const isCur = k === step && index === msgs.length - 1;
+        {groups.flatMap(({ k, msgs }) => {
+          const entries: Array<{ message: ChatMessage; active: boolean; replyAfter?: string } | { reply: string }> = msgs.map((message, index) => ({ message, active: k === step && index === msgs.length - 1 && !activeWait, replyAfter: k < step && index === msgs.length - 1 ? REPLIES[k] : undefined }));
+          if (k === 2) {
+            history.forEach((entry, index) => {
+              if ("reply" in entry) entries.push(entry);
+              else entries.push({ message: activeWait && index === history.length - 1 ? activeWait : entry.message, active: Boolean(activeWait && index === history.length - 1 && step === 2) });
+            });
+            if (activeWait && (!history.length || "reply" in history[history.length - 1]!)) entries.push({ message: activeWait, active: step === 2 });
+          }
+          return entries;
+        }).map((entry, index) => {
+          if ("reply" in entry) return <div key={`reply-${index}`} className="aitcx-me"><span className="note">{entry.reply}</span></div>;
+          const { message: msg, active: isCur, replyAfter } = entry;
           return (
-            <div key={`${k}-${index}`} className="aitcx-msg-wrap">
+            <div key={index} className="aitcx-msg-wrap">
               <div className="aitcx-msg">
                 <span className="aitcx-avatar"><span className="msi" aria-hidden="true">smart_toy</span></span>
                 <div className="aitcx-bubble">
@@ -203,11 +217,10 @@ export const ChatPanel = ({ ctx, step, notes, draft, setDraft, canReply, onSend,
                   )}
                 </div>
               </div>
-              {k < step && index === msgs.length - 1 && <div className="aitcx-me"><span>{REPLIES[k]}</span></div>}
+              {replyAfter && <div className="aitcx-me"><span>{replyAfter}</span></div>}
             </div>
           );
-        }))}
-        {notes.map((note, index) => <div key={index} className="aitcx-me"><span className="note">{note}</span></div>)}
+        })}
         {canReply && (
           <div className="aitcx-me"><span className="typing" aria-label="입력 중">
             {draft ? <>{draft}<i className="caret" /></> : <><i className="dot" /><i className="dot" /><i className="dot" /></>}
@@ -224,6 +237,8 @@ export const ChatPanel = ({ ctx, step, notes, draft, setDraft, canReply, onSend,
         {run?.usage && <div>실행 {run.provider} · 입력 {run.usage.input.toLocaleString()} · 출력 {run.usage.output.toLocaleString()} · 캐시 읽기 {run.usage.cachedInput.toLocaleString()} · 생성 {run.usage.cacheWrite.toLocaleString()}{run.usage.unknown ? ` · 진행 중 또는 미확인 ${run.usage.unknown}회` : ""} <small>({run.provider === "Claude CLI" ? "캐시 별도" : "캐시 읽기 입력에 포함"})</small></div>}
         {!run?.usage && !Object.values(prepUsage).some(usage => usage.input || usage.output || usage.cached || usage.write || usage.unknown) && <div>완료된 AI 호출이 없습니다.</div>}
         <small>준비는 현재 화면 세션 누계이며 실행 사용량과 별도입니다.</small>
+        <Button variant="ghost" disabled={Boolean(ctx.model.preparing)} onClick={ctx.model.resetPrepareUsage}>준비 사용량 초기화</Button>
+        {!!ctx.model.prepareCalls.length && <details><summary>준비 호출별 측정 ({ctx.model.prepareCalls.length}회)</summary>{ctx.model.prepareCalls.map((call, index) => <div key={index}>{index + 1}회 · {call.tool} · {call.caseIds.join(", ")} · {({ initial: "처음 요청", missing: "응답 누락 재시도", failure: "실패 재시도" })[call.reason]} · {({ complete: "완료", partial: "일부 누락", error: "오류" })[call.outcome]} · 프롬프트 {call.promptChars.toLocaleString()}자 · {call.usage ? `입력 ${call.usage.input.toLocaleString()} · 출력 ${call.usage.output.toLocaleString()} · 캐시 읽기 ${call.usage.cachedInput?.toLocaleString() ?? "미확인"} · 생성 ${call.usage.cacheWrite?.toLocaleString() ?? "미확인"}` : "사용량 미확인"}</div>)}<small>문자 수는 토큰 수가 아닙니다.</small></details>}
       </div>
       <div className="aitcx-chat-input">
         {/* 디자인만 있음: AI와 자유 대화 — 실행 중 사용자 대기일 때만 답장을 보내 AI에 전달한다. */}

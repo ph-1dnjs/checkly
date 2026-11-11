@@ -34,6 +34,7 @@ let changeInputDuringAi = false;
 let continuousChanges = false;
 let sessionTimer = false;
 let transientAlert = false;
+let horizontalScroll = false;
 before(async () => {
   server = createServer((request, response) => {
     response.setHeader("content-type", "text/html; charset=utf-8");
@@ -49,6 +50,7 @@ before(async () => {
     if (sessionTimer) body += '<button><span role="img" aria-label="clock-circle"></span><span id="timer">남은 시간 58:59</span></button><script>let seconds=59; setInterval(() => document.querySelector("#timer").textContent="남은 시간 58:"+String(--seconds).padStart(2,"0"), 100)</script>';
     if (transientAlert) body = body.replace("document.getElementById('done').textContent='등록 완료'", "document.getElementById('done').innerHTML='<span role=&quot;alert&quot;>등록 성공 알림</span>';setTimeout(() => document.getElementById('done').textContent='', 100)");
     if (duplicateText) body += '<p>0/30</p>';
+    if (horizontalScroll) body += '<div style="position:absolute;left:0;top:100px;width:300px;overflow:auto" id="scroll"><div style="width:1200px;height:100px"></div></div><script>document.getElementById("scroll").addEventListener("scroll", e => document.getElementById("count").textContent = "가로 이동 " + e.target.scrollLeft)</script>';
     response.end(request.url === "/" ? body.replace("OUT", `${other}/x`) : "<html><body><h1>외부</h1></body></html>");
   });
   await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
@@ -255,6 +257,35 @@ test("인계 중 같은 페이지를 직접 조작하고 답변과 변경된 화
   await assert.rejects(h.runner.startReplay(started.runId), /수동 동작/);
 });
 
+test("표시 영역 크기에 맞춰 브라우저 뷰포트를 바꾸고 큰 좌표도 직접 조작한다", async () => {
+  const h = harness([{ action: { type: "handoff", reason: "화면 확인" } }, { action: { type: "done" } }]);
+  const started = await h.runner.start(plan([{ id: "SC-RESIZE" }]));
+  await h.until(state => state.wait?.kind === "handoff");
+  await h.runner.resize(started.runId, { width: 1600, height: 1000 });
+  assert.deepEqual(h.states.at(-1)?.viewport, { width: 1600, height: 1000 });
+  await h.runner.browserEvent(started.runId, { type: "click", x: 1500, y: 950 });
+  h.runner.decide(started.runId, "resume");
+  await h.until(state => state.status === "done");
+});
+
+test("인계 중 포인터 아래 영역에 가로 휠 이동을 전달한다", async () => {
+  horizontalScroll = true;
+  try {
+    const h = harness([
+      { action: { type: "handoff", reason: "기존 이름을 확인해 알려주세요" } },
+      { action: { type: "judge", expected: "E1", verdict: "pass", observation: "확인", basis: [] } },
+      { action: { type: "done" } },
+    ]);
+    const started = await h.runner.start(plan([{ id: "SC-SCROLL" }]));
+    await h.until(state => state.wait?.kind === "handoff");
+    await h.runner.browserEvent(started.runId, { type: "wheel", x: 100, y: 150, deltaX: 200, deltaY: 0 });
+    await new Promise(resolve => setTimeout(resolve, 150));
+    h.runner.decide(started.runId, "resume");
+    await h.until(state => state.status === "done");
+    assert.match(h.prompts[1]!, /가로 이동 200/);
+  } finally { horizontalScroll = false; }
+});
+
 test("로그인 대기 상태가 전달되는 즉시 재개해도 다음 동작을 진행한다", async () => {
   const h = harness([
     { action: { type: "handoff", reason: "로그인", login: true } },
@@ -298,6 +329,9 @@ test("응답 형식 오류로 다시 호출한 사용량도 전체와 TC에 합�
   for (const usage of [done.usage, done.cases[0]!.usage]) assert.deepEqual(usage, { input: 20, output: 4, cachedInput: 6, cacheWrite: 8, measured: 2, unknown: 0 });
   assert.deepEqual(done.usageByPhase?.retry, { input: 10, output: 2, cachedInput: 3, cacheWrite: 4, measured: 1, unknown: 0 });
   assert.deepEqual(done.usageByPhase?.judge, { input: 10, output: 2, cachedInput: 3, cacheWrite: 4, measured: 1, unknown: 0 });
+  assert.deepEqual(done.cases[0]!.modelCalls?.map(call => [call.phase, call.attempt, call.outcome]), [["retry", 1, "error"], ["judge", 2, "used"]]);
+  assert.equal(done.cases[0]!.modelCalls?.[0]?.reason, "format");
+  assert.ok(done.cases[0]!.modelCalls![0]!.promptChars > done.cases[0]!.modelCalls![0]!.snapshotChars);
 });
 
 test("TC별 토큰 한도는 해당 TC만 중단하고 다음 TC를 실행한다", async () => {
@@ -451,6 +485,8 @@ test("같은 주소에서 AI 대기 중 화면 내용이 바뀌면 이전 요청
     const done = await h.until(state => state.runId === run.runId && state.status === "done");
     assert.ok(!done.cases[0]!.actions.some(item => item.op === "클릭"));
     assert.match(h.prompts[1]!, /화면 내용이 바뀌어/);
+    assert.equal(done.cases[0]!.modelCalls?.[0]?.outcome, "discarded");
+    assert.equal(done.cases[0]!.modelCalls?.[0]?.reason, "snapshot");
   } finally { changeDuringAi = false; }
 });
 

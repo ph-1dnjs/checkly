@@ -14,7 +14,7 @@
 | `replay(runId, assisted)` / `replaySaved(plan, assisted)` | `ai-tc:replay` / `ai-tc:replay-saved` | 현재 실행 또는 같은 TC·환경의 로컬 절차 재실행 |
 | `savedNeeds(plan)` | `ai-tc:saved-needs` | 일치하는 저장 절차에서 데이터 항목 이름 조회. 값은 반환하지 않음 |
 | `decide(runId, decision, reply?)` | `ai-tc:decide` | 대기 조치와 일반 인계의 선택 답변을 전달 |
-| `browserEvent(runId, event)` | `ai-tc:browser-event` | 대기 중 같은 페이지의 클릭·입력·스크롤·탐색 |
+| `browserEvent(runId, event)` | `ai-tc:browser-event` | 대기 중 같은 페이지의 클릭·입력·스크롤·탐색. 휠은 포인터 위치와 가로·세로 이동량을 전달 |
 | `cancel(runId)` | `ai-tc:cancel` | 취소(멱등) |
 | `review(input)` | `ai-tc:review` | 결과 판정 수정·이유 |
 | `approveAssertion(input)` / `applyRepair(input)` | `ai-tc:approve-assertion` / `ai-tc:apply-repair` | 문구 검증 승인·취소 / 수정 후보 대상 임시 적용 |
@@ -31,6 +31,9 @@
 - Codex: `codex exec --json --skip-git-repo-check [-i screen.jpg] --sandbox read-only -`.
 - 프롬프트는 stdin. 호출당 120초 제한. 모델에는 TC 원문·데이터 입력값·업로드 파일 이름·URL·제목·접근성 트리(비밀번호·토큰 칸 값은 가림)만 보냅니다.
 - 실행 중과 결과에 제공자가 보고한 입력·출력·캐시 토큰을 표시한다. Codex 캐시 읽기는 입력에 포함되며 Claude 캐시 읽기·생성은 별도다. 준비 사용량은 화면 세션 누계를 실행 시작 시 별도로 결과에 기록하며 실행 사용량에 합산하지 않는다. 선택하지 않은 TC의 준비·재시도도 포함될 수 있다. 결과가 없거나 Claude 캐시 정보가 누락된 호출은 미확인이다.
+- 자동 준비는 최대 5개씩 요청하고 캐시에 없는 TC만 모델에 보낸다. 묶음 오류나 응답 누락은 작은 묶음으로 재시도하며 반환된 결과만 저장한다. 강제 재생성은 일반 캐시 요청과 분리한다.
+- 가져오기 화면에서 AI 데이터 자동 준비를 끄면 준비 단계의 AI 호출을 건너뛴다. 저장된 절차의 데이터 항목을 불러온 뒤 필요한 값을 직접 입력해 빠른 실행을 선택할 수 있다.
+- 실행 결과의 TC별 호출 기록에는 목적, 형식 재시도 순번, 프롬프트·접근성 트리 문자 수, 이미지 전송 여부, 사용량과 응답 사용·폐기·오류 및 사유를 기록한다. 준비 호출별 TC ID·요청 사유·완료/누락/오류·프롬프트 문자 수·사용량은 현재 화면 세션에 표시하고 준비 중이 아닐 때 초기화할 수 있다. 원문은 기록하지 않으며 문자 수는 토큰 수가 아니다.
 
 ## 로컬 산출물
 

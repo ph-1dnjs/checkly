@@ -14,11 +14,23 @@ test("프롬프트에 오늘 날짜와 시나리오 문맥을 넣는다", () => 
   assert.match(prompt, /모바일 배너 375px/);
 });
 
-test("응답을 검증하고 빠진 TC는 빈 준비로, 모르는 key는 버린다", () => {
+test("사전 조건 구성용 파일과 검증용 공란을 구분해 준비에 전달한다", () => {
+  const prompt = preparationPrompt([{ ...tc,
+    pre: "D0: 시작 내일 10:00, 종료 7일 뒤 18:00, 썸네일 570×285 PNG, PC 배너 1540px",
+    steps: ["제목을 공란으로 두고 등록 비활성을 확인한다"],
+  }], "2026-11-08");
+  assert.match(prompt, /사전 조건을 화면에서 구성하는 데 필요한 입력값과 업로드 파일도 준비/);
+  assert.match(prompt, /검증용 공란·오류값을 정상값으로 대체하지 않는다/);
+  assert.match(prompt, /정의가 없으면.*추정하지 말고/);
+  const payload = JSON.parse(prompt.split("TC 목록:\n")[1]!);
+  assert.match(payload[0].pre, /570×285 PNG/);
+  assert.deepEqual(payload[0].steps, ["제목을 공란으로 두고 등록 비활성을 확인한다"]);
+});
+
+test("응답을 검증하고 빠진 TC와 모르는 key는 반환하지 않는다", () => {
   const result = parsePreparation(`설명 {"cases":[{"key":"${tc.key}","data":[{"label":"제목","value":"QA자동_01"}],"files":[{"label":"모바일 배너","type":"png","width":375,"height":200}]},{"key":"other","data":[],"files":[]}]}`, [tc.key, "QA.xlsx:BOS_TC:5"]);
-  assert.equal(result.length, 2);
+  assert.equal(result.length, 1);
   assert.equal(result[0]!.files[0]!.width, 375);
-  assert.deepEqual(result[1], { key: "QA.xlsx:BOS_TC:5", data: [], files: [], note: "AI가 준비 값을 돌려주지 않음" });
   assert.throws(() => parsePreparation("없음", [tc.key]), /JSON/);
 });
 

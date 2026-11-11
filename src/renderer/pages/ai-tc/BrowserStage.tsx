@@ -1,4 +1,4 @@
-import type { MouseEvent } from "react";
+import { useEffect, useRef, type MouseEvent } from "react";
 import { Button } from "../../shared/ui/Button";
 import type { AiTcModel } from "../../app/hooks/useAiTc";
 import { TONE_ICON, toneOf } from "./parts";
@@ -10,6 +10,24 @@ export const BrowserStage = ({ model, control, onTakeover, onGiveBack, onSkip }:
   model: AiTcModel; control: Control; onTakeover: () => void; onGiveBack: () => void; onSkip: () => void;
 }) => {
   const run = model.run;
+  const viewportRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const element = viewportRef.current;
+    const resize = window.electronAPI?.aiTc?.resize;
+    if (!element || !run || !resize) return;
+    let timer: ReturnType<typeof setTimeout>;
+    let queue = Promise.resolve();
+    const observer = new ResizeObserver(([entry]) => {
+      if (!entry) return;
+      const width = Math.min(8192, Math.round(entry.contentRect.width));
+      const height = Math.min(8192, Math.round(entry.contentRect.height));
+      if (!width || !height) return;
+      clearTimeout(timer);
+      timer = setTimeout(() => { queue = queue.then(() => resize(run.runId, { width, height })).catch(() => {}); }, 100);
+    });
+    observer.observe(element);
+    return () => { clearTimeout(timer); observer.disconnect(); };
+  }, [run?.runId]);
   if (!run) return <div className="aitc-empty"><h2>실행 기록이 없습니다</h2><p>준비 단계에서 실행을 시작하세요.</p></div>;
   const status = run.status;
   const current = run.cases[run.current] ?? run.cases[0]!;
@@ -55,11 +73,11 @@ export const BrowserStage = ({ model, control, onTakeover, onGiveBack, onSkip }:
           {/* 디자인만 있음: AI 실행 중 "직접 제어"로 먼저 가져오기 — 실행기는 사용자 대기(waiting) 상태에서만 사용자 조작을 받는다. */}
           {/* 디자인 미반영: 캡처 상태 표시(OBSERVING·CAPTURE PAUSED 등) */}
         </div>
-        <div className="aitcx-viewport">
+        <div className="aitcx-viewport" ref={viewportRef}>
           {model.preview ? (
             <img src={model.preview} alt={isUser ? "직접 조작할 브라우저 화면" : "대상 페이지 화면"} tabIndex={isUser ? 0 : -1}
               onClick={isUser ? event => { model.browserEvent({ type: "click", ...toViewport(event) }); event.currentTarget.focus(); } : undefined}
-              onWheel={isUser ? event => model.browserEvent({ type: "wheel", deltaY: Math.max(-3000, Math.min(3000, event.deltaY)) }) : undefined}
+              onWheel={isUser ? event => model.browserEvent({ type: "wheel", ...toViewport(event), deltaX: Math.max(-3000, Math.min(3000, event.deltaX)), deltaY: Math.max(-3000, Math.min(3000, event.deltaY)) }) : undefined}
               onKeyDown={isUser ? event => {
                 if (event.key === "Unidentified" || event.key === "Process" || event.nativeEvent.isComposing) return;
                 event.preventDefault();

@@ -212,8 +212,8 @@ export class AiTcRunner {
 
   async browserEvent(runId: unknown, raw: unknown): Promise<void> {
     const event = z.discriminatedUnion("type", [
-      z.object({ type: z.literal("click"), x: z.number().min(0).max(1440), y: z.number().min(0).max(900) }),
-      z.object({ type: z.literal("wheel"), deltaY: z.number().min(-3000).max(3000) }),
+      z.object({ type: z.literal("click"), x: z.number().min(0).max(8192), y: z.number().min(0).max(8192) }),
+      z.object({ type: z.literal("wheel"), deltaX: z.number().min(-3000).max(3000), deltaY: z.number().min(-3000).max(3000), x: z.number().min(0).max(8192), y: z.number().min(0).max(8192) }),
       z.object({ type: z.literal("text"), text: z.string().max(10000) }),
       z.object({ type: z.literal("key"), key: z.string().max(100) }),
       z.object({ type: z.enum(["back", "forward", "reload"]) }),
@@ -222,12 +222,21 @@ export class AiTcRunner {
     if (!run || run.state.runId !== runId || run.state.status !== "waiting" || !run.page || run.state.wait?.kind === "confirm") return;
     const page = run.page;
     if (event.type === "click") await page.mouse.click(event.x, event.y);
-    else if (event.type === "wheel") await page.mouse.wheel(0, event.deltaY);
+    else if (event.type === "wheel") { await page.mouse.move(event.x, event.y); await page.mouse.wheel(event.deltaX, event.deltaY); }
     else if (event.type === "text") await page.keyboard.insertText(event.text);
     else if (event.type === "key") await page.keyboard.press(event.key);
     else if (event.type === "back") await page.goBack({ waitUntil: "domcontentloaded" });
     else if (event.type === "forward") await page.goForward({ waitUntil: "domcontentloaded" });
     else await page.reload({ waitUntil: "domcontentloaded" });
+  }
+
+  async resize(runId: unknown, raw: unknown): Promise<void> {
+    const size = z.object({ width: z.number().int().min(1).max(8192), height: z.number().int().min(1).max(8192) }).parse(raw);
+    const run = this.active;
+    if (!run || run.state.runId !== runId || !["running", "waiting"].includes(run.state.status)) return;
+    run.state.viewport = size;
+    if (run.page && !run.page.isClosed()) await run.page.setViewportSize(size);
+    this.emit(run);
   }
 
   /** 취소는 여러 번 불러도 안전하다. */
@@ -413,6 +422,7 @@ export class AiTcRunner {
     })()`);
     const page = await context.newPage();
     run.page = page;
+    await page.setViewportSize(run.state.viewport);
     // 첫 페이지를 만든 뒤에 구독해야 그 페이지를 새 탭으로 세지 않는다.
     context.on("page", popup => { if (popup !== run.page) run.popups.push(popup); });
     page.on("download", download => { run.downloads.push(download.suggestedFilename()); void download.cancel().catch(() => undefined); });
@@ -519,15 +529,18 @@ export class AiTcRunner {
           const callsBefore = run.state.budget.modelCalls;
           const observation = await this.observe(run);
           const reply = await this.ask(run, plan, result, { ...observation, history: [], feedback: `재실행 중 ${step.expected}만 현재 화면으로 판정하라. 다른 동작은 수행하지 않는다.`, sharedContext: index > 0 }, 3 - assistedCalls);
+          const metric = result.modelCalls?.at(-1);
+          if (metric) { metric.outcome = "discarded"; metric.reason = "guard"; }
           assistedCalls += run.state.budget.modelCalls - callsBefore;
           this.alive(run);
           const afterAi = await this.guard(run, result);
           if (afterAi !== "ok") { if (afterAi === "again") this.close(result, "check", "AI 판정 중 화면이 바뀌어 검증을 중단했습니다"); break; }
-          if (run.page!.url() !== observation.url) { this.close(result, "check", "AI 판정 중 주소가 바뀌어 검증을 중단했습니다"); break; }
+          if (run.page!.url() !== observation.url) { if (metric) metric.reason = "page"; this.close(result, "check", "AI 판정 중 주소가 바뀌어 검증을 중단했습니다"); break; }
           const latest = await this.observe(run);
           this.alive(run);
-          if (!latest.snapshot || latest.snapshot !== observation.snapshot) { this.close(result, "check", "AI 판정 중 화면 내용이 바뀌어 검증을 중단했습니다"); break; }
-          if (reply.action.type !== "judge" || reply.action.expected !== step.expected) { this.close(result, "check", "AI가 현재 기대 결과를 판정하지 못했습니다"); break; }
+          if (!latest.snapshot || latest.snapshot !== observation.snapshot) { if (metric) metric.reason = !latest.snapshot ? "observation" : "snapshot"; this.close(result, "check", "AI 판정 중 화면 내용이 바뀌어 검증을 중단했습니다"); break; }
+          if (reply.action.type !== "judge" || reply.action.expected !== step.expected) { if (metric) metric.reason = "unexpected"; this.close(result, "check", "AI가 현재 기대 결과를 판정하지 못했습니다"); break; }
+          if (metric) { metric.outcome = "used"; delete metric.reason; }
           await this.perform(run, plan, result, reply.action);
           if (reply.action.verdict !== "pass") { this.close(result, "check", "앞선 검증 미통과로 재실행 중단"); break; }
           run.state.budget.actions++;
@@ -564,12 +577,15 @@ export class AiTcRunner {
             try {
               const observation = await this.observe(run);
               const reply = await this.ask(run, plan, result, { ...observation, history: [], feedback: `저장된 동작이 실패했다: ${outcome.text}. 현재 화면에서 수정할 동작 후보 하나를 제안하라. 후보는 실행되지 않는다.`, sharedContext: index > 0 }, 3 - assistedCalls, "repair");
+              const metric = result.modelCalls?.at(-1);
+              if (metric) { metric.outcome = "discarded"; metric.reason = "snapshot"; }
               this.alive(run);
               const latest = await this.observe(run);
               this.alive(run);
               if (latest.url !== observation.url || !latest.snapshot || latest.snapshot !== observation.snapshot) throw new Error("AI 응답 중 화면이 바뀌어 수정 후보를 버렸습니다");
               const candidate = recordStep(reply.action, plan.data);
               result.repairSuggestion = { reason: outcome.text, index: stepIndex, step: candidate };
+              if (metric) { metric.outcome = "used"; delete metric.reason; }
               this.log(run, result, { op: "요청", target: "AI 수정 후보 생성", result: "실행하지 않음 · 결과에서 확인", tone: "wait" });
             } catch (error) {
               this.alive(run);
@@ -643,6 +659,8 @@ export class AiTcRunner {
         pendingFills = [];
         try { reply = await this.ask(run, plan, result, { ...observation, history, feedback, sharedContext: index > 0 }); }
         finally { result.timing!.modelMs += Date.now() - phaseStarted; }
+        const metric = result.modelCalls?.at(-1);
+        if (metric) { metric.outcome = "discarded"; metric.reason = "guard"; }
         feedback = "";
         this.alive(run);
         const afterAi = await this.guard(run, result);
@@ -665,6 +683,7 @@ export class AiTcRunner {
           } else staleObservations = 0;
         }
         if (staleReason) {
+          if (metric) metric.reason = staleReason === "화면 관찰 실패" ? "observation" : staleReason === "AI 응답 중 페이지 변경" ? "page" : "snapshot";
           staleObservations++;
           this.log(run, result, { op: "관찰", target: staleReason, result: `이전 요청을 버리고 다시 관찰 (${staleObservations}/3)`, tone: "wait" });
           if (staleObservations >= 3) {
@@ -678,6 +697,7 @@ export class AiTcRunner {
           }
           continue;
         }
+        if (metric) { metric.outcome = "used"; delete metric.reason; }
         if (reply.nextFills?.length && observation.snapshot.length > 0 && observation.snapshot.length < 14000 && reply.nextFills.every(fill => plan.data.some(item => item.value === fill.value && item.value))) {
           let allFound = true;
           for (const fill of reply.nextFills) {
@@ -805,6 +825,8 @@ export class AiTcRunner {
         tc: { id: plan.id, pre: plan.pre, steps: plan.steps, data: plan.data, files: plan.files.map(file => file.name), expected: result.expected.map(item => ({ id: item.id, text: item.text, verdict: open(item.verdict) ? undefined : VERDICT_LABEL[item.verdict] })) },
         url: observed.url, title: observed.title, snapshot: observed.snapshot, alerts: observed.alerts, history: observed.history, feedback, screenshot: observed.screenshot, sharedContext: observed.sharedContext,
       });
+      const metric: NonNullable<AiTcCaseResult["modelCalls"]>[number] = { phase: phaseHint ?? "explore", attempt: attempt + 1, promptChars: prompt.length, snapshotChars: observed.snapshot.length, image: Boolean(observed.screenshot), outcome: "pending" };
+      (result.modelCalls ??= []).push(metric);
       run.state.budget.modelCalls += 1;
       // 응답 없이 취소되거나 프로세스가 강제 종료되어도 미확인 호출로 남긴다.
       run.state.usage!.unknown++;
@@ -828,6 +850,9 @@ export class AiTcRunner {
       run.model = call;
       const recordPhase = (phase: "explore" | "judge" | "retry" | "repair") => {
         settled = true;
+        metric.phase = phase;
+        metric.usage = callUsage;
+        if (phase === "retry") metric.outcome = "error";
         const phases = run.state.usageByPhase ??= {};
         const total = phases[phase] ??= { input: 0, output: 0, cachedInput: 0, cacheWrite: 0, measured: 0, unknown: 0 };
         if (!callUsage || (run.plan.tool === "claude" && (callUsage.cachedInput === undefined || callUsage.cacheWrite === undefined))) total.unknown++;
@@ -835,10 +860,11 @@ export class AiTcRunner {
       };
       let text: string;
       try { text = await Promise.race([call.promise, run.aborted]); }
-      catch (error) { recordPhase(phaseHint ?? "retry"); this.alive(run); throw new ModelError((error as Error).message); }
+      catch (error) { recordPhase(phaseHint ?? "retry"); metric.outcome = "error"; metric.reason = "call"; this.alive(run); throw new ModelError((error as Error).message); }
       finally { if (run.model === call) run.model = undefined; }
       const parsed = parseReply(text);
       recordPhase(phaseHint ?? (parsed.reply ? (parsed.reply.action.type === "judge" ? "judge" : "explore") : "retry"));
+      if (!parsed.reply) { metric.outcome = "error"; metric.reason = "format"; }
       this.alive(run);
       if (parsed.reply) return parsed.reply;
       feedback = `직전 응답이 형식에 맞지 않았다(${parsed.error}). 규칙의 JSON 하나로만 다시 답하라.`;

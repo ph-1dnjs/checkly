@@ -1,13 +1,26 @@
 import { _electron as electron, expect } from '@playwright/test';
 import { createServer } from 'node:http';
-import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 async function main() {
   const dir = await mkdtemp(path.join(tmpdir(), 'checkly-ai-tc-desktop-'));
   const cli = path.join(dir, 'fake-claude.cjs');
-  await writeFile(cli, `#!/usr/bin/env node\nprocess.stdin.resume(); process.stdin.on('end', () => console.log(JSON.stringify({result: JSON.stringify({action:{type:'judge',expected:'E1',verdict:'pass',observation:'준비 완료',basis:[{k:'텍스트',v:'준비 완료'}],assertion:{type:'visibleText',text:'준비 완료'}}}),usage:{input_tokens:5,output_tokens:3,cache_read_input_tokens:0,cache_creation_input_tokens:0}})));\n`);
+  const callsFile = path.join(dir, 'prepare-calls.jsonl');
+  await writeFile(cli, `#!/usr/bin/env node
+let prompt = ''; process.stdin.setEncoding('utf8'); process.stdin.on('data', chunk => prompt += chunk);
+process.stdin.on('end', () => {
+  let result;
+  const marker = 'TC 목록:\\n';
+  if (prompt.includes(marker)) {
+    const cases = JSON.parse(prompt.split(marker)[1]);
+    require('node:fs').appendFileSync(${JSON.stringify(callsFile)}, JSON.stringify(cases.map(item => item.key)) + '\\n');
+    result = {cases: cases.map(item => ({key:item.key,data:[{label:'값',value:item.id}],files:[]}))};
+  } else result = {action:{type:'judge',expected:'E1',verdict:'pass',observation:'준비 완료',basis:[{k:'텍스트',v:'준비 완료'}],assertion:{type:'visibleText',text:'준비 완료'}}};
+  console.log(JSON.stringify({result: JSON.stringify(result),usage:{input_tokens:5,output_tokens:3,cache_read_input_tokens:0,cache_creation_input_tokens:0}}));
+});
+`);
   await chmod(cli, 0o755);
   const server = createServer((_req, res) => { res.setHeader('content-type', 'text/html; charset=utf-8'); res.end('<h1>준비 완료</h1>'); });
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -20,6 +33,20 @@ async function main() {
     app = await electron.launch({ args: ['.', `--user-data-dir=${dir}`], env });
     let page = await app.firstWindow();
     await page.waitForFunction(() => Boolean(window.electronAPI?.aiTc));
+    const prepareCases = ['A', 'B'].map(id => ({ key: `qa:TC:${id}`, id, scenarioId: '', pre: '', steps: ['확인'], expected: [{ id: 'E1', text: '확인' }], given: '', scenario: '' }));
+    await page.evaluate(async cases => { await window.electronAPI.aiTc.prepare({ tool: 'claude', cases: [cases[0]!] }); }, prepareCases);
+    const partial = await page.evaluate(async cases => {
+      const events: unknown[] = [];
+      const off = window.electronAPI.aiTc.onPrepareUsage(value => events.push(value));
+      const results = await window.electronAPI.aiTc.prepare({ tool: 'claude', cases, reason: 'missing' });
+      off();
+      return { results, events };
+    }, prepareCases);
+    expect(partial.results.map(item => item.key).sort()).toEqual(prepareCases.map(item => item.key).sort());
+    expect(partial.events).toMatchObject([{ caseIds: ['B'], reason: 'missing', outcome: 'complete', usage: { input: 5, output: 3 } }]);
+    expect((await readFile(callsFile, 'utf8')).trim().split('\n').map(line => JSON.parse(line))).toEqual([[prepareCases[0]!.key], [prepareCases[1]!.key]]);
+    await page.evaluate(async cases => { await window.electronAPI.aiTc.prepare({ tool: 'claude', cases }); }, prepareCases);
+    expect((await readFile(callsFile, 'utf8')).trim().split('\n')).toHaveLength(2);
     const run = await page.evaluate(p => window.electronAPI.aiTc.start(p), plan);
     await expect.poll(() => page.evaluate(() => window.electronAPI.aiTc.current()), { timeout: 30_000 }).toMatchObject({ runId: run.runId, status: 'done' });
     const approved = await page.evaluate(r => window.electronAPI.aiTc.approveAssertion({ runId: r, caseKey: 'qa.xlsx:TC:2', expectedId: 'E1', approved: true }), run.runId);

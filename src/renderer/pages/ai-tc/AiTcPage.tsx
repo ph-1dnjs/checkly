@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "../../shared/ui/Button";
 import { PageLayout } from "../../shared/ui/PageLayout";
 import type { AiTcEnvironment, AiTcModel } from "../../app/hooks/useAiTc";
@@ -9,7 +9,7 @@ import type { AiTcEnvironment, AiTcModel } from "../../app/hooks/useAiTc";
 // import { RunView } from "./RunView";
 // import { ResultView } from "./ResultView";
 import { BrowserStage, type Control } from "./BrowserStage";
-import { ChatPanel, SCREENS, stepMessage, type ChatContext } from "./ChatPanel";
+import { ChatPanel, SCREENS, stepMessage, type ChatContext, type ChatMessage } from "./ChatPanel";
 import { EnvPicker } from "./EnvPicker";
 import { ImportTable } from "./ImportTable";
 import { PrepTable } from "./PrepTable";
@@ -25,14 +25,15 @@ export const AiTcPage = ({ model, environment }: { model: AiTcModel; environment
   const step = SCREENS.indexOf(screen);
   const [pane, setPane] = useState<Pane>("chat");
   const [control, setControl] = useState<Control>("ai");
-  const [notes, setNotes] = useState<string[]>([]);
+  const [history, setHistory] = useState<Array<{ message: ChatMessage } | { reply: string }>>([]);
+  const previousWait = useRef("");
   const [draft, setDraft] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
 
   // 사용자 대기가 끝나거나 바뀌면 AI 제어로 되돌린다.
   useEffect(() => { setControl("ai"); }, [run?.runId, run?.status, run?.wait?.kind, run?.wait?.title]);
-  useEffect(() => { setNotes([]); setDraft(""); }, [run?.runId]);
+  useEffect(() => { setHistory([]); setDraft(""); previousWait.current = ""; }, [run?.runId]);
   useEffect(() => {
     if (!model.live) return;
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
@@ -42,7 +43,7 @@ export const AiTcPage = ({ model, environment }: { model: AiTcModel; environment
   const canReply = screen === "run" && run?.status === "waiting" && run.wait?.kind !== "confirm";
   const giveBack = () => {
     const text = draft.trim();
-    if (text) setNotes(current => [...current, text]);
+    if (text) setHistory(current => [...current, { reply: text }]);
     setDraft("");
     setControl("ai");
     model.decide("resume", text || undefined);
@@ -54,6 +55,14 @@ export const AiTcPage = ({ model, environment }: { model: AiTcModel; environment
     giveBack,
     skip: () => model.decide("block"),
   };
+  const waitKey = run?.status === "waiting" && run.wait ? JSON.stringify([run.current, run.wait]) : "";
+  useEffect(() => {
+    if (waitKey && waitKey !== previousWait.current) {
+      const message = stepMessage(2, ctx).at(-1);
+      if (message) setHistory(current => [...current, { message }]);
+    }
+    previousWait.current = waitKey;
+  }, [run?.runId, waitKey]);
   const shownPane: Pane = pane === "list" && screen !== "run" ? "" : pane;
   const last = stepMessage(step, ctx).at(-1);
   const awaiting = Boolean(last?.cta && !last.cta.locked);
@@ -92,7 +101,7 @@ export const AiTcPage = ({ model, environment }: { model: AiTcModel; environment
             </div>
             <div className="aitcx-side">
               {shownPane === "chat" && (
-                <ChatPanel ctx={ctx} step={step} notes={notes} draft={draft} setDraft={setDraft} canReply={canReply} onClose={() => setPane("")}
+                <ChatPanel ctx={ctx} step={step} history={history} draft={draft} setDraft={setDraft} canReply={canReply} onClose={() => setPane("")}
                   onSend={() => { if (canReply && draft.trim()) giveBack(); }} />
               )}
               {shownPane === "list" && <RunListPanel model={model} onClose={() => setPane("")} />}
