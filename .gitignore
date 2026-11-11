@@ -13,3 +13,11 @@ test-results/
 .obsidian/
 /.local/api-testing/
 /.claude/
+
+# design-sync (Claude Design)
+.design-sync/sb-reference/
+.design-sync/learnings/
+.design-sync/.cache/
+.design-sync/node_modules
+.ds-sync/
+ds-bundle/

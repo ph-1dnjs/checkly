@@ -56,3 +56,37 @@ export default meta;
 type Story = StoryObj<typeof ButtonDoc>;
 
 export const Overview: Story = {};
+
+/** 변형 4종 × 크기 2종. 문서 장식 없이 실제 컴포넌트만 렌더한다. */
+export const Variants: Story = {
+  render: () => (
+    <div style={{ display: "grid", gap: 12, padding: 16 }}>
+      {SIZES.map((size) => (
+        <div key={size} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {VARIANTS.map(([variant]) => (
+            <Button key={variant} variant={variant} size={size}>
+              {variant === "danger" ? "삭제" : variant === "primary" ? "저장" : "취소"}
+            </Button>
+          ))}
+        </div>
+      ))}
+    </div>
+  ),
+};
+
+/** 아이콘+텍스트, 아이콘 전용, 비활성 상태 */
+export const IconAndDisabled: Story = {
+  render: () => (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: 16 }}>
+      <Button variant="primary">
+        <Icon name="play_arrow" size={16} />
+        실행
+      </Button>
+      <Button variant="ghost" iconOnly aria-label="복제">
+        <Icon name="content_copy" size={16} />
+      </Button>
+      <Button variant="secondary" disabled>비활성</Button>
+      <Button variant="primary" disabled>비활성</Button>
+    </div>
+  ),
+};
