@@ -17,7 +17,7 @@ const SLIDES = [
 
 const RECORDER_FEATURES = [
   { icon: "videocam", title: "오류 순간 자동 기록", body: "오류 전후 화면이 알아서 남아요" },
-  { icon: "visibility_off", title: "개인정보는 가림", body: "입력값과 텍스트는 가려서 저장" },
+  { icon: "account_tree", title: "API 기록까지 함께", body: "그 구간의 요청·응답도 남아요" },
   { icon: "group", title: "팀에 바로 공유", body: "서버 탭에서 팀이 함께 확인" },
 ];
 
