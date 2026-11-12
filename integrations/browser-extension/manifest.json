@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Checkly Recorder",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "minimum_chrome_version": "120",
   "description": "선택한 테스트 탭의 오류 전후 화면을 체클리 팀에 공유합니다.",
   "permissions": [
@@ -31,6 +31,7 @@
   "icons": {
     "128": "icon.png"
   },
+  "web_accessible_resources": [{"resources": ["capture.html", "capture.js", "capture.css"], "matches": ["http://*/*", "https://*/*"]}],
   "side_panel": {
     "default_path": "popup.html"
   },

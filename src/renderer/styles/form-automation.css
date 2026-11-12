@@ -497,3 +497,5 @@ body.resizing-form-timeline webview { pointer-events:none; }
   .fa-value-row { grid-template-columns:16px minmax(0,1fr); }
   .fa-value-control { grid-column:2; }
 }
+
+.fa-capture-editor .recorder-vector-icon{display:none}

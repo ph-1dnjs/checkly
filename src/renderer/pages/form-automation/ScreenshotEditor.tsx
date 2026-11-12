@@ -36,18 +36,33 @@ export type ScreenshotCapture = {
   size: { width: number; height: number };
 };
 
+const recorderIconPaths: Record<string, string> = {
+  crop_free: "M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5M7 7h10v10H7z",
+  draw: "m4 16 12-12 4 4L8 20H4zm10-10 4 4M4 16l4 4",
+  crop_square: "M4 4h16v16H4z",
+  check: "m4 12 5 5L20 6",
+  title: "M4 5h16M12 5v15M8 20h8",
+  ink_eraser: "m3 14 10-10 8 8-8 9H9zm4-4 8 8M13 21h8",
+  undo: "m8 5-4 4 4 4M4 9h10a5 5 0 0 1 0 10h-3",
+  fullscreen: "M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5",
+  content_copy: "M9 7h12v14H9zM5 17H3V3h12v2",
+  close: "m6 6 12 12M6 18 18 6",
+};
 const MaterialIcon = ({ name }: { name: string }): ReactElement => (
-  <span className="msi" aria-hidden="true">{name}</span>
+  <><span className="msi" data-icon={name} aria-hidden="true">{name}</span>
+  {recorderIconPaths[name] && <svg className="recorder-vector-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d={recorderIconPaths[name]} /></svg>}</>
 );
 
 export const ScreenshotEditor = ({
   capture,
   onCancel,
   onCopy,
+  recorder = false,
 }: {
   capture: ScreenshotCapture;
   onCancel: () => void;
   onCopy: (dataUrl: string) => Promise<void>;
+  recorder?: boolean;
 }): ReactElement => {
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -58,8 +73,8 @@ export const ScreenshotEditor = ({
   const textInputRef = useRef<HTMLInputElement | null>(null);
   const [commands, setCommands] = useState<DrawCommand[]>([]);
   const [tool, setTool] = useState<Tool>("crop");
-  const [color, setColor] = useState("#ef4454");
-  const [brushSize, setBrushSize] = useState(6);
+  const [color, setColor] = useState(recorder ? "#de3b45" : "#ef4454");
+  const [brushSize, setBrushSize] = useState(recorder ? 3 : 6);
   const [textDraft, setTextDraft] = useState<TextDraft | null>(null);
   const [ready, setReady] = useState(false);
   const [copying, setCopying] = useState(false);
@@ -145,7 +160,7 @@ export const ScreenshotEditor = ({
         if (width && height) context.rect(x, y, width, height);
         context.fill("evenodd");
         if (width && height) {
-          context.strokeStyle = "#ffffff";
+          context.strokeStyle = recorder ? "#3d8ce0" : "#ffffff";
           context.lineWidth = Math.max(2 * scale, 2);
           context.setLineDash([8 * scale, 5 * scale]);
           context.strokeRect(x, y, width, height);
@@ -155,7 +170,7 @@ export const ScreenshotEditor = ({
       }
       context.restore();
     }
-  }, [commands, drawCommand, tool]);
+  }, [commands, drawCommand, tool, recorder]);
 
   const composedCanvas = useCallback(() => {
     const canvas = canvasRef.current;
@@ -439,7 +454,7 @@ export const ScreenshotEditor = ({
   };
 
   return (
-    <div ref={dialogRef} tabIndex={-1} className="fa-capture-editor" role="dialog" aria-modal="true" aria-label="화면 캡처 편집">
+    <div ref={dialogRef} tabIndex={-1} className={`fa-capture-editor${recorder ? " recorder-capture-editor" : ""}`} role="dialog" aria-modal="true" aria-label="화면 캡처 편집">
       <canvas
         ref={canvasRef}
         aria-label="캡처 이미지 주석 영역"
@@ -483,6 +498,8 @@ export const ScreenshotEditor = ({
           ] as Array<[Tool, string, string]>).map(([value, icon, label]) => (
             <Button
               key={value}
+              aria-label={label}
+              title={label}
               aria-pressed={tool === value}
               className={tool === value ? "active" : ""}
               onClick={() => {
@@ -491,27 +508,27 @@ export const ScreenshotEditor = ({
                 setTextDraft(null);
                 setTool(value);
               }}
-            ><MaterialIcon name={icon} /> {label}</Button>
+            ><MaterialIcon name={icon} /> <span className="fa-capture-tool-label">{label}</span></Button>
           ))}
         </div>
         <div className="fa-capture-colors" role="group" aria-label="주석 색상">
-          {["#ef4454", "#ffbf2f", "#2e7cf6", "#ffffff"].map((value) => (
+          {(recorder ? ["#de3b45", "#e0a100", "#1f63ae", "#14181c"] : ["#ef4454", "#ffbf2f", "#2e7cf6", "#ffffff"]).map((value) => (
             <Button
               key={value}
               aria-label={`${value} 색상`}
-              disabled={tool === "eraser" || tool === "crop"}
+              disabled={tool === "eraser" || (!recorder && tool === "crop")}
               className={color === value ? "active" : ""}
               style={{ "--fa-capture-color": value } as CSSProperties}
               onClick={() => setColor(value)}
             />
           ))}
         </div>
-        <label className="fa-capture-size">굵기<input disabled={tool === "crop"} type="range" min="3" max="14" value={brushSize} onChange={(event) => setBrushSize(Number(event.target.value))} /></label>
-        <Button variant="ghost" className="fa-capture-undo" title="실행 취소 · ⌘/Ctrl Z" disabled={!commands.length} onClick={() => setCommands((items) => items.slice(0, -1))}><MaterialIcon name="undo" /> 실행 취소</Button>
-        <Button variant="ghost" className="fa-capture-reset" title="자르기 전 원본으로" disabled={!cropped && !commands.length} onClick={resetCapture}><MaterialIcon name="fullscreen" /> 전체 화면</Button>
+        <label className="fa-capture-size">굵기<input disabled={!recorder && tool === "crop"} type="range" min={recorder ? "1" : "3"} max={recorder ? "8" : "14"} value={brushSize} onChange={(event) => setBrushSize(Number(event.target.value))} />{recorder && <span>{brushSize}</span>}</label>
+        <Button variant="ghost" className="fa-capture-undo" title="실행 취소 · ⌘/Ctrl Z" disabled={!commands.length} onClick={() => setCommands((items) => items.slice(0, -1))}><MaterialIcon name="undo" /> <span className="fa-capture-action-label">실행 취소</span></Button>
+        <Button variant="ghost" className="fa-capture-reset" title="자르기 전 원본으로" disabled={!cropped && !commands.length} onClick={resetCapture}><MaterialIcon name="fullscreen" /> <span className="fa-capture-action-label">전체 화면</span></Button>
         <span className="fa-capture-divider" />
         <Button variant="ghost" className="fa-capture-cancel" onClick={onCancel}>취소</Button>
-        <Button variant="primary" className="fa-capture-complete" disabled={!ready || copying || Boolean(textDraft)} onClick={() => void copyCapture()}><MaterialIcon name="content_copy" /> {copying ? "복사 중…" : "완료 · 클립보드 복사"}</Button>
+        <Button variant="primary" className="fa-capture-complete" disabled={!ready || copying || Boolean(textDraft)} onClick={() => void copyCapture()}><MaterialIcon name="content_copy" /> {copying ? "복사 중…" : recorder ? "클립보드 복사" : "완료 · 클립보드 복사"}</Button>
       </div>
     </div>
   );

@@ -3,12 +3,26 @@ import {createClient} from '@supabase/supabase-js';
 import {config} from './config.js';
 import {addBatch,addLog,finish,bytes,uploadRecording,setRecordingNotes} from './core.js';
 chrome.sidePanel.setPanelBehavior({openPanelOnActionClick:true}).catch(console.error);
-async function captureTab(tab){if(!Number.isInteger(tab?.id)||!Number.isInteger(tab?.windowId))throw Error('캡처할 탭을 선택하세요.');const image=await chrome.tabs.captureVisibleTab(tab.windowId,{format:'png'});const id=crypto.randomUUID(),key='capture:'+id;await chrome.storage.session.set({[key]:{dataUrl:image,tabId:tab.id,windowId:tab.windowId}});try{await chrome.tabs.create({url:chrome.runtime.getURL('capture.html#'+id),windowId:tab.windowId,openerTabId:tab.id});}catch(error){await chrome.storage.session.remove(key);throw error;}}
+async function captureTab(tab){
+ if(!Number.isInteger(tab?.id)||!Number.isInteger(tab?.windowId))throw Error('캡처할 탭을 선택하세요.');
+ const [existing]=await chrome.scripting.executeScript({target:{tabId:tab.id},func:()=>Boolean(document.querySelector('[data-checkly-capture-overlay]'))});if(existing?.result)throw Error('이미 캡처 편집기가 열려 있습니다. 먼저 완료하거나 취소하세요.');
+ const image=await chrome.tabs.captureVisibleTab(tab.windowId,{format:'png'});const id=crypto.randomUUID(),key='capture:'+id;
+ await chrome.storage.session.set({[key]:{dataUrl:image,tabId:tab.id,windowId:tab.windowId}});
+ try{
+  await chrome.scripting.executeScript({target:{tabId:tab.id},func:(url,token)=>{
+   const frame=document.createElement('iframe');frame.dataset.checklyCaptureOverlay='';frame.src=url;
+   frame.title='Checkly 화면 캡처 편집';frame.setAttribute('allow','clipboard-write');
+   Object.assign(frame.style,{position:'fixed',inset:'0',width:'100%',height:'100%',border:'0',zIndex:'2147483647',background:'transparent'});
+   const close=event=>{if(event.source!==frame.contentWindow||event.origin!==new URL(url).origin||event.data?.type!=='checkly-capture-close'||event.data?.token!==token)return;window.removeEventListener('message',close);frame.remove();};
+   window.addEventListener('message',close);document.documentElement.appendChild(frame);
+  },args:[chrome.runtime.getURL('capture.html?overlay=1#'+id),id]});
+ }catch(error){await chrome.storage.session.remove(key);throw error;}
+}
 chrome.commands.onCommand.addListener((command,tab)=>{if(command==='capture-screen')void captureTab(tab).catch(error=>{console.error('화면 캡처 실패:',error);void chrome.tabs.create({url:chrome.runtime.getURL('capture.html#capture-failed')});});});
 const ready=chrome.storage.session.setAccessLevel({accessLevel:'TRUSTED_CONTEXTS'});
 const client=createClient(config.url,config.anonKey,{auth:{storage:{getItem:async k=>(await chrome.storage.session.get(k))[k]??null,setItem:async(k,v)=>{await ready;await chrome.storage.session.set({[k]:v});},removeItem:async k=>{await chrome.storage.session.remove(k);}},persistSession:true,autoRefreshToken:false,detectSessionInUrl:false},global:{fetch:(url,options)=>fetch(url,{...options,signal:AbortSignal.timeout(15000)})}});
 const db=new Promise((resolve,reject)=>{const r=indexedDB.open('checkly',1);r.onupgradeneeded=()=>r.result.createObjectStore('state');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});
-let lastStatusKey='';
+let lastStatusKey='',lastMetricsAt=0;
 const notify=message=>{void chrome.runtime.sendMessage(message).catch(()=>{});};
 function notifyChange(state){const key=recordingStatusKey(state);if(key!==lastStatusKey){lastStatusKey=key;notify({type:'recordings-changed',captures:activeCaptures(state)});}}
 async function storage(write){const d=await db;return new Promise((resolve,reject)=>{const t=d.transaction('state',write?'readwrite':'readonly');const r=write?t.objectStore('state').put(write,'data'):t.objectStore('state').get('data');let result;r.onsuccess=()=>result=r.result;t.oncomplete=()=>{if(write)notifyChange(write);resolve(write||result||{active:{},pending:[],sent:0});};t.onerror=()=>{if(write)notify({type:'recording-storage-error'});reject(t.error);};t.onabort=()=>{if(write)notify({type:'recording-storage-error'});reject(t.error||Error('로컬 저장이 취소되었습니다.'));};});}
@@ -34,7 +48,7 @@ async function handle(msg,sender){await ready;const s=await storage();const trus
 if(trusted){
  if(msg.type==='login'){for(const id of Object.keys(s.active))await stop(s,id);await storage(s);const {error}=await client.auth.signInWithPassword({email:`${String(msg.nickname).trim().toLowerCase()}.${String(msg.project).trim().toLowerCase()}@${config.emailDomain}`,password:msg.password});if(error)throw Error('프로젝트 코드, 닉네임, 비밀번호를 확인하세요.');await member();return {ok:true};}
  if(msg.type==='logout'){for(const id of Object.keys(s.active))await stop(s,id);await storage(s);await client.auth.signOut({scope:'local'});return {ok:true};}
- if(msg.type==='status'){const team=await member();return {team,active:Object.keys(s.active).map(Number),captures:Object.values(s.active).filter(a=>a.clip&&same(a.team,team)).map(a=>({id:a.clip.session.id,startedAt:a.clip.session.trigger.at,endAt:a.clip.session.captureEndAt})),records:s.pending.filter(r=>same(r.session.team,team)).map(r=>({id:r.session.id,startedAt:r.session.startedAt,url:r.session.url,trigger:r.session.trigger})),sent:s.sent,uploadError:s.error};}
+ if(msg.type==='status'){const team=await member();return {team,active:Object.keys(s.active).map(Number),captures:Object.values(s.active).filter(a=>a.clip&&same(a.team,team)).map(a=>({id:a.clip.session.id,startedAt:a.clip.session.trigger.at,endAt:a.clip.session.captureEndAt})),metrics:Object.fromEntries(Object.entries(s.active).filter(([,a])=>same(a.team,team)).map(([id,a])=>[id,{startedAt:a.startedAt,counts:a.counts}])),records:s.pending.filter(r=>same(r.session.team,team)).map(r=>({id:r.session.id,startedAt:r.session.startedAt,url:r.session.url,trigger:r.session.trigger,duration:Math.max(0,(r.session.captureEndAt||r.session.startedAt)-(r.session.captureStartAt||r.session.startedAt)),bytes:r.session.bytes})),sent:s.sent,uploadError:s.error};}
  if(msg.type==='capture'){const [tab]=await chrome.tabs.query({active:true,currentWindow:true});if(!tab||tab.id!==msg.tabId)throw Error('활성 탭이 변경되었습니다. 다시 시도하세요.');await captureTab(tab);return {ok:true};}
  if(msg.type==='notes'){setRecordingNotes(s.pending,msg.id,msg.notes,await member());await storage(s);return {ok:true};}
  if(msg.type==='preview'){const team=await member();if(!team)throw Error('먼저 로그인하세요.');const record=s.pending.find(r=>r.session.id===msg.id&&same(r.session.team,team));if(!record)throw Error('기록을 찾을 수 없습니다.');return {record};}
@@ -43,7 +57,7 @@ if(trusted){
  if(msg.type==='stop'){await stop(s,msg.tabId);await storage(s);return {ok:true};}
  if(msg.type==='start'){if(!(await chrome.storage.local.get('recordingConsentV2')).recordingConsentV2)throw Error('원문 수집 안내를 확인하고 동의해 주세요.');const team=await member();if(!team)throw Error('먼저 로그인하세요.');if(s.pending.length>=20)throw Error('로컬 기록을 전송하거나 삭제하세요.');const tab=await chrome.tabs.get(msg.tabId);const url=new URL(tab.url);if(!['https:','http:'].includes(url.protocol))throw Error('일반 웹사이트에서 시작하세요.');const origin=url.origin;const match=`${origin}/*`;if(!await chrome.permissions.contains({origins:[match]}))throw Error('사이트 접근 권한이 필요합니다.');
  const registrations=await chrome.scripting.getRegisteredContentScripts();const id='site-'+new TextEncoder().encode(origin).reduce((a,b)=>a+b.toString(16),'');if(!registrations.some(r=>r.id===id+'-content'))await chrome.scripting.registerContentScripts([{id:id+'-hook',matches:[match],js:['hook.js'],runAt:'document_start',world:'MAIN',persistAcrossSessions:false},{id:id+'-content',matches:[match],js:['content.js'],runAt:'document_start',persistAcrossSessions:false}]);
- await stop(s,msg.tabId);s.active[msg.tabId]={id:crypto.randomUUID(),origin,team,documents:{},logs:[]};await storage(s);await chrome.scripting.executeScript({target:{tabId:msg.tabId},files:['hook.js'],world:'MAIN'});await chrome.scripting.executeScript({target:{tabId:msg.tabId},files:['content.js']});await chrome.tabs.sendMessage(msg.tabId,{type:'start'});await chrome.action.setBadgeText({tabId:msg.tabId,text:'REC'});await chrome.action.setBadgeBackgroundColor({tabId:msg.tabId,color:'#db4545'});return {ok:true};}
+ await stop(s,msg.tabId);s.active[msg.tabId]={id:crypto.randomUUID(),origin,team,startedAt:Date.now(),counts:{clicks:0,navigations:0,errors:0},documents:{},logs:[]};await storage(s);await chrome.scripting.executeScript({target:{tabId:msg.tabId},files:['hook.js'],world:'MAIN'});await chrome.scripting.executeScript({target:{tabId:msg.tabId},files:['content.js']});await chrome.tabs.sendMessage(msg.tabId,{type:'start'});await chrome.action.setBadgeText({tabId:msg.tabId,text:'REC'});await chrome.action.setBadgeBackgroundColor({tabId:msg.tabId,color:'#db4545'});return {ok:true};}
  throw Error('지원하지 않는 요청입니다.');
 }
 const id=sender.tab?.id,a=s.active[id];if(!a||sender.frameId!==0||new URL(sender.url).origin!==a.origin)return {};
@@ -52,8 +66,10 @@ if(!(await chrome.storage.local.get('recordingConsentV2')).recordingConsentV2){a
 if(msg.type==='hello'){const session=(await client.auth.getSession()).data.session;if(!session||session.user.id!==a.team.userId){await stop(s,id);await storage(s);return {};}return {sessionId:a.id};}
 if(msg.sessionId!==a.id)return {};
 if(a.clip&&Date.now()>=a.clip.session.captureEndAt){if(!complete(s,a)){await stop(s,id);await storage(s);return {};}}
-if(msg.type==='batch')addBatch(a,msg.batch);
-if(msg.type==='log')addLog(a,msg.event,a.team);
+a.counts??={clicks:0,navigations:0,errors:0};
+if(msg.type==='batch'){addBatch(a,msg.batch);if(Array.isArray(msg.batch?.events))a.counts.clicks+=msg.batch.events.filter(e=>e?.type===3&&e.data?.source===2&&e.data?.type===2).length;}
+if(msg.type==='log'){addLog(a,msg.event,a.team);const e=msg.event;if(e?.type==='navigation')a.counts.navigations++;else if(e&&(String(e.type).endsWith('error')||e.type==='unhandled-rejection'||e.status===0||e.status>=400))a.counts.errors++;}
+if(Date.now()-lastMetricsAt>=1000){lastMetricsAt=Date.now();notify({type:'recording-metrics',tabId:id,team:a.team,startedAt:a.startedAt,counts:a.counts});}
 if(a.clip&&bytes(a.clip)>8_000_000)complete(s,a);
 await storage(s);return {};
 }
