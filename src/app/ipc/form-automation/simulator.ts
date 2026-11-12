@@ -25,11 +25,36 @@ export class SimulatorService {
 
   snapshot(): SimulatorStatus { return { ...this.status }; }
 
+  async hasIdb(): Promise<boolean> {
+    try { await this.idbPath(); return true; } catch { return false; }
+  }
+
+  async installIdb(): Promise<void> {
+    if (process.platform !== "darwin") throw new Error("idb 설치는 macOS에서만 사용할 수 있습니다.");
+    let brew = "";
+    for (const file of ["/opt/homebrew/bin/brew", "/usr/local/bin/brew"]) {
+      try { await access(file, constants.X_OK); brew = file; break; } catch { /* Try the other Homebrew prefix. */ }
+    }
+    if (!brew) throw new Error("Homebrew를 찾을 수 없습니다. Homebrew를 설치한 뒤 다시 시도해 주세요.");
+    try {
+      for (const args of [["tap", "facebook/fb"], ["trust", "--formula", "facebook/fb/idb"], ["trust", "--formula", "facebook/fb/idb-cli"], ["trust", "--formula", "facebook/fb/idb-companion"], ["install", "facebook/fb/idb"]]) {
+        await execute(brew, args, { env: { ...commandEnv(), HOMEBREW_NO_AUTO_UPDATE: "1", HOMEBREW_NO_INSTALL_CLEANUP: "1", NONINTERACTIVE: "1" }, timeout: 30 * 60 * 1000, maxBuffer: 8 * 1024 * 1024 });
+      }
+      await this.idbPath();
+    } catch (error) {
+      const detail = error && typeof error === "object" && "stderr" in error ? String(error.stderr).trim() : error instanceof Error ? error.message : String(error);
+      if (detail.includes("Command Line Tools are too outdated")) {
+        throw new Error("Command Line Tools가 오래되어 idb를 설치할 수 없습니다. macOS 시스템 설정 → 일반 → 소프트웨어 업데이트에서 Command Line Tools를 업데이트한 뒤 다시 연결해 주세요. 업데이트가 표시되지 않으면 Apple Developer 다운로드에서 Homebrew가 요구한 버전을 설치해 주세요.\n\n" + detail.slice(-2000));
+      }
+      throw new Error(`idb 설치에 실패했습니다. ${detail.slice(-2000)}`);
+    }
+  }
+
   private async idbPath(): Promise<string> {
     for (const file of ["/opt/homebrew/bin/idb", "/usr/local/bin/idb"]) {
       try { await access(file, constants.X_OK); return file; } catch { /* Try the other Homebrew prefix. */ }
     }
-    throw new Error("idb가 필요합니다. 터미널에서 brew install facebook/fb/idb 를 실행한 뒤 다시 연결해 주세요.");
+    throw new Error("idb가 필요합니다. 터미널에서 brew install facebook/fb/idb 를 실행해 주세요. idb-cli 신뢰 오류가 발생하면 brew trust --formula facebook/fb/idb-cli 를 실행하고 설치를 다시 시도해 주세요.");
   }
 
   private async runIdb(args: string[], timeout = 20000): Promise<string> {

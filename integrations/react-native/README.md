@@ -5,9 +5,11 @@ Checkly의 **폼 자동 완성 → 모바일 앱**에서 iOS 시뮬레이터 화
 ## 준비
 
 1. Xcode에서 iOS 런타임을 설치하고 개발 앱을 한 번 빌드·설치합니다. Checkly는 설치된 앱을 실행하며 앱 빌드나 Metro 실행을 대신하지 않습니다.
-2. [idb 공식 설치 안내](https://fbidb.io/idb/installation/)에 따라 `brew install facebook/fb/idb`를 실행합니다. 검증 환경은 Apple Silicon, Xcode 26.2, iOS 26.2, idb 1.7.6입니다. Homebrew에서 신뢰 확인을 요구하면 해당 공식 formula 및 필수 formula만 신뢰합니다.
+2. Homebrew를 설치합니다. idb가 없으면 Checkly에서 연결할 때 설치 여부를 확인합니다. 동의하면 Homebrew로 `facebook/fb` tap을 추가하고 `idb`, `idb-cli`, `idb-companion` formula를 신뢰한 뒤 idb를 설치합니다. 설치 오류는 화면에 표시합니다. 직접 설치하려면 [idb 공식 설치 안내](https://fbidb.io/idb/installation/)를 참고하세요. 검증 환경은 Apple Silicon, Xcode 26.2, iOS 26.2, idb 1.7.6입니다.
 3. 프로젝트에서 Metro를 실행합니다 (`npm start`).
 4. Checkly에서 기기를 선택하고 **연결**을 누릅니다. 꺼진 기기는 백그라운드에서 부팅합니다. 앱 선택 후 **앱 열기**를 누릅니다.
+
+설치 중 Command Line Tools가 오래되었다는 오류가 나오면 macOS **시스템 설정 → 일반 → 소프트웨어 업데이트**에서 업데이트한 뒤 다시 연결합니다. 업데이트가 표시되지 않으면 [Apple Developer 다운로드](https://developer.apple.com/download/all/)에서 Homebrew 오류에 표시된 Command Line Tools 버전을 설치합니다.
 
 ## 개발용 연결 모듈
 

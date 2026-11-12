@@ -10,6 +10,8 @@ export const formAutomationBridge = {
   simulatorDevices: (): Promise<SimulatorDevice[]> => ipcRenderer.invoke('form-automation:simulator-devices'),
   simulatorApps: (udid: string): Promise<SimulatorApp[]> => ipcRenderer.invoke('form-automation:simulator-apps', udid),
   simulatorStatus: (): Promise<SimulatorStatus> => ipcRenderer.invoke('form-automation:simulator-status'),
+  simulatorHasIdb: (): Promise<boolean> => ipcRenderer.invoke('form-automation:simulator-has-idb'),
+  installSimulatorIdb: (): Promise<void> => ipcRenderer.invoke('form-automation:simulator-install-idb'),
   connectSimulator: (udid: string): Promise<SimulatorStatus> => ipcRenderer.invoke('form-automation:simulator-connect', udid),
   disconnectSimulator: (): Promise<void> => ipcRenderer.invoke('form-automation:simulator-disconnect'),
   launchSimulatorApp: (udid: string, bundleId: string, restart = false): Promise<void> => ipcRenderer.invoke('form-automation:simulator-launch', udid, bundleId, restart),

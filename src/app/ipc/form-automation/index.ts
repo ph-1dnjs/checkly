@@ -34,6 +34,8 @@ export const formAutomationDomain: MainDomain = {
     ipcMain.handle("form-automation:simulator-devices", () => simulator.devices());
     ipcMain.handle("form-automation:simulator-apps", (_event, udid: string) => simulator.apps(udid));
     ipcMain.handle("form-automation:simulator-status", () => simulator.snapshot());
+    ipcMain.handle("form-automation:simulator-has-idb", () => simulator.hasIdb());
+    ipcMain.handle("form-automation:simulator-install-idb", () => simulator.installIdb());
     ipcMain.handle("form-automation:simulator-connect", (event, udid: string) => simulator.connect(udid, frame => {
       if (!event.sender.isDestroyed()) event.sender.send("form-automation:simulator-frame", frame);
     }));

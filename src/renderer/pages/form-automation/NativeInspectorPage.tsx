@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent } from "react";
 import type { NativeInspectorSnapshot, NativeOverride, SimulatorApp, SimulatorDevice, SimulatorFrame, SimulatorInput, SimulatorStatus } from "../../../app/ipc/form-automation/nativeInspectorTypes";
 import { PageHeader } from "../../shared/ui/PageLayout";
+import { Modal } from "../../shared/ui/Modal";
+import { Button } from "../../shared/ui/Button";
 import { NetworkPanel, OverridePanel } from "./InspectorPanels";
 import { ScreenshotEditor, type ScreenshotCapture } from "./ScreenshotEditor";
 import { apiEventClipboardText, safeJson, stringify, type NetworkEvent } from "./liveQa";
@@ -18,6 +20,7 @@ export function NativeInspectorPage({ onBack }: { onBack: () => void }) {
   const [capture, setCapture] = useState<ScreenshotCapture | null>(null);
   const [simulator, setSimulator] = useState<SimulatorStatus>({ udid: null, streaming: false, error: "" });
   const [busy, setBusy] = useState(false);
+  const [installConfirm, setInstallConfirm] = useState(false);
   const [error, setError] = useState("");
   const [text, setText] = useState("");
   const [tab, setTab] = useState<"network" | "override">("network");
@@ -87,13 +90,20 @@ export function NativeInspectorPage({ onBack }: { onBack: () => void }) {
     setBody(stringify(selectedRule?.body ?? {}));
   }, [selectedRule]);
 
-  const connect = async () => {
+  const connect = async (install = false) => {
     setBusy(true); setError(""); setFrame(null);
     try {
-      await api.startNativeInspector(rules);
-      if (!mounted.current) { await api.stopNativeInspector(); return; }
+      if (install) {
+        await api.installSimulatorIdb();
+        if (!mounted.current) return;
+      } else if (!await api.simulatorHasIdb()) {
+        if (mounted.current) setInstallConfirm(true);
+        return;
+      }
       await api.connectSimulator(udid);
       if (!mounted.current) { await api.disconnectSimulator(); return; }
+      await api.startNativeInspector(rules);
+      if (!mounted.current) { await api.disconnectSimulator(); await api.stopNativeInspector(); return; }
       const installed = await api.simulatorApps(udid);
       if (!mounted.current) return;
       setApps(installed);
@@ -168,7 +178,7 @@ export function NativeInspectorPage({ onBack }: { onBack: () => void }) {
             {devices.map(device => <option key={device.udid} value={device.udid}>{device.name} · {device.runtime}</option>)}
           </select>
           <button onClick={() => void loadDevices()} disabled={busy}>기기 새로고침</button>
-          <button className="primary" disabled={busy || !udid} onClick={() => void connect()}>{busy ? "연결 중…" : "연결"}</button>
+          <button className="primary" disabled={busy || !udid} onClick={() => void connect()}>{busy ? "연결 또는 설치 중…" : "연결"}</button>
           <button disabled={busy || (!simulator.udid && !snapshot.running)} onClick={() => void stop()}>연결 해제</button>
         </div>
         <div className="fa-native-toolbar">
@@ -201,7 +211,7 @@ export function NativeInspectorPage({ onBack }: { onBack: () => void }) {
               if (!simulator.streaming || event.nativeEvent.isComposing || event.metaKey || event.ctrlKey || event.altKey) return;
               if (event.key === "Enter" || event.key === "Backspace") { event.preventDefault(); sendInput({ type: "key", key: event.key === "Enter" ? "ENTER" : "BACKSPACE" }); }
               else if (event.key.length === 1) { event.preventDefault(); sendInput({ type: "text", text: event.key }); }
-            }} /> : <div className="fa-native-empty"><span className="msi">smartphone</span><strong>iOS 앱을 Checkly에서 확인하세요</strong><p>기기를 선택하고 연결하면 앱 화면이 여기에 표시됩니다.</p><p>Xcode와 idb가 필요합니다.</p><code>brew install facebook/fb/idb</code></div>}
+            }} /> : <div className="fa-native-empty"><span className="msi">smartphone</span><strong>iOS 앱을 Checkly에서 확인하세요</strong><p>기기를 선택하고 연결하면 앱 화면이 여기에 표시됩니다.</p><p>Xcode와 idb가 필요합니다. idb가 없으면 연결할 때 설치를 안내합니다.</p></div>}
         </div>
         <form className="fa-native-toolbar" onSubmit={event => { event.preventDefault(); if (text) { sendInput({ type: "text", text }); setText(""); } }}>
           <input aria-label="앱에 입력할 텍스트" placeholder="앱의 입력칸을 선택한 뒤 텍스트 입력" value={text} onChange={event => setText(event.target.value)} maxLength={2000} />
@@ -254,5 +264,11 @@ export function NativeInspectorPage({ onBack }: { onBack: () => void }) {
       </aside>
     </div>
     {capture && <ScreenshotEditor capture={capture} onCancel={() => setCapture(null)} onCopy={copyCapture} />}
+    {installConfirm && <Modal label="idb 설치" backdropClassName="modal-backdrop" className="manual-modal" onClose={() => setInstallConfirm(false)}>
+      <h2>idb 설치</h2>
+      <p>모바일 앱 연결에 필요한 idb를 설치할까요?</p>
+      <p>Homebrew로 facebook/fb 저장소를 추가하고 idb, idb-cli, idb-companion을 신뢰한 뒤 설치합니다. 인터넷 연결과 설치 시간이 필요합니다.</p>
+      <div className="modal-actions"><Button variant="secondary" onClick={() => setInstallConfirm(false)}>취소</Button><Button variant="primary" onClick={() => { setInstallConfirm(false); void connect(true); }}>설치</Button></div>
+    </Modal>}
   </div>;
 }
