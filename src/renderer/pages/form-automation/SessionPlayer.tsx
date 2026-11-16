@@ -60,7 +60,7 @@ export const SessionPlayer = ({ document, startAt, endAt, errorAt, logs, logsWar
     const fit = () => {
       const container = stage.current;
       if (!container || !dimensions.width || !dimensions.height) return;
-      const scale = Math.min(container.clientWidth / dimensions.width, container.clientHeight / dimensions.height, 1);
+      const scale = Math.min(Math.max(1, container.clientWidth - 36) / dimensions.width, Math.max(1, container.clientHeight - 36) / dimensions.height, 1);
       replayer.wrapper.style.width = `${dimensions.width}px`;
       replayer.wrapper.style.height = `${dimensions.height}px`;
       replayer.iframe.style.width = `${dimensions.width}px`;
@@ -69,6 +69,7 @@ export const SessionPlayer = ({ document, startAt, endAt, errorAt, logs, logsWar
       replayer.wrapper.style.transformOrigin = "top left";
       replayer.wrapper.style.transform = `scale(${scale})`;
       replayer.wrapper.style.marginLeft = `${Math.max(0, (container.clientWidth - dimensions.width * scale) / 2)}px`;
+      replayer.wrapper.style.marginTop = `${Math.max(0, (container.clientHeight - dimensions.height * scale) / 2)}px`;
     };
     replayer.on("resize", size => { dimensions = size as typeof dimensions; fit(); });
     replayer.on("finish", () => { setPlaying(false); setPosition(total); });
@@ -106,17 +107,17 @@ export const SessionPlayer = ({ document, startAt, endAt, errorAt, logs, logsWar
     return source === 5 ? "입력" : source === 3 ? "스크롤" : "클릭";
   };
 
-  const timeline = [
+  const allTimeline = [
     ...activities.map((event, index) => ({ id: `action-${index}`, at: event.timestamp, text: label(event), log: undefined as BrowserLog | undefined, isError: false })),
     ...(logs ?? []).map(log => ({ id: log.id, at: Date.parse(log.occurred_at), text: log.kind, log, isError: log.is_error })),
     ...(errorAt !== undefined ? [{ id: "trigger", at: errorAt, text: "오류 발생", log: undefined, isError: true }] : []),
-  ].filter(item => item.at >= startTime && item.at <= endTime)
-    .filter(item => filter === "all" || (filter === "api" ? item.log && ["fetch", "xhr"].includes(item.log.kind) : item.isError))
-    .sort((a, b) => a.at - b.at);
+  ].filter(item => item.at >= startTime && item.at <= endTime).sort((a, b) => a.at - b.at);
+  const timeline = allTimeline.filter(item => filter === "all" || (filter === "api" ? item.log && ["fetch", "xhr"].includes(item.log.kind) : item.isError));
   const currentId = timeline.filter(item => item.at <= startTime + position).at(-1)?.id;
   const time = (at: number) => `${clock(at - startTime)}.${String(Math.floor((at - startTime) % 1000)).padStart(3, "0")}`;
   const logLabel = (log: BrowserLog) => ["fetch", "xhr"].includes(log.kind) ? `${log.method ?? "API"} ${log.status === 0 ? "연결 실패" : log.status ?? ""}`
     : log.kind === "navigation" ? "페이지 이동" : log.kind;
+  const shortUrl = (url: string) => { try { const value = new URL(url); return value.pathname + value.search; } catch { return url; } };
 
   return <div className="ls-player">
     <div className="ls-player-main">
@@ -126,11 +127,11 @@ export const SessionPlayer = ({ document, startAt, endAt, errorAt, logs, logsWar
       </div>
       {selectedLog && <RecordedApiDetail log={selectedLog} onClose={() => setSelectedLogId(null)} />}
       <div className="ls-controls">
-        <Button variant="secondary" disabled={!!error} onClick={() => {
+        <Button variant="primary" iconOnly className="ls-play-toggle" aria-label={playing ? "일시정지" : "재생"} disabled={!!error} onClick={() => {
           if (playing) player.current?.pause();
           else player.current?.play(Math.max(firstSnapshotOffset, baseOffset + (position >= duration ? 0 : position)));
           setPlaying(!playing);
-        }}>{playing ? "일시정지" : "재생"}</Button>
+        }}><span className="msi" aria-hidden="true">{playing ? "pause" : "play_arrow"}</span></Button>
         <input aria-label="재생 위치" type="range" min={0} max={duration} value={position} step={100}
           disabled={!!error} onChange={event => seek(Number(event.target.value))} />
         <span className="ls-mono">{clock(position)} / {clock(duration)}</span>
@@ -140,13 +141,9 @@ export const SessionPlayer = ({ document, startAt, endAt, errorAt, logs, logsWar
       </div>
     </div>
     <aside className="ls-activities" aria-label="동작·API 타임라인">
-      <div className="ls-section-label">동작·API 타임라인 <span>{timeline.length}</span></div>
-      <div className="ls-timeline-filter">
-        <select aria-label="타임라인 필터" value={filter} onChange={event => setFilter(event.target.value)}>
-          <option value="all">전체 동작</option><option value="api">API 호출</option><option value="errors">오류만</option>
-        </select>
-      </div>
-      <p className="ls-timeline-note">API 시각은 요청 완료 기준입니다. 같은 브라우저의 팝업 호출도 포함합니다.</p>
+      <div className="ls-timeline-heading"><strong>동작·API 타임라인</strong><div className="ls-timeline-filter" role="group" aria-label="타임라인 필터">
+        {[['all', '전체'], ['api', 'API'], ['errors', '오류']].map(([value, label]) => <Button key={value} aria-pressed={filter === value} onClick={() => setFilter(value)}>{label}{value === 'all' ? ` ${allTimeline.length}` : value === 'errors' && allTimeline.some(item => item.isError) ? ` ${allTimeline.filter(item => item.isError).length}` : ''}</Button>)}
+      </div></div>
       {logsWarning && <p className="ls-timeline-note ls-error" role="status">{logsWarning}</p>}
       {logs === undefined && !logsWarning && <p className="ls-timeline-note">이 기록에는 API 로그가 저장되어 있지 않습니다.</p>}
       {timeline.map(item => <Button key={item.id} disabled={!!error && !item.log}
@@ -159,11 +156,11 @@ export const SessionPlayer = ({ document, startAt, endAt, errorAt, logs, logsWar
         }}
         title={item.log ? `${item.log.url}\n페이지: ${item.log.page_url}` : item.text}>
         <span className="ls-mono ls-timeline-time">{time(item.at)}</span>
+        <span className="msi ls-timeline-icon" aria-hidden="true">{item.isError ? "error" : item.log ? item.log.kind === "navigation" ? "move_up" : "lan" : item.text === "클릭" ? "touch_app" : item.text === "입력" ? "keyboard" : "web"}</span>
         <span className="ls-timeline-content">
-          <strong className={item.log ? "ls-mono" : undefined}>{item.log ? logLabel(item.log) : item.text}</strong>
+          <strong>{item.log ? logLabel(item.log) : item.text}</strong>
           {item.log && <>
-            <span className="ls-mono ls-timeline-url">{item.log.url}</span>
-            {item.log.duration_ms !== null && <span className="ls-mono">{item.log.duration_ms} ms</span>}
+            <span className="ls-mono ls-timeline-url">{shortUrl(item.log.url)}</span>
           </>}
         </span>
       </Button>)}
