@@ -20,9 +20,9 @@ async function main() {
     app = await electron.launch({ args: [".", `--user-data-dir=${dir}`], env });
     const page = await app.firstWindow();
     page.setDefaultTimeout(15_000);
-    await page.getByRole("button", { name: "폼 자동 완성", exact: true }).click();
+    await page.getByRole("button", { name: "화면 테스트", exact: true }).click();
     await page.getByLabel("대상 사이트 주소").fill(url);
-    await page.getByRole("button", { name: "이동", exact: true }).click();
+    await page.getByLabel("대상 사이트 주소").press("Enter");
     const guest = <T,>(script: string): Promise<T> => page.locator("webview.active").evaluate(
       (element, code) => (element as HTMLElement & { executeJavaScript: (code: string) => Promise<T> }).executeJavaScript(code), script,
     );
@@ -30,6 +30,7 @@ async function main() {
     await guest("document.querySelector('#name').value = 'kept input'");
     const guestId = await page.locator("webview.active").evaluate(element => (element as HTMLElement & { getWebContentsId: () => number }).getWebContentsId());
     const size = () => guest<number[]>("[innerWidth, innerHeight]");
+    await page.getByRole("button", { name: "보기 설정", exact: true }).click();
     const viewport = page.getByLabel("미리보기 화면 크기");
     await viewport.selectOption("mobile");
     await expect.poll(size).toEqual([390, 844]);
@@ -51,7 +52,8 @@ async function main() {
     await page.getByRole("button", { name: "가로·세로 전환", exact: true }).click();
     await expect.poll(async () => JSON.stringify((await page.evaluate(() => window.electronAPI.loadFormAutomationState())).values)).toContain('"checkly-form-browser-landscape":true');
     await page.reload();
-    await page.getByRole("button", { name: "폼 자동 완성", exact: true }).click();
+    await page.getByRole("button", { name: "화면 테스트", exact: true }).click();
+    await page.getByRole("button", { name: "보기 설정", exact: true }).click();
     await expect(page.getByLabel("미리보기 화면 크기")).toHaveValue("mobile");
     await expect.poll(size).toEqual([844, 390]);
     console.log("PASS: native guest viewport, responsive CSS, zoom, rotation, presets, input/session preservation, persisted settings");

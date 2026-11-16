@@ -1,10 +1,12 @@
-import { type MouseEvent, type ReactElement, type ReactNode } from "react";
+import { type ReactElement, type ReactNode } from "react";
 import { browserSessionPartition, type BrowserSession } from "./model";
 import type { NetworkSpec } from "./networkSpec";
 import type { SharedOpenApiSource } from "./sharedOpenApi";
 import { NetworkRequestDetail } from "./NetworkRequestDetail";
 import {
   isSessionError,
+  isNetworkFailure,
+  isContractWarning,
   readableStorageValue,
   resolveSchema,
   shortTime,
@@ -18,6 +20,7 @@ import {
 } from "./liveQa";
 
 import { Button } from "../../shared/ui/Button";
+import { Popover } from "../../shared/ui/Popover";
 import { Input } from "../../shared/ui/Input";
 const MaterialIcon = ({ name }: { name: string }): ReactElement => (
   <span className="msi" aria-hidden="true">{name}</span>
@@ -44,15 +47,14 @@ export const NetworkPanel = ({
   onCopyUrl,
   filter,
   activeSessionName,
+  heading = "이 세션의 요청",
   onSelect,
+  onBack,
   onFilter,
   onCopy,
   onCreateOverride,
   onClear,
   onDownload,
-  listHeight,
-  onResizeList,
-  onResetListHeight,
   description = "이 로그인 세션의 API·페이지 오류만 표시",
   emptyDescription = "사이트에서 조회·저장 등의 동작을 실행해 보세요.",
 }: {
@@ -66,62 +68,62 @@ export const NetworkPanel = ({
   onSpecSource?: (source: string) => void;
   onRefreshSpec?: () => void;
   onCopyUrl: (url: string) => void;
-  filter: "all" | "errors";
+  filter: "all" | "errors" | "warnings";
   activeSessionName: string;
+  heading?: string;
   onSelect: (event: NetworkEvent) => void;
-  onFilter: (filter: "all" | "errors") => void;
+  onBack: () => void;
+  onFilter: (filter: "all" | "errors" | "warnings") => void;
   onCopy: () => void;
   onCreateOverride: () => void;
   onClear: () => void;
   onDownload: () => void;
-  listHeight: number;
-  onResizeList: (event: MouseEvent<HTMLDivElement>) => void;
-  onResetListHeight: () => void;
   description?: string;
   emptyDescription?: string;
 }): ReactElement => {
-  const errorCount = events.filter(isSessionError).length;
-  const visible = filter === "errors" ? events.filter(isSessionError) : events;
+  const errorCount = events.filter(isNetworkFailure).length;
+  const isWarning = isContractWarning;
+  const warningCount = events.filter(isWarning).length;
+  const visible = filter === "errors" ? events.filter(isNetworkFailure) : filter === "warnings" ? events.filter(isWarning) : events;
   return (
     <>
-      <div className="fa-inspector-heading">
-        <div><strong>{activeSessionName} 타임라인</strong><span>{description}</span></div>
-        {events.length > 0 && <div className="fa-heading-actions"><Button variant="secondary" title="XLSX로 다운로드" onClick={onDownload}><MaterialIcon name="download" /> 다운로드</Button><Button variant="danger" onClick={onClear}><MaterialIcon name="delete" /> 전체 삭제</Button></div>}
+      {!selectedEvent && <>
+      <div className="fa-network-heading"><strong>{heading}</strong><span title={description}>{activeSessionName} · 화면을 움직이면 쌓여요</span>
+        <Popover label="네트워크 더보기" panelClassName="fa-network-menu" triggerClassName="fa-more-trigger" triggerText={<MaterialIcon name="more_horiz" />}>
+          <Button variant="ghost" disabled={!events.length} onClick={onDownload}><MaterialIcon name="download" /> 기록 내려받기</Button>
+          <Button variant="ghost" className="danger" disabled={!events.length} onClick={onClear}><MaterialIcon name="delete" /> 모두 지우기</Button>
+        </Popover>
       </div>
-      <div className="fa-network-filters">
-        <Button className={filter === "all" ? "active" : ""} onClick={() => onFilter("all")}>전체 {events.length}</Button>
-        <Button className={filter === "errors" ? "active danger" : "danger"} onClick={() => onFilter("errors")}><MaterialIcon name="error" /> 오류만 {errorCount}</Button>
+      <div className="fa-network-filters" role="group" aria-label="요청 필터">
+        <Button aria-pressed={filter === "all"} onClick={() => onFilter("all")}><span>전체 요청</span><b>{events.length}</b></Button>
+        <Button className="danger" aria-pressed={filter === "errors"} onClick={() => onFilter("errors")}><span>오류</span><b>{errorCount}</b></Button>
+        <Button className="warning" aria-pressed={filter === "warnings"} onClick={() => onFilter("warnings")}><span>스펙 경고</span><b>{warningCount}</b></Button>
       </div>
-      <div className="fa-request-list" style={{ height: listHeight }}>
+      <div className="fa-request-list" data-ck-scroll="light">
         {!visible.length ? (
           <EmptyState icon={filter === "errors" ? "check_circle" : "lan"} title={filter === "errors" ? "저장된 오류가 없습니다" : "아직 수집된 기록이 없습니다"} description={filter === "errors" ? "페이지와 API가 정상적으로 동작하고 있습니다." : emptyDescription} />
         ) : visible.map((item) => {
-          const failed = isSessionError(item);
-          const method = item.method || "ERROR";
+          const failed = isNetworkFailure(item);
+          const method = item.type === "navigation" ? "PAGE" : item.method || "ERROR";
           let title = item.error || item.url;
           if (item.category !== "page") {
             try { title = new URL(item.url).pathname; } catch { /* 원문 유지 */ }
           }
           return (
-            <Button className={`fa-request-row${failed ? " error" : ""}${selectedEvent?.id === item.id ? " selected" : ""}`} key={item.id} onClick={() => onSelect(item)}>
+            <Button className={`fa-request-row${failed ? " error" : ""}${isWarning(item) ? " warning" : ""}`} key={item.id} onClick={() => onSelect(item)}>
               <span className={`fa-method ${method.toLowerCase()}`}>{method}</span>
-              <span><strong>{title}</strong><small>{item.category === "page" ? `${item.type} · ${shortTime(item.at)}` : `${item.status || "연결 실패"} · ${item.elapsed ?? "-"}ms${item.overridden ? " · OVERRIDE" : ""}`}</small></span>
-              <MaterialIcon name={failed ? "cancel" : "check_circle"} />
+              <strong title={title}>{title}</strong><small>{item.category === "page" ? shortTime(item.at) : `${item.status || "연결 실패"} · ${item.elapsed ?? "-"}ms${item.overridden ? " · OVERRIDE" : ""}`}</small>
+              <MaterialIcon name={failed ? "error" : isWarning(item) ? "warning" : "check_circle"} />
             </Button>
           );
         })}
       </div>
-      <div
-        className="fa-timeline-resizer"
-        role="separator"
-        aria-label="네트워크 목록 높이 조절"
-        title="드래그해 높이 조절 · 더블클릭 기본 높이"
-        onMouseDown={onResizeList}
-        onDoubleClick={onResetListHeight}
-      ><MaterialIcon name="drag_handle" /></div>
+      </>}
+      {selectedEvent && <div className="fa-detail-back"><Button variant="ghost" onClick={onBack}><MaterialIcon name="chevron_left" /> 요청 목록</Button></div>}
       {selectedEvent && (["fetch", "xhr"].includes(selectedEvent.type) ? <NetworkRequestDetail
         key={selectedEvent.id}
         event={selectedEvent}
+        sessionName={activeSessionName}
         spec={spec}
         specLoading={specLoading}
         specSources={specSources}
@@ -213,10 +215,10 @@ const OverrideFieldEditor = ({
   depth?: number;
 }): ReactElement => {
   const resolved = resolveSchema(document, schema) || {};
-  const fieldName = path.length ? String(path[path.length - 1]) : "response";
+  const fieldName = path.length ? path.join(".") : "response";
   const type = resolved.type || (Array.isArray(value) ? "array" : value !== null && typeof value === "object" ? "object" : typeof value);
   if (type === "object" && value && !Array.isArray(value)) {
-    return <fieldset className={`fa-override-group${depth === 0 ? " root" : ""}`}><legend>{fieldName}<small>object</small></legend>{Object.entries(value as Record<string, unknown>).map(([key, child]) => <OverrideFieldEditor key={[...path, key].join(".")} document={document} schema={resolved.properties?.[key]} value={child} path={[...path, key]} onChange={onChange} depth={depth + 1} />)}</fieldset>;
+    return <>{Object.entries(value as Record<string, unknown>).map(([key, child]) => <OverrideFieldEditor key={[...path, key].join(".")} document={document} schema={resolved.properties?.[key]} value={child} path={[...path, key]} onChange={onChange} depth={depth + 1} />)}</>;
   }
   if (type === "array" && Array.isArray(value)) {
     return <details className="fa-override-array" open={depth < 2}><summary>{fieldName} <span>{value.length}개 · array</span></summary><div>{value.slice(0, 20).map((child, index) => <OverrideFieldEditor key={[...path, index].join(".")} document={document} schema={resolved.items} value={child} path={[...path, index]} onChange={onChange} depth={depth + 1} />)}{value.length > 20 && <p>앞의 20개 항목만 표시합니다. 전체 데이터는 JSON에서 수정할 수 있습니다.</p>}</div></details>;
@@ -244,11 +246,14 @@ export const OverridePanel = ({
   onBodyText,
   onEditorMode,
   onFieldChange,
-  onCreate,
+  onChooseResponse,
+  onCreateBlank,
+  editing,
+  onEditing,
+  onToggleRule,
   onSave,
   onReset,
   onDelete,
-  description = "현재 웹뷰에만 적용되는 테스트 데이터",
   note = "저장하면 정확히 일치하는 API를 다시 조회합니다. 서버와 다른 사용자 데이터에는 영향을 주지 않습니다.",
 }: {
   openApi: OpenApiDocument | null;
@@ -264,24 +269,39 @@ export const OverridePanel = ({
   onBodyText: (value: string) => void;
   onEditorMode: (mode: "fields" | "json") => void;
   onFieldChange: (path: Array<string | number>, value: unknown) => void;
-  onCreate: () => void;
+  onChooseResponse: () => void;
+  onCreateBlank: () => void;
+  editing: boolean;
+  onEditing: (value: boolean) => void;
+  onToggleRule: (id: string, enabled: boolean) => void;
   onSave: () => void;
   onReset: () => void;
   onDelete: () => void;
-  description?: string;
   note?: string;
 }): ReactElement => (
   <>
-    <div className="fa-inspector-heading"><div><strong>응답 오버라이드</strong><span>{description}</span></div><Button variant="secondary" title="네트워크 탭에서 선택한 응답을 복제" onClick={onCreate}><MaterialIcon name="add" /> 선택 응답 복제</Button></div>
-    {!selected ? <EmptyState icon="tune" title="응답 규칙이 없습니다" description="네트워크 응답을 선택한 뒤 오버라이드로 복제해 보세요." /> : <div className="fa-override-editor">
-      <label>적용할 API<select value={selected.id} onChange={(event) => onSelect(event.target.value)}>{overrides.map((item) => <option value={item.id} key={item.id}>{item.method} · {item.match}</option>)}</select></label>
+    {!selected ? <div className="fa-override-welcome"><span className="fa-welcome-icon"><MaterialIcon name="swap_horiz" /></span><strong>서버 응답을 바꿔서 테스트해요</strong><p>오류 화면이나 드문 데이터를 서버를 고치지 않고 확인할 수 있어요.<br />바꾼 응답은 이 화면에만 적용돼요.</p><Button variant="primary" size="large" onClick={onChooseResponse}><MaterialIcon name="lan" /> 네트워크에서 응답 고르기</Button><Button variant="ghost" onClick={onCreateBlank}>직접 만들기</Button></div> : !editing ? <div className="fa-override-list">
+      <div className="fa-override-list-heading"><strong>바꾼 응답</strong><span>켜 둔 것만 이 화면에 적용돼요</span><Button variant="secondary" onClick={onCreateBlank}><MaterialIcon name="add" /> 추가</Button></div>
+      {overrides.map(rule => <article className={`fa-rule-card${rule.enabled ? " enabled" : ""}`} key={rule.id}>
+        <div><strong><span className={`fa-method ${rule.method.toLowerCase()}`}>{rule.method}</span><code title={rule.match}>{rule.match}</code></strong><small><b>{rule.status}</b> · {rule.body && typeof rule.body === "object" && "message" in rule.body ? String(rule.body.message) : rule.name}</small></div>
+        <Button variant="ghost" onClick={() => { onSelect(rule.id); onEditing(true); }}>편집</Button>
+        <Button className="fa-rule-toggle" role="switch" aria-label={`${rule.method} ${rule.match} 적용`} aria-checked={rule.enabled} onClick={() => onToggleRule(rule.id, !rule.enabled)}><span /></Button>
+      </article>)}
+    </div> : <div className="fa-override-editor">
+      <div className="fa-detail-back"><Button variant="ghost" onClick={() => onEditing(false)}><MaterialIcon name="chevron_left" /> 바꾼 응답 목록</Button></div>
+      <div className="fa-override-heading"><strong>응답 바꾸기</strong><Popover label="규칙 상태·고급 설정" triggerClassName="fa-more-trigger" triggerText={<MaterialIcon name="more_horiz" />}><div className="fa-override-options"><label>적용할 API<select value={selected.id} onChange={(event) => onSelect(event.target.value)}>{overrides.map((item) => <option value={item.id} key={item.id}>{item.method} · {item.match}</option>)}</select></label>
       <div className={`fa-override-status ${status.tone}`}><MaterialIcon name={status.applied ? "check_circle" : selected.enabled ? "pending" : "circle"} /><span><strong>{status.title}</strong><small>{status.detail}</small></span><Status tone={status.tone}>{status.applied ? "OVERRIDE" : selected.enabled ? "대기" : "원본"}</Status></div>
-      <div className="fa-override-meta"><label>정확한 API 경로<Input value={selected.match} onChange={(event) => onUpdate({ match: event.target.value })} /></label><label>상태 코드<Input type="number" value={selected.status} onChange={(event) => onUpdate({ status: Number(event.target.value) || 200 })} /></label></div>
       <div className="fa-override-switch"><Button className={selected.enabled ? "on" : ""} onClick={() => onUpdate({ enabled: !selected.enabled })}><span><i /></span>{selected.enabled ? "이 응답 오버라이드 활성" : "오버라이드 비활성"}</Button><Button variant="danger" iconOnly className="danger" aria-label="오버라이드 규칙 삭제" onClick={onDelete}><MaterialIcon name="delete" /></Button></div>
-      <div className="fa-override-tabs"><Button className={editorMode === "fields" ? "active" : ""} onClick={() => onEditorMode("fields")}><MaterialIcon name="tune" /> 필드 편집</Button><Button className={editorMode === "json" ? "active" : ""} onClick={() => onEditorMode("json")}><MaterialIcon name="code" /> JSON</Button><Status tone={schema ? "success" : "neutral"}>{schema ? "Swagger 타입" : "타입 자동 추론"}</Status></div>
+      <label>상태 코드<Input type="number" value={selected.status} onChange={event => onUpdate({ status: Number(event.target.value) || 200 })} /></label>
+      <Button variant="secondary" disabled={!selected.enabled} onClick={onReset}><MaterialIcon name="restart_alt" /> 초기화</Button>
+      </div></Popover></div>
+      <div className="fa-override-target"><strong>어떤 요청을</strong><div><select aria-label="오버라이드 요청 메서드" value={selected.method} onChange={event => onUpdate({ method: event.target.value })}>{["GET","POST","PUT","PATCH","DELETE","HEAD","OPTIONS"].map(method => <option key={method}>{method}</option>)}</select><Input mono aria-label="오버라이드 API 경로" value={selected.match} onChange={event => onUpdate({ match: event.target.value })} /></div></div>
+      <div className="fa-override-label">이렇게 응답해요</div>
+      <div className="fa-status-presets" role="group" aria-label="응답 상태 코드">{[[200, "성공"], [400, "잘못된 요청"], [401, "인증 실패"], [500, "서버 오류"]].map(([code, label]) => <Button key={code} aria-pressed={selected.status === code} onClick={() => onUpdate({ status: Number(code) })}><b>{code}</b> {label}</Button>)}</div>
+      <div className="fa-override-tabs"><Button aria-pressed={editorMode === "fields"} className={editorMode === "fields" ? "active" : ""} onClick={() => onEditorMode("fields")}>항목으로</Button><Button aria-pressed={editorMode === "json"} className={editorMode === "json" ? "active" : ""} onClick={() => onEditorMode("json")}>JSON</Button></div>
       {editorMode === "fields" ? <div className="fa-override-fields">{parsedBody && typeof parsedBody === "object" ? <OverrideFieldEditor document={openApi} schema={schema} value={parsedBody} onChange={onFieldChange} /> : <div className="fa-override-json-error"><MaterialIcon name="error" /> JSON 형식을 먼저 수정해 주세요.</div>}</div> : <label>Response body JSON<textarea className="fa-override-json" spellCheck={false} value={bodyText} onChange={(event) => onBodyText(event.target.value)} /></label>}
       <p className="fa-override-note"><MaterialIcon name="info" /> {note}</p>
-      <div className="fa-override-actions"><Button variant="secondary" disabled={!selected.enabled} onClick={onReset}><MaterialIcon name="restart_alt" /> 초기화</Button><Button variant="primary" className="primary" onClick={onSave}><MaterialIcon name="save" /> 저장 및 적용</Button></div>
+      <div className="fa-override-actions"><Button variant="secondary" size="large" onClick={() => onEditing(false)}>목록으로</Button><Button variant="primary" size="large" onClick={onSave}><MaterialIcon name="check" /> 저장 및 적용</Button></div>
     </div>}
   </>
 );

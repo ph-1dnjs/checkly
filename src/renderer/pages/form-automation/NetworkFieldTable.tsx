@@ -1,3 +1,4 @@
+import { Button } from "../../shared/ui/Button";
 import { Fragment, useState } from "react";
 import { childFields, fieldIssue, fieldType, fieldValue, hasFieldIssue, type FieldDirection, type NetworkField } from "./networkFields";
 
@@ -11,7 +12,7 @@ function FieldRows({ field, direction, depth = 0, path = field.name }: { field: 
   return <>
     <tr className={issue || nestedIssue ? "fa-field-invalid" : ""}>
       <td style={{ paddingLeft: 8 + Math.min(depth, 4) * 12 }}>
-        <div className="fa-field-name">{children.length > 0 && <button type="button" aria-label={`${path} ${expanded ? "접기" : "펼치기"}`} aria-expanded={expanded} onClick={() => setExpanded(current => !current)}><span className="msi" aria-hidden="true">{expanded ? "expand_more" : "chevron_right"}</span></button>}<code>{field.name}</code></div>
+        <div className="fa-field-name">{children.length > 0 && <Button type="button" aria-label={`${path} ${expanded ? "접기" : "펼치기"}`} aria-expanded={expanded} onClick={() => setExpanded(current => !current)}><span className="msi" aria-hidden="true">{expanded ? "expand_more" : "chevron_right"}</span></Button>}<code>{field.name}</code></div>
         {description && <span className="fa-field-description">{description}</span>}
         {field.location && <small>{field.location}</small>}
         {field.undocumented && <small>문서 외 필드</small>}

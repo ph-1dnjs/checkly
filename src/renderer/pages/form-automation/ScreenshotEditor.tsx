@@ -73,7 +73,7 @@ export const ScreenshotEditor = ({
   const textInputRef = useRef<HTMLInputElement | null>(null);
   const [commands, setCommands] = useState<DrawCommand[]>([]);
   const [tool, setTool] = useState<Tool>("crop");
-  const [color, setColor] = useState(recorder ? "#de3b45" : "#ef4454");
+  const [color, setColor] = useState("#de3b45");
   const [brushSize, setBrushSize] = useState(recorder ? 3 : 6);
   const [textDraft, setTextDraft] = useState<TextDraft | null>(null);
   const [ready, setReady] = useState(false);
@@ -512,7 +512,7 @@ export const ScreenshotEditor = ({
           ))}
         </div>
         <div className="fa-capture-colors" role="group" aria-label="주석 색상">
-          {(recorder ? ["#de3b45", "#e0a100", "#1f63ae", "#14181c"] : ["#ef4454", "#ffbf2f", "#2e7cf6", "#ffffff"]).map((value) => (
+          {["#de3b45", "#e0a100", "#1f63ae", "#14181c"].map((value) => (
             <Button
               key={value}
               aria-label={`${value} 색상`}
@@ -523,12 +523,12 @@ export const ScreenshotEditor = ({
             />
           ))}
         </div>
-        <label className="fa-capture-size">굵기<input disabled={!recorder && tool === "crop"} type="range" min={recorder ? "1" : "3"} max={recorder ? "8" : "14"} value={brushSize} onChange={(event) => setBrushSize(Number(event.target.value))} />{recorder && <span>{brushSize}</span>}</label>
+        <label className="fa-capture-size">굵기<input disabled={!recorder && tool === "crop"} type="range" min={recorder ? "1" : "3"} max={recorder ? "8" : "14"} value={brushSize} onChange={(event) => setBrushSize(Number(event.target.value))} /><span>{brushSize}</span></label>
         <Button variant="ghost" className="fa-capture-undo" title="실행 취소 · ⌘/Ctrl Z" disabled={!commands.length} onClick={() => setCommands((items) => items.slice(0, -1))}><MaterialIcon name="undo" /> <span className="fa-capture-action-label">실행 취소</span></Button>
         <Button variant="ghost" className="fa-capture-reset" title="자르기 전 원본으로" disabled={!cropped && !commands.length} onClick={resetCapture}><MaterialIcon name="fullscreen" /> <span className="fa-capture-action-label">전체 화면</span></Button>
         <span className="fa-capture-divider" />
         <Button variant="ghost" className="fa-capture-cancel" onClick={onCancel}>취소</Button>
-        <Button variant="primary" className="fa-capture-complete" disabled={!ready || copying || Boolean(textDraft)} onClick={() => void copyCapture()}><MaterialIcon name="content_copy" /> {copying ? "복사 중…" : recorder ? "클립보드 복사" : "완료 · 클립보드 복사"}</Button>
+        <Button variant="primary" className="fa-capture-complete" disabled={!ready || copying || Boolean(textDraft)} onClick={() => void copyCapture()}><MaterialIcon name="content_copy" /> {copying ? "복사 중…" : "클립보드 복사"}</Button>
       </div>
     </div>
   );

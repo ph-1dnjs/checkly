@@ -27,24 +27,27 @@ test("opens the isolated form automation tab", async ({ page }) => {
 
   await page.setViewportSize({ width: 1920, height: 1000 });
   await page.goto("/");
-  await page.getByRole("button", { name: "폼 자동 완성" }).click();
+  await page.getByRole("button", { name: "화면 테스트" }).click();
 
   await expect(
-    page.getByRole("heading", { name: "폼 자동 완성", level: 1 }),
+    page.getByRole("heading", { name: "화면 테스트", level: 1 }),
   ).toBeVisible();
-  await expect(page.getByRole("button", { name: "선택 케이스 자동 입력" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "입력할 칸을 체크하세요" })).toBeVisible();
   await expect(page.getByRole("button", { name: "화면 캡처" })).toBeVisible();
+  await page.getByRole("tab", { name: "네트워크", exact: true }).click();
   // Swagger settings now appear in a selected request's detail; the empty timeline has no connection button.
   await expect(page.getByRole("complementary", { name: "검사 패널" }).getByText("아직 수집된 기록이 없습니다")).toBeVisible();
-  await expect(page.getByRole("button", { name: /네트워크/ })).toBeVisible();
+  await expect(page.getByRole("tab", { name: /네트워크/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /저장소/ })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: /오버라이드/ })).toBeVisible();
+  await expect(page.getByRole("tab", { name: /오버라이드/ })).toBeVisible();
+  await page.getByRole("button", { name: "보기 설정", exact: true }).click();
   await expect(page.getByRole("button", { name: "화면 축소" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "80%" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "100%" })).toBeVisible();
 
   const contentBox = await page.locator(".content").boundingBox();
   expect(contentBox?.width).toBe(1920);
 
+  await page.keyboard.press("Escape");
   await page.keyboard.press("Control+Shift+S");
   await expect(page.getByRole("dialog", { name: "화면 캡처 편집" })).toBeVisible();
   await expect(page.getByRole("button", { name: "영역 선택" })).toHaveAttribute("aria-pressed", "true");
@@ -66,6 +69,6 @@ test("opens the isolated form automation tab", async ({ page }) => {
   await expect(page.getByRole("button", { name: "실행 취소" })).toBeEnabled();
   await page.getByRole("button", { name: "취소", exact: true }).click();
 
-  await page.getByRole("button", { name: /자동 입력/ }).last().click();
-  await expect(page.getByText("폼·검색 자동 입력 케이스")).toBeVisible();
+  await page.getByRole("tab", { name: "폼 입력", exact: true }).click();
+  await expect(page.getByText("케이스 고르기", { exact: true }).last()).toBeVisible();
 });

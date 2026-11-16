@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent } from "react";
 import type { NativeInspectorSnapshot, NativeOverride, SimulatorApp, SimulatorDevice, SimulatorFrame, SimulatorInput, SimulatorStatus } from "../../../app/ipc/form-automation/nativeInspectorTypes";
-import { PageHeader } from "../../shared/ui/PageLayout";
+import { ScreenTestHeader } from "./ScreenTestHeader";
+import { Input } from "../../shared/ui/Input";
 import { Modal } from "../../shared/ui/Modal";
 import { Button } from "../../shared/ui/Button";
 import { NetworkPanel, OverridePanel } from "./InspectorPanels";
@@ -26,17 +27,16 @@ export function NativeInspectorPage({ onBack }: { onBack: () => void }) {
   const [tab, setTab] = useState<"network" | "override">("network");
   const [clientId, setClientId] = useState("");
   const [selectedEventId, setSelectedEventId] = useState("");
-  const [filter, setFilter] = useState<"all" | "errors">("all");
+  const [filter, setFilter] = useState<"all" | "errors" | "warnings">("all");
   const [rules, storeRules] = useStoredState<NativeOverride[]>("checkly-form-native-overrides", []);
   const [selectedRuleId, setSelectedRuleId] = useState("");
+  const [overrideEditing, setOverrideEditing] = useState(false);
   const [draft, setDraft] = useState<NativeOverride | undefined>();
   const [body, setBody] = useState("{}");
   const [editorMode, setEditorMode] = useState<"fields" | "json">("json");
-  const [listHeight, setListHeight] = useState(280);
   const drag = useRef<{ x: number; y: number } | null>(null);
   const lastWheel = useRef(0);
   const mounted = useRef(true);
-  const resizeCleanup = useRef<(() => void) | null>(null);
   const api = window.electronAPI;
   const report = (value: unknown) => { if (mounted.current) setError(value instanceof Error ? value.message : String(value)); };
 
@@ -71,7 +71,6 @@ export function NativeInspectorPage({ onBack }: { onBack: () => void }) {
       mounted.current = false;
       clearInterval(timer);
       unsubscribe?.();
-      resizeCleanup.current?.();
       void api?.disconnectSimulator?.().catch(() => {});
       void api?.stopNativeInspector?.().catch(() => {});
     };
@@ -123,7 +122,8 @@ export function NativeInspectorPage({ onBack }: { onBack: () => void }) {
   const sendInput = (input: SimulatorInput) => { void api.simulatorInput(udid, input).catch(report); };
   const point = (event: PointerEvent<HTMLImageElement>) => {
     const box = event.currentTarget.getBoundingClientRect();
-    return { x: Math.min(1, Math.max(0, (event.clientX - box.left) / box.width)), y: Math.min(1, Math.max(0, (event.clientY - box.top) / box.height)) };
+    const border = event.currentTarget.clientLeft;
+    return { x: Math.min(1, Math.max(0, (event.clientX - box.left - border) / (box.width - border * 2))), y: Math.min(1, Math.max(0, (event.clientY - box.top - border) / (box.height - border * 2))) };
   };
 
   const commit = async (next: NativeOverride[]) => {
@@ -143,7 +143,7 @@ export function NativeInspectorPage({ onBack }: { onBack: () => void }) {
     const rule: NativeOverride = { id: existing?.id || crypto.randomUUID(), clientId: activeClientId, name: `${selectedEvent.method} ${url.pathname}`,
       match: url.href, method: selectedEvent.method, status: selectedEvent.status >= 200 ? selectedEvent.status : 200,
       enabled: false, body: selectedEvent.responseBody ?? {}, sourceBody: selectedEvent.responseBody, sourceUrl: selectedEvent.url };
-    void commit([...rules.filter(item => item.id !== rule.id), rule]).then(() => { setSelectedRuleId(rule.id); setTab("override"); }).catch(report);
+    void commit([...rules.filter(item => item.id !== rule.id), rule]).then(() => { setSelectedRuleId(rule.id); setOverrideEditing(true); setTab("override"); }).catch(report);
   };
 
   const copy = (value: string) => { void api.copyFormAutomationText(value).catch(report); };
@@ -166,30 +166,30 @@ export function NativeInspectorPage({ onBack }: { onBack: () => void }) {
   const applied = Boolean(connected && selectedRule?.enabled && latest?.overridden && latest.ruleRevision === snapshot.revision && client?.revision === snapshot.revision);
 
   return <div className="form-automation-page">
-    <PageHeader icon="smartphone" title="모바일 앱" className="form-automation-header">
-      <div className="fa-header-actions"><button className="button fa-header-action secondary" disabled={!frame || frame.udid !== udid} onClick={() => frame && setCapture({ dataUrl: frame.dataUrl, size: { width: frame.width, height: frame.height } })}><span className="msi" aria-hidden="true">photo_camera</span> 화면 캡처</button><button className="button fa-header-action secondary" onClick={onBack}>웹뷰로 돌아가기</button></div>
-    </PageHeader>
-    {error && <div className="fa-native-error" role="alert"><span>{error}</span><button onClick={() => setError("")}>닫기</button></div>}
+    <ScreenTestHeader title="모바일 앱" icon="smartphone" mode={tab} onMode={mode => { if (mode !== "cases") setTab(mode); }} onBack={onBack}
+      errors={events.filter(event => !event.status || event.status >= 400).length} overrides={appRules.filter(rule => rule.enabled).length}>
+      <Button variant="ghost" disabled={!frame || frame.udid !== udid} onClick={() => frame && setCapture({ dataUrl: frame.dataUrl, size: { width: frame.width, height: frame.height } })} aria-label="화면 캡처"><span className="msi" aria-hidden="true">photo_camera</span> 캡처</Button>
+    </ScreenTestHeader>
+    {error && <div className="fa-native-error" role="alert"><span>{error}</span><Button variant="secondary" onClick={() => setError("")}>닫기</Button></div>}
     <div className="fa-native-workbench">
       <section className="fa-native-device">
-        <div className="fa-native-toolbar">
+        <div className="fa-native-toolbar fa-native-device-tools">
           <select aria-label="iOS 시뮬레이터" value={udid} disabled={busy || Boolean(simulator.udid)} onChange={event => { setUdid(event.target.value); setApps([]); setFrame(null); }}>
             {!devices.length && <option value="">기기 없음</option>}
             {devices.map(device => <option key={device.udid} value={device.udid}>{device.name} · {device.runtime}</option>)}
           </select>
-          <button onClick={() => void loadDevices()} disabled={busy}>기기 새로고침</button>
-          <button className="primary" disabled={busy || !udid} onClick={() => void connect()}>{busy ? "연결 또는 설치 중…" : "연결"}</button>
-          <button disabled={busy || (!simulator.udid && !snapshot.running)} onClick={() => void stop()}>연결 해제</button>
-        </div>
-        <div className="fa-native-toolbar">
           <select aria-label="시뮬레이터 앱" value={bundleId} onChange={event => { setBundleId(event.target.value); setClientId(""); }}>
             {!apps.length && <option value="">연결 후 앱 선택</option>}
             {apps.map(app => <option key={app.bundleId} value={app.bundleId}>{snapshot.clients.find(item => item.id === app.bundleId)?.name || app.name}</option>)}
           </select>
-          <button disabled={!bundleId || busy} onClick={() => { void api.launchSimulatorApp(udid, bundleId).catch(report); }}>앱 열기</button>
-          <button disabled={!bundleId || busy} onClick={() => { void api.launchSimulatorApp(udid, bundleId, true).catch(report); }}>앱 재시작</button>
-          <button disabled={!simulator.streaming} onClick={() => sendInput({ type: "key", key: "HOME" })}>홈</button>
+          <Button variant="secondary" disabled={!bundleId || busy} onClick={() => { void api.launchSimulatorApp(udid, bundleId).catch(report); }}><span className="msi" aria-hidden="true">open_in_new</span>앱 열기</Button>
+          <Button variant="secondary" aria-label="앱 재시작" disabled={!bundleId || busy} onClick={() => { void api.launchSimulatorApp(udid, bundleId, true).catch(report); }}><span className="msi" aria-hidden="true">restart_alt</span>재시작</Button>
+          <Button variant="secondary" disabled={!simulator.streaming} onClick={() => sendInput({ type: "key", key: "HOME" })}><span className="msi" aria-hidden="true">home</span>홈</Button>
           <span role="status">{simulator.streaming ? "화면 연결됨" : simulator.udid ? "화면 대기" : "연결 안 됨"}</span>
+          <Button variant="ghost" iconOnly aria-label="기기 새로고침" onClick={() => void loadDevices()} disabled={busy}><span className="msi" aria-hidden="true">refresh</span></Button>
+          {simulator.udid || snapshot.running
+            ? <Button variant="secondary" disabled={busy} onClick={() => void stop()}>연결 해제</Button>
+            : <Button variant="primary" disabled={busy || !udid} onClick={() => void connect()}>{busy ? "연결 중…" : "연결"}</Button>}
         </div>
         {simulator.error && <div className="fa-native-error" role="alert">{simulator.error}</div>}
         <div className="fa-native-screen">
@@ -211,40 +211,45 @@ export function NativeInspectorPage({ onBack }: { onBack: () => void }) {
               if (!simulator.streaming || event.nativeEvent.isComposing || event.metaKey || event.ctrlKey || event.altKey) return;
               if (event.key === "Enter" || event.key === "Backspace") { event.preventDefault(); sendInput({ type: "key", key: event.key === "Enter" ? "ENTER" : "BACKSPACE" }); }
               else if (event.key.length === 1) { event.preventDefault(); sendInput({ type: "text", text: event.key }); }
-            }} /> : <div className="fa-native-empty"><span className="msi">smartphone</span><strong>iOS 앱을 Checkly에서 확인하세요</strong><p>기기를 선택하고 연결하면 앱 화면이 여기에 표시됩니다.</p><p>Xcode와 idb가 필요합니다. idb가 없으면 연결할 때 설치를 안내합니다.</p></div>}
+            }} /> : <div className="fa-native-phone"><div className="fa-native-empty"><span className="msi">smartphone</span><strong>iOS 앱을 Checkly에서 확인하세요</strong><p>기기를 선택하고 연결하면 앱 화면이 여기에 표시됩니다.</p><p>Xcode와 idb가 필요합니다. idb가 없으면 연결할 때 설치를 안내합니다.</p></div></div>}
         </div>
-        <form className="fa-native-toolbar" onSubmit={event => { event.preventDefault(); if (text) { sendInput({ type: "text", text }); setText(""); } }}>
-          <input aria-label="앱에 입력할 텍스트" placeholder="앱의 입력칸을 선택한 뒤 텍스트 입력" value={text} onChange={event => setText(event.target.value)} maxLength={2000} />
-          <button disabled={!simulator.streaming || !text}>입력</button>
+        <form className="fa-native-toolbar fa-native-input" onSubmit={event => { event.preventDefault(); if (simulator.streaming && text) { sendInput({ type: "text", text }); setText(""); } }}>
+          <span className="fa-input-hint"><span className="msi" aria-hidden="true">touch_app</span> 입력칸을 먼저 누르세요</span>
+          <Input aria-label="앱에 입력할 텍스트" placeholder="앱의 입력칸을 선택한 뒤 텍스트 입력" value={text} onChange={event => setText(event.target.value)} maxLength={2000} />
+          <Button type="submit" variant="primary" aria-label="입력" disabled={!simulator.streaming || !text}><span className="msi" aria-hidden="true">send</span>앱에 입력</Button>
         </form>
       </section>
       <aside className="fa-inspector fa-native-inspector">
-        <div className="fa-native-toolbar">
-          <select aria-label="네트워크 앱" value={activeClientId} onChange={event => { setClientId(event.target.value); setSelectedEventId(""); }}>
-            {!client && <option value={activeClientId}>RN 앱 연결 대기</option>}
-            {snapshot.clients.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
-          </select><span>{connected ? "네트워크 연결됨" : "네트워크 대기"}</span>
+        <div className={`fa-native-connection${connected ? " connected" : ""}`}>
+          <span className="msi" aria-hidden="true">{connected ? "link" : "link_off"}</span><div><strong>{connected ? `${client?.name || "React Native 앱"} 연결됨` : "React Native 앱 연결 대기"}</strong><small>{connected ? "앱의 fetch 요청을 기록하고 있어요" : "연결 모듈을 넣은 개발 앱을 새로고침하면 연결돼요"}</small></div>
+          {snapshot.clients.length > 0 && <select aria-label="네트워크 앱" value={activeClientId} onChange={event => { setClientId(event.target.value); setSelectedEventId(""); }}>{!client && <option value={activeClientId}>앱 선택</option>}{snapshot.clients.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select>}
         </div>
-        <details className="fa-native-help"><summary>React Native 연결 안내</summary><p>연결 모듈을 RN 프로젝트의 index.js 옆에 저장하고, 초기화 코드를 index.js에 추가한 뒤 개발 앱을 새로고침하세요.</p>
-          <div className="fa-native-toolbar"><button onClick={() => { void api.saveReactNativeModule().catch(report); }}>연결 모듈 저장</button><button disabled={!bundleId} onClick={() => copy(`if (__DEV__) {\n  require('./checkly').installCheckly({\n    enabled: true,\n    clientId: ${JSON.stringify(bundleId)},\n    name: ${JSON.stringify(apps.find(app => app.bundleId === bundleId)?.name || bundleId)}\n  });\n}`)}>초기화 코드 복사</button></div>
-          <p>fetch 요청을 수집합니다. 네이티브 SDK·직접 XHR·WebSocket은 포함하지 않습니다. 규칙을 끄면 원본 요청을 사용합니다.</p><p>연결 주소: 127.0.0.1:{snapshot.port} · 최근 기록은 메모리에만 보관하며 다운로드할 수 있습니다.</p></details>
-        <div className="fa-inspector-tabs"><button className={tab === "network" ? "active" : ""} onClick={() => setTab("network")}>네트워크 <b>{events.length}</b></button><button className={tab === "override" ? "active" : ""} onClick={() => setTab("override")}>오버라이드 <b>{appRules.filter(rule => rule.enabled).length}</b></button></div>
+        {!connected && <details className="fa-native-help" open><summary>연결 안내<span className="msi" aria-hidden="true">expand_more</span></summary>
+          <ol className="fa-native-steps">
+            <li><b>1</b><div><strong>연결 모듈 저장</strong><p>RN 프로젝트의 index.js 옆에 저장하세요.</p><Button variant="secondary" onClick={() => { void api.saveReactNativeModule().catch(report); }}><span className="msi" aria-hidden="true">download</span> 연결 모듈 저장</Button></div></li>
+            <li><b>2</b><div><strong>초기화 코드 추가</strong><p>복사한 코드를 index.js에 붙여 넣으세요.</p><Button variant="secondary" disabled={!bundleId} onClick={() => copy(`if (__DEV__) {\n  require('./checkly').installCheckly({\n    enabled: true,\n    clientId: ${JSON.stringify(bundleId)},\n    name: ${JSON.stringify(apps.find(app => app.bundleId === bundleId)?.name || bundleId)}\n  });\n}`)}><span className="msi" aria-hidden="true">content_copy</span> 초기화 코드 복사</Button></div></li>
+            <li><b>3</b><div><strong>개발 앱 새로고침</strong><p>연결되면 앱의 요청이 여기에 쌓여요.</p></div></li>
+          </ol>
+          <div className="fa-native-help-note"><p>fetch 요청만 기록해요. 네이티브 SDK·직접 XHR·WebSocket은 포함하지 않아요.</p><p>연결 주소 <code>127.0.0.1:{snapshot.port}</code> · 최근 기록은 메모리에만 보관하고 내려받을 수 있어요.</p></div>
+        </details>}
+
         {tab === "network" ? <NetworkPanel events={events} selectedEvent={selectedEvent as NetworkEvent | null}
-          activeSessionName={client?.name || "모바일 앱"} description="이 개발 앱의 fetch 요청·응답" filter={filter} onFilter={setFilter}
+          activeSessionName={client?.name || "모바일 앱"} heading="앱 요청" description="이 개발 앱의 fetch 요청·응답" filter={filter} onFilter={setFilter}
           emptyDescription="개발 앱에서 API를 호출하는 동작을 실행해 보세요."
-          onSelect={event => setSelectedEventId(event.id)} onCopyUrl={copy}
+          onBack={() => setSelectedEventId("")} onSelect={event => setSelectedEventId(event.id)} onCopyUrl={copy}
           onCopy={() => { if (selectedEvent) copy(apiEventClipboardText(selectedEvent, selectedEvent.url)); }}
           onCreateOverride={createRule} onClear={() => { void api.clearNativeInspectorEvents().then(refresh).catch(report); }} onDownload={download}
-          listHeight={listHeight} onResetListHeight={() => setListHeight(280)} onResizeList={event => {
-            const start = event.clientY; const initial = listHeight;
-            const move = (next: MouseEvent) => setListHeight(Math.min(600, Math.max(100, initial + next.clientY - start)));
-            const stopResize = () => { window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", stopResize); resizeCleanup.current = null; };
-            resizeCleanup.current?.(); resizeCleanup.current = stopResize;
-            window.addEventListener("mousemove", move); window.addEventListener("mouseup", stopResize);
-          }} /> : <OverridePanel openApi={null} overrides={appRules} selected={draft} bodyText={body} parsedBody={safeJson(body)} editorMode={editorMode}
-          description="선택한 React Native 개발 앱에만 적용" note="저장 후 앱에서 같은 요청을 다시 실행하세요. 메서드·호스트·경로가 일치하면 적용하며 쿼리는 무시합니다. 연결 해제 시 원본 요청으로 돌아갑니다."
+ /> : <OverridePanel openApi={null} overrides={appRules} selected={draft} bodyText={body} parsedBody={safeJson(body)} editorMode={editorMode}
+          note="저장 후 앱에서 같은 요청을 다시 실행하세요. 메서드·호스트·경로가 일치하면 적용하며 쿼리는 무시합니다. 연결 해제 시 원본 요청으로 돌아갑니다."
           status={{ tone: applied ? "success" : "neutral", applied, title: applied ? "오버라이드 응답 확인됨" : connected ? "다음 앱 요청에서 적용" : "앱 연결 대기", detail: connected ? `규칙 동기화 ${client?.revision === snapshot.revision ? "완료" : "대기"}` : "개발 앱과 Checkly를 연결해 주세요." }}
-          onSelect={setSelectedRuleId} onEditorMode={setEditorMode} onBodyText={setBody} onCreate={createRule}
+          editing={overrideEditing} onEditing={setOverrideEditing}
+          onToggleRule={(id, enabled) => { const rule = rules.find(item => item.id === id); if (rule) void replaceRule({ ...rule, enabled }).catch(report); }}
+          onCreateBlank={() => {
+            if (!activeClientId) { setError("먼저 개발 앱을 선택해 주세요."); return; }
+            const rule: NativeOverride = { id: crypto.randomUUID(), clientId: activeClientId, name: "새 응답", match: "http://localhost/api/example", method: "GET", status: 200, enabled: false, body: { status: "success", message: "", data: {} } };
+            void commit([...rules, rule]).then(() => { setSelectedRuleId(rule.id); setOverrideEditing(true); }).catch(report);
+          }}
+          onSelect={setSelectedRuleId} onEditorMode={setEditorMode} onBodyText={setBody} onChooseResponse={() => { setSelectedEventId(""); setTab("network"); }}
           onUpdate={patch => {
             if (!draft) return;
             if (patch.enabled !== undefined) void replaceRule({ ...selectedRule!, enabled: patch.enabled }).catch(report);

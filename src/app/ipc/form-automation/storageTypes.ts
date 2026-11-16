@@ -12,6 +12,7 @@ export const FORM_AUTOMATION_STORAGE_KEYS = [
   "checkly-form-browser-zoom",
   "checkly-form-browser-viewport",
   "checkly-form-browser-landscape",
+  "checkly-form-show-guide",
 ] as const;
 
 export type FormAutomationStorageKey = typeof FORM_AUTOMATION_STORAGE_KEYS[number];

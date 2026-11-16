@@ -187,6 +187,72 @@ export const discoverFieldsScript = discoveryScript(true);
 // Background detection reads mounted controls without opening popups or changing focus.
 export const passiveDiscoverFieldsScript = discoveryScript(false);
 
+/** Read only the controls already discovered; never sends values or changes the page. */
+export const readCurrentFieldsScript = (keys: string[]): string => `(async () => {
+  ${visibleRuntime}
+  ${checkboxRuntime}
+  ${controlAdapters}
+  const result = {};
+  for (const key of ${JSON.stringify(keys)}) {
+    const elements = fieldElementsFor(document, key);
+    const first = elements[0];
+    if (!first || first.type === 'file' || first.getAttribute('data-qa-autofill-type') === 'date-trigger') continue;
+    let value;
+    if (isCheckbox(first)) value = elements.length > 1 ? elements.filter(element => checkboxState(element)).map(checkboxValue) : checkboxState(first);
+    else if (isRadio(first)) {
+      const selected = elements.find(element => radioInputFor(element)?.checked || element.getAttribute('aria-checked') === 'true');
+      value = selected ? radioValue(selected) : '';
+    }
+    else if (choiceControlFor(first)) {
+      const options = await collectChoiceOptions(first, false);
+      const selected = options.filter(option => option.selected).map(option => option.value);
+      value = choiceMultiple(first) ? selected : selected[0] || '';
+    } else if (first instanceof HTMLSelectElement && first.multiple) value = Array.from(first.selectedOptions).map(option => option.value);
+    else value = first.isContentEditable ? first.textContent : first.value;
+    if (value !== undefined) Object.defineProperty(result, key, { value, enumerable: true });
+  }
+  return result;
+})()`;
+
+/** Numbered hints are an isolated, noninteractive overlay; cleanup runs on every update. */
+export const highlightFieldsScript = (keys: string[]): string => `(() => {
+  window.__checklyFormHintsCleanup?.();
+  const keys = ${JSON.stringify(keys)};
+  if (!keys.length) return;
+  const host = document.createElement('div');
+  host.setAttribute('data-checkly-form-hints', '');
+  host.setAttribute('aria-hidden', 'true');
+  host.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:2147483646;';
+  const shadow = host.attachShadow({ mode: 'open' });
+  document.documentElement.append(host);
+  let frame = 0;
+  const draw = () => {
+    cancelAnimationFrame(frame);
+    frame = requestAnimationFrame(() => {
+      shadow.replaceChildren();
+      keys.forEach((key, index) => {
+        const element = Array.from(document.querySelectorAll('[data-qa-autofill-name]')).find(el => el.getAttribute('data-qa-autofill-name') === key && el.getClientRects().length);
+        if (!element) return;
+        const rect = element.getBoundingClientRect();
+        if (rect.bottom < 0 || rect.top > innerHeight || !rect.width || !rect.height) return;
+        const badge = document.createElement('span');
+        badge.textContent = String(index + 1);
+        badge.style.cssText = 'position:absolute;display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:#1f63ae;color:white;font:700 11px monospace;';
+        badge.style.left = Math.max(2, rect.left - 30) + 'px';
+        badge.style.top = Math.max(2, rect.top + (rect.height - 20) / 2) + 'px';
+        const outline = document.createElement('span');
+        outline.style.cssText = 'position:absolute;border:1px solid #3d8ce0;border-radius:4px;';
+        Object.assign(outline.style, { left: rect.left + 'px', top: rect.top + 'px', width: rect.width + 'px', height: rect.height + 'px' });
+        shadow.append(outline, badge);
+      });
+    });
+  };
+  addEventListener('scroll', draw, true); addEventListener('resize', draw);
+  const observer = new ResizeObserver(draw); observer.observe(document.documentElement);
+  window.__checklyFormHintsCleanup = () => { cancelAnimationFrame(frame); removeEventListener('scroll', draw, true); removeEventListener('resize', draw); observer.disconnect(); host.remove(); delete window.__checklyFormHintsCleanup; };
+  draw();
+})()`;
+
 export const fillFieldsScript = (fields: Record<string, FieldValue>): string => `(async () => {
   const fields = ${JSON.stringify(fields)};
   const filled = []; const missing = []; const richText = []; const fileInputs = []; const dateTriggers = [];

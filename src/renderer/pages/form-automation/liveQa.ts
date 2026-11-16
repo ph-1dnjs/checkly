@@ -172,6 +172,13 @@ export const isSessionError = (item?: NetworkEvent | null): boolean =>
     || Number(item?.status) >= 400,
   );
 
+/** 화면의 오류와 스펙 경고를 나눠 표시한다. 기존 기록 저장 판정은 유지한다. */
+export const isNetworkFailure = (item: NetworkEvent): boolean => Boolean(
+  item.category === "page" || item.error || Number(item.status) === 0 || Number(item.status) >= 400,
+);
+export const isContractWarning = (item: NetworkEvent): boolean =>
+  ["fetch", "xhr"].includes(item.type) && item.contract?.tone === "danger";
+
 export const pathMatches = (template: string, eventUrl: string): boolean => {
   try {
     const pathname = new URL(eventUrl, "https://qa.local").pathname;

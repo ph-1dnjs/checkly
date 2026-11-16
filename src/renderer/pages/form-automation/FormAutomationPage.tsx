@@ -11,6 +11,8 @@ import {
 } from "react";
 import {
   clearFieldsScript,
+  readCurrentFieldsScript,
+  highlightFieldsScript,
   discoverFieldsScript,
   passiveDiscoverFieldsScript,
   fillFieldsScript,
@@ -22,7 +24,6 @@ import {
   MAX_FORM_SESSIONS,
   browserSessionPartition,
   browserUserAgent,
-  caseValueCount,
   cloneFields,
   defaultBrowserSession,
   detectedCases,
@@ -39,7 +40,8 @@ import {
   type FieldValue,
   type FileValue,
 } from "./model";
-import { PageHeader } from "../../shared/ui/PageLayout";
+import { ScreenTestHeader } from "./ScreenTestHeader";
+import { Popover } from "../../shared/ui/Popover";
 import { NetworkPanel, OverridePanel } from "./InspectorPanels";
 import { useSharedOpenApi } from "./useSharedOpenApi";
 import { useSplitPaneResize } from "./useSplitPaneResize";
@@ -51,6 +53,7 @@ import { NativeInspectorPage } from "./NativeInspectorPage";
 import {
   apiEventClipboardText,
   isSessionError,
+  isNetworkFailure,
   isNextInternalNetworkEvent,
   mergeNetworkEvents,
   normalizedEndpointPath,
@@ -270,8 +273,7 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
   const [focusMode, setFocusMode] = useState(false);
   const [splitTabIds, setSplitTabIds] = useState<[string, string] | null>(null);
   const splitResize = useSplitPaneResize(Boolean(splitTabIds));
-  const [inspectorWidth, setInspectorWidth] = useStoredState("checkly-form-inspector-width", 420);
-  const [networkListHeight, setNetworkListHeight] = useStoredState("checkly-form-network-list-height", 305);
+  const [inspectorWidth, setInspectorWidth] = useStoredState("checkly-form-inspector-width", 440);
   const [caseListHeight, setCaseListHeight] = useStoredState<number | null>("checkly-form-case-list-height", null);
   const [caseListHeightPreview, setCaseListHeightPreview] = useState<number | null>(null);
   const [discoveredFields, setDiscoveredFields] = useState<DetectedField[]>([]);
@@ -282,12 +284,13 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
   const [caseDraftKind, setCaseDraftKind] = useState<"success" | "failure">("success");
   const [caseDraftFields, setCaseDraftFields] = useState<Record<string, FieldValue>>({});
   const [caseDraftExcludedFields, setCaseDraftExcludedFields] = useState<string[]>([]);
-  const [drawerTab, setDrawerTab] = useState<"network" | "cases" | "override">("network");
+  const [drawerTab, setDrawerTab] = useState<"network" | "cases" | "override">("cases");
   const [networkEvents, setNetworkEvents] = useState<NetworkEvent[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<NetworkEvent | null>(null);
-  const [networkFilter, setNetworkFilter] = useState<"all" | "errors">("all");
+  const [networkFilter, setNetworkFilter] = useState<"all" | "errors" | "warnings">("all");
   const [overrides, setOverrides] = useStoredState<OverrideRule[]>("checkly-form-overrides", []);
   const [selectedOverrideId, setSelectedOverrideId] = useState("");
+  const [overrideEditing, setOverrideEditing] = useState(false);
   const [overrideBodyText, setOverrideBodyText] = useState("{}");
   const [overrideEditorMode, setOverrideEditorMode] = useState<"fields" | "json">("fields");
   const sharedOpenApi = useSharedOpenApi();
@@ -296,7 +299,7 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
   const [captureBusy, setCaptureBusy] = useState(false);
   const [recordingsOpen, setRecordingsOpen] = useState(false);
   const closeRecordings = useCallback(() => setRecordingsOpen(false), []);
-  const [zoomPercent, setZoomPercent] = useStoredState("checkly-form-browser-zoom", 80);
+  const [zoomPercent, setZoomPercent] = useStoredState("checkly-form-browser-zoom", 100);
   const [viewportId, setViewportId] = useStoredState("checkly-form-browser-viewport", "desktop");
   const [landscape, setLandscape] = useStoredState("checkly-form-browser-landscape", false);
   const viewport = VIEWPORT_PRESETS.find((item) => item.id === viewportId) ?? VIEWPORT_PRESETS[0];
@@ -304,6 +307,7 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
   const viewportHeight = landscape ? viewport.width : viewport.height;
   const zoomFactor = Math.min(1.25, Math.max(0.5, Number(zoomPercent) / 100));
   const [toast, setToast] = useState("");
+  const [showGuide, setShowGuide] = useStoredState("checkly-form-show-guide", true);
   const webviewRefs = useRef(new Map<string, WebviewElement>());
   const refCallbacks = useRef(new Map<string, (node: HTMLElement | null) => void>());
   const activeTabIdRef = useRef(activeTab?.id || "default");
@@ -376,8 +380,7 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
     };
     setNetworkEvents((items) => [payload, ...items].slice(0, 1000));
     void window.electronAPI?.saveFormAutomationSessionEvent?.(payload).catch(() => undefined);
-    if (activeTabIdRef.current === browserSession.id)
-      setSelectedEvent((current) => current || payload);
+
   }, [sharedOpenApi.sources]);
 
   useEffect(() => {
@@ -740,7 +743,7 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
       ? { ...event, contract: contractForSharedEvent(sharedOpenApi.sources, event, eventSpecSources[event.id]) } : event),
   [networkEvents, activeTab?.id, sharedOpenApi.sources, eventSpecSources]);
   const activeSelectedEvent = activeNetworkEvents.find(event => event.id === selectedEvent?.id) ?? null;
-  const activeErrorCount = activeNetworkEvents.filter(isSessionError).length;
+  const activeErrorCount = activeNetworkEvents.filter(isNetworkFailure).length;
 
   const copyText = async (text: string, successMessage: string) => {
     try {
@@ -941,6 +944,7 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
     };
     setOverrides((items) => [next, ...items.filter((item) => item.id !== next.id)]);
     setSelectedOverrideId(next.id);
+    setOverrideEditing(true);
     setOverrideBodyText(stringify(next.body));
     setDrawerTab("override");
     showToast(existing ? "기존 규칙을 최신 실제 응답으로 갱신했습니다." : "실제 응답을 비활성 오버라이드로 복제했습니다.");
@@ -959,7 +963,7 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
   const scopedCases = savedCases.filter(
     (item) => item.pageScope && pageScopeFromUrl(item.pageUrl || item.pageScope) === currentPageScope,
   );
-  const availableCases = [...autoCases, ...scopedCases];
+  const availableCases = [...scopedCases, ...autoCases];
   const selectedCase = availableCases.find((item) => item.id === selectedCaseId);
   const draftIncludedFields = includedCaseFields(caseDraftFields, caseDraftExcludedFields);
   const draftFieldCount = Object.keys(draftIncludedFields).length;
@@ -985,6 +989,17 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
     setCaseDraftExcludedFields(Array.isArray(selectedCase?.excludedFields) ? [...selectedCase.excludedFields] : []);
   }, [selectedCase?.id, JSON.stringify(selectedCase?.fields), JSON.stringify(selectedCase?.excludedFields)]);
 
+  const hintKeys = drawerTab === "cases" ? (selectedCase?.fieldMeta ?? discoveredFields).map(field => caseDraftExcludedFields.includes(field.name) ? "" : field.name) : [];
+  const hintSignature = JSON.stringify(hintKeys);
+  useEffect(() => {
+    if (activeTab?.state !== "ready") return;
+    const webview = activeWebview();
+    // Electron can throw synchronously when a guest is detaching during navigation.
+    const updateHints = (keys: string[]) => Promise.resolve().then(() => webview?.executeJavaScript?.(highlightFieldsScript(keys))).catch(() => {});
+    void updateHints(hintKeys);
+    return () => { void updateHints([]); };
+  }, [activeTab?.id, activeTab?.state, hintSignature]);
+
   const selectCase = (item: AutofillCase) => {
     if (item.id !== selectedCaseId) {
       setSelectedCaseId(item.id);
@@ -993,8 +1008,7 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
       setCaseDraftFields(cloneFields(item.fields));
       setCaseDraftExcludedFields(Array.isArray(item.excludedFields) ? [...item.excludedFields] : []);
     }
-    // Pass the clicked case directly; React has not committed the new draft yet.
-    void autofill(item);
+    // Choosing a case only prepares its values; the explicit footer action applies them.
   };
 
   const saveCase = async () => {
@@ -1026,11 +1040,17 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
 
   const createCaseFromCurrentPage = async () => {
     const fields = await discoverFields(true);
-    showToast(
-      fields.length
-        ? "현재 화면의 필드를 감지했습니다. 제목과 입력값을 수정한 뒤 저장해 주세요."
-        : "현재 화면에서 자동 입력할 필드를 찾지 못했습니다.",
-    );
+    const webview = activeWebview();
+    if (!fields.length || !webview?.executeJavaScript) { showToast("현재 화면에서 자동 입력할 필드를 찾지 못했습니다."); return; }
+    try {
+      const values = await webview.executeJavaScript(readCurrentFieldsScript(fields.map(field => field.name))) as Record<string, FieldValue>;
+      const fieldMeta = fields.filter(field => Object.hasOwn(values, field.name));
+      if (!fieldMeta.length) { showToast("현재 값을 읽을 수 있는 입력칸이 없습니다."); return; }
+      const item: AutofillCase = { id: `saved-case-${Date.now()}`, name: `새 케이스 · ${pageScopeLabel(currentPageScope)}`, kind: "success", generated: false, userSaved: true, screen: pageScopeLabel(currentPageScope), fieldMode: "name", fields: values, fieldMeta, expected: "", pageScope: currentPageScope, pageUrl: currentPageUrl, savedAt: new Date().toISOString() };
+      if (!await setSavedCases(items => [item, ...items])) { showToast("케이스를 저장하지 못했습니다. 다시 시도해 주세요."); return; }
+      setCaseFilter("all"); setSelectedCaseId(item.id);
+      showToast(`지금 화면 값으로 ${fieldMeta.length}칸을 저장했습니다.${fieldMeta.length < fields.length ? " 파일·날짜 팝업처럼 현재 값을 읽을 수 없는 칸은 제외했습니다." : ""}`);
+    } catch (error) { showToast(`화면 값을 읽지 못했습니다: ${error instanceof Error ? error.message : String(error)}`); }
   };
 
   const deleteCase = async () => {
@@ -1143,24 +1163,6 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
     window.addEventListener("mouseup", stop);
   };
 
-  const startNetworkListResize = (event: MouseEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    const startY = event.clientY;
-    const startHeight = networkListHeight;
-    const inspector = event.currentTarget.closest(".fa-inspector");
-    const maximum = Math.max(280, (inspector?.clientHeight || 760) - 330);
-    const resize = (moveEvent: globalThis.MouseEvent) => {
-      setNetworkListHeight(Math.round(Math.min(maximum, Math.max(120, startHeight + moveEvent.clientY - startY))));
-    };
-    const stop = () => {
-      window.removeEventListener("mousemove", resize);
-      window.removeEventListener("mouseup", stop);
-      document.body.classList.remove("resizing-form-timeline");
-    };
-    document.body.classList.add("resizing-form-timeline");
-    window.addEventListener("mousemove", resize);
-    window.addEventListener("mouseup", stop);
-  };
 
   const caseListResizeBounds = (handle: HTMLDivElement) => {
     const inspector = handle.closest(".fa-inspector");
@@ -1223,31 +1225,19 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
 
   return (
     <div className="form-automation-page">
-      <PageHeader icon="dynamic_form" title="폼 자동 완성" className="form-automation-header">
-        <div className="fa-header-actions">
-          <span className="ls-auto-recording">오류 전 10초 · 후 5초 저장</span>
-          <Button variant="secondary" className="fa-header-action" onClick={() => setRecordingsOpen(true)}><MaterialIcon name="history" /> 브라우저 기록</Button>
-          <Button variant="secondary" className="fa-header-action" onClick={onNative}><MaterialIcon name="smartphone" /> 모바일 앱</Button>
-          <Button variant="secondary"
-            className="fa-header-action"
-            disabled={captureBusy}
-            onClick={() => void startCapture()}
-            aria-label="화면 캡처"
-            aria-keyshortcuts="Control+Shift+S Meta+Shift+S"
-            title="개발자 도구가 열려 있으면 모니터 화면 그대로 캡처해 영역 선택 (⌘/Ctrl + Shift + S)"
-          >
-            <MaterialIcon name="photo_camera" /> {captureBusy ? "캡처 중…" : "화면 캡처"}
-            {!captureBusy && <span className="fa-shortcut-hint" aria-hidden="true">⌘/Ctrl ⇧ S</span>}
-          </Button>
-          <Button variant="primary" className="fa-header-action" onClick={() => void autofill()} disabled={!draftFieldCount}>
-            <MaterialIcon name="auto_fix_high" /> 선택 케이스 자동 입력
-          </Button>
-        </div>
-      </PageHeader>
+      <ScreenTestHeader mode={drawerTab} errors={activeErrorCount} overrides={overrides.filter(item => item.enabled).length}
+        onMode={mode => { setDrawerTab(mode); if (mode === "cases" && !discoveredFields.length) void discoverFields(true); }}>
+        <Button variant="ghost" onClick={() => setRecordingsOpen(true)} aria-label="브라우저 기록"><MaterialIcon name="history" /> 기록</Button>
+        <Button variant="ghost" onClick={onNative}><MaterialIcon name="smartphone" /> 모바일 앱</Button>
+        <Button variant="ghost" disabled={captureBusy} onClick={() => void startCapture()} aria-label="화면 캡처"
+          aria-keyshortcuts="Control+Shift+S Meta+Shift+S" title="화면 캡처 (⌘/Ctrl + Shift + S)">
+          <MaterialIcon name="photo_camera" /> {captureBusy ? "캡처 중…" : "캡처"}
+        </Button>
+      </ScreenTestHeader>
 
       <div
         className={`form-automation-workbench${focusMode ? " browser-focus" : ""}`}
-        style={focusMode ? undefined : { gridTemplateColumns: `minmax(0, 1fr) 5px ${inspectorWidth}px` }}
+        style={focusMode ? undefined : { gridTemplateColumns: `minmax(0, 1fr) 0px min(${inspectorWidth}px, 48vw)` }}
       >
         <section className="fa-browser-card">
           <div className="fa-session-bar">
@@ -1274,7 +1264,7 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
                     }}
                     onDrop={(event) => handleDrop(event, tab.id)}
                   >
-                    <span className="fa-tab-grip"><MaterialIcon name="drag_indicator" /></span>
+
                     {editingTabId === tab.id ? (
                       <Input
                         autoFocus
@@ -1319,84 +1309,44 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
                 );
               })}
             </div>
-            <div className="fa-session-create">
-              <Button
-                variant="secondary"
-                aria-pressed={Boolean(splitTabIds)}
-                disabled={browserTabs.length < 2}
-                title={browserTabs.length < 2 ? "세션을 두 개 이상 열면 화면을 분할할 수 있습니다." : "두 세션을 좌우로 나란히 보기"}
-                onClick={toggleBrowserSplit}
-              >
-                <MaterialIcon name="vertical_split" /> {splitTabIds ? "분할 해제" : "화면 분할"}
-              </Button>
-              <select
-                aria-label="새 세션 브라우저 식별"
-                title="브라우저 식별 정보만 변경합니다. 모든 웹뷰는 Chromium 엔진으로 동작합니다."
-                value={newSessionIdentity}
-                onChange={(event) => setNewSessionIdentity(event.target.value as BrowserIdentity)}
-              >
+            <Popover label="새 세션" className="fa-session-new" triggerClassName="fa-session-add" triggerText={<MaterialIcon name="add" />}>
+              <label className="fa-view-field">브라우저<select aria-label="새 세션 브라우저 식별" value={newSessionIdentity} onChange={event => setNewSessionIdentity(event.target.value as BrowserIdentity)}>
                 {Object.entries(BROWSER_IDENTITY_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-              </select>
-              <Button variant="ghost" className="fa-session-add" onClick={() => addBrowserTab(newSessionIdentity)} disabled={browserTabs.length >= MAX_FORM_SESSIONS}>
-                <MaterialIcon name="add" /> 새 세션
-              </Button>
-            </div>
+              </select></label>
+              <Button variant="primary" onClick={() => addBrowserTab(newSessionIdentity)} disabled={browserTabs.length >= MAX_FORM_SESSIONS}>새 세션 열기</Button>
+            </Popover>
+            <Button className="fa-split-toggle" aria-pressed={Boolean(splitTabIds)} disabled={browserTabs.length < 2} onClick={toggleBrowserSplit}
+              title={browserTabs.length < 2 ? "세션을 두 개 이상 열면 화면을 분할할 수 있습니다." : "두 세션 나란히 보기"}>
+              <MaterialIcon name="vertical_split" /> {splitTabIds ? "분할 해제" : "화면 분할"}
+            </Button>
           </div>
-
           <div className="fa-browser-toolbar">
             <div className="fa-browser-actions">
               <Button variant="ghost" iconOnly disabled={!activeTab.history.back} onClick={() => activeWebview()?.goBack()} aria-label="뒤로가기"><MaterialIcon name="arrow_back" /></Button>
               <Button variant="ghost" iconOnly disabled={!activeTab.history.forward} onClick={() => activeWebview()?.goForward()} aria-label="앞으로가기"><MaterialIcon name="arrow_forward" /></Button>
               <Button variant="ghost" iconOnly onClick={() => activeWebview()?.reload()} aria-label="새로고침" title="새로고침 (⌘R / Ctrl+R)"><MaterialIcon name={activeTab.state === "loading" ? "progress_activity" : "refresh"} /></Button>
             </div>
-            <form className="fa-address-bar" onSubmit={(event) => { event.preventDefault(); navigate(); }}>
-              <Input mono leading={<MaterialIcon name="lock" />} value={draftUrl} onChange={(event) => setDraftUrl(event.target.value)} aria-label="대상 사이트 주소" />
-              <Button variant="secondary" type="submit">이동</Button>
+            <form className="fa-address-bar" onSubmit={event => { event.preventDefault(); navigate(); }}>
+              <Input mono leading={<MaterialIcon name="lock" />} value={draftUrl} onChange={event => setDraftUrl(event.target.value)} aria-label="대상 사이트 주소"
+                trailing={<span className={`fa-status ${activeTab.state}`}>{activeTab.state === "ready" ? "연결됨" : activeTab.state === "error" ? "연결 실패" : "로딩 중"}</span>} />
             </form>
-            <span className={`fa-status ${activeTab.state}`}>
-              {activeTab.state === "ready" ? "연결됨" : activeTab.state === "error" ? "연결 실패" : "로딩 중"}
-            </span>
-            <label className="fa-browser-identity" title="브라우저 식별 정보만 변경합니다. 렌더링 엔진은 Chromium입니다.">
-              <span>UA</span>
-              <select
-                aria-label="현재 세션 브라우저 식별"
-                value={activeTab.browserIdentity || "electron"}
-                onChange={(event) => changeBrowserIdentity(event.target.value as BrowserIdentity)}
-              >
+            <Popover label="보기 설정" className="fa-view-menu" triggerClassName="fa-view-trigger" panelClassName="fa-view-panel"
+              triggerText={<><MaterialIcon name="tune" /> 보기 <small>{zoomPercent}%</small></>}>
+              <label className="fa-view-field">브라우저<select aria-label="현재 세션 브라우저 식별" value={activeTab.browserIdentity || "electron"} onChange={event => changeBrowserIdentity(event.target.value as BrowserIdentity)}>
                 {Object.entries(BROWSER_IDENTITY_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-              </select>
-            </label>
-            <span className="fa-browser-engine-note">Chromium 웹뷰</span>
-            <Button variant="ghost" onClick={openBrowserDevTools} title="현재 탭의 개발자 도구 열기 (HTML·CSS 검사)">
-              <MaterialIcon name="code" /> 개발자 도구
-            </Button>
-            <div className="fa-zoom" aria-label="브라우저 화면 배율" title="화면 배율 50–125%">
-              <Button variant="ghost" iconOnly aria-label="화면 축소" disabled={zoomPercent <= 50} onClick={() => setZoomPercent((value) => Math.max(50, value - 5))}><MaterialIcon name="remove" /></Button>
-              <Button className="fa-zoom-value" title="100%로 초기화" onClick={() => setZoomPercent(100)}>{zoomPercent}%</Button>
-              <Button variant="ghost" iconOnly aria-label="화면 확대" disabled={zoomPercent >= 125} onClick={() => setZoomPercent((value) => Math.min(125, value + 5))}><MaterialIcon name="add" /></Button>
-            </div>
-            <Button variant="ghost" className={`fa-focus${focusMode ? " active" : ""}`} onClick={() => setFocusMode((value) => !value)}>
-              <MaterialIcon name={focusMode ? "close_fullscreen" : "open_in_full"} />
-              {focusMode ? "패널 열기" : "크게 보기"}
-            </Button>
-          </div>
-
-          <div className="fa-viewport-toolbar">
-            <label>
-              <MaterialIcon name={viewport.width ? "smartphone" : "desktop_windows"} />
-              <select aria-label="미리보기 화면 크기" value={viewport.id} onChange={(event) => changeViewport(event.target.value)}>
-                {VIEWPORT_PRESETS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
-              </select>
-            </label>
-            {Boolean(viewport.width) && <>
-              <button type="button" aria-label="가로·세로 전환" title="가로·세로 전환" onClick={() => setLandscape((value) => !value)}>
-                <MaterialIcon name="screen_rotation" />
-              </button>
-              <span className="fa-viewport-size">{viewportWidth} × {viewportHeight}</span>
-            </>}
-            <span className="fa-viewport-note">{splitTabIds
-              ? `선택: ${splitTabIds[0] === activeTab.id ? "왼쪽" : "오른쪽"} · 주소창과 검사 패널은 선택한 화면에 적용`
-              : viewport.width ? "반응형 화면 확인" : "브라우저 영역에 맞춰 표시"}</span>
+              </select><small>브라우저 식별 정보 · 렌더링 엔진은 Chromium</small></label>
+              <label className="fa-view-field">화면 크기<select aria-label="미리보기 화면 크기" value={viewport.id} onChange={event => changeViewport(event.target.value)}>
+                {VIEWPORT_PRESETS.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
+              </select></label>
+              {Boolean(viewport.width) && <div className="fa-view-row"><span>{viewportWidth} × {viewportHeight}</span><Button variant="ghost" onClick={() => setLandscape(value => !value)} aria-label="가로·세로 전환"><MaterialIcon name="screen_rotation" /> 회전</Button></div>}
+              <div className="fa-view-row"><strong>확대</strong><div className="fa-zoom" aria-label="브라우저 화면 배율">
+                <Button variant="secondary" iconOnly aria-label="화면 축소" disabled={zoomPercent <= 50} onClick={() => setZoomPercent(value => Math.max(50, value - 5))}><MaterialIcon name="remove" /></Button>
+                <Button className="fa-zoom-value" title="100%로 초기화" onClick={() => setZoomPercent(100)}>{zoomPercent}%</Button>
+                <Button variant="secondary" iconOnly aria-label="화면 확대" disabled={zoomPercent >= 125} onClick={() => setZoomPercent(value => Math.min(125, value + 5))}><MaterialIcon name="add" /></Button>
+              </div></div>
+              <div className="fa-view-actions"><Button variant="secondary" onClick={openBrowserDevTools}><MaterialIcon name="code" /> 개발자 도구</Button>
+                <Button variant="secondary" onClick={() => setFocusMode(value => !value)}><MaterialIcon name={focusMode ? "close_fullscreen" : "open_in_full"} />{focusMode ? "패널 열기" : "크게 보기"}</Button></div>
+            </Popover>
           </div>
 
           <div
@@ -1481,15 +1431,10 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
           aria-label="검사 패널 너비 조절"
           title="드래그해 너비 조절 · 더블클릭 기본 너비"
           onMouseDown={startInspectorResize}
-          onDoubleClick={() => setInspectorWidth(420)}
+          onDoubleClick={() => setInspectorWidth(440)}
         ><span /></div>
 
-        <aside className="fa-inspector" aria-label="검사 패널">
-          <div className="fa-inspector-tabs">
-            <Button className={drawerTab === "network" ? `active${activeErrorCount ? " has-error" : ""}` : ""} onClick={() => setDrawerTab("network")}><MaterialIcon name="lan" /> 네트워크 <b>{activeErrorCount || activeNetworkEvents.length}</b></Button>
-            <Button className={drawerTab === "cases" ? "active" : ""} onClick={() => { setDrawerTab("cases"); if (!discoveredFields.length) void discoverFields(true); }}><MaterialIcon name="auto_awesome" /> 자동 입력 <b>{availableCases.length}</b></Button>
-            <Button className={drawerTab === "override" ? "active" : ""} onClick={() => setDrawerTab("override")}><MaterialIcon name="tune" /> 오버라이드 <b>{overrides.filter((item) => item.enabled).length}</b></Button>
-          </div>
+        <aside className={`fa-inspector fa-mode-${drawerTab}`} aria-label="검사 패널">
           {drawerTab === "network" ? (
             <NetworkPanel
               events={activeNetworkEvents}
@@ -1505,14 +1450,12 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
               filter={networkFilter}
               activeSessionName={activeTab.name}
               onSelect={setSelectedEvent}
+              onBack={() => setSelectedEvent(null)}
               onFilter={setNetworkFilter}
               onCopy={copyApiEvent}
               onCreateOverride={createOverrideFromEvent}
               onClear={() => void clearSessionLog()}
               onDownload={() => void downloadSessionLog()}
-              listHeight={networkListHeight}
-              onResizeList={startNetworkListResize}
-              onResetListHeight={() => setNetworkListHeight(305)}
             />
           ) : drawerTab === "override" ? (
             <OverridePanel
@@ -1529,26 +1472,41 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
               onBodyText={setOverrideBodyText}
               onEditorMode={setOverrideEditorMode}
               onFieldChange={setNestedOverrideValue}
-              onCreate={createOverrideFromEvent}
+              editing={overrideEditing} onEditing={setOverrideEditing}
+              onToggleRule={(id, enabled) => { void (async () => {
+                const next = overrides.map(rule => rule.id === id ? { ...rule, enabled } : rule);
+                if (!await setOverrides(next)) { showToast("규칙 변경을 저장하지 못했습니다."); return; }
+                await applyOverridesToPage(next);
+              })().catch(error => showToast(`응답 적용 실패: ${String(error)}`)); }}
+              onCreateBlank={() => { void (async () => {
+                const rule: OverrideRule = { id: `override-${Date.now()}`, name: "새 응답", match: "/api/example", method: "GET", status: 200, enabled: false, body: { status: "success", message: "", data: {} } };
+                if (!await setOverrides(items => [rule, ...items])) { showToast("새 규칙을 저장하지 못했습니다."); return; }
+                setSelectedOverrideId(rule.id); setOverrideBodyText(stringify(rule.body)); setOverrideEditing(true);
+              })().catch(error => showToast(`규칙 생성 실패: ${String(error)}`)); }}
+              onChooseResponse={() => { setSelectedEvent(null); setDrawerTab("network"); }}
               onSave={() => void saveOverride()}
               onReset={() => void resetOverride()}
               onDelete={deleteOverride}
             />
           ) : (
             <>
-          <div className="fa-inspector-heading">
-            <div><strong>폼·검색 자동 입력 케이스</strong><span>일반 입력, 라벨, 날짜 선택과 유효성 조건 감지</span></div>
-            <Button variant="secondary" onClick={() => void discoverFields(true)}><MaterialIcon name="refresh" /> 다시 감지</Button>
-          </div>
-          <div className="fa-case-scope">
-            <MaterialIcon name="language" />
-            <span><small>현재 화면</small><strong title={currentPageScope}>{pageScopeLabel(currentPageScope)}</strong></span>
-            <em>{scopedCases.length}개 저장</em>
-          </div>
-          <div className="fa-case-filters" role="group" aria-label="케이스 유형 필터">
-            <Button className={caseFilter === "all" ? "active" : ""} onClick={() => setCaseFilter("all")}>전체 <b>{availableCases.length}</b></Button>
-            <Button className={caseFilter === "success" ? "active success" : "success"} onClick={() => setCaseFilter("success")}>성공 <b>{counts.success}</b></Button>
-            <Button className={caseFilter === "failure" ? "active failure" : "failure"} onClick={() => setCaseFilter("failure")}>실패 <b>{counts.failure}</b></Button>
+          <div className="fa-form-scroll" data-ck-scroll="light">
+          {showGuide && <section className="fa-onboarding">
+            <MaterialIcon name="waving_hand" /><div><strong>폼 입력은 3단계면 끝나요</strong><p>{discoveredFields.length ? "왼쪽 화면의 입력칸을 찾아 두었어요. 케이스를 고르고 입력 버튼을 누르세요." : "왼쪽에 테스트할 화면을 열고 입력칸을 찾아 주세요. 케이스를 고르면 한 번에 입력할 수 있어요."}</p></div>
+            <Button variant="ghost" iconOnly aria-label="폼 입력 안내 닫기" onClick={() => setShowGuide(false)}><MaterialIcon name="close" /></Button>
+            <ol>{["입력칸 찾기", "케이스 고르기", "입력하기"].map((label, index) => <li key={label}><b className={index === 0 && discoveredFields.length ? "done" : ""}>{index === 0 && discoveredFields.length ? "✓" : index + 1}</b>{label}</li>)}</ol>
+          </section>}
+          <section className="fa-form-step">
+            <div className="fa-step-heading"><b className={`fa-step-number${discoveredFields.length ? " done" : ""}`}>{discoveredFields.length ? "✓" : "1"}</b><strong>입력칸 찾기</strong><code title={currentPageScope}>{pageScopeLabel(currentPageScope)}</code><Button variant="ghost" onClick={() => void discoverFields(true)}><MaterialIcon name="refresh" /> 다시 찾기</Button></div>
+            <div className="fa-field-chips">{discoveredFields.map((field, index) => <span key={field.name}><b>{index + 1}</b>{field.label || field.name}</span>)}</div>
+          </section>
+          <section className="fa-form-step">
+          <div className="fa-step-heading"><b className="fa-step-number active">2</b><strong>케이스 고르기</strong>
+            <div className="fa-case-filters" role="group" aria-label="케이스 유형 필터">
+              <Button aria-pressed={caseFilter === "all"} onClick={() => setCaseFilter("all")}>전체 {availableCases.length}</Button>
+              <Button aria-pressed={caseFilter === "success"} onClick={() => setCaseFilter("success")}>정상 {counts.success}</Button>
+              <Button aria-pressed={caseFilter === "failure"} onClick={() => setCaseFilter("failure")}>오류 {counts.failure}</Button>
+            </div>
           </div>
           <div className="fa-case-list" style={caseListHeightPreview !== null || caseListHeight !== null
             ? { height: caseListHeightPreview ?? caseListHeight ?? undefined, maxHeight: "none" }
@@ -1556,12 +1514,21 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
             {visibleCases.length ? visibleCases.map((item) => (
               <Button
                 key={item.id}
+                aria-pressed={selectedCaseId === item.id}
                 className={`fa-case-card ${item.kind}${item.generated ? " detected" : ""}${selectedCaseId === item.id ? " selected" : ""}`}
                 onClick={() => selectCase(item)}
               >
-                <span className="fa-case-icon"><MaterialIcon name={item.kind === "success" ? "check_circle" : "error"} /></span>
-                <span><strong>{item.name}</strong><small>{item.screen} · {caseValueCount(item)}개 값</small></span>
-                <span className="fa-case-badges"><b>{item.kind === "success" ? "성공" : "실패"}</b><em>{item.generated ? "자동" : "저장"}</em></span>
+                <span className="fa-case-radio" aria-hidden="true" />
+                <span><strong>{item.name}</strong><small>{item.fieldMeta.slice(0, 3).map(field => {
+                  const value = item.fields[field.name];
+                  if (value === "" || value == null) return "(빈 값)";
+                  if (field.type === "password") return "••••••";
+                  if (typeof value === "boolean") return `${field.label || field.name} ${value ? "✓" : "해제"}`;
+                  if (Array.isArray(value)) return value.join(", ");
+                  if (typeof value === "object") return "__qaFile" in value ? "첨부 파일" : `${value.start} ~ ${value.end}`;
+                  return value;
+                }).join(" · ")}</small></span>
+                <span className="fa-case-badges"><b>{item.kind === "success" ? "정상" : "오류값"}</b></span>
               </Button>
             )) : (
               <div className="fa-case-empty"><MaterialIcon name="auto_awesome" /><strong>현재 화면에 자동 입력 케이스가 없습니다</strong><span>입력 화면을 연 뒤 다시 감지해 주세요.</span></div>
@@ -1579,9 +1546,11 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
             onDoubleClick={() => { void setCaseListHeight(null); setCaseListHeightPreview(null); }}
           ><MaterialIcon name="drag_handle" /></div>
 
+          <Button className="fa-new-case" onClick={() => void createCaseFromCurrentPage()}><MaterialIcon name="add" /> 지금 화면 값으로 새 케이스</Button>
+          </section>
           {selectedCase && (
             <div className="fa-values">
-              <div className="fa-values-title"><strong>케이스 입력값 편집</strong><span>{selectedCase.fieldMeta.length}개 중 {draftFieldCount}개 입력</span></div>
+              <div className="fa-step-heading"><b className="fa-step-number">3</b><strong>값 확인하고 입력</strong><small>체크한 칸만 바뀌어요</small><Popover label="케이스 설정" triggerClassName="fa-more-trigger" triggerText={<MaterialIcon name="more_horiz" />}>
               <div className="fa-case-meta">
                 <label><span>케이스 제목</span><Input maxLength={80} value={caseDraftName} onChange={(event) => setCaseDraftName(event.target.value)} /></label>
                 <label><span>케이스 유형</span><select value={caseDraftKind} onChange={(event) => setCaseDraftKind(event.target.value as "success" | "failure")}><option value="success">성공 · 정상값</option><option value="failure">실패 · 오류값</option></select></label>
@@ -1593,7 +1562,8 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
                   <Button variant="ghost" onClick={() => setCaseDraftExcludedFields(selectedCase.fieldMeta.map((field) => field.name))} disabled={!draftFieldCount}>전체 해제</Button>
                 </div>
               </div>
-              {selectedCase.fieldMeta.map((field) => (
+              </Popover></div>
+              <div className="fa-value-table">{selectedCase.fieldMeta.map((field, index) => (
                 <div className={`fa-value-row${caseDraftExcludedFields.includes(field.name) ? " is-excluded" : ""}`} key={field.name}>
                   <input
                     className="fa-value-include"
@@ -1605,7 +1575,7 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
                       ? current.filter((name) => name !== field.name)
                       : [...current, field.name])}
                   />
-                  <span className="fa-field-info"><strong>{field.label || field.name}{field.required ? " *" : ""}</strong><code>{field.name}</code></span>
+                  <span className="fa-field-info" title={field.name}><b className="fa-field-number">{index + 1}</b><strong>{field.label || field.name}{field.required ? " *" : ""}</strong></span>
                   <div className="fa-value-control">
                     <CaseValueInput
                       field={field}
@@ -1615,19 +1585,19 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
                     />
                   </div>
                 </div>
-              ))}
+              ))}</div>
               <div className="fa-values-actions">
-                {selectedCase.userSaved && <Button variant="danger" className="danger" onClick={deleteCase}><MaterialIcon name="delete" /> 삭제</Button>}
-                <Button variant="secondary" onClick={() => { setCaseDraftName(selectedCase.userSaved ? selectedCase.name : `${selectedCase.name} · 저장본`); setCaseDraftKind(selectedCase.kind); setCaseDraftFields(cloneFields(selectedCase.fields)); setCaseDraftExcludedFields(Array.isArray(selectedCase.excludedFields) ? [...selectedCase.excludedFields] : []); }}><MaterialIcon name="restore" /> 원본 복구</Button>
-                <Button variant="secondary" className="save" onClick={saveCase}><MaterialIcon name="save" /> {selectedCase.userSaved ? "수정값 저장" : "새 케이스로 저장"}</Button>
+                {selectedCase.userSaved && <Button variant="ghost" className="danger" onClick={deleteCase}><MaterialIcon name="delete" /> 삭제</Button>}
+                <Button variant="ghost" onClick={() => { setCaseDraftName(selectedCase.userSaved ? selectedCase.name : `${selectedCase.name} · 저장본`); setCaseDraftKind(selectedCase.kind); setCaseDraftFields(cloneFields(selectedCase.fields)); setCaseDraftExcludedFields(Array.isArray(selectedCase.excludedFields) ? [...selectedCase.excludedFields] : []); }}><MaterialIcon name="restore" /> 원래 값으로</Button>
+                <Button variant="ghost" className="save" onClick={saveCase}><MaterialIcon name="save" /> 케이스에 저장</Button>
               </div>
             </div>
           )}
 
+          </div>
           <div className="fa-inspector-footer">
-            <Button variant="primary" className="primary" onClick={() => void autofill()} disabled={!draftFieldCount}><MaterialIcon name="auto_fix_high" /> 선택한 {draftFieldCount}개 필드 입력</Button>
-            <Button variant="secondary" title="현재 입력값 초기화" onClick={() => void clearAutofill()} disabled={!draftFieldCount}><MaterialIcon name="restart_alt" /> 선택 필드 초기화</Button>
-            <Button variant="secondary" onClick={() => void createCaseFromCurrentPage()}><MaterialIcon name="add" /> 현재 화면 케이스 만들기</Button>
+            <Button variant="primary" size="large" onClick={() => void autofill()} disabled={!draftFieldCount}><MaterialIcon name="auto_fix_high" /> {draftFieldCount ? `${draftFieldCount}칸 입력하기` : "입력할 칸을 체크하세요"}</Button>
+            <Button variant="secondary" size="large" iconOnly aria-label="선택 필드 초기화" title="체크한 칸 비우기" onClick={() => void clearAutofill()} disabled={!draftFieldCount}><MaterialIcon name="ink_eraser" /></Button>
           </div>
             </>
           )}
