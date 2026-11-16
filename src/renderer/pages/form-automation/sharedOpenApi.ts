@@ -81,9 +81,12 @@ export function resolveSharedOpenApi(sources: SharedOpenApiSource[], url: string
   const eligible = sourceId ? candidates : knownOrigin ? candidates.filter(item => item.sameOrigin) : candidates;
   const ranked = eligible.sort((a, b) => b.specificity - a.specificity);
   const best = knownOrigin && !sourceId ? ranked.filter(item => item.specificity === ranked[0]?.specificity) : ranked;
-  const match: SpecMatch | undefined = best.length === 1 ? best[0] : undefined;
+  // The same catalog can be registered in multiple environments. Treat identical
+  // operations as one candidate, but never choose between different contracts.
+  const signatures = new Set(best.map(item => JSON.stringify({ operation: item.operation, document: item.source.document })));
+  const match: SpecMatch | undefined = best.length && signatures.size === 1 ? best[0] : undefined;
   const reason = sourceId && !candidates.length ? "선택한 문서에 이 요청의 경로·메서드가 없습니다."
-    : best.length > 1 ? "경로·메서드가 일치하는 문서가 여러 개입니다. 서버·환경에 맞는 문서를 선택해 주세요."
+    : best.length > 1 && signatures.size > 1 ? "경로·메서드가 일치하는 문서가 여러 개입니다. 서버·환경에 맞는 문서를 선택해 주세요."
     : !sources.length ? "불러온 Swagger 문서가 없습니다. 설정/API 테스트의 문서 주소를 확인해 주세요."
     : "불러온 Swagger 문서에 이 요청의 경로·메서드가 없습니다.";
   return { match, candidates: best, reason };
@@ -96,6 +99,5 @@ export function matchSharedOpenApi(sources: SharedOpenApiSource[], url: string, 
 export function contractForSharedEvent(sources: SharedOpenApiSource[], event: NetworkEvent, sourceId = "") {
   const { match, reason } = resolveSharedOpenApi(sources, event.url, event.method, event.pageUrl, sourceId);
   if (!match) return { tone: "neutral" as const, label: "스펙 미연결", detail: reason };
-  if (match.kind === "path") return { tone: "neutral" as const, label: "문서 확인 필요", detail: "경로·메서드가 일치하는 Swagger 문서를 찾았습니다. 서버 주소가 달라 계약 검사는 보류합니다. 문서를 선택하면 해당 문서로 검사합니다.", operation: match.operation };
   return contractForEvent(match.source.document, { ...event, method: match.operation.method, url: match.url });
 }
