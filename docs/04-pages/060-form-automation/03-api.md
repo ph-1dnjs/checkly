@@ -7,7 +7,8 @@
 | `checkly-form-active-session` | userData 파일 | 현재 선택한 브라우저 세션 |
 | `checkly-form-saved-cases` | userData 파일 | 화면 범위별 사용자 케이스와 입력 제외 필드 이름(`excludedFields`) |
 | `checkly-form-inspector-width` | userData 파일 | 검사 패널 너비 |
-| `checkly-form-network-list-height` | userData 파일 | 네트워크 요청 목록 높이 |
+| `checkly-form-network-list-height` | userData 파일 | 구버전 호환 키. v2 목록/상세 전환에서는 읽지 않음 |
+| `checkly-form-show-guide` | userData 파일 | 폼 입력 첫 사용 안내 표시 여부 |
 | `checkly-form-overrides` | userData 파일 | 응답 오버라이드 규칙 |
 | `checkly-form-openapi` | userData 파일 | 연결된 OpenAPI 문서 |
 | `checkly-form-browser-zoom` | userData 파일 | 웹뷰 화면 배율 |
@@ -37,3 +38,5 @@
 
 
 대상 페이지 스크립트의 디자인 시스템 어댑터는 `controlAdapters.ts`에 있으며 공개 DOM·ARIA·이벤트만 사용합니다. Ark UI와 Ant Design의 기본 입력·체크박스·스위치·라디오·선택 메뉴·단일 날짜 컨트롤을 지원하고, 라이브러리 내부 상태와 테마 토큰에는 의존하지 않습니다.
+
+`readCurrentFieldsScript`는 감지된 컨트롤의 현재 값을 읽어 새 케이스를 만듭니다. `highlightFieldsScript`는 선택한 필드를 번호·테두리로 표시하며 포인터 입력을 가로채지 않습니다. 모드·세션·선택 필드가 바뀌면 이전 표시와 관찰자를 정리합니다. Electron 웹뷰가 준비되기 전이나 제거되는 동안의 주입 실패는 무시하고 다음 준비 완료 상태에서 다시 적용합니다.
