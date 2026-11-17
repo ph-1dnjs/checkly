@@ -1072,6 +1072,20 @@ export class ApiWorkspace {
     return action;
   }
 
+  async recordBlockedScenario(input: ApiEnvironmentScope, id: string, name: string): Promise<void> {
+    const scope = environmentScopeSchema.parse(input);
+    const scenarioId = z.string().min(1).max(1000).parse(id);
+    const scenarioName = z.string().min(1).max(1000).parse(name);
+    const team = this.teamStore();
+    if (!team) {
+      if (!this.localStore) throw new Error("API 테스트를 사용하려면 팀 프로젝트에 로그인하세요");
+      return;
+    }
+    if (team.context.projectId !== scope.projectId) throw new Error("프로젝트를 찾을 수 없습니다");
+    const now = new Date().toISOString();
+    await team.saveDashboardRun({ id: randomUUID(), environmentId: scope.environmentId, scenarioId, name: scenarioName, status: "blocked", startedAt: now, endedAt: now });
+  }
+
   async runScenario(input: ApiEnvironmentScope, source: string, bindings: Record<string, string>, rawInputs: Record<string, Json>, options: ApiScenarioRunOptions = {}): Promise<ApiScenarioResult> {
     const { scope, environment } = await this.environment(input);
     const preview = await this.previewScenario(scope, source, bindings);
@@ -1092,9 +1106,12 @@ export class ApiWorkspace {
     // Results carry raw values; the renderer's "민감값 숨기기" toggle decides visibility.
     const details = new Map<string, { request?: ApiRequestTrace; response?: { headers: Record<string, string>; body: Json } }>();
     let variables: Record<string, Json> = {};
+    const team = this.teamStore();
+    const startedAt = new Date().toISOString();
+    const runId = options.runId ?? randomUUID();
     try {
       const result = await this.runner.run(scenario, {
-        projectId: scope.projectId, environment: scope.environmentId, inputs, servers, cookies: this.cookieJar(scope.projectId), signal: controller.signal, runId: options.runId ?? randomUUID(),
+        projectId: scope.projectId, environment: scope.environmentId, inputs, servers, cookies: this.cookieJar(scope.projectId), signal: controller.signal, runId,
         requestInput: async request => options.requestInput?.(request),
         resolveOperation: (server, api) => {
           const matches = catalogs.get(server)?.operations.filter(operation => "operationId" in api ? operation.operationId === api.operationId : operation.method === api.method && operation.path === api.path) ?? [];
@@ -1113,7 +1130,14 @@ export class ApiWorkspace {
         },
         onVariables: value => { variables = value; },
       });
-      return { status: result.status, variables, steps: result.steps.map(step => {
+      let historyWarning: string | undefined;
+      if (team) {
+        try {
+          if (this.teamStore() !== team) throw new Error("로그인 세션이 변경되었습니다.");
+          await team.saveDashboardRun({ id: randomUUID(), environmentId: scope.environmentId, scenarioId: scenario.id, name: scenario.name, status: result.status, startedAt, endedAt: new Date().toISOString() });
+        } catch { historyWarning = "실행은 완료됐지만 대시보드 기록을 저장하지 못했습니다."; }
+      }
+      return { status: result.status, variables, ...(historyWarning ? { historyWarning } : {}), steps: result.steps.map(step => {
         const detail = details.get(step.id);
         return {
           ...step,

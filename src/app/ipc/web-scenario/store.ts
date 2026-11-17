@@ -3,7 +3,7 @@ import { z } from "zod";
 import { AuthFailure, MESSAGES } from "../auth/errors";
 import { isUuid, normalizeDocument, type SavedOwners } from "./normalize";
 import { parseMarkdown, type RunRecord } from "./scenario";
-import type { WebScenarioInput, WebScenarioRecord } from "./types";
+import type { DashboardRun, WebScenarioInput, WebScenarioRecord } from "./types";
 
 const inputSchema = z.object({
   id: z.uuid().optional(),
@@ -126,7 +126,43 @@ export class WebScenarioStore {
       .select("*,web_run_scenario_results(*,web_run_step_results(*))").eq("project_id", this.projectId)
       .order("started_at", { ascending: false }).limit(50);
     if (error) throw error;
-    return (data ?? []).map(row => {
+    return this.mapRuns(data ?? []);
+  }
+
+  async getRun(id: string): Promise<RunRecord | null> {
+    z.uuid().parse(id);
+    const { data, error } = await this.client.from("web_runs")
+      .select("*,web_run_scenario_results(*,web_run_step_results(*))").eq("project_id", this.projectId).eq("id", id).maybeSingle();
+    if (error) throw error;
+    return data ? this.mapRuns([data])[0] : null;
+  }
+
+  async listDashboardRuns(since: string, until: string): Promise<DashboardRun[]> {
+    z.iso.datetime().parse(since); z.iso.datetime().parse(until);
+    if (Date.parse(until) <= Date.parse(since) || Date.parse(until) - Date.parse(since) > 367 * 86400000) throw new Error("조회 기간을 확인하세요.");
+    const read = async (table: string, columns: string) => {
+      const rows: any[] = [];
+      for (let from = 0; ; from += 500) {
+        const { data, error } = await this.client.from(table).select(columns).eq("project_id", this.projectId)
+          .gte("started_at", since).lt("started_at", until).order("started_at", { ascending: false }).order("id", { ascending: false }).range(from, from + 499);
+        if (error) throw error;
+        rows.push(...(data ?? []));
+        if ((data?.length ?? 0) < 500) return rows;
+      }
+    };
+    const [web, api] = await Promise.all([
+      read("web_runs", "id,status,total,passed,failed,started_at,ended_at,web_run_scenario_results(scenario_snapshot,sort_order)"),
+      read("api_scenario_runs", "id,status,scenario_name,environment_id,started_at,ended_at"),
+    ]);
+    return [...web.map(row => {
+      const scenarios = [...(row.web_run_scenario_results ?? [])].sort((a, b) => a.sort_order - b.sort_order).map(item => item.scenario_snapshot);
+      const environmentIds = new Set(scenarios.map(item => item?.environmentId).filter(Boolean));
+      return { id: row.id, type: "web" as const, status: row.status, name: scenarios.length > 1 ? `전체 회귀 · ${scenarios.length}개 시나리오` : scenarios[0]?.title ?? "시나리오 실행", environmentId: environmentIds.size === 1 ? [...environmentIds][0] as string : null, startedAt: row.started_at, endedAt: row.ended_at, passed: row.passed, failed: row.failed, total: row.total };
+    }), ...api.map(row => ({ id: row.id, type: "api" as const, status: row.status, name: row.scenario_name, environmentId: row.environment_id, startedAt: row.started_at, endedAt: row.ended_at }))];
+  }
+
+  private mapRuns(rows: any[]): RunRecord[] {
+    return rows.map(row => {
       const results = row.web_run_scenario_results.sort((a: any, b: any) => a.sort_order - b.sort_order).map((result: any) => ({
         scenario: result.scenario_snapshot, status: result.status, failedStepIndex: result.failed_step_no == null ? undefined : result.failed_step_no - 1,
         message: result.message ?? undefined, startedAt: result.started_at ?? undefined, elapsedSeconds: result.elapsed_seconds ?? undefined, log: result.log,

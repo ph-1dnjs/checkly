@@ -20,6 +20,8 @@ export const webScenarioDomain: MainDomain = {
       });
     };
     handle("listRuns", store => store.listRuns());
+    handle("listDashboardRuns", (store, since: string, until: string) => store.listDashboardRuns(since, until));
+    handle("getRun", (store, id: string) => store.getRun(id));
     handle("saveRun", (store, record: RunRecord) => store.saveRun(record));
     handle("list", store => store.list());
     handle("save", (store, input: WebScenarioInput) => store.save(input));

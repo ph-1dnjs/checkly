@@ -249,14 +249,14 @@ const CaseValueInput = ({
   );
 };
 
-export const FormAutomationPage = (): ReactElement => {
+export const FormAutomationPage = ({ initialTeamRecordingId, onRecordingClosed }: { initialTeamRecordingId?: string; onRecordingClosed?: () => void } = {}): ReactElement => {
   const [native, setNative] = useState(false);
   return <FormAutomationStorageProvider>{native
     ? <NativeInspectorPage onBack={() => setNative(false)} />
-    : <FormAutomationContent onNative={() => setNative(true)} />}</FormAutomationStorageProvider>;
+    : <FormAutomationContent onNative={() => setNative(true)} initialTeamRecordingId={initialTeamRecordingId} onRecordingClosed={onRecordingClosed} />}</FormAutomationStorageProvider>;
 };
 
-const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactElement => {
+const FormAutomationContent = ({ onNative, initialTeamRecordingId, onRecordingClosed }: { onNative: () => void; initialTeamRecordingId?: string; onRecordingClosed?: () => void }): ReactElement => {
   const [targetUrl, setTargetUrl] = useStoredState("checkly-form-target-url", DEFAULT_URL);
   const [browserTabs, setBrowserTabs] = useStoredState<BrowserSession[]>(
     "checkly-form-browser-sessions",
@@ -297,8 +297,8 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
   const [eventSpecSources, setEventSpecSources] = useState<Record<string, string>>({});
   const [capture, setCapture] = useState<ScreenshotCapture | null>(null);
   const [captureBusy, setCaptureBusy] = useState(false);
-  const [recordingsOpen, setRecordingsOpen] = useState(false);
-  const closeRecordings = useCallback(() => setRecordingsOpen(false), []);
+  const [recordingsOpen, setRecordingsOpen] = useState(Boolean(initialTeamRecordingId));
+  const closeRecordings = useCallback(() => { setRecordingsOpen(false); onRecordingClosed?.(); }, [onRecordingClosed]);
   const [zoomPercent, setZoomPercent] = useStoredState("checkly-form-browser-zoom", 100);
   const [viewportId, setViewportId] = useStoredState("checkly-form-browser-viewport", "desktop");
   const [landscape, setLandscape] = useStoredState("checkly-form-browser-landscape", false);
@@ -1604,7 +1604,7 @@ const FormAutomationContent = ({ onNative }: { onNative: () => void }): ReactEle
         </aside>
       </div>
       {toast && <div className="toast"><span className="toast-dot" />{toast}</div>}
-      {recordingsOpen && <SessionRecordingsDialog onClose={closeRecordings} />}
+      {recordingsOpen && <SessionRecordingsDialog onClose={closeRecordings} initialTeamId={initialTeamRecordingId} />}
       {capture && <ScreenshotEditor capture={capture} onCancel={() => setCapture(null)} onCopy={copyCapture} />}
     </div>
   );

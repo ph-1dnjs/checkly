@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactElement } from "react";
 import { Button } from "../shared/ui/Button";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { ApiRunAction } from "../shared/model/run-action";
 import { DashboardPage } from "../pages/dashboard/DashboardPage";
 import { ScenarioEditorPage } from "../pages/editor/ScenarioEditorPage";
@@ -32,6 +32,8 @@ import { useAuth } from "./hooks/useAuth";
 
 import { Input } from "../shared/ui/Input";
 const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement => {
+  const [teamRecordingId, setTeamRecordingId] = useState<string>();
+  const clearTeamRecording = useCallback(() => setTeamRecordingId(undefined), []);
   const [apiRunAction, setApiRunAction] = useState<ApiRunAction | null>(null);
   const [keepSessionPromptChecked, setKeepSessionPromptChecked] =
     useState(false);
@@ -44,6 +46,7 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
     toast,
     showToast,
   } = useNavigation();
+  useEffect(() => { if (route !== "form-automation") clearTeamRecording(); }, [route, clearTeamRecording]);
   const environment = useScenarioEnvironment(account?.session.projectId, showToast);
   useEffect(() => {
     if (route === "picker" || route === "editor" || route === "ai-tc") void environment.refresh();
@@ -139,8 +142,6 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
     fullRunVideoPath,
     runNotification,
     setRunNotification,
-    runHistory,
-    runSummary,
     liveResults,
     openRunRecord,
     setOpenRunRecord,
@@ -222,16 +223,19 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
 
   return (
     <main
-      className={`workspace${inWorkspace ? " scenario-workspace" : ""}${route === "form-automation" ? " form-automation-workspace" : ""}`}
+      className={`workspace${inWorkspace ? " scenario-workspace" : ""}${route === "dashboard" ? " dashboard-workspace" : ""}${route === "form-automation" ? " form-automation-workspace" : ""}`}
     >
       <section className="content">
         {route === "ai-tc" && <AiTcPage model={aiTc} environment={account ? environment : null} />}
         {route === "api-testing" && <ApiTestingPage onRunAction={setApiRunAction} onOpenSettings={() => setRoute("settings")} />}
         {route === "dashboard" && (
           <DashboardPage
-            history={runHistory}
-            summary={runSummary}
+            projectId={account?.session.projectId}
+            projectCode={account?.session.projectCode}
+            environments={environment.environments}
             onOpenRun={() => setRoute("run")}
+            onOpenApi={() => setRoute("api-testing")}
+            onOpenRecording={id => { setTeamRecordingId(id); setRoute("form-automation"); }}
             onOpenReport={setOpenRunRecord}
           />
         )}
@@ -407,7 +411,7 @@ const Workspace = ({ account }: { account: AuthAccount | null }): ReactElement =
           </PageLayout>
         )}
         {route === "settings" && <SettingsPage scenario={scenario} account={account} />}
-        {route === "form-automation" && <FormAutomationPage />}
+        {route === "form-automation" && <FormAutomationPage initialTeamRecordingId={teamRecordingId} onRecordingClosed={clearTeamRecording} />}
       </section>
       <RunReportDrawer
         record={openRunRecord}

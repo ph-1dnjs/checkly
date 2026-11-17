@@ -168,7 +168,11 @@ export function SuitePanel({ project, scope, bridge, scenarios, suites, selected
           rows.push({ id, name: item?.name ?? "삭제된 시나리오", status: "skipped", durationMs: 0, steps: [], reason: "앞 시나리오가 통과하지 않아 호출하지 않았습니다." }); continue;
         }
         setProgress(`${index + 1}/${selected.scenarioIds.length} · ${item?.name ?? "삭제된 시나리오"}`);
-        if (!item || item.draft) { rows.push({ id, name: item?.name ?? "삭제된 시나리오", status: "blocked", durationMs: 0, steps: [], reason: "시나리오가 삭제되었거나 초안입니다." }); setReport({ suiteName: selected.name, projectName: project.name, environmentName: project.environments.find(env => env.id === scope.environmentId)?.name ?? "", startedAt, completedAt: new Date().toISOString(), status: "blocked", scenarios: [...rows] }); continue; }
+        if (!item || item.draft) {
+          try { await bridge.recordBlockedScenario({ projectId: scope.projectId, environmentId: scope.environmentId }, id, item?.name ?? "삭제된 시나리오"); }
+          catch { if (live.current) setError("대시보드 기록을 저장하지 못했습니다."); }
+          rows.push({ id, name: item?.name ?? "삭제된 시나리오", status: "blocked", durationMs: 0, steps: [], reason: "시나리오가 삭제되었거나 초안입니다." }); setReport({ suiteName: selected.name, projectName: project.name, environmentName: project.environments.find(env => env.id === scope.environmentId)?.name ?? "", startedAt, completedAt: new Date().toISOString(), status: "blocked", scenarios: [...rows] }); continue;
+        }
         const began = performance.now();
         let producedGlobals: string[] = [];
         try {
@@ -180,6 +184,7 @@ export function SuitePanel({ project, scope, bridge, scenarios, suites, selected
           if (cancelRequested.current) throw new Error("실행 취소");
           const catalogs = Object.fromEntries(await Promise.all([...new Set(preview.scenario.steps.map(step => step.server))].map(async serverId => [serverId, await bridge.getCatalog({ projectId: scope.projectId, environmentId: scope.environmentId, serverId })] as const)));
           const result = await bridge.runScenario({ projectId: scope.projectId, environmentId: scope.environmentId }, item.source, item.bindings, {});
+          if (result.historyWarning && live.current) setError(result.historyWarning);
           const references = preview.scenario.steps.map(step => {
             const operation = catalogs[step.server]?.operations.find(candidate => "operationId" in step.api ? candidate.operationId === step.api.operationId : candidate.method === step.api.method && candidate.path === step.api.path);
             return { name: step.name ?? operation?.summary ?? step.id, reference: operation ? `${operation.method.toUpperCase()} ${operation.path}` : "operationId" in step.api ? step.api.operationId : `${step.api.method} ${step.api.path}` };
@@ -191,8 +196,13 @@ export function SuitePanel({ project, scope, bridge, scenarios, suites, selected
           rows.push(reportScenario(id, item.name, result, references, result.steps.reduce((total, step) => total + step.durationMs, 0), preview.scenario));
           if (result.status !== "passed") producedGlobals.forEach(name => invalidatedGlobals.add(name));
         } catch (err) {
+          let historyError = false;
+          if (!cancelRequested.current && (err instanceof SuitePreflightError || err instanceof SuiteDependencyError)) {
+            try { await bridge.recordBlockedScenario({ projectId: scope.projectId, environmentId: scope.environmentId }, id, item.name); }
+            catch { historyError = true; }
+          }
           // Keep the concrete preflight reason in the app (on the scenario's card), never in the exported HTML.
-          if (live.current) { if (err instanceof SuitePreflightError) setBlocked(current => ({ ...current, [index]: err.issues })); else setError(`${item.name}: ${message(err)}`); }
+          if (live.current) { if (err instanceof SuitePreflightError) setBlocked(current => ({ ...current, [index]: err.issues })); else setError(`${item.name}: ${message(err)}${historyError ? " 대시보드 기록도 저장하지 못했습니다." : ""}`); if (err instanceof SuitePreflightError && historyError) setError("대시보드 기록을 저장하지 못했습니다."); }
           rows.push({ id, name: item.name, status: cancelRequested.current ? "cancelled" : "blocked", durationMs: Math.round(performance.now() - began), steps: [], reason: err instanceof SuiteDependencyError ? "앞 시나리오의 전역변수 생성 실패로 실행하지 않았습니다." : err instanceof SuitePreflightError ? preflightReason(err.issues) : "실행 전 설정 또는 입력을 확인하세요." });
           producedGlobals.forEach(name => invalidatedGlobals.add(name));
         }

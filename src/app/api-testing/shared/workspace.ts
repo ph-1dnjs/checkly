@@ -99,7 +99,7 @@ export type ApiMissingApi = { scenarioId: string; scenario: string; steps: strin
 /** A saved scenario with steps still named after an API title the spec has since changed. */
 export type ApiTitleRename = { scenarioId: string; scenario: string; steps: Array<{ from: string; to: string }> };
 export type ApiSpecImpact = { missing: ApiMissingApi[]; renamed: ApiTitleRename[] };
-export type ApiScenarioResult = { status: string; steps: Array<ApiResponse & { id: string; name: string }>; variables: Record<string, Json> };
+export type ApiScenarioResult = { status: string; steps: Array<ApiResponse & { id: string; name: string }>; variables: Record<string, Json>; historyWarning?: string };
 export type ApiScenarioInputRequest = ScenarioInputRequest & { requestId: string };
 export type ApiScenarioInputSubmission = {
   requestId: string;
@@ -258,6 +258,7 @@ export type ApiTestingBridge = {
   saveScenario(scope: ApiEnvironmentScope, source: string, bindings: Record<string, string>, expectedUpdatedAt?: string, metadata?: ApiSidebarMetadata): Promise<SavedApiScenario>;
   saveScenarioDraft(scope: ApiEnvironmentScope, source: string, bindings: Record<string, string>, expectedUpdatedAt?: string, metadata?: ApiSidebarMetadata): Promise<SavedApiScenario>;
   runScenario(scope: ApiEnvironmentScope, source: string, bindings: Record<string, string>, inputs: Record<string, Json>): Promise<ApiScenarioResult>;
+  recordBlockedScenario(scope: ApiEnvironmentScope, scenarioId: string, name: string): Promise<void>;
   getPendingScenarioInput(scope: ApiEnvironmentScope): Promise<ApiScenarioInputRequest | null>;
   submitScenarioInput(scope: ApiEnvironmentScope, submission: ApiScenarioInputSubmission): Promise<void>;
 };

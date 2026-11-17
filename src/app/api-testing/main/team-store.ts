@@ -68,6 +68,14 @@ export class TeamStore implements ApiStore {
   private get db() { return this.context.client; }
   private get projectId() { return this.context.projectId; }
 
+  async saveDashboardRun(run: { id: string; environmentId: string; scenarioId: string; name: string; status: string; startedAt: string; endedAt: string }) {
+    const { error } = await this.db.from("api_scenario_runs").insert({
+      id: run.id, project_id: this.projectId, environment_id: run.environmentId, scenario_id: run.scenarioId,
+      scenario_name: run.name, status: run.status, started_at: run.startedAt, ended_at: run.endedAt, created_by: this.context.userId,
+    });
+    if (error) throw new Error(toUserMessage(error));
+  }
+
   private async readSettings(): Promise<Settings> {
     const [endpoints, environments, urls] = await Promise.all([
       must<EndpointRow[]>(this.db.from("endpoints").select("id, name, kind, position, updated_at").eq("project_id", this.projectId).order("position").order("name")),
