@@ -1,6 +1,6 @@
 # 배포
 
-> **WARNING**: 코드 서명·공증은 CI 워크플로에 자리(secrets)만 마련되어 있고, 실제 인증서·Apple 자격 증명이 설정되었는지는 저장소에서 확인되지 않았습니다. Release 승인·롤백·모니터링 절차도 확인되지 않았습니다.
+> **WARNING**: macOS CI는 개인 팀의 Developer ID 서명과 공증 자격 증명을 필수로 확인합니다. 실제 배포 산출물의 서명·공증 및 Release 승인·롤백·모니터링 절차는 별도로 확인해야 합니다.
 
 ## Chromium 번들링
 
@@ -30,9 +30,11 @@ npm run package
 
 ## CI/CD (`.github/workflows/release.yml`)
 
-`v*.*.*` 형태의 태그를 push하면 macOS/Windows/Linux 3개 러너에서 각각 `npm ci → npm run build → (선택적 서명 secret 설정) → electron-builder --publish always`를 실행해 GitHub Releases에 자동 업로드합니다. `GH_TOKEN`은 워크플로 기본 `secrets.GITHUB_TOKEN`을 사용하며 별도 PAT는 필요 없습니다(같은 저장소에 release를 쓰는 `contents: write` 권한만 있으면 됩니다).
+`v*.*.*` 형태의 태그를 push하면 macOS/Windows/Linux 3개 러너에서 빌드하고 GitHub Releases에 자동 업로드합니다. macOS는 Apple 서명·공증 정보를 필수로 확인합니다. `GH_TOKEN`은 워크플로 기본 `secrets.GITHUB_TOKEN`을 사용합니다.
 
 코드 서명용 `CSC_LINK`/`CSC_KEY_PASSWORD`/`APPLE_ID`/`APPLE_APP_SPECIFIC_PASSWORD`/`APPLE_TEAM_ID`/`WIN_CSC_LINK`/`WIN_CSC_KEY_PASSWORD`는 "Configure optional code signing secrets" 스텝이 해당 repo secret이 실제로 값을 가질 때만 `$GITHUB_ENV`에 내보냅니다. GitHub Actions는 등록되지 않은 secret을 참조하면 빈 문자열을 채우는데(변수 자체가 없는 게 아님), electron-builder의 macOS 서명 로직은 `CSC_LINK=''`를 실제 파일 경로로 오인해 `⨯ ... not a file` 에러로 실패합니다 — 이 스텝은 그 문제를 막기 위한 것이므로 `Package and publish` 스텝의 `env`에 서명 관련 값을 직접 나열하지 않습니다. `workflow_dispatch`로 수동 실행도 가능합니다.
+
+macOS 작업은 `CSC_LINK`, `CSC_KEY_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`가 없거나 팀 ID가 `JYL3VHR5YK`가 아니면 실패합니다. 가져온 키체인에 해당 팀의 `Developer ID Application: Hyewon Park` 신원이 있어야 하며 서명을 강제합니다. Windows 서명은 선택 사항입니다.
 
 새 버전 릴리즈 절차:
 
@@ -49,18 +51,16 @@ git push --follow-tags
 2. `git push --follow-tags`로 커밋과 태그를 함께 push합니다.
 3. 태그 push가 `.github/workflows/release.yml`을 트리거해 macOS·Windows·Linux 3개 러너가 동시에 시작됩니다.
 4. 각 러너는 `npm ci`(플랫폼에 맞는 Chromium을 `postinstall`로 함께 설치) → `npm run build` → `electron-builder --publish always`를 실행합니다.
-5. `--publish always`가 해당 태그로 GitHub Release를 만들고 설치 파일과 업데이트 메타데이터(`latest*.yml`)를 업로드합니다. 3개 잡이 모두 끝나야 릴리즈가 완성됩니다.
+5. `--publish always`가 초안 GitHub Release에 설치 파일과 업데이트 메타데이터(`latest*.yml`)를 업로드합니다. 세 잡이 모두 성공하면 `publish` 잡이 초안을 공개합니다.
 6. 진행 상황은 저장소의 GitHub Actions 탭에서 확인합니다.
 
 ### draft와 releaseType
 
-electron-builder의 GitHub publish는 기본적으로 release를 **draft(비공개 초안)**로 만듭니다. draft release는 저장소 소유자로 로그인해야만 보이고, 로그인하지 않은 방문자에게는 GitHub가 모든 태그에 자동으로 붙이는 "Source code (zip)"/"(tar.gz)" 링크만 보입니다 — 실제로 만든 `.exe`/`.dmg`는 만들어졌지만 아무도 못 받는 상태가 됩니다. 이를 막기 위해 `package.json`의 `build.publish`에 `"releaseType": "release"`를 설정해 release가 만들어지자마자 바로 공개되도록 했습니다.
-
-단, 3개 OS 잡이 병렬로 실행되므로 가장 먼저 끝난 잡이 release를 공개하는 순간부터, 아직 안 끝난 다른 OS의 설치 파일은 몇 분간 빠진 채로 공개될 수 있습니다. 모든 잡이 끝난 뒤 한 번에 공개하려면 별도의 "모든 매트릭스 잡 완료 후 draft를 published로 전환하는 마무리 잡"을 추가해야 하며, 현재 워크플로에는 없습니다.
+electron-builder는 산출물을 비공개 초안에 업로드합니다. 태그에서 실행된 세 플랫폼 잡이 모두 성공하면 후속 잡이 초안을 공개합니다. 하나라도 실패하면 초안은 공개되지 않으므로 Actions에서 실패를 확인하고 해결해야 합니다. 브랜치에서 수동 실행한 워크플로는 자동 공개하지 않습니다.
 
 ### 현재 상태
 
-`v0.1.1`(macOS 서명 버그로 macOS만 실패), `v0.1.2`(3개 OS 모두 빌드 성공, `releaseType` 수정 전이라 여전히 draft)까지 태그가 존재합니다. 저장소(`ph-1dnjs/checkly`)는 public이라 released(비-draft) 상태이기만 하면 로그인 없이 누구나 받을 수 있습니다. `v0.1.2`를 공개하려면 GitHub UI에서 해당 draft release를 열어 수동으로 "Publish release"를 눌러야 합니다(`releaseType` 수정은 그 다음 태그부터 적용됩니다). macOS/Windows 코드 서명 인증서는 아직 secrets에 등록되지 않아, 지금 배포하면 서명되지 않은 설치 파일이 나갑니다(macOS "확인되지 않은 개발자" 경고, Windows SmartScreen 경고).
+과거 테스트 배포에는 서명되지 않은 macOS 설치 파일이 포함될 수 있습니다. 현재 macOS 워크플로는 서명·공증 자격 증명을 필수로 확인하며, 실제 릴리즈별 성공 여부는 Actions와 산출물에서 확인합니다. Windows 서명 인증서의 등록 여부는 확인되지 않았습니다.
 
 ## 앱 업데이트
 
@@ -75,15 +75,7 @@ electron-builder의 GitHub publish는 기본적으로 release를 **draft(비공�
 
 ### macOS "손상되었기 때문에 열 수 없습니다"
 
-지금은 테스트 배포 단계로, Apple Developer ID 인증서·공증(notarization) 없이 배포하기로 결정했습니다. `codesign --display --verbose=4`로 확인하면 macOS 빌드는 `Signature=adhoc`, `TeamIdentifier=not set`으로 서명됩니다 — Apple Silicon에서 실행 자체는 되지만(코드 서명이 전혀 없으면 arm64에서 실행이 안 됨), Developer ID로 서명·공증되지 않았기 때문에 인터넷에서 받은 dmg를 열면 Gatekeeper가 "Checkly는 손상되었기 때문에 열 수 없습니다"를 띄웁니다. 파일이 실제로 손상된 것은 아닙니다.
-
-사용자 안내(README에도 동일하게 기재):
-
-```bash
-xattr -cr /Applications/Checkly.app
-```
-
-이 명령으로 다운로드 시 붙는 quarantine 속성을 지우면 정상 실행됩니다. 근본적으로 없애려면 "draft와 releaseType" 앞의 WARNING에 있는 `CSC_LINK`/`APPLE_ID` 등 서명·공증 secrets를 등록해야 하며, 등록만 하면 워크플로와 `hardenedRuntime: true` 설정이 이미 이를 자동으로 사용하도록 되어 있어 코드 변경 없이 다음 릴리즈부터 정식 서명됩니다.
+이전의 서명되지 않은 테스트 빌드는 Gatekeeper 경고가 발생할 수 있습니다. 새 릴리즈에서 같은 문제가 발생하면 다운로드한 산출물의 서명·공증과 CI 결과를 확인합니다.
 
 ## 릴리즈 전 확인
 

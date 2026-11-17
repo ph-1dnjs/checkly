@@ -1,6 +1,6 @@
 {
   "name": "checkly",
-  "version": "0.1.10",
+  "version": "1.0.0",
   "private": true,
   "description": "Checkly desktop browser QA application built with Electron, React, Playwright, and FSD.",
   "main": "dist-electron/main.js",
@@ -77,7 +77,7 @@
         "provider": "github",
         "owner": "ph-1dnjs",
         "repo": "checkly",
-        "releaseType": "release"
+        "releaseType": "draft"
       }
     ]
   },
