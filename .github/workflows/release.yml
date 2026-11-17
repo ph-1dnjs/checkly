@@ -96,7 +96,8 @@ jobs:
         run: npx electron-builder --publish always --config.forceCodeSigning=${{ runner.os == 'macOS' }}
         env:
           CXXFLAGS: ${{ runner.os != 'Windows' && '-std=c++20' || '' }}
-          CL: ${{ runner.os == 'Windows' && '/std:c++20' || '' }}
+          # MSVC는 CL을 앞에, _CL_을 뒤에 붙이므로 모듈 자체의 /std:c++17보다 /std:c++20이 우선합니다.
+          _CL_: ${{ runner.os == 'Windows' && '/std:c++20' || '' }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   publish:

@@ -101,7 +101,6 @@
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "remarkable": "^2.0.1",
-    "swagger-ui-react": "^5.32.15",
     "yaml": "^2.9.0",
     "zod": "^4.5.4"
   },
@@ -119,6 +118,7 @@
     "electron-builder": "^26.0.12",
     "electronmon": "^2.0.4",
     "storybook": "^10.6.0",
+    "swagger-ui-react": "^5.32.15",
     "tsx": "^4.20.5",
     "typescript": "^5.9.2",
     "vite": "^7.1.3",

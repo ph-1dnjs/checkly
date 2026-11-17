@@ -36,7 +36,7 @@ npm run package
 
 macOS 작업은 `CSC_LINK`, `CSC_KEY_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`가 없거나 팀 ID가 `JYL3VHR5YK`가 아니면 실패합니다. 가져온 키체인에 해당 팀의 `Developer ID Application: Hyewon Park` 신원이 있어야 하며 서명을 강제합니다. Windows 서명은 선택 사항입니다.
 
-Electron 37의 네이티브 의존성은 C++20으로 다시 빌드합니다. 패키징 단계는 macOS·Linux에 `CXXFLAGS=-std=c++20`, Windows에 `CL=/std:c++20`을 적용합니다.
+Electron 37의 네이티브 의존성은 C++20으로 다시 빌드합니다. 패키징 단계는 macOS·Linux에 `CXXFLAGS=-std=c++20`, Windows에 `_CL_=/std:c++20`을 적용합니다.
 
 새 버전 릴리즈 절차:
 
