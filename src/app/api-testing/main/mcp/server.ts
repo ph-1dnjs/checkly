@@ -298,7 +298,7 @@ export class ApiMcpService {
       const run: Run = { controller: new AbortController(), state: "running" };
       this.runs.set(runId, run);
       void (async () => {
-        const rows: Array<{ id: string; name: string; status: string; result?: unknown; reason?: string }> = [];
+        const rows: Array<{ id: string; name: string; status: string; result?: unknown; reason?: string; historyWarning?: string }> = [];
         const invalidated = new Set<string>();
         for (const scenarioId of suite.scenarioIds) {
           const item = scenarios.find(s => s.id === scenarioId);
@@ -306,7 +306,7 @@ export class ApiMcpService {
           if (run.controller.signal.aborted || (suite.onFailure === "stop" && rows.some(row => row.status !== "passed"))) {
             rows.push({ id: scenarioId, name, status: "skipped" }); continue;
           }
-          if (!item || item.draft) { rows.push({ id: scenarioId, name, status: "blocked", reason: "시나리오가 삭제되었거나 초안입니다." }); continue; }
+          if (!item || item.draft) { const historyWarning = await this.workspace.recordBlockedScenario(scope, scenarioId, name).then(() => undefined, () => "대시보드 기록을 저장하지 못했습니다."); rows.push({ id: scenarioId, name, status: "blocked", reason: "시나리오가 삭제되었거나 초안입니다.", ...(historyWarning ? { historyWarning } : {}) }); continue; }
           const parsed = parsedOrUndefined(item.source);
           const produced = parsed ? producedGlobalNames(parsed) : [];
           try {
@@ -322,7 +322,8 @@ export class ApiMcpService {
             this.hooks.onRun?.({ ...scope, scenarioId, result, preview, bindings: item.bindings, startedAt, completedAt: new Date().toISOString() });
           } catch (error) {
             produced.forEach(value => invalidated.add(value));
-            rows.push({ id: scenarioId, name, status: run.controller.signal.aborted ? "cancelled" : "blocked", reason: error instanceof Error && error.message === "dependency" ? "앞 시나리오의 전역변수 생성 실패로 이전 값을 사용하지 않았습니다." : "실행 전 설정 또는 입력을 확인하세요." });
+            const historyWarning = !run.controller.signal.aborted ? await this.workspace.recordBlockedScenario(scope, scenarioId, name).then(() => undefined, () => "대시보드 기록을 저장하지 못했습니다.") : undefined;
+            rows.push({ id: scenarioId, name, status: run.controller.signal.aborted ? "cancelled" : "blocked", reason: error instanceof Error && error.message === "dependency" ? "앞 시나리오의 전역변수 생성 실패로 이전 값을 사용하지 않았습니다." : "실행 전 설정 또는 입력을 확인하세요.", ...(historyWarning ? { historyWarning } : {}) });
           }
           run.result = { suiteId: suite.id, onFailure: suite.onFailure, scenarios: [...rows] };
         }
@@ -345,7 +346,7 @@ export class ApiMcpService {
 
 /** `label` words each check from the saved YAML (as the run report does); actual response values never leave the app. */
 function summarize(result: ApiScenarioResult, scenario?: Scenario) {
-  return { status: result.status, steps: result.steps.map(step => {
+  return { status: result.status, ...(result.historyWarning ? { historyWarning: result.historyWarning } : {}), steps: result.steps.map(step => {
     const expectations = scenario?.steps.find(item => item.id === step.id)?.expect;
     return {
       id: step.id, name: step.name, status: step.status, httpStatus: step.httpStatus, durationMs: step.durationMs, failure: step.failure,

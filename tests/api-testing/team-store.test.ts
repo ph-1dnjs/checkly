@@ -9,7 +9,7 @@ import { randomUUID } from "node:crypto";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { ApiWorkspace } from "../../src/app/api-testing/main/workspace";
 import { SpecSync } from "../../src/app/api-testing/main/spec-sync";
-import type { ApiTeamContext } from "../../src/app/api-testing/main/team-store";
+import { TeamStore, type ApiTeamContext } from "../../src/app/api-testing/main/team-store";
 import { fromRows, toSavePayload, type EndpointRow, type EndpointUrlRow, type EnvironmentRow } from "../../src/app/ipc/auth/settings";
 import type { ProjectSettings } from "../../src/app/ipc/auth/types";
 
@@ -82,6 +82,25 @@ async function rows(client: SupabaseClient, table: string) {
   if (error) throw error;
   return data as Array<Record<string, unknown>>;
 }
+
+test("dashboard API run summaries are shared within a project and isolated from other projects", async t => {
+  if (!await needSupabase(t)) return;
+  const cleanup: Array<() => Promise<unknown>> = [];
+  try {
+    const team = await member(cleanup), colleague = await teammate(team, "colleague", cleanup), other = await member(cleanup);
+    const id = randomUUID(), now = new Date().toISOString();
+    await new TeamStore(team).saveDashboardRun({ id, environmentId: randomUUID(), scenarioId: "scenario-1", name: "로그인", status: "passed", startedAt: now, endedAt: now });
+    const same = await colleague.client.from("api_scenario_runs").select("*").eq("id", id);
+    assert.ifError(same.error);
+    assert.equal(same.data?.length, 1);
+    assert.equal(same.data?.[0].scenario_name, "로그인");
+    assert.equal("request" in same.data![0], false);
+    assert.equal("response" in same.data![0], false);
+    const different = await other.client.from("api_scenario_runs").select("id").eq("id", id);
+    assert.ifError(different.error);
+    assert.equal(different.data?.length, 0);
+  } finally { for (const action of cleanup.reverse()) await action(); }
+});
 
 test("team project: servers·environments map to the common tables, scenarios·suites·docs inputs are shared with conflicts", async t => {
   if (!await needSupabase(t)) return;

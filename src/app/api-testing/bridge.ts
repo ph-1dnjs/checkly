@@ -82,6 +82,7 @@ export const apiTestingBridge: ApiTestingBridge = {
   saveScenario: (scope, source, bindings, revision, metadata) => ipcRenderer.invoke('api-testing:save-scenario', scope, source, bindings, revision, metadata),
   saveScenarioDraft: (scope, source, bindings, revision, metadata) => ipcRenderer.invoke('api-testing:save-scenario-draft', scope, source, bindings, revision, metadata),
   runScenario: (scope, source, bindings, inputs) => ipcRenderer.invoke('api-testing:run-scenario', scope, source, bindings, inputs),
+  recordBlockedScenario: (scope, scenarioId, name) => ipcRenderer.invoke('api-testing:record-blocked-scenario', scope, scenarioId, name),
   getPendingScenarioInput: (scope) => ipcRenderer.invoke('api-testing:get-pending-input', scope),
   submitScenarioInput: (scope, submission) => ipcRenderer.invoke('api-testing:submit-input', scope, submission),
 }

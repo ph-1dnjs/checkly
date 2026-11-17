@@ -324,6 +324,7 @@ export function ScenarioPanel({ project, scope, bridge, onBusy, onRunAction, ref
       const parsed = Object.fromEntries(Object.entries(preview.scenario.inputs).filter(([key, definition]) => definition.required || inputs[key] !== undefined && inputs[key] !== "").map(([key, definition]) => [key, definition.type === "string" ? inputs[key] ?? "" : JSON.parse(inputs[key] ?? "")])) as Record<string, Json>;
       const response = await bridge.runScenario(scenarioScope, source, bindings, parsed);
       rememberResult(response, startedAt);
+      if (response.historyWarning && live.current) setNotice(response.historyWarning);
     } catch (e) {
       if (live.current) { setResult(null); setError(e instanceof SyntaxError ? "숫자·불리언·객체·배열 입력은 JSON 형식으로 입력하세요" : errorText(e)); }
     } finally {

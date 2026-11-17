@@ -200,6 +200,7 @@ export function registerApiTesting() {
       requestInput: request => requestScenarioInput(event.sender, scope, request),
     });
   });
+  ipcMain.handle("api-testing:record-blocked-scenario", (_event, scope, id, name) => workspace.recordBlockedScenario(scope, id, name));
   ipcMain.handle("api-testing:get-pending-input", (event, rawScope) => {
     const scope = inputScopeSchema.parse(rawScope);
     return [...pendingInputs.values()].find(pending => pending.sender === event.sender && sameInputScope(pending.scope, scope))?.request ?? null;
