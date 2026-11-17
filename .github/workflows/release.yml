@@ -75,7 +75,6 @@ jobs:
         shell: bash
         run: |
           security find-identity -v -p codesigning | grep -F 'Developer ID Application: Hyewon Park (JYL3VHR5YK)'
-          echo 'CSC_NAME=Developer ID Application: Hyewon Park (JYL3VHR5YK)' >> "$GITHUB_ENV"
 
       # GitHub Actions fills an unset secret with an empty string rather than omitting
       # the env var. electron-builder's macOS signer treats CSC_LINK='' as a real path
@@ -96,6 +95,8 @@ jobs:
       - name: Package and publish
         run: npx electron-builder --publish always --config.forceCodeSigning=${{ runner.os == 'macOS' }}
         env:
+          CXXFLAGS: ${{ runner.os != 'Windows' && '-std=c++20' || '' }}
+          CL: ${{ runner.os == 'Windows' && '/std:c++20' || '' }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   publish:
