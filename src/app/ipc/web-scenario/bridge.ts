@@ -9,6 +9,8 @@ const call = async <T>(method: string, ...args: unknown[]): Promise<T> => {
 }
 export const webScenarioBridge: WebScenarioBridge = {
   listRuns: () => call('listRuns'),
+  listDashboardRuns: (since, until) => call('listDashboardRuns', since, until),
+  getRun: id => call('getRun', id),
   saveRun: record => call('saveRun', record),
   list: () => call('list'),
   save: input => call('save', input),
