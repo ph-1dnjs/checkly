@@ -152,6 +152,7 @@ export const DashboardPage = ({ projectId, projectCode, environments, onOpenRun,
           {kind !== "api" && <div className="dash-recordings"><strong>서버 브라우저 오류 기록</strong><small>서버에 저장된 최근 200개 중 선택 기간의 기록</small>{recordingError ? <p role="status">{recordingError}</p> : failedRecordings.length ? failedRecordings.map(item => <Button className="dash-alert" key={item.id} onClick={() => onOpenRecording(item.id)}><i className="dash-badge failed">오류 기록</i><strong>{item.title || "브라우저 테스트"}</strong><span>{new Date(item.startedAt).toLocaleString("ko-KR")}</span></Button>) : <p>선택한 기간의 서버 오류 기록이 없어요.</p>}</div>}
         </section>
         <section className="dash-news" aria-label="Checkly 소식"><div className="dash-news-heading"><span className="dash-news-logo"><img src={checklyMark} alt="" /></span><div><strong>Checkly Recorder</strong><p>브라우저 오류를 바로 팀에 넘겨요</p></div></div><a href={RECORDER_STORE_URL} target="_blank" rel="noreferrer">바로가기 ↗</a></section>
+        <section className="dash-contact"><span className="dash-contact-icon" aria-hidden="true"><span className="msi">support_agent</span></span><div><strong>문제가 생겼나요?</strong><p>메일로 바로 알려 주세요</p></div><a href="mailto:unana.dev@gmail.com" target="_blank" rel="noreferrer">문의하기 <span className="msi" aria-hidden="true">mail</span></a></section>
         </aside>
         </div>
       </>}
