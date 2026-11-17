@@ -1,46 +1,58 @@
+<div align="center">
+
+<img src="build/icons/icon.png" alt="Checkly 로고" width="96" height="96">
+
 # Checkly
 
-Checkly는 Markdown으로 브라우저 QA 시나리오를 작성하고 Playwright Chromium에서 실행하는 Electron 데스크톱 애플리케이션입니다. 단일·다중 시나리오 실행, 수동 입력·직접 제어·결과 판정, 실행 영상과 HTML/JSON 리포트 생성을 지원합니다.
+브라우저 시나리오와 API를 작성하고 실행하는 데스크톱 QA 도구
 
-> **현재 구현 기준**: 2026-09-02의 저장소 코드와 설정을 기준으로 합니다. 제품 정책이나 외부 서버 연동처럼 코드에서 확인되지 않은 내용은 개발 문서에서 미확인 또는 미구현으로 구분합니다.
+[개발 문서](docs/README.md) · [다운로드](https://github.com/ph-1dnjs/checkly/releases/latest) · [이슈 등록](https://github.com/ph-1dnjs/checkly/issues)
 
-## 핵심 기능
+</div>
 
-- Markdown 원문 편집과 파싱 결과 미리보기
-- Markdown 파일 가져오기·저장·내보내기
-- 대상 페이지 위 마커 추가·수정·정렬과 연결 상태 검사
-- 폴더 내 `.md`, `.markdown` 파일 탐색과 다중 시나리오 선택
-- 자동 단계와 수동 단계를 결합한 Playwright 실행
-- 여러 시나리오의 순차 실행과 브라우저 context 재사용
-- 실시간 진행률·JPEG 미리보기·실행 로그 표시
-- 실행별 WebM 영상, 묶음 영상, HTML/JSON 리포트 생성
-- 최근 5개 실행 기록 요약과 재실행
+## 목차
 
-## 기술 구성
+- [소개](#소개)
+- [주요 기능](#주요-기능)
+- [요구 사항](#요구-사항)
+- [설치](#설치)
+- [빠른 시작](#빠른-시작)
+- [사용법](#사용법)
+- [설정](#설정)
+- [문제 해결](#문제-해결)
+- [기여하기](#기여하기)
 
-| 영역            | 기술                               | 역할                                               |
-| --------------- | ---------------------------------- | -------------------------------------------------- |
-| 데스크톱 런타임 | Electron 37                        | 창, native dialog, 파일 시스템, IPC, 자동 업데이트 |
-| 렌더러          | React 19, React DOM                | 화면과 인메모리 상태 조립                          |
-| 언어·빌드       | TypeScript 5.9, Vite 7             | 렌더러 번들 및 Electron 프로세스 컴파일            |
-| 브라우저 자동화 | Playwright 1.55 Chromium           | 대상 탐색, 입력, 클릭, 선택, 확인, 영상 녹화       |
-| 영상 처리       | `ffmpeg-static`                    | 다중 실행 WebM 영상 결합                           |
-| 패키징·업데이트 | electron-builder, electron-updater | 설치 파일 생성과 GitHub Releases 업데이트 확인     |
-| UI 검증         | Playwright Test                    | Vite preview 기반 렌더러 E2E                       |
+## 소개
 
-소스는 `app`, `pages`, `widgets`, `features`, `entities`, `shared` 경계를 사용합니다.
+Checkly는 QA 작업을 돕는 Electron 데스크톱 애플리케이션입니다. Markdown 시나리오를 편집해 Playwright Chromium에서 실행하고, 진행 상황과 결과를 확인할 수 있습니다. API 테스트와 사이트를 직접 확인하는 화면 테스트도 제공합니다.
 
-## 다운로드와 설치
+## 주요 기능
 
-최신 설치 파일은 [GitHub Releases](https://github.com/ph-1dnjs/checkly/releases/latest)에서 받습니다 — Windows는 `.exe`, macOS는 `.dmg`, Linux는 `.AppImage`.
+- **웹 시나리오** — Markdown과 화면 위 마커로 단계를 편집하고 자동·수동 단계를 실행합니다.
+- **실행 결과** — 진행률과 미리보기를 확인하고 영상 및 HTML/JSON 리포트를 생성합니다.
+- **API 테스트** — Swagger/OpenAPI 명세를 불러와 요청과 시나리오를 작성하고 실행합니다.
+- **화면 테스트** — 웹뷰에서 폼 자동 입력, 네트워크 검사, 응답 오버라이드와 화면 캡처를 사용합니다.
+- **AI TC 실행** — Excel 테스트 케이스를 가져와 AI와 Chromium으로 실행합니다.
+- **팀 프로젝트** — 로그인한 프로젝트에서 시나리오와 실행 기록을 공유합니다.
 
-> **WARNING**: 현재는 테스트 배포 단계라 Apple 개발자 인증서로 서명·공증하지 않았습니다. macOS에서 dmg를 열어 앱을 실행하면 "손상되었기 때문에 열 수 없습니다"라는 메시지가 뜰 수 있는데, 파일이 실제로 손상된 게 아니라 서명되지 않은 앱을 인터넷에서 받았을 때 Gatekeeper가 보여주는 메시지입니다. 터미널에서 아래 명령을 실행한 뒤 다시 열면 정상적으로 실행됩니다.
->
-> ```bash
-> xattr -cr /Applications/Checkly.app
-> ```
+기능별 동작과 제한은 [개발 문서](docs/04-pages/README.md)에서 확인할 수 있습니다.
 
-## 시작하기
+## 요구 사항
+
+앱 설치 파일은 macOS, Windows, Linux용으로 구성되어 있습니다. 소스에서 실행하려면 Node.js, npm, Git이 필요합니다. 저장소에 Node.js 버전은 고정되어 있지 않으며 CI는 Node.js 22를 사용합니다. 의존성 설치 시 Playwright Chromium도 다운로드합니다.
+
+## 설치
+
+[GitHub Releases](https://github.com/ph-1dnjs/checkly/releases/latest)에서 운영체제에 맞는 설치 파일을 받습니다. 빌드 설정의 대상은 macOS `.dmg`, Windows `.exe`, Linux `.AppImage`입니다. 릴리즈마다 제공되는 파일은 다운로드 페이지에서 확인해 주세요.
+
+소스에서 개발하려면 저장소를 복제합니다.
+
+```bash
+git clone https://github.com/ph-1dnjs/checkly.git
+cd checkly
+```
+
+## 빠른 시작
 
 ```bash
 cp .env.example .env
@@ -48,31 +60,70 @@ npm install
 npm run dev
 ```
 
-개발 모드는 Vite(`127.0.0.1:5173`)와 Electron main 프로세스를 함께 실행합니다. 빌드 후 앱을 실행하려면 `npm start`를 사용합니다.
+개발 모드는 Vite와 Electron을 함께 실행합니다. 빌드 후 실행하려면 `npm start`를 사용합니다. 팀 서버 연결은 아래 [설정](#설정)을 참고하세요.
 
-## 주요 명령어
+## 사용법
 
-| 목적                  | 명령어                |
-| --------------------- | --------------------- |
-| 빌드 후 Electron 실행 | `npm start`           |
-| 렌더러 E2E            | `npm test`            |
-| Playwright UI 모드    | `npm run test:ui`     |
-| 설치 파일 생성        | `npm run package`     |
-| unpacked 패키지 생성  | `npm run package:dir` |
+1. 웹 시나리오 편집기에서 Markdown 또는 마커로 테스트 단계를 작성합니다.
+2. 실행할 시나리오를 선택하고 실행합니다. 수동 단계가 있으면 화면의 안내에 따라 진행합니다.
+3. 실행 화면과 기록에서 결과를 확인합니다.
 
-상세한 설치·구조·기능·IPC·배포 설명은 [개발 문서](docs/README.md)를 확인합니다. UI 변경은 [DESIGN.md](DESIGN.md)의 디자인 기준을 따릅니다.
+API 테스트와 화면 테스트 사용법은 각각 [API 테스트](docs/04-pages/070-api-testing/README.md), [화면 테스트](docs/04-pages/060-form-automation/README.md) 문서를 참고하세요. AI TC는 [AI TC 실행 문서](docs/04-pages/080-ai-tc/README.md)에 설명되어 있습니다.
 
-## 환경 변수와 보안
+### 개발 명령어
 
-`.env`는 Git에서 제외됩니다. GitHub Releases 게시 대상(`ph-1dnjs/checkly`)은 `package.json`의 `build.publish`에 고정되어 있고, `GH_TOKEN`만 로컬에서 게시 권한으로 필요합니다. CI에서는 워크플로 기본 `GITHUB_TOKEN`을 사용합니다.
+| 명령어                | 설명                                |
+| --------------------- | ----------------------------------- |
+| `npm run dev`         | 개발 서버와 Electron 실행           |
+| `npm run build`       | 렌더러와 Electron 빌드              |
+| `npm start`           | 빌드 후 Electron 실행               |
+| `npm test`            | Playwright 렌더러 테스트            |
+| `npm run test:api`    | API 테스트 관련 테스트              |
+| `npm run package`     | 설치 파일 생성                      |
+| `npm run package:dir` | 설치 파일 없이 패키지 디렉터리 생성 |
 
-> **WARNING**: `VITE_` 접두 환경 변수는 렌더러 번들에 포함됩니다. 토큰·API 키 등 비밀값에 사용하지 않습니다.
+## 설정
 
-## 현재 확인된 제한
+개발 실행은 `.env`의 설정을 사용합니다. `.env.example`을 복사한 뒤 필요할 때 값을 설정하세요.
 
-- 백엔드 HTTP API, 로그인, 계정·권한 기능은 없습니다.
-- 실행 기록과 설정 토글은 앱 메모리에만 있어 재시작 시 초기화됩니다.
-- 저장된 HTML/JSON 리포트를 앱 안에서 다시 여는 기능은 없습니다.
-- 설정 화면의 브라우저 변경, 보관 기간, 알림, Slack 연동은 표시 전용입니다. 업데이트 확인·설치는 실제로 동작합니다.
-- `.github/workflows/release.yml`이 태그 push 시 3개 OS에 배포하지만, 코드 서명·공증용 인증서가 실제로 등록되었는지는 확인되지 않습니다.
-- 실제 릴리즈 승인·롤백 절차는 저장소에서 확인되지 않습니다.
+| 변수                        | 용도                                               |
+| --------------------------- | -------------------------------------------------- |
+| `CHECKLY_SUPABASE_URL`      | 개발용 팀 Supabase 주소                            |
+| `CHECKLY_SUPABASE_ANON_KEY` | 개발용 Supabase 공개 anon 키                       |
+| `CHECKLY_AUTH_EMAIL_DOMAIN` | 팀 로그인에 사용하는 가상 이메일 도메인            |
+| `GH_TOKEN`                  | 로컬에서 GitHub Releases에 게시할 때 사용하는 토큰 |
+
+개발 환경에서 Supabase를 설정하지 않으면 로컬 모드로 실행합니다. Supabase가 설정된 경우 웹 시나리오와 API 테스트의 팀 데이터는 로그인 후 사용할 수 있습니다. 패키지 앱은 별도 설정이 없으면 배포용 팀 서버 설정을 사용합니다. 자세한 내용은 [Supabase 가이드](docs/02-architecture/supabase-guide.md)와 [예제 환경 파일](.env.example)을 참고하세요.
+
+`.env`와 비밀 토큰은 커밋하지 마세요. `VITE_` 접두 변수가 렌더러 번들에 포함될 수 있으므로 비밀값을 넣지 마세요.
+
+## 문제 해결
+
+<details>
+<summary>macOS에서 앱을 열 수 없다는 메시지가 표시됩니다</summary>
+
+서명·공증되지 않은 배포본은 Gatekeeper에 의해 차단될 수 있습니다. 신뢰할 수 있는 출처에서 받은 앱인지 먼저 확인하세요. 배포 및 확인 방법은 [배포 문서](docs/09-deployment/README.md)를 참고하세요.
+
+</details>
+
+<details>
+<summary>팀 시나리오나 API 테스트에 로그인 안내가 표시됩니다</summary>
+
+Supabase가 설정된 환경에서는 로그인한 프로젝트의 데이터를 사용합니다. 로그인 상태와 개발용 `.env` 설정을 확인하세요.
+
+</details>
+
+해결되지 않으면 [이슈](https://github.com/ph-1dnjs/checkly/issues)에 운영체제, 앱 버전과 재현 방법을 남겨 주세요.
+
+## 기여하기
+
+버그 제보, 문서 개선과 기능 제안을 환영합니다. 변경 전에 [코드 컨벤션](docs/03-conventions/README.md)과 [개발 가이드](docs/08-development-guide/README.md)를 확인해 주세요.
+
+변경 후에는 관련 테스트와 다음 기본 검증을 실행합니다.
+
+```bash
+npm run build
+npm test
+```
+
+Pull Request에는 변경 내용과 확인 방법을 적어 주세요.
