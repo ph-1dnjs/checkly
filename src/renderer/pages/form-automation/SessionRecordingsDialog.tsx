@@ -7,7 +7,7 @@ const statusLabel: Record<Exclude<LiveSession["status"], "saved">, string> = {
   recording: "오류 후 수집 중", interrupted: "중단된 기록", error: "저장 오류",
 };
 
-export const SessionRecordingsDialog = ({ onClose }: { onClose: () => void }) => {
+export const SessionRecordingsDialog = ({ onClose, initialTeamId }: { onClose: () => void; initialTeamId?: string }) => {
   const dialog = useRef<HTMLElement>(null);
   const [sessions, setSessions] = useState<LiveSession[]>([]);
   const [recording, setRecording] = useState<SessionRecording | null>(null);
@@ -25,10 +25,10 @@ export const SessionRecordingsDialog = ({ onClose }: { onClose: () => void }) =>
   }, [deleteToast]);
   const deleteInFlight = useRef(false);
   const [busy, setBusy] = useState(false);
-  const [mode, setMode] = useState<"local" | "team">("local");
+  const [mode, setMode] = useState<"local" | "team">(initialTeamId ? "team" : "local");
   const [downloading, setDownloading] = useState(false);
   const [downloadMessage, setDownloadMessage] = useState("");
-  const [scope, setScope] = useState<RecordingScope>("local");
+  const [scope, setScope] = useState<RecordingScope>(initialTeamId ? "team" : "local");
   const [uploadableIds, setUploadableIds] = useState<string[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -92,6 +92,7 @@ export const SessionRecordingsDialog = ({ onClose }: { onClose: () => void }) =>
     } catch (cause) { if (current === request.current) setError(`기록을 열지 못했습니다: ${String(cause)}`); }
     finally { if (current === request.current) setLoading(false); }
   };
+  useEffect(() => { if (initialTeamId) void open(initialTeamId).then(() => refresh()); }, [initialTeamId]);
   const document = recording?.documents.find(item => item.id === documentId);
   const switchScope = (next: RecordingScope) => {
     if (next === scope) return;

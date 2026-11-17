@@ -216,6 +216,17 @@ export async function installAuthStub(page: Page, options: AuthStubOptions) {
         ...(options.enabled === 'missing' ? {} : { auth }),
         ...(options.teamSettings ? { apiTesting } : {}),
         webScenarios: {
+          listDashboardRuns: async (since: string, until: string) => {
+            record('webScenarios.listDashboardRuns', { since, until })
+            if (options.webScenarioOffline) throw new Error('오프라인')
+            const web = JSON.parse(store.getItem('web-runs') ?? '[]').map((run: any) => ({
+              id: run.id, type: 'web', status: run.status, name: run.results?.[0]?.scenario?.title ?? '시나리오 실행',
+              startedAt: run.startedAt ?? run.ranAt, endedAt: run.ranAt, environmentId: run.results?.[0]?.scenario?.environmentId ?? null,
+              passed: run.passed, failed: run.failed, total: run.results?.length ?? 0,
+            }))
+            return [...web, ...JSON.parse(store.getItem('api-runs') ?? '[]')].filter((run: any) => run.startedAt >= since && run.startedAt < until)
+          },
+          getRun: async (id: string) => JSON.parse(store.getItem('web-runs') ?? '[]').find((run: any) => run.id === id) ?? null,
           listRuns: async () => {
             record('webScenarios.listRuns', null)
             return JSON.parse(store.getItem('web-runs') ?? '[]')
